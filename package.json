@@ -1,0 +1,62 @@
+{
+  "name": "media-downloader-core",
+  "version": "1.0.0",
+  "description": "UI-agnostic download engine (yt-dlp + ffmpeg): playlists, a CPUs/2 worker pool, codec-guaranteed formats and full integrity validation.",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup --config tsup.config.ts",
+    "build:watch": "tsup --config tsup.config.ts --watch",
+    "test": "tsx --test test/*.test.ts",
+    "typecheck": "tsc -p . --noEmit",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "check": "npm run typecheck && npm run lint && npm test",
+    "stress": "node --expose-gc --import tsx scripts/stress.ts",
+    "demo": "tsx examples/demo.ts",
+    "prepublishOnly": "npm run check && npm run build"
+  },
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "@types/node": "22.20.5",
+    "tsup": "8.5.1",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3"
+  },
+  "author": "isaachq <isaac.hernandez.qz@gmail.com>",
+  "repository": "github:isaachq/media-downloader-core",
+  "homepage": "https://github.com/isaachq/media-downloader-core#readme",
+  "bugs": "https://github.com/isaachq/media-downloader-core/issues",
+  "keywords": [
+    "media-backup",
+    "playlist-archiver",
+    "video-archiver",
+    "integrity-check",
+    "ffmpeg",
+    "electron",
+    "typescript"
+  ]
+}

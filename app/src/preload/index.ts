@@ -29,6 +29,10 @@ const api: MdcApi = {
   clearFinished: () => ipcRenderer.invoke(CHANNEL.clearFinished),
   searchLogs: (id, limit) => ipcRenderer.invoke(CHANNEL.searchLogs, id, limit),
   reveal: file => ipcRenderer.invoke(CHANNEL.reveal, file),
+  updateState: () => ipcRenderer.invoke(CHANNEL.updateState),
+  checkForUpdates: () => ipcRenderer.invoke(CHANNEL.updateCheck),
+  installUpdate: () => ipcRenderer.invoke(CHANNEL.updateInstall),
+  onUpdate: listener => subscribe(CHANNEL.update, listener),
   onEvents: listener => subscribe(CHANNEL.events, listener),
   onSetupProgress: listener => subscribe(CHANNEL.setupProgress, listener),
 }

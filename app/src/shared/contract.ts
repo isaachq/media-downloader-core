@@ -60,6 +60,8 @@ export type AppSettings = {
   readonly notifications: boolean
   /** File and folder names with ASCII letters, digits and hyphens only (car stereos, TVs, USB sticks). */
   readonly portableNames: boolean
+  /** Look for a new version at start-up and every few hours. */
+  readonly autoUpdate: boolean
 }
 
 /** Settings the engine reads at construction — changing them asks for a restart. */
@@ -99,6 +101,32 @@ export type ScheduleInput = {
   /** Entries picked in the preview: downloaded as-is, the list is not fetched again. */
   readonly selection?: BatchSelection | undefined
 }
+
+/** The updater, as the UI shows it. */
+export type UpdateState =
+  | {readonly status: 'idle'}
+  /** Running from source or an install the updater doesn't know: update by hand. */
+  | {readonly status: 'unsupported'; readonly page: string}
+  | {readonly status: 'checking'}
+  | {readonly status: 'up-to-date'; readonly checkedAt: number}
+  | {
+      readonly status: 'available'
+      readonly version: string
+      readonly notes: string
+      readonly page: string
+      readonly size: number
+    }
+  | {
+      readonly status: 'downloading'
+      readonly version: string
+      readonly page: string
+      readonly received: number
+      readonly total: number
+    }
+  /** Downloaded and verified, not installed (test runs). */
+  | {readonly status: 'ready'; readonly version: string; readonly page: string; readonly file: string}
+  | {readonly status: 'installing'; readonly version: string; readonly page: string}
+  | {readonly status: 'error'; readonly message: string; readonly page: string; readonly version?: string}
 
 /** What a link holds, for the preview — without local paths or format lists. */
 export type Preview =
@@ -143,6 +171,11 @@ export type MdcApi = {
   clearFinished(): Promise<void>
   searchLogs(id: string, limit: number): Promise<{readonly entries: readonly LogEntry[]; readonly total: number}>
   reveal(path: string): Promise<void>
+  updateState(): Promise<UpdateState>
+  checkForUpdates(): Promise<UpdateState>
+  /** Download, verify and install the available update, then restart. */
+  installUpdate(): Promise<void>
+  onUpdate(listener: (state: UpdateState) => void): () => void
   onEvents(listener: (bundle: EventBundle) => void): () => void
   onSetupProgress(listener: (progress: InstallProgress) => void): () => void
 }
@@ -167,5 +200,9 @@ export const CHANNEL = {
   clearFinished: 'mdc:clear-finished',
   searchLogs: 'mdc:search-logs',
   reveal: 'mdc:reveal',
+  updateState: 'mdc:update:state',
+  updateCheck: 'mdc:update:check',
+  updateInstall: 'mdc:update:install',
+  update: 'mdc:update',
   events: 'mdc:events',
 } as const

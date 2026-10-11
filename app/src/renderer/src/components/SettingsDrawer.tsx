@@ -121,6 +121,9 @@ export function SettingsDrawer({open, onClose, onDoctor, onReinstall}: Props) {
             >
               {t('settings.notifications')}
             </SwitchRow>
+            <SwitchRow id="opt-update" checked={settings.autoUpdate} onChange={value => change({autoUpdate: value})}>
+              {t('settings.autoUpdate')}
+            </SwitchRow>
             <div>
               <SwitchRow
                 id="opt-portable"

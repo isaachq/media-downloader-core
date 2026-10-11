@@ -32,6 +32,7 @@ export function defaultSettings(
     longVideoMinutes: 30,
     notifications: true,
     portableNames: true,
+    autoUpdate: true,
   }
 }
 
@@ -64,6 +65,7 @@ export function mergeSettings(current: AppSettings, patch: unknown, maxConcurren
     next.longVideoMinutes = Math.min(600, Math.max(5, p['longVideoMinutes'] as number))
   if (typeof p['notifications'] === 'boolean') next.notifications = p['notifications']
   if (typeof p['portableNames'] === 'boolean') next.portableNames = p['portableNames']
+  if (typeof p['autoUpdate'] === 'boolean') next.autoUpdate = p['autoUpdate']
   return next
 }
 

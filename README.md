@@ -61,10 +61,24 @@ npm test           # UI tests (Vitest + Testing Library)
 npm run test:e2e   # the real Electron app end to end (Playwright, fake tools)
 npm run dist:mac   # dist/*.dmg + *.zip (arm64, x64)
 npm run dist:win   # dist/*.exe installer (x64, arm64)
+npm run dist:linux # dist/*.AppImage + *.deb (this machine's architecture)
 ```
 
 Beta builds are not code-signed yet: on macOS open the app with right click →
 Open the first time; on Windows choose "More info → Run anyway" in SmartScreen.
+
+**Linux** (x64 and arm64). The `.deb` is the recommended way on Ubuntu / Debian:
+
+```bash
+sudo apt install ./Media-Download-Core-<version>-linux-amd64.deb   # arm64: …-linux-arm64.deb
+media-download-core
+```
+
+It adds the menu entry and, on Ubuntu 24.04+, an AppArmor profile that lets
+Chromium's sandbox run (24.04 restricts the user namespaces it needs). The
+`.AppImage` runs on most other distributions (`chmod +x` it first); on Ubuntu
+24.04+ prefer the `.deb`, since an AppImage gets no such profile. Data, tools
+and the download history live in `~/.config/Media Download Core`, shared with `mdc`.
 
 The interface is built with [Ant Design](https://github.com/ant-design/ant-design)
 (MIT) — thank you to the Ant Design team for an excellent, free component library.

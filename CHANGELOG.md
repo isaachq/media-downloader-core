@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+**Linux.** The desktop app ships for Linux as `.AppImage` and `.deb` (x64 and
+arm64). The `.deb` installs an AppArmor profile so Chromium's sandbox works on
+Ubuntu 24.04+. CI runs the app's unit, UI and end-to-end tests on Ubuntu
+(on a virtual display), next to macOS and Windows.
+
 ## App 0.2.0-beta.1 · library 1.1.0
 
 **Preview before downloading.** A list (playlist, Mix, channel) now opens a

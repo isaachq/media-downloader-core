@@ -20,6 +20,10 @@ jobs:
             dist: dist:mac
           - os: windows-latest
             dist: dist:win
+          - os: ubuntu-latest
+            dist: dist:linux
+          - os: ubuntu-24.04-arm
+            dist: dist:linux
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -38,11 +42,13 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - uses: actions/upload-artifact@v4
         with:
-          name: installers-${{ runner.os }}
+          name: installers-${{ matrix.os }}
           path: |
             app/dist/*.dmg
             app/dist/*.zip
             app/dist/*.exe
+            app/dist/*.AppImage
+            app/dist/*.deb
           if-no-files-found: error
 
   release:
@@ -64,7 +70,7 @@ jobs:
         run: |
           # notes: the newest CHANGELOG section, then the install hint
           awk '/^## /{n++} n==1' source/CHANGELOG.md > notes.md
-          printf '\n---\nmacOS (arm64, x64) and Windows (x64, arm64). Builds are not code-signed yet — see the README.\n' >> notes.md
+          printf '\n---\nmacOS (arm64, x64), Windows (x64, arm64) and Linux (AppImage / .deb, x64 and arm64). Builds are not code-signed yet — see the README.\n' >> notes.md
           gh release create "$GITHUB_REF_NAME" installers/* \
             --repo "$GITHUB_REPOSITORY" --prerelease \
             --title "Media Download Core ${GITHUB_REF_NAME#app-v}" \

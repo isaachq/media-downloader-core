@@ -71,9 +71,9 @@ certificate yet, so the system warns the first time; this is expected.
 **Linux** (x64 and arm64) — pick your distribution's package:
 
 ```bash
-# Ubuntu / Debian
+# Ubuntu / Debian            (ARM: …-linux-arm64.deb)
 sudo apt install ./Media-Download-Core-<version>-linux-amd64.deb
-# Fedora / RHEL / openSUSE
+# Fedora / RHEL / openSUSE    (ARM: …-linux-aarch64.rpm)
 sudo dnf install ./Media-Download-Core-<version>-linux-x86_64.rpm
 # then open it from the app menu, or
 media-download-core
@@ -87,6 +87,24 @@ fuse-libs` for it); on Ubuntu 24.04+ prefer the `.deb`.
 Settings, tools and the download history live in `~/Library/Application Support/Media Download Core`
 (macOS), `%APPDATA%\Media Download Core` (Windows) or `~/.config/Media Download Core` (Linux),
 shared with the `mdc` command line.
+
+### Updates
+
+The app checks this project's releases at start-up and every 6 hours (Settings →
+"Check for updates automatically"; About → "Check for updates" any time). When a
+new version is out, one button downloads it in the background, verifies it and
+restarts into it; running downloads continue after the restart.
+
+| | Installs by |
+| --- | --- |
+| macOS | swapping the app bundle once the old one has quit, then reopening it (the app must be in a folder you can write to, e.g. Applications) |
+| Windows | running the installer silently, which starts the new version |
+| Linux AppImage | replacing the file, then starting it |
+| Linux `.deb` / `.rpm` | the system package manager, through your desktop's password prompt |
+
+Only files from this repository's releases are accepted, and only when their
+size and SHA-256 match what GitHub publishes for them; on macOS the new bundle
+must also be this app, at the offered version, with a valid signature.
 
 ### Features
 

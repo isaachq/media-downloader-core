@@ -1,7 +1,7 @@
 {
   "name": "media-download-core-app",
   "productName": "Media Download Core",
-  "version": "0.2.0-beta.2",
+  "version": "0.2.0-beta.3",
   "description": "Desktop app for media-downloader-core: heavy batch downloads with integrity validation.",
   "private": true,
   "main": "./out/main/index.js",

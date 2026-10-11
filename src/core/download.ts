@@ -1,9 +1,9 @@
 import * as path from 'node:path'
+import {binaryPath, type Executable, invoke} from '../binaries/executable.js'
 import type {FormatProfile, JobProgress} from '../types.js'
 import {type OptionList, toArgv} from './argv.js'
 import {cancelledError, classifyYtDlpError, DownloadError} from './errors.js'
 import {profileOptions} from './formats.js'
-import {run} from './process.js'
 
 // Machine-readable stdout lines. `%(field|null)j` emits valid JSON even when
 // a field is missing (a plain `%(field)j` prints a bare NA).
@@ -58,8 +58,8 @@ type RawProgress = {
 }
 
 export type YtDlpRunOptions = {
-  readonly ytDlp: string
-  readonly ffmpeg: string
+  readonly ytDlp: Executable
+  readonly ffmpeg: Executable
   readonly env: NodeJS.ProcessEnv
   /** Page url; ignored for extraction when `infoJsonPath` is given. */
   readonly url: string
@@ -72,6 +72,8 @@ export type YtDlpRunOptions = {
   readonly embedMetadata: boolean
   readonly embedThumbnail: boolean
   readonly extraArgs: readonly string[]
+  /** Abort the attempt after this long without output while downloading. 0 = never. */
+  readonly stallTimeoutMs?: number | undefined
   readonly signal?: AbortSignal | undefined
   readonly onInfo?: ((info: DownloadedInfo) => void) | undefined
   readonly onProgress?: ((progress: JobProgress) => void) | undefined
@@ -79,6 +81,7 @@ export type YtDlpRunOptions = {
 }
 
 export function buildYtDlpArgs(opts: YtDlpRunOptions): string[] {
+  const ffmpegLocation = binaryPath(opts.ffmpeg)
   const options: OptionList = [
     ...profileOptions(opts.profile),
     ['--no-playlist'],
@@ -104,8 +107,8 @@ export function buildYtDlpArgs(opts: YtDlpRunOptions): string[] {
     ['--paths', `home:${opts.workDir}`],
     ['--paths', `temp:${path.join(opts.workDir, 'parts')}`],
     ['--output', '%(title).150B [%(id)s].%(ext)s'],
-    // a bare "ffmpeg" means PATH — yt-dlp then finds it (and ffprobe) itself
-    path.isAbsolute(opts.ffmpeg) && ['--ffmpeg-location', opts.ffmpeg],
+    // without a real path (PATH name, wrapped command) yt-dlp finds ffmpeg itself
+    ffmpegLocation !== undefined && ['--ffmpeg-location', ffmpegLocation],
     opts.embedMetadata && ['--embed-metadata'],
     opts.embedThumbnail && ['--embed-thumbnail'],
     opts.embedThumbnail && ['--convert-thumbnails', 'jpg'],
@@ -185,22 +188,75 @@ function parseJson<T>(text: string): T | undefined {
   }
 }
 
+/**
+ * Kills an attempt that stops making progress. Re-armed by every line yt-dlp
+ * prints; one timer per download, so the cost is O(1) per line.
+ */
+class StallWatchdog {
+  readonly #controller = new AbortController()
+  readonly #onParentAbort = () => this.#controller.abort()
+  #timer: NodeJS.Timeout | undefined
+  stalled = false
+
+  constructor(
+    private readonly timeoutMs: number,
+    private readonly parent?: AbortSignal | undefined,
+  ) {
+    parent?.addEventListener('abort', this.#onParentAbort, {once: true})
+    this.feed()
+  }
+
+  /** Aborts on a stall or when the caller aborts. */
+  get signal(): AbortSignal {
+    return this.#controller.signal
+  }
+
+  feed(): void {
+    if (this.timeoutMs <= 0) return
+    if (this.#timer) this.#timer.refresh()
+    else {
+      this.#timer = setTimeout(() => {
+        this.stalled = true
+        this.#controller.abort()
+      }, this.timeoutMs)
+    }
+  }
+
+  /** Stop watching (post-processing can be legitimately silent for minutes). */
+  pause(): void {
+    if (this.#timer) clearTimeout(this.#timer)
+    this.#timer = undefined
+  }
+
+  dispose(): void {
+    this.pause()
+    this.parent?.removeEventListener('abort', this.#onParentAbort)
+  }
+}
+
 export async function runYtDlp(opts: YtDlpRunOptions): Promise<{filepath: string; info: DownloadedInfo}> {
   const tracker = new ProgressTracker()
+  const watchdog = new StallWatchdog(opts.stallTimeoutMs ?? 0, opts.signal)
   let info: DownloadedInfo = {}
   let filepath: string | undefined
+  let postprocessing = false
 
-  const result = await run(opts.ytDlp, buildYtDlpArgs(opts), {
-    signal: opts.signal,
+  const result = await invoke(opts.ytDlp, buildYtDlpArgs(opts), {
+    signal: watchdog.signal,
     env: opts.env,
     collectStdout: false, // everything we need arrives line by line
     onStdoutLine: line => {
+      if (!postprocessing) watchdog.feed()
       if (line.startsWith(PROGRESS)) {
         const raw = parseJson<RawProgress>(line.slice(PROGRESS.length))
         if (raw && raw.status !== 'finished') opts.onProgress?.(tracker.update(raw))
       } else if (line.startsWith(POSTPROCESS)) {
         const raw = parseJson<{status?: string; name?: string}>(line.slice(POSTPROCESS.length))
-        if (raw?.status === 'started' && raw.name && raw.name !== 'MoveFiles') opts.onPostprocess?.(raw.name)
+        if (raw?.status === 'started' && raw.name && raw.name !== 'MoveFiles') {
+          postprocessing = true
+          watchdog.pause()
+          opts.onPostprocess?.(raw.name)
+        }
       } else if (line.startsWith(INFO)) {
         info = parseJson<DownloadedInfo>(line.slice(INFO.length)) ?? {}
         tracker.setEstimates(info)
@@ -209,8 +265,12 @@ export async function runYtDlp(opts: YtDlpRunOptions): Promise<{filepath: string
         filepath = parseJson<{filepath?: string | null}>(line.slice(DONE.length))?.filepath ?? undefined
       }
     },
-  })
+  }).finally(() => watchdog.dispose())
 
+  if (watchdog.stalled) {
+    const seconds = Math.round((opts.stallTimeoutMs ?? 0) / 1000)
+    throw new DownloadError('network', `No download activity for ${seconds}s — stalled.`, undefined, {seconds})
+  }
   if (result.aborted) throw cancelledError()
   if (result.code !== 0) throw classifyYtDlpError(result.stderr, result.code)
   if (!filepath)

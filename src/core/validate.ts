@@ -1,4 +1,5 @@
 import * as fs from 'node:fs/promises'
+import {type Executable, invoke} from '../binaries/executable.js'
 import type {
   MessageParams,
   StreamInfo,
@@ -10,7 +11,7 @@ import type {
 import {toArgv} from './argv.js'
 import {cancelledError} from './errors.js'
 import {type CodecRules, codecAllowed} from './formats.js'
-import {ffmpegProgressReader, lastLines, run} from './process.js'
+import {ffmpegProgressReader, lastLines} from './process.js'
 
 type ProbeStream = {
   readonly codec_type?: string
@@ -42,8 +43,8 @@ export class ProbeError extends Error {
   override readonly name = 'ProbeError'
 }
 
-export async function ffprobe(ffprobePath: string, file: string, signal?: AbortSignal): Promise<ProbeData> {
-  const result = await run(ffprobePath, ['-v', 'error', '-show_format', '-show_streams', '-of', 'json', file], {
+export async function ffprobe(ffprobePath: Executable, file: string, signal?: AbortSignal): Promise<ProbeData> {
+  const result = await invoke(ffprobePath, ['-v', 'error', '-show_format', '-show_streams', '-of', 'json', file], {
     signal,
     timeoutMs: 120_000,
   })
@@ -112,8 +113,8 @@ export function durationTolerance(seconds: number): number {
 }
 
 export type ValidateOptions = {
-  readonly ffmpeg: string
-  readonly ffprobe: string
+  readonly ffmpeg: Executable
+  readonly ffprobe: Executable
   readonly file: string
   readonly rules: CodecRules
   readonly level: ValidationLevel
@@ -267,7 +268,7 @@ async function readThrough(opts: ValidateOptions, total: number) {
   argv.push('-') // the null muxer still needs an output name
 
   let reached: number | undefined
-  const result = await run(opts.ffmpeg, argv, {
+  const result = await invoke(opts.ffmpeg, argv, {
     signal: opts.signal,
     collectStdout: false,
     onStdoutLine: ffmpegProgressReader(seconds => {

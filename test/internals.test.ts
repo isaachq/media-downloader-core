@@ -11,6 +11,7 @@ import {DownloadError} from '../src/core/errors.js'
 import {isInside, sha256File} from '../src/core/files.js'
 import {profileProblem} from '../src/core/formats.js'
 import {HashPool} from '../src/core/hash-pool.js'
+import {ID_PATTERN, newId} from '../src/core/ids.js'
 import {LineSplitter, lastLines, TailBuffer} from '../src/core/process.js'
 import {QueueStore} from '../src/core/queue-store.js'
 
@@ -78,8 +79,8 @@ describe('input validation', () => {
 
   it('puts the url last, after "--", so it can never be read as an option', () => {
     const opts: YtDlpRunOptions = {
-      ytDlp: 'yt-dlp',
-      ffmpeg: '/usr/bin/ffmpeg',
+      ytDlp: {command: 'yt-dlp', args: []},
+      ffmpeg: {command: '/usr/bin/ffmpeg', args: []},
       env: {},
       url: 'https://example.com/v',
       profile: {kind: 'audio', container: 'm4a'},
@@ -96,6 +97,20 @@ describe('input validation', () => {
     const withInfo = buildYtDlpArgs({...opts, infoJsonPath: '/tmp/info.json'})
     assert.deepEqual(withInfo.slice(-2), ['--load-info-json', '/tmp/info.json'])
     assert.ok(!withInfo.includes('https://example.com/v'))
+  })
+})
+
+describe('newId', () => {
+  it('produces 32-char base62 ids, unique and uniformly distributed', () => {
+    const ids = Array.from({length: 20_000}, () => newId())
+    assert.ok(ids.every(id => ID_PATTERN.test(id)))
+    assert.equal(new Set(ids).size, ids.length)
+    const counts = new Map<string, number>()
+    for (const id of ids) for (const char of id) counts.set(char, (counts.get(char) ?? 0) + 1)
+    assert.equal(counts.size, 62)
+    const expected = (ids.length * 32) / 62
+    // a modulo-biased generator would put 'A'–'H' ~25% above the rest
+    for (const [char, count] of counts) assert.ok(Math.abs(count - expected) / expected < 0.06, `${char}: ${count}`)
   })
 })
 

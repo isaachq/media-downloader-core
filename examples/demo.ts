@@ -6,7 +6,7 @@
 //
 // Files go to ./.tmp/out, app data to ./.tmp/data.
 import * as path from 'node:path'
-import {formatBytes, formatRate, type JobSnapshot, MediaDownloader} from '../src/index.js'
+import {describeExecutable, formatBytes, formatRate, type JobSnapshot, MediaDownloader} from '../src/index.js'
 
 const [url, choiceArg, rangeArg] = process.argv.slice(2)
 if (!url) throw new Error('usage: npm run demo -- <url> [choice #] [playlist range like 1-5]')
@@ -18,7 +18,8 @@ console.log(
 )
 
 const bins = await dl.resolveBinaries()
-console.log(`yt-dlp ${bins.ytDlpVersion} · ${bins.ytDlp}\nffmpeg ${bins.ffmpeg} · ffprobe ${bins.ffprobe}\n`)
+for (const [name, tool] of Object.entries(bins))
+  console.log(`${name.padEnd(8)} ${tool.version.padEnd(12)} ${tool.source.padEnd(10)} ${describeExecutable(tool.exe)}`)
 
 let t = Date.now()
 const analysis = await dl.analyze(url)
@@ -69,7 +70,9 @@ dl.on('completed', s => {
   }
 })
 dl.on('failed', s => console.log(`\r\x1b[K✗ ${s.title ?? s.url}: [${s.error?.code}] ${s.error?.message}`))
-dl.on('log', (level, message) => console.log(`\r\x1b[K[${level}] ${message}`))
+dl.on('log', entry => {
+  if (entry.level !== 'debug') console.log(`\r\x1b[K[${entry.level}] ${entry.message}`)
+})
 
 t = Date.now()
 if (analysis.kind === 'playlist') dl.addPlaylist(analysis, choice.profile, outDir, indexes ? {indexes} : {})

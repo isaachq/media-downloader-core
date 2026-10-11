@@ -1,10 +1,11 @@
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
+import {type Executable, invoke} from '../binaries/executable.js'
 import type {VideoContainer} from '../types.js'
 import {type Option, toArgv} from './argv.js'
 import {cancelledError, DownloadError} from './errors.js'
 import {VIDEO_RULES} from './formats.js'
-import {ffmpegProgressReader, lastLines, run} from './process.js'
+import {ffmpegProgressReader, lastLines} from './process.js'
 import {codecMismatch, ffprobe, summarizeProbe} from './validate.js'
 
 type Transcodable = Exclude<VideoContainer, 'mkv'>
@@ -40,8 +41,8 @@ const AUDIO_ENCODERS: Readonly<Record<Transcodable, readonly Option[]>> = {
 }
 
 export type ConvertOptions = {
-  readonly ffmpeg: string
-  readonly ffprobe: string
+  readonly ffmpeg: Executable
+  readonly ffprobe: Executable
   readonly input: string
   readonly container: VideoContainer
   readonly expectAudio: boolean
@@ -90,7 +91,7 @@ export async function ensureContainer(opts: ConvertOptions): Promise<string> {
   argv.push(output)
 
   const total = summary.duration ?? 0
-  const result = await run(opts.ffmpeg, argv, {
+  const result = await invoke(opts.ffmpeg, argv, {
     signal: opts.signal,
     collectStdout: false,
     onStdoutLine: ffmpegProgressReader(seconds => {

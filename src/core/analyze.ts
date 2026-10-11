@@ -1,11 +1,11 @@
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
+import {type Executable, invoke} from '../binaries/executable.js'
 import type {AnalysisResult, MediaSummary, PlaylistAnalysis, PlaylistEntry, VideoAnalysis} from '../types.js'
 import {toArgv} from './argv.js'
 import {cancelledError, classifyYtDlpError, DownloadError} from './errors.js'
 import {shortHash} from './files.js'
 import {genericChoices, planChoices, type RawFormat} from './formats.js'
-import {run} from './process.js'
 
 type RawInfo = {
   readonly _type?: 'video' | 'playlist' | 'multi_video' | 'url' | 'url_transparent'
@@ -30,7 +30,7 @@ type RawInfo = {
 }
 
 export type AnalyzeOptions = {
-  readonly ytDlp: string
+  readonly ytDlp: Executable
   readonly env: NodeJS.ProcessEnv
   /** Where a single video's metadata is cached for the download step. */
   readonly cacheDir: string
@@ -79,7 +79,7 @@ async function dumpJson(url: string, opts: AnalyzeOptions): Promise<{info: RawIn
     ['--playlist-end', String(opts.maxEntries ?? 5000)],
   ])
   const argv = [...options, ...opts.commonArgs, '--', url]
-  const result = await run(opts.ytDlp, argv, {signal: opts.signal, env: opts.env})
+  const result = await invoke(opts.ytDlp, argv, {signal: opts.signal, env: opts.env})
   if (result.aborted) throw cancelledError()
   if (result.outputLimitExceeded) throw new DownloadError('unknown', 'The metadata returned by the site is too large.')
   if (result.code !== 0) throw classifyYtDlpError(result.stderr, result.code)

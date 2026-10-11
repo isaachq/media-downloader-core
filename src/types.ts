@@ -172,9 +172,12 @@ export type ValidationReport = {
 
 // ─── Jobs ───────────────────────────────────────────────────────────────────
 
+/** 32-character base62 id ([A-Za-z0-9]) — grep it in the trace logs to replay a flow. */
+export type TraceId = string
+
 declare const jobIdBrand: unique symbol
-/** Opaque job identifier. */
-export type JobId = string & {readonly [jobIdBrand]: true}
+/** Opaque job identifier (a TraceId). */
+export type JobId = TraceId & {readonly [jobIdBrand]: true}
 
 export type JobStatus =
   | 'queued'
@@ -209,6 +212,40 @@ export type JobProgress = {
   readonly fragmentCount?: number | undefined
 }
 
+/** The sub-tasks every job runs, in order. */
+export type StepName = 'download' | 'convert' | 'validate' | 'finalize'
+export type StepState = 'pending' | 'in-progress' | 'success' | 'failed' | 'skipped'
+
+export type JobStep = {
+  /** Unique per step per attempt. */
+  readonly id: TraceId
+  readonly name: StepName
+  readonly state: StepState
+  readonly startedAt?: number | undefined
+  readonly finishedAt?: number | undefined
+  readonly error?: JobError | undefined
+}
+
+/** One try at running the job's steps. */
+export type AttemptRecord = {
+  readonly id: TraceId
+  /** 1-based. */
+  readonly attempt: number
+  readonly startedAt: number
+  readonly finishedAt?: number | undefined
+  /** Step where this attempt failed. */
+  readonly failedStep?: StepName | undefined
+  /** Last status and progress reached before the failure — where the attempt stopped. */
+  readonly lastStatus?: JobStatus | undefined
+  readonly lastProgress?: JobProgress | undefined
+  readonly error?: JobError | undefined
+  /** Wait before the next attempt, when one follows. */
+  readonly retryInMs?: number | undefined
+}
+
+/** Coarse result for dashboards: anything that isn't a success is a failure (cancellations included). */
+export type JobOutcome = 'in-progress' | 'success' | 'failed'
+
 export type PlaylistRef = {
   readonly id: string
   readonly title: string
@@ -224,9 +261,16 @@ export type JobSnapshot = {
   readonly title?: string | undefined
   readonly mediaId?: string | undefined
   readonly playlist?: PlaylistRef | undefined
+  readonly outcome: JobOutcome
   readonly progress: JobProgress
+  /** Sub-task states of the current (or last) attempt. */
+  readonly steps: readonly JobStep[]
+  /** Every attempt so far, with the step and error that ended it. */
+  readonly attempts: readonly AttemptRecord[]
   /** 1-based; increases on every retry. */
   readonly attempt: number
+  /** 1 + maxRetries. */
+  readonly maxAttempts: number
   /** Final location — set once completed or skipped. */
   readonly filepath?: string | undefined
   readonly validation?: ValidationReport | undefined
@@ -254,10 +298,13 @@ export type JobRequest = {
 
 // ─── Options ────────────────────────────────────────────────────────────────
 
+/** A program: a path, or a command with fixed leading args (e.g. `{command: 'python3', args: ['-m', 'yt_dlp']}`). */
+export type ExecutableSpec = string | {readonly command: string; readonly args?: readonly string[] | undefined}
+
 export type BinaryPaths = {
-  readonly ytDlp?: string | undefined
-  readonly ffmpeg?: string | undefined
-  readonly ffprobe?: string | undefined
+  readonly ytDlp?: ExecutableSpec | undefined
+  readonly ffmpeg?: ExecutableSpec | undefined
+  readonly ffprobe?: ExecutableSpec | undefined
 }
 
 /**
@@ -289,8 +336,12 @@ export type DownloaderOptions = {
   readonly checksums?: boolean | undefined
   /** Skip media already downloaded with the same profile. Default true. */
   readonly useArchive?: boolean | undefined
-  /** Retries for transient failures (network, expired urls, failed validation). Default 3. */
+  /** Retries for transient failures (network, expired urls, failed validation, stalls). Default 3. */
   readonly maxRetries?: number | undefined
+  /** Ceiling of the wait between attempts (exponential 2 s → 4 s → 8 s…). Default 15 000 ms. */
+  readonly retryDelayMaxMs?: number | undefined
+  /** Abort an attempt whose download shows no activity for this long, then retry. Default 120 000 ms. */
+  readonly stallTimeoutMs?: number | undefined
   /** Explicit binaries, e.g. those shipped in Electron's resources folder. */
   readonly binaries?: BinaryPaths | undefined
   /** Default: auto (current Node.js / Electron). `false` disables it. */
@@ -311,11 +362,32 @@ export type DownloaderOptions = {
   readonly progressIntervalMs?: number | undefined
   /** Refuse to start a job below this much free space (bytes). Default 512 MiB. */
   readonly minFreeSpaceBytes?: number | undefined
+  /** Write every log entry (debug included) to `<dataDir>/logs/trace-YYYY-MM-DD.jsonl`. Default true. */
+  readonly traceLog?: boolean | undefined
+  /** Days of trace files to keep. Default 14. */
+  readonly traceRetentionDays?: number | undefined
   /** Finished jobs kept in memory; older ones are released. Default 1000. */
   readonly retainFinishedJobs?: number | undefined
 }
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error'
+
+/** Structured log line: render `message`, or build your own from the fields. */
+export type LogEntry = {
+  readonly level: LogLevel
+  readonly message: string
+  readonly time: number
+  /** One per MediaDownloader instance (app launch / CLI run). */
+  readonly sessionId: TraceId
+  readonly jobId?: JobId | undefined
+  readonly attemptId?: TraceId | undefined
+  readonly stepId?: TraceId | undefined
+  readonly attempt?: number | undefined
+  readonly maxAttempts?: number | undefined
+  readonly step?: StepName | undefined
+  readonly code?: ErrorCode | undefined
+  readonly retryInMs?: number | undefined
+}
 
 export type DownloaderEvents = {
   /** Any change of a job: status, progress, result. Progress is throttled per job. */
@@ -325,5 +397,5 @@ export type DownloaderEvents = {
   failed: [snapshot: JobSnapshot]
   /** Nothing queued (or the queue is paused) and nothing running. */
   idle: []
-  log: [level: LogLevel, message: string]
+  log: [entry: LogEntry]
 }

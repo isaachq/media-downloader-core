@@ -1,21 +1,29 @@
-import {randomUUID} from 'node:crypto'
 import {EventEmitter} from 'node:events'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import {setTimeout as sleep} from 'node:timers/promises'
+import {type Diagnosis, diagnose, type SetupResult, setup} from './binaries/doctor.js'
+import {
+  BinaryManager,
+  defaultJsRuntime,
+  type InstallOptions,
+  type ResolvedBinaries,
+  type UpdateResult,
+} from './binaries/manager.js'
 import {analyze, assertHttpUrl} from './core/analyze.js'
 import {type ArchiveEntry, archiveKey, DownloadArchive} from './core/archive.js'
-import {BinaryManager, defaultJsRuntime, type ResolvedBinaries, type UpdateResult} from './core/binaries.js'
 import {ensureContainer} from './core/convert.js'
 import {type DownloadedInfo, runYtDlp} from './core/download.js'
 import {cancelledError, DownloadError, isRetryable, toJobError} from './core/errors.js'
 import {freeSpace, isInside, moveIntoPlace, sanitizeFilename, shortHash} from './core/files.js'
 import {profileKey, profileProblem, rulesFor} from './core/formats.js'
 import {HashPool} from './core/hash-pool.js'
+import {newId} from './core/ids.js'
 import {Job, type JobPatch} from './core/job.js'
 import {clampConcurrency, cpuCount, maxConcurrency, TaskPool} from './core/pool.js'
 import {utf8Env} from './core/process.js'
 import {QueueStore} from './core/queue-store.js'
+import {TraceLog} from './core/trace-log.js'
 import {validateFile} from './core/validate.js'
 import type {
   AnalysisResult,
@@ -25,8 +33,12 @@ import type {
   JobId,
   JobRequest,
   JobSnapshot,
+  LogEntry,
+  LogLevel,
   PlaylistAnalysis,
+  StepName,
   TerminalStatus,
+  TraceId,
   ValidationLevel,
   VideoAnalysis,
 } from './types.js'
@@ -37,6 +49,8 @@ type Settings = {
   readonly checksums: boolean
   readonly useArchive: boolean
   readonly maxRetries: number
+  readonly retryDelayMaxMs: number
+  readonly stallTimeoutMs: number
   readonly embedMetadata: boolean
   readonly embedThumbnail: boolean
   readonly progressIntervalMs: number
@@ -50,8 +64,6 @@ export type ArchiveCheck = {
   readonly ok: boolean
   readonly problem?: 'missing' | 'size-changed' | 'checksum-mismatch' | undefined
 }
-
-const MAX_BACKOFF_MS = 30_000
 
 /**
  * The download engine.
@@ -82,10 +94,14 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
   /** Terminal jobs in finishing order, for releasing the oldest ones. */
   readonly #finished: JobId[] = []
   readonly #analyses = new Set<AbortController>()
+  readonly #dataDir: string
   readonly #workRoot: string
   readonly #cacheDir: string
   readonly #env: NodeJS.ProcessEnv
   readonly #commonArgs: readonly string[]
+  readonly #trace: TraceLog | undefined
+  /** Identifies this engine instance (one app launch / CLI run) in every log entry. */
+  readonly sessionId: TraceId = newId()
   #disposing = false
 
   /** Upper bound of `concurrency` on this machine: ⌊logical CPUs / 2⌋. */
@@ -106,6 +122,8 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       checksums: options.checksums ?? true,
       useArchive: options.useArchive ?? true,
       maxRetries: Math.max(0, Math.floor(options.maxRetries ?? 3)),
+      retryDelayMaxMs: Math.max(0, options.retryDelayMaxMs ?? 15_000),
+      stallTimeoutMs: Math.max(0, options.stallTimeoutMs ?? 120_000),
       embedMetadata: options.embedMetadata ?? true,
       embedThumbnail: options.embedThumbnail ?? false,
       progressIntervalMs: Math.max(0, options.progressIntervalMs ?? 250),
@@ -116,8 +134,13 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     this.binaries = new BinaryManager(options.dataDir, options.binaries)
     this.archive = new DownloadArchive(path.join(options.dataDir, 'archive.jsonl'))
     this.#queue = new QueueStore(path.join(options.dataDir, 'queue.json'), () => this.#pendingRequests())
+    this.#dataDir = options.dataDir
     this.#workRoot = path.join(options.dataDir, 'work')
     this.#cacheDir = path.join(options.dataDir, 'cache')
+    this.#trace =
+      options.traceLog === false
+        ? undefined
+        : new TraceLog(path.join(options.dataDir, 'logs'), options.traceRetentionDays ?? 14)
     this.#pool = new TaskPool<JobId>(clampConcurrency(options.concurrency), () => this.emit('idle'))
 
     const auto = options.jsRuntime === undefined ? defaultJsRuntime() : undefined
@@ -159,10 +182,20 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
   }
 
   /** Install a newer yt-dlp if one exists (checksum-verified). Call on startup. */
-  async updateYtDlp(signal?: AbortSignal): Promise<UpdateResult> {
-    const outcome = await this.binaries.updateYtDlp(signal)
-    if (outcome.updated) this.emit('log', 'info', `yt-dlp updated to ${outcome.version}.`)
+  async updateYtDlp(opts: InstallOptions = {}): Promise<UpdateResult> {
+    const outcome = await this.binaries.updateYtDlp(opts)
+    if (outcome.updated) this.#log('info', `yt-dlp updated to ${outcome.version}.`)
     return outcome
+  }
+
+  /** Check tools, codecs, data folder and free space without changing anything. */
+  diagnose(): Promise<Diagnosis> {
+    return diagnose(this.binaries, this.#dataDir)
+  }
+
+  /** Install whatever is missing, outdated or incapable (everything with `force`), then re-check. */
+  setup(opts: InstallOptions & {readonly force?: boolean | undefined} = {}): Promise<SetupResult> {
+    return setup(this.binaries, this.#dataDir, opts)
   }
 
   // ─── Analysis ─────────────────────────────────────────────────────────────
@@ -178,7 +211,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     this.#analyses.add(analysis)
     try {
       return await analyze(url, {
-        ytDlp: bins.ytDlp,
+        ytDlp: bins.ytDlp.exe,
         env: this.#env,
         cacheDir: this.#cacheDir,
         commonArgs: this.#commonArgs,
@@ -199,8 +232,9 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
    */
   add(request: JobRequest): JobSnapshot {
     this.#assertOpen()
-    const job = new Job(randomUUID() as JobId, this.#sanitize(request))
+    const job = new Job(newId() as JobId, this.#sanitize(request), this.#settings.maxRetries + 1)
     this.#jobs.set(job.id, job)
+    this.#log('info', `queued ${job.request.url} as ${profileKey(job.request.profile)}`, job)
     this.#pool.add(job.id, () => this.#run(job))
     this.#emit(job, true)
     this.#queue.touch()
@@ -259,7 +293,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       try {
         restored.push(this.add({...request, infoJsonPath: undefined}))
       } catch (error) {
-        this.emit('log', 'warn', `Dropped an invalid saved job: ${toJobError(error).message}`)
+        this.#log('warn', `Dropped an invalid saved job: ${toJobError(error).message}`)
       }
     }
     return restored
@@ -361,9 +395,11 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     for (const analysis of this.#analyses) analysis.abort()
     for (const job of this.#jobs.values()) job.controller?.abort()
     await this.#pool.whenIdle()
+    this.#log('info', 'engine disposed')
     await Promise.all([
       this.archive.close(),
       this.#hashes.close(),
+      this.#trace?.close(),
       fs.rm(this.#cacheDir, {recursive: true, force: true}),
     ])
     for (const job of this.#jobs.values()) job.release()
@@ -391,32 +427,54 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       const bins = await this.binaries.resolve()
       if (await this.#skipIfArchived(job, request.extractor, request.mediaId)) return
 
-      for (let attempt = 1; ; attempt++) {
-        job.attempt = attempt
+      for (;;) {
+        const attempt = job.beginAttempt()
+        this.#emit(job, true)
         try {
           await this.#ensureDiskSpace(request.outDir)
           await this.#attempt(job, bins, workDir, infoJsonPath, signal)
+          job.endAttempt(undefined)
+          if (attempt > 1) this.#log('info', `succeeded on attempt ${attempt}/${job.maxAttempts}`, job)
+          this.#finish(job, 'completed', {})
           return
         } catch (error) {
           if (signal.aborted) throw cancelledError()
           const failure =
             error instanceof DownloadError ? error : new DownloadError('unknown', toJobError(error).message)
+          const jobError = failure.toJSON()
+          job.failCurrentStep(jobError)
+          const step = job.currentStep
           // a corrupt partial may cause anything but a network hiccup: start clean
           if (failure.code !== 'network') await fs.rm(workDir, {recursive: true, force: true})
           infoJsonPath = undefined // cached media urls may have expired: extract fresh
-          if (!isRetryable(failure.code) || attempt > this.#settings.maxRetries) throw failure
-          this.emit(
-            'log',
+
+          if (!isRetryable(failure.code) || attempt >= job.maxAttempts) {
+            job.endAttempt(jobError)
+            const why = isRetryable(failure.code) ? 'no retries left' : 'not retryable'
+            this.#log(
+              'error',
+              `attempt ${attempt}/${job.maxAttempts} failed at ${step ?? 'start'} [${failure.code}] (${why}): ${failure.message}`,
+              job,
+              {code: failure.code},
+            )
+            throw failure
+          }
+          const wait = retryDelay(attempt, this.#settings.retryDelayMaxMs)
+          job.endAttempt(jobError, wait)
+          this.#log(
             'warn',
-            `Retrying "${job.title ?? request.url}" (attempt ${attempt + 1}): ${failure.message}`,
+            `attempt ${attempt}/${job.maxAttempts} failed at ${step ?? 'start'} [${failure.code}]: ${failure.message} — retrying in ${(wait / 1000).toFixed(1)}s`,
+            job,
+            {code: failure.code, retryInMs: wait},
           )
           this.#update(job, {status: 'queued', progress: {}}, true)
-          await sleep(backoff(attempt), undefined, {signal})
+          await sleep(wait, undefined, {signal})
         }
       }
     } catch (error) {
       const jobError = toJobError(error)
       if (signal.aborted || jobError.code === 'cancelled') {
+        job.failCurrentStep(cancelledError().toJSON())
         this.#finish(job, 'cancelled', {error: cancelledError().toJSON()})
         // a user cancel discards the partial download; a shutdown keeps it to resume later
         if (!this.#disposing) await fs.rm(workDir, {recursive: true, force: true})
@@ -428,6 +486,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     }
   }
 
+  /** One attempt: download → convert → validate → finalize, each tracked as a step. */
   async #attempt(
     job: Job,
     bins: ResolvedBinaries,
@@ -438,12 +497,14 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     const {request} = job
     const {profile} = request
     await fs.mkdir(workDir, {recursive: true})
-    this.#update(job, {status: 'downloading', progress: {}}, true)
 
+    // ── download (+ yt-dlp post-processing: merge / extract audio / metadata)
+    this.#step(job, 'download')
+    this.#update(job, {status: 'downloading', progress: {}}, true)
     let info: DownloadedInfo = {}
     const downloaded = await runYtDlp({
-      ytDlp: bins.ytDlp,
-      ffmpeg: bins.ffmpeg,
+      ytDlp: bins.ytDlp.exe,
+      ffmpeg: bins.ffmpeg.exe,
       env: this.#env,
       url: request.url,
       infoJsonPath,
@@ -454,6 +515,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       embedMetadata: this.#settings.embedMetadata,
       embedThumbnail: this.#settings.embedThumbnail,
       extraArgs: this.#settings.extraYtDlpArgs,
+      stallTimeoutMs: this.#settings.stallTimeoutMs,
       signal,
       onInfo: next => {
         info = next
@@ -463,13 +525,16 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       onPostprocess: () => this.#update(job, {status: 'processing', progress: {}}, true),
     })
     info = {...info, ...downloaded.info}
+    this.#stepDone(job, 'download', 'success')
 
+    // ── convert (video only, and only when the codecs don't already match)
     const expectAudio = profile.kind === 'audio' || (Boolean(info.acodec) && info.acodec !== 'none')
     let file = downloaded.filepath
     if (profile.kind === 'video') {
+      this.#step(job, 'convert')
       file = await ensureContainer({
-        ffmpeg: bins.ffmpeg,
-        ffprobe: bins.ffprobe,
+        ffmpeg: bins.ffmpeg.exe,
+        ffprobe: bins.ffprobe.exe,
         input: file,
         container: profile.container,
         expectAudio,
@@ -478,12 +543,17 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
         onStart: () => this.#update(job, {status: 'converting', progress: {fraction: 0}}, true),
         onProgress: fraction => this.#update(job, {status: 'converting', progress: {fraction}}),
       })
+      this.#stepDone(job, 'convert', file === downloaded.filepath ? 'skipped' : 'success')
+    } else {
+      this.#stepDone(job, 'convert', 'skipped') // yt-dlp already produced the audio format
     }
 
+    // ── validate
+    this.#step(job, 'validate')
     this.#update(job, {status: 'validating', progress: {fraction: 0}}, true)
     let report = await validateFile({
-      ffmpeg: bins.ffmpeg,
-      ffprobe: bins.ffprobe,
+      ffmpeg: bins.ffmpeg.exe,
+      ffprobe: bins.ffprobe.exe,
       file,
       rules: rulesFor(profile),
       level: this.#settings.validation,
@@ -502,7 +572,10 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
         {issues: report.issues.map(i => i.code).join(',')},
       )
     }
+    this.#stepDone(job, 'validate', this.#settings.validation === 'none' ? 'skipped' : 'success')
 
+    // ── finalize: move into place, checksum, archive
+    this.#step(job, 'finalize')
     this.#update(job, {status: 'finalizing', progress: {}}, true)
     const mediaTitle = info.title ?? request.title ?? 'media'
     const mediaId = info.id ?? request.mediaId
@@ -512,6 +585,8 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     await fs.rm(workDir, {recursive: true, force: true})
 
     if (this.#settings.checksums) report = {...report, sha256: await this.#hashes.sha256(finalPath, signal)}
+    job.validation = report
+    job.filepath = finalPath
 
     const extractor = info.extractor ?? request.extractor
     if (extractor && mediaId) {
@@ -528,7 +603,36 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
         duration: report.duration ?? request.duration,
       })
     }
-    this.#finish(job, 'completed', {filepath: finalPath, validation: report})
+    this.#stepDone(job, 'finalize', 'success')
+  }
+
+  #step(job: Job, name: StepName): void {
+    job.startStep(name)
+    this.#log('debug', `${name} started`, job)
+  }
+
+  #stepDone(job: Job, name: StepName, state: 'success' | 'skipped'): void {
+    job.endStep(name, state)
+    this.#emit(job, true)
+  }
+
+  /** Emit a log entry carrying every id of its context, and append it to the trace file. */
+  #log(level: LogLevel, message: string, job?: Job, extra: Omit<Partial<LogEntry>, 'sessionId'> = {}): void {
+    const base = {level, message, time: Date.now(), sessionId: this.sessionId}
+    const entry: LogEntry = job
+      ? {
+          ...base,
+          jobId: job.id,
+          attemptId: job.attemptId,
+          stepId: job.stepId,
+          attempt: job.attempt || undefined,
+          maxAttempts: job.maxAttempts,
+          step: job.currentStep,
+          ...extra,
+        }
+      : {...base, ...extra}
+    this.#trace?.write(entry)
+    this.emit('log', entry)
   }
 
   async #skipIfArchived(job: Job, extractor: string | undefined, mediaId: string | undefined): Promise<boolean> {
@@ -584,12 +688,16 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
 
   #update(job: Job, patch: JobPatch, force = false): void {
     if (job.terminal) return
+    const before = job.status
     const statusChanged = job.patch(patch)
+    if (statusChanged) this.#log('debug', `status ${before} → ${job.status}`, job)
     this.#emit(job, force || statusChanged)
   }
 
   #finish(job: Job, status: TerminalStatus, result: Parameters<Job['finish']>[1]): void {
     job.finish(status, result)
+    const detail = job.error ? ` [${job.error.code}] ${job.error.message}` : job.filepath ? ` → ${job.filepath}` : ''
+    this.#log(status === 'failed' ? 'error' : 'info', `finished: ${status}${detail}`, job)
     const snapshot = job.snapshot()
     this.emit('job', snapshot)
     if (status === 'completed' || status === 'skipped') this.emit('completed', snapshot)
@@ -637,8 +745,12 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
   }
 }
 
-/** Exponential backoff with ±25% jitter, so jobs hitting a 429 together don't retry in lockstep. */
-function backoff(attempt: number): number {
-  const base = Math.min(MAX_BACKOFF_MS, 1000 * 2 ** attempt)
-  return Math.round(base * (0.75 + Math.random() * 0.5))
+/**
+ * Wait before retry n: 2 s, 4 s, 8 s… capped at `max` (15 s by default), with
+ * up to 20% jitter downwards so jobs failing together (e.g. a 429) don't
+ * retry in lockstep — the cap is never exceeded.
+ */
+export function retryDelay(attempt: number, max: number): number {
+  const base = Math.min(max, 2000 * 2 ** (attempt - 1))
+  return Math.round(base * (0.8 + Math.random() * 0.2))
 }

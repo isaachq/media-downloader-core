@@ -6,6 +6,7 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import {after, before, describe, it} from 'node:test'
+import {toExecutable} from '../src/binaries/executable.js'
 import {ensureContainer} from '../src/core/convert.js'
 import {AUDIO_RULES, VIDEO_RULES} from '../src/core/formats.js'
 import {run} from '../src/core/process.js'
@@ -39,7 +40,7 @@ const testVideo = (seconds: number) => [
 const codes = (report: ValidationReport) => report.issues.map(i => i.code)
 const explain = (report: ValidationReport) => report.issues.map(i => `${i.code}: ${i.message}`).join('\n')
 
-const base = {ffmpeg: FFMPEG, ffprobe: FFPROBE, threads: 2, expectAudio: true}
+const base = {ffmpeg: toExecutable(FFMPEG), ffprobe: toExecutable(FFPROBE), threads: 2, expectAudio: true}
 
 describe('integrity validation', {skip: !available && 'ffmpeg not installed'}, () => {
   let mp4 = ''

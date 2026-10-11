@@ -1,16 +1,25 @@
 // Building blocks for hosts that want their own orchestration.
 
-export {assertHttpUrl} from './core/analyze.js'
-export {type ArchiveEntry, archiveKey, DownloadArchive} from './core/archive.js'
+export {FFMPEG_REQUIREMENTS, type FfmpegCapabilities, inspectFfmpeg} from './binaries/capabilities.js'
+export {type CheckState, type Diagnosis, diagnose, type SetupResult, setup, type ToolReport} from './binaries/doctor.js'
+export {binaryPath, describeExecutable, type Executable, toExecutable} from './binaries/executable.js'
+export type {ManagedInstall, ManagedTool} from './binaries/managed.js'
 export {
-  BinaryError,
   BinaryManager,
   compareVersions,
   defaultJsRuntime,
+  type InstallOptions,
+  type InstallProgress,
+  type InstallStage,
   type ResolvedBinaries,
+  type ResolvedTool,
+  type ToolName,
+  type ToolSource,
   type UpdateResult,
-  ytDlpBuildFor,
-} from './core/binaries.js'
+} from './binaries/manager.js'
+export {BinaryError, ffmpegRelease, type Release, ytDlpBuildFor, ytDlpRelease} from './binaries/sources.js'
+export {assertHttpUrl} from './core/analyze.js'
+export {type ArchiveEntry, archiveKey, DownloadArchive} from './core/archive.js'
 export {ensureContainer} from './core/convert.js'
 export {classifyYtDlpError, DownloadError, isRetryable} from './core/errors.js'
 export {sanitizeFilename} from './core/files.js'

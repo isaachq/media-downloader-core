@@ -11,6 +11,12 @@ CI runs the app's unit, UI and end-to-end tests on Ubuntu (on a virtual
 display) next to macOS and Windows, and builds the Linux packages on every
 pull request. Same features as 0.2.0-beta.1.
 
+**macOS.** The app is now ad-hoc signed. Earlier betas were not signed at all,
+which Apple Silicon Macs refuse to run (reported as "damaged"); Intel Macs
+only showed the usual warning. Opening it the first time still needs
+System Settings → Privacy & Security → Open Anyway, until it is signed and
+notarized with an Apple Developer ID.
+
 ## App 0.2.0-beta.1 · library 1.1.0
 
 **Preview before downloading.** A list (playlist, Mix, channel) now opens a

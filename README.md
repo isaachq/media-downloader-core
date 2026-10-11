@@ -64,8 +64,16 @@ npm run dist:win   # dist/*.exe installer (x64, arm64)
 npm run dist:linux # dist/*.AppImage + *.deb + *.rpm (this machine's architecture; .rpm needs rpmbuild)
 ```
 
-Beta builds are not code-signed yet: on macOS open the app with right click →
-Open the first time; on Windows choose "More info → Run anyway" in SmartScreen.
+Beta builds are not signed with an Apple or Microsoft certificate yet, so the
+system warns the first time:
+
+- **macOS** shows *"Apple could not verify Media Download Core is free of
+  malware"*. Click **Done**, open **System Settings → Privacy & Security**,
+  and choose **Open Anyway** next to the message about the app (once). Or, in
+  Terminal: `xattr -dr com.apple.quarantine "/Applications/Media Download Core.app"`.
+  (Right click → Open no longer works on macOS 15 and later.) The app is
+  ad-hoc signed, so it runs on Apple Silicon and Intel alike.
+- **Windows** SmartScreen: **More info → Run anyway**.
 
 **Linux** (x64 and arm64) — pick your distribution's package:
 

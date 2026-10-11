@@ -259,12 +259,20 @@ describe('batches', () => {
   })
 
   it('shows the estimated time left of a running batch, and says when it is still measuring', async () => {
-    const measured = batch({status: 'running', title: 'Measured', progress: {fraction: 0.4, etaSeconds: 754}})
-    const fresh = batch({status: 'running', title: 'Fresh', progress: {fraction: 0}})
+    // same createdAt on purpose: the list order must not matter, each card is found by its title
+    const createdAt = Date.now()
+    const measured = batch({
+      status: 'running',
+      title: 'Measured',
+      createdAt,
+      progress: {fraction: 0.4, etaSeconds: 754},
+    })
+    const fresh = batch({status: 'running', title: 'Fresh', createdAt, progress: {fraction: 0}})
     await mount(new FakeApi({state: {batches: [measured, fresh], jobs: []}}))
-    const [first, second] = screen.getAllByTestId('batch-eta')
-    expect(first).toHaveTextContent(/About 13 min left · done around \d{1,2}:\d{2}.*\(estimate/)
-    expect(second).toHaveTextContent('Estimating the time left…')
+    const eta = (title: string) =>
+      within(screen.getByText(title).closest('[data-testid="batch-card"]') as HTMLElement).getByTestId('batch-eta')
+    expect(eta('Measured')).toHaveTextContent(/About 13 min left · done around \d{1,2}:\d{2}.*\(estimate/)
+    expect(eta('Fresh')).toHaveTextContent('Estimating the time left…')
   })
 
   it('clears finished batches and keeps the ones still working', async () => {

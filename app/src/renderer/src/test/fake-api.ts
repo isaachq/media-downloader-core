@@ -9,7 +9,7 @@ import type {
   PreflightItem,
 } from 'media-downloader-core'
 import {vi} from 'vitest'
-import type {AppInfo, AppSettings, EventBundle, MdcApi, ScheduleInput} from '../../../shared/contract'
+import type {AppInfo, AppSettings, EventBundle, MdcApi, Preview, ScheduleInput} from '../../../shared/contract'
 
 export const INFO: AppInfo = {
   version: '0.1.0-test',
@@ -133,6 +133,9 @@ export class FakeApi implements MdcApi {
     this.diagnosis = READY
     return {ready: true, installed: ['yt-dlp 2099.01.01', 'ffmpeg 9.0'], diagnosis: READY}
   })
+  /** What `analyze` answers; a single video by default (scheduled without a preview). */
+  preview: Preview = {kind: 'video', title: 'A video', duration: 60}
+  analyze = vi.fn(async (_url: string, _maxItems?: number): Promise<Preview> => this.preview)
   schedule = vi.fn(async (input: ScheduleInput) =>
     batch({url: input.url, status: 'scheduled', kind: undefined, title: undefined}),
   )

@@ -5,6 +5,12 @@ import type {EventBundle} from '../../shared/contract'
 const MAX_JOBS = 1500
 const MAX_LOGS = 500
 const TERMINAL = new Set(['completed', 'skipped', 'failed', 'cancelled'])
+export const BATCH_FINISHED: ReadonlySet<string> = new Set([
+  'completed',
+  'completed-with-errors',
+  'failed',
+  'cancelled',
+])
 
 type ItemListener = (item: PreflightItem) => void
 
@@ -18,6 +24,9 @@ export class AppStore {
   readonly jobs = new Map<JobId, JobSnapshot>()
   readonly batches = new Map<BatchId, BatchSnapshot>()
   logs: LogEntry[] = []
+  // stable React keys for log lines (entries carry no id of their own): O(1), no copies
+  readonly #logKeys = new WeakMap<LogEntry, number>()
+  #nextLogKey = 0
   #version = 0
   readonly #listeners = new Set<() => void>()
   readonly #itemListeners = new Map<BatchId, Set<ItemListener>>()
@@ -50,9 +59,27 @@ export class AppStore {
       for (const listener of this.#itemListeners.get(batchId) ?? []) listener(item)
     }
     if (bundle.logs.length) {
+      for (const entry of bundle.logs) this.#logKeys.set(entry, this.#nextLogKey++)
       this.logs = [...this.logs, ...bundle.logs].slice(-MAX_LOGS)
     }
     this.#trimJobs()
+    this.#notify()
+  }
+
+  /** A key that stays the same for a log entry as newer lines arrive. */
+  logKey(entry: LogEntry): number {
+    let key = this.#logKeys.get(entry)
+    if (key === undefined) {
+      key = this.#nextLogKey++
+      this.#logKeys.set(entry, key)
+    }
+    return key
+  }
+
+  /** Forget finished batches and jobs (files on disk are untouched). O(batches + jobs). */
+  clearFinished(): void {
+    for (const [id, batch] of this.batches) if (BATCH_FINISHED.has(batch.status)) this.batches.delete(id)
+    for (const [id, job] of this.jobs) if (job.outcome !== 'in-progress') this.jobs.delete(id)
     this.#notify()
   }
 

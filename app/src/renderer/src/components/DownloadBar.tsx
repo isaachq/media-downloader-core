@@ -7,6 +7,7 @@ import {
   isAudioFormat,
   QUALITIES,
   type Quality,
+  type ScheduleInput,
   VIDEO_FORMATS,
 } from '../../../shared/contract'
 import {api} from '../api'
@@ -14,6 +15,7 @@ import {useApp} from '../context'
 import {isHttpUrl} from '../format'
 import {type MessageKey, useT} from '../i18n'
 import {useStore} from '../store'
+import {type PlaylistPreview, type PreviewChoice, PreviewModal} from './PreviewModal'
 
 const ACTIVE = new Set(['checking', 'running'])
 
@@ -30,6 +32,8 @@ export function DownloadBar() {
   const [url, setUrl] = useState('')
   const [touched, setTouched] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [preview, setPreview] = useState<{url: string; data: PlaylistPreview} | undefined>()
+  const [reloading, setReloading] = useState(false)
 
   const audio = isAudioFormat(settings.format)
   const valid = isHttpUrl(url)
@@ -44,25 +48,61 @@ export function DownloadBar() {
     return active > 0 ? scheduled + 1 : 0
   }, [version])
 
+  const fail = (error: unknown) => void message.error(error instanceof Error ? error.message : String(error))
+
+  const schedule = async (target: string, extra: Pick<ScheduleInput, 'selection'> = {}) => {
+    const batch = await api().schedule({
+      url: target,
+      format: settings.format,
+      quality: settings.quality,
+      outDir: settings.downloadDir,
+      ...extra,
+    })
+    store.apply({batches: [batch], jobs: [], items: [], logs: []})
+    void message.success(t('download.scheduled', {title: extra.selection?.title ?? batch.url}))
+    setUrl('')
+    setTouched(false)
+  }
+
+  // a single video starts right away; a list opens the preview to pick from
   const submit = async () => {
     setTouched(true)
     if (!valid || busy) return
     setBusy(true)
+    const target = url.trim()
     try {
-      const batch = await api().schedule({
-        url: url.trim(),
-        format: settings.format,
-        quality: settings.quality,
-        outDir: settings.downloadDir,
-      })
-      store.apply({batches: [batch], jobs: [], items: [], logs: []})
-      void message.success(t('download.scheduled', {title: batch.url}))
-      setUrl('')
-      setTouched(false)
+      const result = await api().analyze(target)
+      if (result.kind === 'playlist') setPreview({url: target, data: result})
+      else await schedule(target)
     } catch (error) {
-      void message.error(error instanceof Error ? error.message : String(error))
+      fail(error)
     } finally {
       setBusy(false)
+    }
+  }
+
+  const reload = async (maxItems: number) => {
+    if (!preview) return
+    setReloading(true)
+    try {
+      const result = await api().analyze(preview.url, maxItems)
+      if (result.kind === 'playlist') setPreview({url: preview.url, data: result})
+    } catch (error) {
+      fail(error)
+    } finally {
+      setReloading(false)
+    }
+  }
+
+  const confirm = async (choice: PreviewChoice) => {
+    if (!preview) return
+    const listUrl = preview.url
+    setPreview(undefined)
+    try {
+      if (choice.kind === 'video') await schedule(choice.url)
+      else await schedule(listUrl, {selection: {title: choice.title, entries: choice.entries}})
+    } catch (error) {
+      fail(error)
     }
   }
 
@@ -153,7 +193,7 @@ export function DownloadBar() {
                 loading={busy}
                 icon={waiting ? <ScheduleOutlined /> : <CloudDownloadOutlined />}
               >
-                {waiting ? t('download.schedule') : t('download.start')}
+                {busy ? t('download.analyzing') : waiting ? t('download.schedule') : t('download.start')}
               </Button>
             </Form.Item>
           </Col>
@@ -164,6 +204,17 @@ export function DownloadBar() {
           ? t('download.scheduledHint', {position: waiting})
           : t('download.capacity', {normal: info.maxConcurrency, cpus: info.cpus, long: longAtOnce})}
       </Typography.Text>
+      {preview ? (
+        <PreviewModal
+          // a reload brings a new list: start its selection afresh
+          key={`${preview.data.maxItems}:${preview.data.entries.length}`}
+          preview={preview.data}
+          loading={reloading}
+          onReload={maxItems => void reload(maxItems)}
+          onConfirm={choice => void confirm(choice)}
+          onCancel={() => setPreview(undefined)}
+        />
+      ) : null}
     </Card>
   )
 }

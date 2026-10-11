@@ -10,6 +10,7 @@ import type {
 } from 'media-downloader-core'
 import {vi} from 'vitest'
 import type {
+  AnalyzeProgress,
   AppInfo,
   AppSettings,
   EventBundle,
@@ -146,6 +147,17 @@ export class FakeApi implements MdcApi {
   /** What `analyze` answers; a single video by default (scheduled without a preview). */
   preview: Preview = {kind: 'video', title: 'A video', duration: 60}
   analyze = vi.fn(async (_url: string, _maxItems?: number): Promise<Preview> => this.preview)
+  cancelAnalyze = vi.fn(async () => {})
+  #analyzeListeners = new Set<(progress: AnalyzeProgress) => void>()
+
+  onAnalyzeProgress(listener: (progress: AnalyzeProgress) => void): () => void {
+    this.#analyzeListeners.add(listener)
+    return () => this.#analyzeListeners.delete(listener)
+  }
+
+  pushAnalyzeProgress(progress: AnalyzeProgress): void {
+    for (const listener of this.#analyzeListeners) listener(progress)
+  }
   schedule = vi.fn(async (input: ScheduleInput) =>
     batch({url: input.url, status: 'scheduled', kind: undefined, title: undefined}),
   )

@@ -20,7 +20,7 @@ export type SessionOptions = {
 }
 
 export class HttpSession {
-  readonly userAgent: string
+  #userAgent: string
   readonly #acceptLanguage: string
   readonly #timeoutMs: number
   readonly #fetch: Fetch
@@ -28,7 +28,7 @@ export class HttpSession {
   readonly #jar = new Map<string, Map<string, string>>()
 
   constructor(options: SessionOptions = {}) {
-    this.userAgent = options.userAgent ?? BROWSER_USER_AGENT
+    this.#userAgent = options.userAgent ?? BROWSER_USER_AGENT
     this.#acceptLanguage = options.acceptLanguage ?? 'en-US,en;q=0.9'
     this.#timeoutMs = options.timeoutMs ?? 20_000
     this.#fetch = options.fetch ?? ((input, init) => fetch(input, init))
@@ -45,7 +45,7 @@ export class HttpSession {
   ): Promise<Response> {
     const target = new URL(url)
     const headers: Record<string, string> = {
-      'User-Agent': this.userAgent,
+      'User-Agent': this.#userAgent,
       'Accept-Language': this.#acceptLanguage,
       ...opts.headers,
     }
@@ -68,6 +68,27 @@ export class HttpSession {
       for (const [name, value] of this.#jar.get(domain) ?? []) pairs.push(`${name}=${value}`)
     }
     return pairs.join('; ')
+  }
+
+  get userAgent(): string {
+    return this.#userAgent
+  }
+
+  /**
+   * Continue as the browser that just loaded a page: its cookies and user agent
+   * (sites tie their session cookies to the client that earned them).
+   */
+  adopt(session: {
+    readonly userAgent: string
+    readonly cookies: ReadonlyArray<{readonly name: string; readonly value: string; readonly domain: string}>
+  }): void {
+    this.#userAgent = session.userAgent
+    for (const {name, value, domain} of session.cookies) {
+      const host = domain.replace(/^\./, '').toLowerCase()
+      const cookies = this.#jar.get(host) ?? new Map<string, string>()
+      cookies.set(name, value)
+      this.#jar.set(host, cookies)
+    }
   }
 
   /** Forget every cookie (a fresh identity after the site starts refusing this one). */

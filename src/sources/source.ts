@@ -18,7 +18,15 @@ export interface MediaSource {
    */
   readonly available: boolean
   handles(url: string): boolean
-  analyze(url: string, opts: {readonly signal?: AbortSignal; readonly maxEntries?: number}): Promise<AnalysisResult>
+  analyze(
+    url: string,
+    opts: {
+      readonly signal?: AbortSignal
+      readonly maxEntries?: number
+      /** Listing progress of a long list: entries read so far, of how many expected. */
+      readonly onProgress?: (progress: ListingProgress) => void
+    },
+  ): Promise<AnalysisResult>
   /** Check many items (preflight); results stream through `onResult`. */
   preflight(
     items: ReadonlyArray<{readonly url: string}>,
@@ -30,6 +38,8 @@ export interface MediaSource {
   /** Fetch the media for `profile` into `workDir`; the engine converts / extracts / validates it. */
   download(task: SourceDownload): Promise<SourceFile>
 }
+
+export type ListingProgress = {readonly listed: number; readonly expected?: number | undefined}
 
 /** `details` of the error a native source raises when the site changed under it: the engine retries with yt-dlp. */
 export const SOURCE_FORMAT_CHANGED = 'source:format-changed'

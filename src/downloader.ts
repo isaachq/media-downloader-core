@@ -34,7 +34,7 @@ import {utf8Env} from './core/process.js'
 import {PendingJournal} from './core/queue-store.js'
 import {TraceLog} from './core/trace-log.js'
 import {ffprobe, summarizeProbe, validateFile} from './core/validate.js'
-import {type MediaSource, needsFallback} from './sources/source.js'
+import {type ListingProgress, type MediaSource, needsFallback} from './sources/source.js'
 import {TikTokSource} from './sources/tiktok/source.js'
 import type {
   AnalysisResult,
@@ -152,7 +152,10 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       longVideoMinutes: Math.max(1, options.longVideoMinutes ?? 30),
       extraYtDlpArgs: options.extraYtDlpArgs ?? [],
     }
-    this.#sources = options.tiktok === false ? [] : [new TikTokSource(options.tiktok ?? {})]
+    this.#sources =
+      options.tiktok === false
+        ? []
+        : [new TikTokSource({log: (level, message) => this.#log(level, message), ...options.tiktok})]
     this.binaries = new BinaryManager(options.dataDir, options.binaries)
     this.archive = new DownloadArchive(path.join(options.dataDir, 'archive.jsonl'))
     this.#queue = new PendingJournal(path.join(options.dataDir, 'pending.jsonl'), () => this.#pendingEntries())
@@ -248,7 +251,15 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
   // ─── Analysis ─────────────────────────────────────────────────────────────
 
   /** A single video → concrete format choices. A playlist → entries + generic profiles. */
-  async analyze(url: string, opts: {signal?: AbortSignal; maxEntries?: number} = {}): Promise<AnalysisResult> {
+  async analyze(
+    url: string,
+    opts: {
+      signal?: AbortSignal
+      maxEntries?: number
+      /** Listing progress of long lists read by a native source (TikTok profiles). */
+      onProgress?: (progress: ListingProgress) => void
+    } = {},
+  ): Promise<AnalysisResult> {
     this.#assertOpen()
     // tracked so dispose() can stop it; linked to the caller's signal
     const analysis = new AbortController()
@@ -262,6 +273,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
           return await source.analyze(url, {
             signal: analysis.signal,
             ...(opts.maxEntries !== undefined && {maxEntries: opts.maxEntries}),
+            ...(opts.onProgress && {onProgress: opts.onProgress}),
           })
         } catch (error) {
           if (!(error instanceof DownloadError) || !needsFallback(error.details)) throw error

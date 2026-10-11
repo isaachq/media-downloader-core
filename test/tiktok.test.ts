@@ -5,6 +5,7 @@ import * as path from 'node:path'
 import {after, before, describe, it} from 'node:test'
 import {MediaDownloader} from '../src/downloader.js'
 import {BatchScheduler} from '../src/scheduler.js'
+import type {BrowserAssist} from '../src/sources/browser.js'
 import {HttpSession} from '../src/sources/http.js'
 import {Pacer} from '../src/sources/pacer.js'
 import {readPageData, readPost} from '../src/sources/tiktok/data.js'
@@ -207,6 +208,10 @@ describe('Pacer', () => {
     assert.ok(Date.now() - before >= 200, 'everyone waits the cool-down')
     pacer.succeeded()
     assert.equal(pacer.refused(), 120, 'back to the bottom after a success')
+    pacer.resume()
+    const resumed = Date.now()
+    await pacer.run(async () => {})
+    assert.ok(Date.now() - resumed < 100, 'resume() drops the cool-down')
   })
 
   it('a cancelled caller frees its place', async () => {
@@ -261,7 +266,11 @@ after(async () => {
   await fs.rm(root, {recursive: true, force: true})
 })
 
-async function setup(name: string, config: Parameters<typeof startFakeTikTok>[0] = {}) {
+async function setup(
+  name: string,
+  config: Parameters<typeof startFakeTikTok>[0] = {},
+  browser?: (origin: string) => BrowserAssist,
+) {
   const site = await startFakeTikTok(config)
   const engine = new MediaDownloader({
     dataDir: path.join(root, name),
@@ -270,7 +279,11 @@ async function setup(name: string, config: Parameters<typeof startFakeTikTok>[0]
     maxRetries: 3,
     retryDelayMaxMs: 20,
     progressIntervalMs: 0,
-    tiktok: {origin: site.origin, pacing: {spacingMs: 0, jitterMs: 0, backoffMs: 30, maxBackoffMs: 100}},
+    tiktok: {
+      origin: site.origin,
+      pacing: {spacingMs: 0, jitterMs: 0, backoffMs: 30, maxBackoffMs: 100},
+      ...(browser && {browser: browser(site.origin)}),
+    },
   })
   const scheduler = new BatchScheduler(engine, {progressIntervalMs: 0})
   cleanups.push(async () => {
@@ -368,6 +381,78 @@ describe('TikTok, end to end (local fake)', () => {
       ['primary', 'extractor-fallback'],
     )
     void scheduler
+  })
+
+  it('verification pages go through a real browser once; its session then serves listing and media over HTTP', async () => {
+    let renders = 0
+    // stands in for the app's Chromium: it "runs the script" and ends up with the cookie
+    const browser =
+      (origin: string): BrowserAssist =>
+      async url => {
+        renders++
+        const response = await fetch(url, {headers: {Cookie: 'waf_ok=1'}})
+        return {
+          html: await response.text(),
+          userAgent: 'FakeBrowser/1.0',
+          cookies: [
+            {name: 'waf_ok', value: '1', domain: new URL(origin).hostname},
+            {name: 'tt_chain_token', value: 'from-browser', domain: new URL(origin).hostname},
+          ],
+        }
+      }
+    const {site, scheduler, out} = await setup('browser', {posts: 20, jsChallenge: true}, browser)
+    const started = Date.now()
+    const batch = scheduler.schedule({url: `${site.origin}/@${site.user}`, profile: audio, outDir: out})
+    await scheduler.whenIdle()
+    const done = scheduler.batch(batch.id)!
+    assert.equal(done.status, 'completed', JSON.stringify(done.error))
+    assert.equal(done.jobs.succeeded, 20)
+    assert.equal(renders, 1, 'one browser page; everything after went over HTTP with its session')
+    assert.ok(Date.now() - started < 5000, `no refusal cool-down after the browser passed (${Date.now() - started} ms)`)
+    assert.equal(site.hits.challenge, 1, 'only the first plain request met the check')
+  })
+
+  it('a captcha even the browser cannot pass hands TikTok to yt-dlp (no solving)', async () => {
+    const browser = (): BrowserAssist => async url => {
+      const response = await fetch(url)
+      return {html: await response.text(), userAgent: 'FakeBrowser/1.0', cookies: []}
+    }
+    const {site, scheduler, out} = await setup('captcha', {posts: 2, jsChallenge: true, captcha: true}, browser)
+    const batch = scheduler.schedule({url: videoUrl(site), profile: mp4, outDir: out})
+    await scheduler.whenIdle()
+    // yt-dlp (fake) took over: done, without the built-in extractor knocking again
+    assert.equal(scheduler.batch(batch.id)?.status, 'completed', JSON.stringify(scheduler.batch(batch.id)?.error))
+    assert.equal(site.hits.page, 0, 'no data page was ever served')
+  })
+
+  it('a profile listed short of its post count gets a second, merged pass', async () => {
+    const {site, scheduler, out} = await setup('short-listing', {posts: 30, repeatPage: true})
+    const batch = scheduler.schedule({url: `${site.origin}/@${site.user}`, profile: audio, outDir: out, maxItems: 30})
+    await scheduler.whenIdle()
+    assert.equal(scheduler.batch(batch.id)?.preflight.total, 30)
+  })
+
+  it('reports listing progress, answers a reopened profile from memory, and lists only what is missing for more', async () => {
+    const {site, engine} = await setup('listing-cache', {posts: 40})
+    const url = `${site.origin}/@${site.user}`
+    const seen: number[] = []
+    const first = await engine.analyze(url, {maxEntries: 20, onProgress: p => seen.push(p.listed)})
+    assert.equal(first.kind === 'playlist' && first.entries.length, 20)
+    assert.equal(seen[0], 0)
+    assert.equal(seen.at(-1), 20)
+    const listCalls = site.hits.list
+
+    const again = await engine.analyze(url, {maxEntries: 20})
+    assert.equal(again.kind === 'playlist' && again.entries.length, 20)
+    assert.equal(site.hits.list, listCalls, 'reopened: no request to TikTok')
+
+    const more = await engine.analyze(url, {maxEntries: 40})
+    assert.equal(more.kind === 'playlist' && more.entries.length, 40)
+    assert.equal(new Set(more.kind === 'playlist' ? more.entries.map(e => e.id) : []).size, 40)
+    assert.ok(
+      site.hits.list - listCalls <= 2,
+      `continued below the known posts (${site.hits.list - listCalls} pages), not from the start`,
+    )
   })
 
   it('resolves short links', async () => {

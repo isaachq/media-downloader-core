@@ -102,6 +102,8 @@ export type ScheduleInput = {
   readonly selection?: BatchSelection | undefined
 }
 
+export type AnalyzeProgress = {readonly listed: number; readonly expected?: number | undefined}
+
 /** The updater, as the UI shows it. */
 export type UpdateState =
   | {readonly status: 'idle'}
@@ -160,6 +162,10 @@ export type MdcApi = {
   setup(force: boolean): Promise<SetupOutcome>
   /** List what a link holds; `maxItems` caps long lists (a Mix defaults to 50). */
   analyze(url: string, maxItems?: number): Promise<Preview>
+  /** Stop the link being read (the analyze call then rejects). */
+  cancelAnalyze(): Promise<void>
+  /** Progress of a long listing (TikTok profiles): posts read so far, of how many. */
+  onAnalyzeProgress(listener: (progress: AnalyzeProgress) => void): () => void
   schedule(input: ScheduleInput): Promise<BatchSnapshot>
   state(): Promise<{readonly batches: readonly BatchSnapshot[]; readonly jobs: readonly JobSnapshot[]}>
   items(batchId: BatchId, offset: number, limit: number): Promise<PreflightItem[]>
@@ -189,6 +195,8 @@ export const CHANNEL = {
   setup: 'mdc:setup',
   setupProgress: 'mdc:setup-progress',
   analyze: 'mdc:analyze',
+  analyzeCancel: 'mdc:analyze:cancel',
+  analyzeProgress: 'mdc:analyze:progress',
   schedule: 'mdc:schedule',
   state: 'mdc:state',
   items: 'mdc:items',

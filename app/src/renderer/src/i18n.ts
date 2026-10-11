@@ -196,6 +196,10 @@ const en = {
   'logs.noResults': 'No entries for this id.',
   'logs.traceHint': 'Click an id to trace it, or copy it',
   'logs.older': 'Show older lines ({count})',
+  'analyze.listing': 'Reading the list… {listed} of {expected} items',
+  'analyze.reading': 'Reading the link… {seconds} s',
+  'analyze.hint': 'Long playlists and profiles take a moment — the list opens when it’s ready.',
+  'analyze.cancel': 'Cancel',
   'update.label': 'Updates',
   'update.available': 'Version {version} is available',
   'update.availableHint':
@@ -461,6 +465,10 @@ const es: Record<MessageKey, string> = {
   'logs.noResults': 'No hay entradas para este id.',
   'logs.traceHint': 'Haz clic en un id para rastrearlo, o cópialo',
   'logs.older': 'Mostrar líneas anteriores ({count})',
+  'analyze.listing': 'Leyendo la lista… {listed} de {expected} elementos',
+  'analyze.reading': 'Leyendo el enlace… {seconds} s',
+  'analyze.hint': 'Las playlists y perfiles largos tardan un poco — la lista se abre cuando esté lista.',
+  'analyze.cancel': 'Cancelar',
   'update.label': 'Actualizaciones',
   'update.available': 'La versión {version} está disponible',
   'update.availableHint':

@@ -1,0 +1,61 @@
+# Changelog
+
+## App 0.2.0-beta.1 · library 1.1.0
+
+**Preview before downloading.** A list (playlist, Mix, channel) now opens a
+preview first: every item with its title, channel and length; filter, select
+all / none / some, or take only the video the link points at. The batch
+downloads exactly the picked items and does not list the link again.
+
+**Estimated time left.** Each running batch shows the time left and when it
+should finish, measured from this computer's real throughput over the last
+30 s (downloads, conversions and checks on the ⌊CPUs/2⌋ pool). On a real
+40-song batch the predicted finish was right from the first estimate.
+
+**YouTube Mix.** A Mix (`list=RD…`) is an endless radio — yt-dlp paginated
+one into 1,377 items in 30 s. Batches now cap a Mix at 50 items by default
+(adjustable in the preview, listed by yt-dlp itself); the preview opens in ~5 s.
+
+**Accurate disk forecast.** Sizes come from each stream's bitrate when the
+site reports no file size, and from the encoder's bitrate for MP3 / FLAC / WAV.
+Real downloads: a 1080p MP4 went from a 1.3 GB forecast to 16 MB (actual
+12.2 MB); three MP3s were forecast at 24 MB (actual 24.6 MB).
+
+**Performance review** (measured in the real app, before → after)
+
+| | Before | After |
+| --- | --- | --- |
+| 300-item batch, Logs/Downloads visited — renderer JS | 36.7 s | 0.7 s |
+| … renderer heap | 680 MB | 16 MB |
+| … wall time | 38.4 s | 11.2 s |
+| Single video, click → download starts | 6.1 s | 3.9 s |
+| Start-up, launch → usable | 1.95 s | 1.52 s |
+| 20 links / 1,713 items queued through the UI — long tasks | 75 | 42 |
+
+Hidden drawers and tabs no longer render; log lines are memoized and paged;
+batch cards re-render only when their batch changes; text ellipsis no longer
+reads layout; number formatters are cached; a video analyzed for the preview
+is reused by its batch; the tool check starts with the process.
+
+**App**
+- Start-up screen with phases and a progress bar; each phase retried 3× with
+  backoff, a failure names the phase and Retry resumes from it. Fatal main-process
+  errors are reported instead of leaving a blank window.
+- The window opens at ~92% of the screen (capped) and remembers its size,
+  position and maximized state, safely across monitor changes.
+- "Clear finished batches" on the Batches tab.
+- Live logs show every trace id (batch, job, attempt, step): click to trace, or copy.
+- The setup / diagnostics dialog always opens in front of Settings.
+- Separate Windows installers per architecture.
+
+**Library**
+- `BatchRequest.maxItems`, `.selection` and `.analysis`; `BatchSnapshot.progress`
+  (weighted fraction + `etaSeconds`); `WorkMeter`; `isYouTubeMix()`,
+  `MIX_DEFAULT_ITEMS`, `MAX_LISTED_ITEMS`.
+- `planChoices(formats, duration)` estimates sizes from bitrates.
+- Forecast log lines use the same SI units as the interfaces.
+
+## App 0.1.0-beta.1 · library 1.0.0
+
+First beta of the desktop app (Electron + Ant Design, EN/ES, light/dark) on
+the `media-downloader-core` engine and the `mdc` CLI.

@@ -53,11 +53,19 @@ jobs:
         with:
           path: installers
           merge-multiple: true
+      - uses: actions/checkout@v4
+        with:
+          path: source
+          sparse-checkout: CHANGELOG.md
+          sparse-checkout-cone-mode: false
       - name: Create pre-release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # notes: the newest CHANGELOG section, then the install hint
+          awk '/^## /{n++} n==1' source/CHANGELOG.md > notes.md
+          printf '\n---\nmacOS (arm64, x64) and Windows (x64, arm64). Builds are not code-signed yet — see the README.\n' >> notes.md
           gh release create "$GITHUB_REF_NAME" installers/* \
             --repo "$GITHUB_REPOSITORY" --prerelease \
             --title "Media Download Core ${GITHUB_REF_NAME#app-v}" \
-            --notes "Desktop beta for macOS (arm64, x64) and Windows (x64, arm64). Builds are not code-signed yet — see the README."
+            --notes-file notes.md

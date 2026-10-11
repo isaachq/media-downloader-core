@@ -7,7 +7,6 @@ import {sanitizeFilename} from './core/files.js'
 import {profileProblem} from './core/formats.js'
 import {newId} from './core/ids.js'
 import {isTerminal} from './core/job.js'
-import {TaskPool} from './core/pool.js'
 import {QueueStore} from './core/queue-store.js'
 import type {MediaDownloader} from './downloader.js'
 import type {
@@ -16,6 +15,7 @@ import type {
   BatchRequest,
   BatchSnapshot,
   BatchStatus,
+  JobError,
   JobId,
   JobOutcome,
   JobRequest,
@@ -27,7 +27,15 @@ import type {
   VideoAnalysis,
 } from './types.js'
 
+/** Jobs created per event-loop turn while enqueuing a batch. */
+const ENQUEUE_SLICE = 250
+
+const yieldToEventLoop = () => new Promise<void>(resolve => setImmediate(resolve))
+
 const TERMINAL: ReadonlySet<BatchStatus> = new Set(['completed', 'completed-with-errors', 'failed', 'cancelled'])
+
+/** Extra fields an item carries internally (never emitted). */
+type ItemState = PreflightItem & {readonly extractor?: string | undefined; readonly infoJsonPath?: string | undefined}
 
 type Batch = {
   readonly id: BatchId
@@ -35,45 +43,68 @@ type Batch = {
   status: BatchStatus
   kind: 'video' | 'playlist' | undefined
   title: string | undefined
-  items: PreflightItem[]
-  /** Outcome of each job of this batch, for O(1) counting. */
+  playlistId: string | undefined
+  items: ItemState[]
+  /** url → position in `items`, for O(1) preflight result lookup. */
+  readonly positions: Map<string, number>
+  /** Running totals, updated incrementally: snapshots are O(1), never a scan of `items`. */
+  checked: number
+  ok: number
+  unavailable: number
   readonly jobs: Map<JobId, JobOutcome>
-  running: Set<JobId>
-  error: BatchSnapshot['error']
+  readonly running: Set<JobId>
+  succeeded: number
+  failed: number
+  /** Metadata files kept so far (bounded by maxCachedMetadata). */
+  cached: number
+  /** Jobs are still being created: the batch can't close yet. */
+  enqueuing: boolean
+  error: JobError | undefined
   readonly createdAt: number
   startedAt: number | undefined
   finishedAt: number | undefined
   controller: AbortController | undefined
   snapshot: BatchSnapshot | undefined
+  lastEmit: number
+  emitTimer: NodeJS.Timeout | undefined
 }
 
 /**
- * schedule → batch → jobs.
+ * schedule → batch → jobs — built for heavy workloads: playlists with
+ * thousands of items, many batches queued.
  *
  * Every url submitted becomes a batch. Submitting never blocks and never
  * overloads the machine: batches wait in a FIFO and at most
  * `maxActiveBatches` (default 1) are active, each fanning out into jobs on
  * the engine's ⌊CPUs/2⌋ pool. An active batch:
  *
- *   1. checking — resolves the url and checks every item in parallel
- *      (bounded by the same pool size). The metadata fetched here is handed
- *      to the jobs, so nothing is extracted twice.
+ *   1. checking — the url is resolved, then every item is checked with
+ *      chunked extraction (several urls per yt-dlp process, ⌊CPUs/2⌋
+ *      processes). The metadata fetched is handed to the jobs, so nothing
+ *      is extracted twice.
  *   2. running  — one job per downloadable item; unavailable items are
- *      closed immediately with their reason and hint.
+ *      closed right away with their reason and hint.
  *   3. closed   — completed / completed-with-errors / failed / cancelled,
  *      then the next scheduled batch starts.
+ *
+ * Cost per event is O(1): batch snapshots carry counters, not items (fetch
+ * those with `items()`, follow them with the `item` event), and
+ * counter-only updates are throttled per batch.
  */
 export class BatchScheduler extends EventEmitter<SchedulerEvents> {
   readonly #engine: MediaDownloader
   readonly #maxActive: number
   readonly #preflight: boolean
+  readonly #intervalMs: number
+  readonly #maxCached: number
   /** Insertion-ordered: iteration = FIFO for the scheduled ones. */
   readonly #batches = new Map<BatchId, Batch>()
   readonly #byJob = new Map<JobId, BatchId>()
-  #active = 0
-  #disposed = false
-  #wasIdle = true
   readonly #store: QueueStore<BatchRequest>
+  #active = 0
+  /** Batches not yet closed — makes the idle check O(1). */
+  #open = 0
+  #disposed = false
   #idleWaiters: Array<() => void> = []
   readonly #onJob = (job: JobSnapshot) => this.#jobChanged(job)
 
@@ -82,10 +113,56 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
     this.#engine = engine
     this.#maxActive = Math.max(1, Math.floor(options.maxActiveBatches ?? 1))
     this.#preflight = options.preflight ?? true
+    this.#intervalMs = Math.max(0, options.progressIntervalMs ?? 250)
+    this.#maxCached = Math.max(0, Math.floor(options.maxCachedMetadata ?? 500))
     this.#store = new QueueStore(path.join(engine.dataDir, 'schedule.json'), () =>
       [...this.#batches.values()].filter(batch => !TERMINAL.has(batch.status)).map(batch => batch.request),
     )
     engine.on('job', this.#onJob)
+  }
+
+  /** Queue a url. Returns at once; the batch starts when it's its turn. */
+  schedule(request: BatchRequest): BatchSnapshot {
+    if (this.#disposed) throw new Error('BatchScheduler has been disposed.')
+    const url = assertHttpUrl(request.url)
+    const problem = profileProblem(request.profile)
+    if (problem) throw new DownloadError('invalid-request', problem)
+    if (!path.isAbsolute(request.outDir)) throw new DownloadError('invalid-request', 'outDir must be an absolute path.')
+
+    const batch: Batch = {
+      id: newId() as BatchId,
+      request: {...request, url, outDir: path.resolve(request.outDir)},
+      status: 'scheduled',
+      kind: undefined,
+      title: undefined,
+      playlistId: undefined,
+      items: [],
+      positions: new Map(),
+      checked: 0,
+      ok: 0,
+      unavailable: 0,
+      jobs: new Map(),
+      running: new Set(),
+      succeeded: 0,
+      failed: 0,
+      cached: 0,
+      enqueuing: false,
+      error: undefined,
+      createdAt: Date.now(),
+      startedAt: undefined,
+      finishedAt: undefined,
+      controller: undefined,
+      snapshot: undefined,
+      lastEmit: 0,
+      emitTimer: undefined,
+    }
+    this.#batches.set(batch.id, batch)
+    this.#open++
+    this.#engine.log('info', `batch scheduled: ${url}`, {batchId: batch.id})
+    this.#emitBatch(batch, true)
+    this.#store.touch()
+    this.#pump()
+    return this.#snapshot(batch)
   }
 
   /**
@@ -106,38 +183,6 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
     return restored
   }
 
-  /** Queue a url. Returns at once; the batch starts when it's its turn. */
-  schedule(request: BatchRequest): BatchSnapshot {
-    if (this.#disposed) throw new Error('BatchScheduler has been disposed.')
-    const url = assertHttpUrl(request.url)
-    const problem = profileProblem(request.profile)
-    if (problem) throw new DownloadError('invalid-request', problem)
-    if (!path.isAbsolute(request.outDir)) throw new DownloadError('invalid-request', 'outDir must be an absolute path.')
-
-    const batch: Batch = {
-      id: newId() as BatchId,
-      request: {...request, url, outDir: path.resolve(request.outDir)},
-      status: 'scheduled',
-      kind: undefined,
-      title: undefined,
-      items: [],
-      jobs: new Map(),
-      running: new Set(),
-      error: undefined,
-      createdAt: Date.now(),
-      startedAt: undefined,
-      finishedAt: undefined,
-      controller: undefined,
-      snapshot: undefined,
-    }
-    this.#batches.set(batch.id, batch)
-    this.#engine.log('info', `batch scheduled: ${url}`, {batchId: batch.id})
-    this.#changed(batch)
-    this.#store.touch()
-    this.#pump()
-    return this.#snapshot(batch)
-  }
-
   batches(): BatchSnapshot[] {
     return Array.from(this.#batches.values(), batch => this.#snapshot(batch))
   }
@@ -145,6 +190,15 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
   batch(id: BatchId): BatchSnapshot | undefined {
     const batch = this.#batches.get(id)
     return batch && this.#snapshot(batch)
+  }
+
+  /** Items of a batch, paginated (a UI renders a window of a 5,000-item list, never all of it). */
+  items(id: BatchId, opts: {readonly offset?: number; readonly limit?: number} = {}): PreflightItem[] {
+    const batch = this.#batches.get(id)
+    if (!batch) return []
+    const offset = Math.max(0, opts.offset ?? 0)
+    const end = opts.limit === undefined ? undefined : offset + Math.max(0, opts.limit)
+    return batch.items.slice(offset, end).map(publicItem)
   }
 
   /** Cancel a batch: scheduled → dropped, checking → stopped, running → its jobs cancelled. */
@@ -170,20 +224,21 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
 
   /** Resolves when nothing is scheduled, checking or running. */
   whenIdle(): Promise<void> {
-    if (this.#isIdle()) return Promise.resolve()
+    if (this.#open === 0) return Promise.resolve()
     return new Promise(resolve => this.#idleWaiters.push(resolve))
   }
 
   /**
    * Save the pending batches for `restore()`, then stop: active batches are
-   * cancelled (partial downloads stay for resuming). Call before disposing
-   * the engine. The engine itself is not disposed.
+   * stopped (partial downloads stay for resuming). Call before disposing the
+   * engine. The engine itself is not disposed.
    */
   async dispose(): Promise<void> {
     if (this.#disposed) return
     await this.#store.freeze()
     this.#disposed = true
     for (const batch of this.#batches.values()) {
+      if (batch.emitTimer) clearTimeout(batch.emitTimer)
       if (!TERMINAL.has(batch.status)) batch.controller?.abort()
     }
     this.#engine.off('job', this.#onJob)
@@ -192,7 +247,7 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
 
   // ─── lifecycle ────────────────────────────────────────────────────────────
 
-  /** Start scheduled batches while there is room. O(batches) per call; called on schedule and on close. */
+  /** Start scheduled batches while there is room. */
   #pump(): void {
     if (this.#disposed) return
     for (const batch of this.#batches.values()) {
@@ -201,7 +256,6 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
       this.#active++
       void this.#start(batch)
     }
-    this.#checkIdle()
   }
 
   async #start(batch: Batch): Promise<void> {
@@ -215,18 +269,16 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
       else this.#acceptVideo(batch, analysis)
       if (signal.aborted) throw cancelledError()
 
-      const ready = batch.items.filter(item => item.state === 'ok')
-      this.#engine.log(
-        'info',
-        `preflight: ${ready.length}/${batch.items.length} downloadable${batch.items.length - ready.length ? `, ${batch.items.length - ready.length} unavailable` : ''}`,
-        {batchId: batch.id},
-      )
-      if (ready.length === 0) {
+      const unavailable = batch.unavailable ? `, ${batch.unavailable} unavailable` : ''
+      this.#engine.log('info', `preflight: ${batch.ok}/${batch.items.length} downloadable${unavailable}`, {
+        batchId: batch.id,
+      })
+      if (batch.ok === 0) {
         this.#close(batch, 'failed', {code: 'unavailable', message: 'No item of this batch can be downloaded.'})
         return
       }
       this.#setStatus(batch, 'running')
-      this.#enqueue(batch, analysis)
+      await this.#enqueue(batch, signal)
     } catch (error) {
       const jobError = toJobError(error)
       this.#close(batch, signal.aborted || jobError.code === 'cancelled' ? 'cancelled' : 'failed', jobError)
@@ -236,85 +288,110 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
   #acceptVideo(batch: Batch, analysis: VideoAnalysis): void {
     batch.kind = 'video'
     batch.title = analysis.media.title
-    const choice = analysis.choices.find(c => c.profile.kind === batch.request.profile.kind)
-    batch.items = [
+    this.#setItems(batch, [
       {
         index: 1,
         url: analysis.media.url,
         title: analysis.media.title,
         mediaId: analysis.media.id,
         duration: analysis.media.duration,
-        state: choice ? 'ok' : 'unavailable',
-        requiresConversion: choice?.requiresConversion,
-        error: choice
-          ? undefined
-          : {code: 'unavailable', hint: 'format-unavailable', message: `No ${batch.request.profile.kind} formats.`},
+        extractor: analysis.media.extractor,
+        state: 'pending',
       },
-    ]
-    this.#changed(batch)
+    ])
+    this.#resolveItem(batch, 0, analysis)
   }
 
   /**
-   * Check every selected entry with a full extraction, at most ⌊CPUs/2⌋ at
-   * once. Each successful check yields cached metadata reused by its job.
+   * Check every selected entry with chunked extraction (engine.preflight):
+   * several urls per yt-dlp process, ⌊CPUs/2⌋ processes. Each success can
+   * keep its metadata for its job, up to maxCachedMetadata files.
    */
   async #checkPlaylist(batch: Batch, analysis: PlaylistAnalysis, signal: AbortSignal): Promise<void> {
     batch.kind = 'playlist'
     batch.title = analysis.title
+    batch.playlistId = analysis.id
     const wanted = batch.request.items ? new Set(batch.request.items) : undefined
-    const entries = analysis.entries.filter(entry => !wanted || wanted.has(entry.index))
-    batch.items = entries.map(entry => ({
-      index: entry.index,
-      url: entry.url,
-      title: entry.title,
-      mediaId: entry.id,
-      duration: entry.duration,
-      state: entry.isLive ? 'unavailable' : this.#preflight ? 'pending' : 'ok',
-      error: entry.isLive
-        ? {code: 'unavailable', hint: 'not-started', message: 'Live streams are not downloaded.'}
-        : undefined,
-    }))
-    this.#changed(batch)
-    if (!this.#preflight) return
-
-    const pool = new TaskPool<number>(this.#engine.concurrency)
+    this.#setItems(
+      batch,
+      analysis.entries
+        .filter(entry => !wanted || wanted.has(entry.index))
+        .map(entry => ({
+          index: entry.index,
+          url: entry.url,
+          title: entry.title,
+          mediaId: entry.id,
+          duration: entry.duration,
+          extractor: entry.extractor,
+          state: 'pending' as const,
+        })),
+    )
+    // live entries are known to be unavailable without asking (Set lookup: O(n) overall)
+    const live = new Set(analysis.entries.filter(entry => entry.isLive).map(entry => entry.index))
     batch.items.forEach((item, position) => {
-      if (item.state !== 'pending') return
-      pool.add(position, async () => {
-        if (signal.aborted) return
-        this.#updateItem(batch, position, {state: 'checking'})
-        try {
-          const result = await this.#engine.analyze(item.url, {signal})
-          if (result.kind !== 'video') throw new DownloadError('unavailable', 'Nested playlist inside a playlist item.')
-          const choice = result.choices.find(c => c.profile.kind === batch.request.profile.kind)
-          this.#infoJson.set(`${batch.id}:${position}`, result.infoJsonPath)
-          this.#updateItem(batch, position, {
-            state: choice ? 'ok' : 'unavailable',
-            title: result.media.title,
-            duration: result.media.duration ?? item.duration,
-            requiresConversion: choice?.requiresConversion,
-            error: choice
-              ? undefined
-              : {code: 'unavailable', hint: 'format-unavailable', message: `No ${batch.request.profile.kind} formats.`},
-          })
-        } catch (error) {
-          if (signal.aborted) return
-          this.#updateItem(batch, position, {state: 'unavailable', error: toJobError(error)})
-        }
-      })
+      if (live.has(item.index)) {
+        this.#settleItem(batch, position, 'unavailable', {
+          error: {code: 'unavailable', hint: 'not-started', message: 'Live streams are not downloaded.'},
+        })
+      }
     })
-    await pool.whenIdle()
+
+    const pending = batch.items.filter(item => item.state === 'pending')
+    if (!this.#preflight) {
+      for (const item of pending) this.#settleItem(batch, batch.positions.get(item.url)!, 'ok', {})
+      return
+    }
+    await this.#engine.preflight(
+      pending.map(item => ({url: item.url, id: item.mediaId})),
+      {
+        signal,
+        keepMetadata: () => batch.cached++ < this.#maxCached,
+        onResult: (url, result) => {
+          const position = batch.positions.get(url)
+          if (position === undefined || signal.aborted) return
+          if (result.ok) this.#resolveItem(batch, position, result.analysis)
+          else this.#settleItem(batch, position, 'unavailable', {error: result.error})
+        },
+      },
+    )
   }
 
-  /** Preflight metadata per item, handed to the job (`batchId:position` → info json path). */
-  readonly #infoJson = new Map<string, string | undefined>()
+  /** A checked item: downloadable if the source offers the requested kind of stream. */
+  #resolveItem(batch: Batch, position: number, analysis: VideoAnalysis): void {
+    const kind = batch.request.profile.kind
+    const choice = analysis.choices.find(c => c.profile.kind === kind)
+    const facts = {
+      title: analysis.media.title,
+      duration: analysis.media.duration ?? batch.items[position]?.duration,
+      infoJsonPath: analysis.infoJsonPath,
+    }
+    if (choice) this.#settleItem(batch, position, 'ok', {...facts, requiresConversion: choice.requiresConversion})
+    else {
+      this.#settleItem(batch, position, 'unavailable', {
+        ...facts,
+        error: {code: 'unavailable', hint: 'format-unavailable', message: `No ${kind} formats.`},
+      })
+    }
+  }
 
-  #enqueue(batch: Batch, analysis: VideoAnalysis | PlaylistAnalysis): void {
+  /**
+   * Turn every downloadable item into a job, in slices of ENQUEUE_SLICE with
+   * a yield in between: 5,000 jobs are still O(n) work, but the event loop
+   * (and the UI it serves) never blocks for more than a few milliseconds.
+   */
+  async #enqueue(batch: Batch, signal: AbortSignal): Promise<void> {
     const {profile, outDir} = batch.request
     const folder =
       batch.kind === 'playlist' ? path.join(outDir, sanitizeFilename(batch.title ?? 'Playlist', 100)) : outDir
-    batch.items.forEach((item, position) => {
-      if (item.state !== 'ok') return
+    batch.enqueuing = true
+    for (let position = 0; position < batch.items.length; position++) {
+      if (position > 0 && position % ENQUEUE_SLICE === 0) {
+        this.#emitBatch(batch, false)
+        await yieldToEventLoop()
+      }
+      if (signal.aborted) break
+      const item = batch.items[position]!
+      if (item.state !== 'ok') continue
       const request: JobRequest = {
         url: item.url,
         profile,
@@ -322,113 +399,123 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
         batchId: batch.id,
         title: item.title,
         mediaId: item.mediaId,
-        extractor:
-          analysis.kind === 'playlist'
-            ? analysis.entries.find(e => e.index === item.index)?.extractor
-            : analysis.media.extractor,
+        extractor: item.extractor,
         duration: item.duration,
         playlist:
-          analysis.kind === 'playlist' ? {id: analysis.id, title: analysis.title, index: item.index} : undefined,
-        infoJsonPath: analysis.kind === 'video' ? analysis.infoJsonPath : this.#infoJson.get(`${batch.id}:${position}`),
+          batch.kind === 'playlist'
+            ? {id: batch.playlistId ?? batch.id, title: batch.title ?? 'Playlist', index: item.index}
+            : undefined,
+        infoJsonPath: item.infoJsonPath,
       }
-      this.#infoJson.delete(`${batch.id}:${position}`)
       const job = this.#engine.add(request)
       batch.jobs.set(job.id, job.outcome)
       this.#byJob.set(job.id, batch.id)
-      batch.items[position] = {...item, jobId: job.id}
-    })
-    this.#changed(batch)
-    this.#maybeClose(batch) // every job may have been skipped (already archived) synchronously
+      // the job owns the metadata file now (it deletes it when done)
+      batch.items[position] = {...item, jobId: job.id, infoJsonPath: undefined}
+      this.emit('item', batch.id, publicItem(batch.items[position]!))
+    }
+    batch.enqueuing = false
+    this.#emitBatch(batch, true)
+    // jobs of the first slices may all have finished already
+    if (batch.status === 'running' && batch.succeeded + batch.failed === batch.jobs.size) this.#finishRun(batch)
   }
 
   #jobChanged(job: JobSnapshot): void {
     const batchId = job.batchId ?? this.#byJob.get(job.id)
     const batch = batchId && this.#batches.get(batchId)
-    if (!batch || TERMINAL.has(batch.status) || !batch.jobs.has(job.id)) return
+    if (!batch || TERMINAL.has(batch.status)) return
     const before = batch.jobs.get(job.id)
+    if (before === undefined) return
     const isRunning = !isTerminal(job.status) && job.status !== 'queued'
     const wasRunning = batch.running.has(job.id)
-    if (isRunning) batch.running.add(job.id)
-    else batch.running.delete(job.id)
-    batch.jobs.set(job.id, job.outcome)
-    if (before !== job.outcome || isRunning !== wasRunning) this.#changed(batch)
-    if (job.outcome !== 'in-progress') this.#maybeClose(batch)
+    if (isRunning !== wasRunning) {
+      if (isRunning) batch.running.add(job.id)
+      else batch.running.delete(job.id)
+    }
+    if (before !== job.outcome) {
+      batch.jobs.set(job.id, job.outcome)
+      if (job.outcome === 'success') batch.succeeded++
+      else if (job.outcome === 'failed') batch.failed++
+    }
+    if (before !== job.outcome || isRunning !== wasRunning) this.#emitBatch(batch, false)
+    if (!batch.enqueuing && batch.status === 'running' && batch.succeeded + batch.failed === batch.jobs.size) {
+      this.#finishRun(batch)
+    }
   }
 
-  #maybeClose(batch: Batch): void {
-    if (batch.status !== 'running') return
-    let succeeded = 0
-    for (const outcome of batch.jobs.values()) {
-      if (outcome === 'in-progress') return
-      if (outcome === 'success') succeeded++
-    }
-    const failedItems = batch.items.length - succeeded
+  #finishRun(batch: Batch): void {
     if (batch.controller?.signal.aborted) this.#close(batch, 'cancelled', cancelledError().toJSON())
-    else if (failedItems === 0) this.#close(batch, 'completed')
-    else if (succeeded > 0) this.#close(batch, 'completed-with-errors')
+    else if (batch.succeeded === batch.items.length) this.#close(batch, 'completed')
+    else if (batch.succeeded > 0) this.#close(batch, 'completed-with-errors')
     else this.#close(batch, 'failed', {code: 'unavailable', message: 'No item of this batch could be downloaded.'})
   }
 
-  #close(batch: Batch, status: BatchStatus, error?: BatchSnapshot['error']): void {
+  #close(batch: Batch, status: BatchStatus, error?: JobError): void {
     const wasActive = batch.status !== 'scheduled'
     batch.status = status
     batch.error = error
     batch.finishedAt = Date.now()
     batch.controller = undefined
-    // preflight metadata never handed to a job (cancelled / unavailable): delete the cached files
-    for (const [key, file] of this.#infoJson) {
-      if (!key.startsWith(`${batch.id}:`)) continue
-      this.#infoJson.delete(key)
-      if (file) void fs.rm(file, {force: true})
-    }
-    const counts = this.#counts(batch)
+    // metadata never handed to a job (cancelled / unavailable items): delete it
+    for (const item of batch.items) if (item.infoJsonPath) void fs.rm(item.infoJsonPath, {force: true})
     this.#engine.log(
       status === 'failed' ? 'error' : status === 'completed-with-errors' ? 'warn' : 'info',
-      `batch closed: ${status} — ${counts.succeeded}/${batch.items.length || counts.total} succeeded${error ? ` [${error.code}] ${error.message}` : ''}`,
+      `batch closed: ${status} — ${batch.succeeded}/${batch.items.length || batch.jobs.size} succeeded${error ? ` [${error.code}] ${error.message}` : ''}`,
       {batchId: batch.id},
     )
-    this.#changed(batch)
+    this.#emitBatch(batch, true)
+    this.#open--
     if (wasActive) this.#active--
     this.#store.touch()
     this.#pump()
+    if (this.#open === 0) {
+      const waiters = this.#idleWaiters
+      this.#idleWaiters = []
+      for (const resolve of waiters) resolve()
+      this.emit('idle')
+    }
   }
 
   // ─── state & events ───────────────────────────────────────────────────────
 
+  #setItems(batch: Batch, items: ItemState[]): void {
+    batch.items = items
+    batch.positions.clear()
+    for (const [position, item] of items.entries()) batch.positions.set(item.url, position)
+    this.#emitBatch(batch, true)
+  }
+
+  /** Record a preflight verdict: O(1) — counters move, one `item` event goes out. */
+  #settleItem(batch: Batch, position: number, state: 'ok' | 'unavailable', patch: Partial<ItemState>): void {
+    const item = batch.items[position]
+    if (!item || item.state === 'ok' || item.state === 'unavailable') return
+    batch.items[position] = {...item, ...patch, state}
+    batch.checked++
+    if (state === 'ok') batch.ok++
+    else batch.unavailable++
+    this.emit('item', batch.id, publicItem(batch.items[position]!))
+    this.#emitBatch(batch, false)
+  }
+
   #setStatus(batch: Batch, status: BatchStatus): void {
     batch.status = status
     this.#engine.log('debug', `batch ${status}`, {batchId: batch.id})
-    this.#changed(batch)
-  }
-
-  #updateItem(batch: Batch, position: number, patch: Partial<PreflightItem>): void {
-    batch.items[position] = {...batch.items[position]!, ...patch}
-    this.#changed(batch)
+    this.#emitBatch(batch, true)
   }
 
   #counts(batch: Batch): BatchCounts {
-    let succeeded = 0
-    let failed = 0
-    let pending = 0
-    for (const outcome of batch.jobs.values()) {
-      if (outcome === 'success') succeeded++
-      else if (outcome === 'failed') failed++
-      else pending++
+    const pending = batch.jobs.size - batch.succeeded - batch.failed
+    return {
+      total: batch.jobs.size,
+      queued: pending - batch.running.size,
+      running: batch.running.size,
+      succeeded: batch.succeeded,
+      failed: batch.failed,
     }
-    const running = batch.running.size
-    return {total: batch.jobs.size, queued: pending - running, running, succeeded, failed}
   }
 
   #snapshot(batch: Batch): BatchSnapshot {
     if (batch.snapshot) return batch.snapshot
-    let checked = 0
-    let ok = 0
-    let unavailable = 0
-    for (const item of batch.items) {
-      if (item.state === 'ok') ok++
-      if (item.state === 'unavailable') unavailable++
-      if (item.state === 'ok' || item.state === 'unavailable') checked++
-    }
     let position: number | undefined
     if (batch.status === 'scheduled') {
       position = 0
@@ -446,8 +533,7 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
       kind: batch.kind,
       title: batch.title,
       position,
-      preflight: {total: batch.items.length, checked, ok, unavailable},
-      items: Object.freeze([...batch.items]),
+      preflight: {total: batch.items.length, checked: batch.checked, ok: batch.ok, unavailable: batch.unavailable},
       jobs: this.#counts(batch),
       error: batch.error,
       createdAt: batch.createdAt,
@@ -457,32 +543,31 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
     return batch.snapshot
   }
 
-  #changed(batch: Batch): void {
+  /** Status changes go out at once; counter-only changes at most every progressIntervalMs. */
+  #emitBatch(batch: Batch, force: boolean): void {
     batch.snapshot = undefined
-    this.emit('batch', this.#snapshot(batch))
-    if (TERMINAL.has(batch.status) || batch.status === 'running') {
-      // a status change can move the queue positions of the batches behind
-      for (const other of this.#batches.values()) {
-        if (other !== batch && other.status === 'scheduled') other.snapshot = undefined
+    const wait = this.#intervalMs - (Date.now() - batch.lastEmit)
+    if (force || wait <= 0) {
+      if (batch.emitTimer) clearTimeout(batch.emitTimer)
+      batch.emitTimer = undefined
+      batch.lastEmit = Date.now()
+      this.emit('batch', this.#snapshot(batch))
+      // queue positions of the batches behind may have moved
+      if (force && batch.status !== 'scheduled') {
+        for (const other of this.#batches.values()) if (other.status === 'scheduled') other.snapshot = undefined
       }
+    } else if (!batch.emitTimer) {
+      batch.emitTimer = setTimeout(() => {
+        batch.emitTimer = undefined
+        this.#emitBatch(batch, true)
+      }, wait)
+      batch.emitTimer.unref()
     }
-    this.#checkIdle()
   }
+}
 
-  #isIdle(): boolean {
-    for (const batch of this.#batches.values()) if (!TERMINAL.has(batch.status)) return false
-    return true
-  }
-
-  /** Resolve waiters and emit 'idle' only on the busy → idle transition. */
-  #checkIdle(): void {
-    const idle = this.#isIdle()
-    const becameIdle = idle && !this.#wasIdle
-    this.#wasIdle = idle
-    if (!idle) return
-    const waiters = this.#idleWaiters
-    this.#idleWaiters = []
-    for (const resolve of waiters) resolve()
-    if (becameIdle) this.emit('idle')
-  }
+/** Strip internal fields before an item leaves the scheduler. */
+function publicItem(item: ItemState): PreflightItem {
+  const {extractor: _extractor, infoJsonPath: _infoJsonPath, ...rest} = item
+  return rest
 }

@@ -78,7 +78,13 @@ describe('BatchScheduler', () => {
     const done = scheduler.batch(batch.id)!
     assert.equal(done.status, 'completed-with-errors')
     assert.deepEqual(done.preflight, {total: 4, checked: 4, ok: 3, unavailable: 1})
-    const bad = done.items.find(item => item.state === 'unavailable')!
+    const items = scheduler.items(batch.id)
+    assert.equal(items.length, 4)
+    assert.deepEqual(
+      scheduler.items(batch.id, {offset: 1, limit: 2}).map(i => i.index),
+      [2, 3],
+    )
+    const bad = items.find(item => item.state === 'unavailable')!
     assert.equal(bad.error?.code, 'unavailable')
     assert.equal(bad.error?.hint, 'removed')
     assert.equal(bad.jobId, undefined, 'unavailable items never become jobs')

@@ -10,7 +10,7 @@ import {defaultDataDir} from '../src/cli/paths.js'
 import {jobLine, logLine, progressBar, stepTrack, summary} from '../src/cli/render.js'
 import {createStyle, fit, stripAnsi, visibleLength, wantsColor} from '../src/cli/term.js'
 import {run} from '../src/core/process.js'
-import type {BatchSnapshot, JobSnapshot, LogEntry} from '../src/types.js'
+import type {BatchSnapshot, JobSnapshot, LogEntry, PreflightItem} from '../src/types.js'
 import {type FakeBinaries, writeFakes} from './helpers/fakes.js'
 
 const plain = createStyle(false)
@@ -187,8 +187,20 @@ describe('terminal rendering', () => {
       step: 'download',
     } as LogEntry
     assert.equal(stripAnsi(logLine(entry, color)), '12:00:00 WARN JJJJJJJJ #1/4 download  retrying in 2.0s')
-    const text = stripAnsi(summary([job({status: 'completed', outcome: 'success'})], 5000, 'S'.repeat(32), color))
-    assert.match(text, /1 completed/)
+    const batch = {
+      id: 'B'.repeat(32),
+      url: 'https://x.test/l',
+      profile: {kind: 'audio', container: 'm4a'},
+      outDir: '/o',
+      status: 'completed-with-errors',
+      preflight: {total: 3, checked: 3, ok: 2, unavailable: 1},
+      jobs: {total: 2, queued: 0, running: 0, succeeded: 2, failed: 0},
+      createdAt: 0,
+    } as unknown as BatchSnapshot
+    const text = stripAnsi(summary(batch, 5000, 'S'.repeat(32), color))
+    assert.match(text, /2 completed/)
+    assert.match(text, /1 unavailable/)
+    assert.match(text, /mdc logs BBBBBBBB/)
     assert.match(text, /session S{32}/)
   })
 })
@@ -298,9 +310,12 @@ describe('mdc end to end', () => {
     assert.equal(summaryEvent['status'], 'completed-with-errors')
     const batchId = String(summaryEvent['batchId'])
     assert.match(batchId, /^[A-Za-z0-9]{32}$/)
-    const closed = events.filter(e => e.type === 'batch').at(-1) as unknown as BatchSnapshot
-    const bad = closed.items.find(item => item.state === 'unavailable')
+    const bad = events.find(e => e.type === 'item' && e['state'] === 'unavailable') as unknown as PreflightItem
     assert.equal(bad?.error?.hint, 'removed')
+    assert.ok(
+      events.filter(e => e.type === 'batch').every(e => !('items' in e)),
+      'batch events stay small',
+    )
 
     const logs = await mdc(['logs', batchId.slice(0, 10)])
     assert.equal(logs.code, EXIT.ok)

@@ -6,7 +6,7 @@ import {fileURLToPath} from 'node:url'
 import {BinaryError} from '../binaries/sources.js'
 import {MediaDownloader} from '../downloader.js'
 import {BatchScheduler} from '../scheduler.js'
-import type {BatchSnapshot, BinaryPaths, ExecutableSpec, JobSnapshot, LogEntry} from '../types.js'
+import type {BatchSnapshot, BinaryPaths, ExecutableSpec, LogEntry} from '../types.js'
 import {formatBytes} from '../util/units.js'
 import {type Command, type GlobalOptions, HELP, parseCli} from './args.js'
 import {banner, bootSequence} from './banner.js'
@@ -238,6 +238,7 @@ async function get(ctx: Context, command: Extract<Command, {name: 'get'}>): Prom
     if (!(await boot(ctx, dl))) return EXIT.notReady
     if (ctx.global.json) {
       scheduler.on('batch', batch => json(out, {type: 'batch', ...batch}))
+      scheduler.on('item', (batchId, item) => json(out, {type: 'item', batchId, ...item}))
       dl.on('job', snapshot => json(out, {type: 'job', ...snapshot}))
       dl.on('log', entry => json(out, {type: 'log', ...entry}))
     } else {
@@ -248,6 +249,7 @@ async function get(ctx: Context, command: Extract<Command, {name: 'get'}>): Prom
         lastStatus = batch.status
         dashboard?.batch(batch)
       })
+      scheduler.on('item', (_batchId, item) => dashboard?.item(item))
       dl.on('job', snapshot => {
         dashboard?.job(snapshot)
         dashboard?.setQueued(dl.stats.queued)
@@ -260,23 +262,26 @@ async function get(ctx: Context, command: Extract<Command, {name: 'get'}>): Prom
     await scheduler.whenIdle()
     // stop streaming before the summary, so it is always the last line (shutdown logs go to the trace file)
     scheduler.removeAllListeners('batch')
+    scheduler.removeAllListeners('item')
     dl.removeAllListeners('job')
     dl.removeAllListeners('log')
     dashboard?.stop()
 
     const batch = scheduler.batch(scheduled.id)!
-    const finished: JobSnapshot[] = dl.jobs()
+    const unavailable = scheduler.items(batch.id).filter(item => item.state === 'unavailable')
     if (ctx.global.json) {
       json(out, {
         type: 'summary',
         sessionId: dl.sessionId,
         batchId: batch.id,
         status: batch.status,
+        jobs: batch.jobs,
+        preflight: batch.preflight,
         elapsedMs: Date.now() - started,
       })
     } else {
-      line(out, `\n${batchReport(batch, ctx.style, out.columns)}`)
-      line(out, summary(finished, Date.now() - started, dl.sessionId, ctx.style))
+      line(out, `\n${batchReport(batch, unavailable, ctx.style, out.columns)}`)
+      line(out, summary(batch, Date.now() - started, dl.sessionId, ctx.style))
     }
 
     if (interrupted || batch.status === 'cancelled') return EXIT.interrupted

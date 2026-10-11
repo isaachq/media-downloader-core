@@ -1,5 +1,5 @@
-import type {BatchSnapshot, JobId, JobSnapshot, LogEntry} from '../types.js'
-import {batchLine, finishedLine, jobLine, logLine, preflightLine} from './render.js'
+import type {BatchSnapshot, JobId, JobSnapshot, LogEntry, PreflightItem} from '../types.js'
+import {batchLine, finishedLine, HINT_TEXT, jobLine, logLine, preflightLine} from './render.js'
 import {cursor, type Output, type Style} from './term.js'
 
 const FRAME_MS = 100
@@ -61,16 +61,16 @@ export class Dashboard {
     if (batch.status !== 'checking') this.#preflight = undefined
     const text = batchLine(batch, this.style, this.out.columns)
     if (text) this.#print(text)
-    if (batch.status === 'running') {
-      // why some items won't become jobs, right when the batch starts
-      for (const item of batch.items) {
-        if (item.state !== 'unavailable') continue
-        this.#print(
-          this.style.dim(`  ✗ #${item.index} ${item.title ?? item.url} — ${item.error?.message ?? 'unavailable'}`),
-        )
-      }
-    }
     this.#dirty = true
+  }
+
+  /** A preflight item resolved: unavailable ones are reported as soon as they're found. */
+  item(item: PreflightItem): void {
+    if (item.state !== 'unavailable') return
+    const why = item.error?.hint ? HINT_TEXT[item.error.hint] : (item.error?.message ?? 'unavailable')
+    this.#print(
+      `${this.style.red('  ✗')} ${this.style.dark(`#${item.index}`)} ${this.style.dim(item.title ?? item.url)} ${this.style.dark('—')} ${this.style.yellow(why)}`,
+    )
   }
 
   /** Preflight progress (repainted in place; not printed on non-TTY outputs). */

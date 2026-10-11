@@ -1,7 +1,7 @@
 {
   "name": "media-downloader-core",
   "version": "1.0.0",
-  "description": "UI-agnostic download engine (yt-dlp + ffmpeg): playlists, a CPUs/2 worker pool, codec-guaranteed formats and full integrity validation.",
+  "description": "Download engine for heavy workloads (many videos, huge playlists): yt-dlp + ffmpeg on a CPUs/2 worker pool, O(1) hot paths, codec-guaranteed formats and full integrity validation.",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -41,7 +41,8 @@
     "stress": "node --expose-gc --import tsx scripts/stress.ts",
     "demo": "tsx examples/demo.ts",
     "prepublishOnly": "npm run check && npm run build",
-    "mdc": "tsx src/cli/bin.ts"
+    "mdc": "tsx src/cli/bin.ts",
+    "bench": "node --expose-gc --import tsx scripts/batch-bench.ts"
   },
   "license": "PolyForm-Noncommercial-1.0.0",
   "devDependencies": {

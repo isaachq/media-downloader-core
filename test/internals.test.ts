@@ -14,7 +14,7 @@ import {profileProblem} from '../src/core/formats.js'
 import {HashPool} from '../src/core/hash-pool.js'
 import {ID_PATTERN, newId} from '../src/core/ids.js'
 import {LineSplitter, lastLines, run, TailBuffer} from '../src/core/process.js'
-import {QueueStore} from '../src/core/queue-store.js'
+import {PendingJournal, QueueStore} from '../src/core/queue-store.js'
 
 let dir = ''
 before(async () => {
@@ -218,6 +218,37 @@ describe('DownloadArchive (append-only log)', () => {
     const reopened = new DownloadArchive(file)
     assert.equal(await reopened.find(key), undefined)
     await reopened.close()
+  })
+})
+
+describe('PendingJournal', () => {
+  it('appends O(1) per change, compacts past the slack and never deadlocks', async () => {
+    const file = path.join(dir, 'pending.jsonl')
+    const live = new Map<string, number>()
+    const journal = new PendingJournal<number>(file, () => [...live.entries()])
+    for (let i = 0; i < 3000; i++) {
+      live.set(`j${i}`, i)
+      journal.put(`j${i}`, i)
+      if (i >= 10) {
+        live.delete(`j${i - 10}`)
+        journal.delete(`j${i - 10}`)
+      }
+    }
+    // regression: compaction used to wait on the write chain it was part of
+    await Promise.race([
+      journal.freeze(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('deadlock')), 5000)),
+    ])
+    const lines = (await fs.readFile(file, 'utf8')).trim().split('\n').length
+    assert.ok(lines < 2100, `journal should have been compacted (${lines} lines)`)
+    const replayed = await new PendingJournal<number>(file, () => []).load()
+    assert.deepEqual(replayed, [...live.values()])
+  })
+
+  it('ignores a torn last line after a crash', async () => {
+    const file = path.join(dir, 'torn.jsonl')
+    await fs.writeFile(file, '{"op":"put","id":"a","value":1}\n{"op":"put","id":"b","va')
+    assert.deepEqual(await new PendingJournal<number>(file, () => []).load(), [1])
   })
 })
 

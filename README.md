@@ -1,9 +1,14 @@
 # media-downloader-core
 
-Download engine for desktop backup tools: playlists, a ⌊CPUs/2⌋ worker pool,
-codec-guaranteed format profiles and **100% integrity validation** of every
-file. UI-agnostic — drive it from a CLI, an Electron main process or a server.
-Zero runtime dependencies: it orchestrates `yt-dlp`, `ffmpeg` and `ffprobe`.
+**A download engine built for heavy workloads — not one video, many:**
+playlists with thousands of items, batches queued back to back, hours of
+unattended backup. Every hot path is O(1) or O(n) by design, work runs on a
+⌊CPUs/2⌋ pool of processes and threads so the machine stays responsive,
+memory stays flat, and **every file is validated** before it's delivered.
+
+UI-agnostic — drive it from the `mdc` CLI, an Electron main process or a
+server. Zero runtime dependencies: it orchestrates `yt-dlp`, `ffmpeg` and
+`ffprobe`, and installs/verifies them itself (`mdc setup`).
 
 > **Educational project.** It is meant for learning and for backing up content
 > you own or are allowed to download. Respect each site's terms of service and
@@ -116,6 +121,36 @@ Measured with `scripts/stress.ts` (fake binaries, 12-CPU Intel Mac, 1000 jobs):
 | Event-loop delay | p50 1.1 ms · p99 6.5 ms |
 | Jobs kept in memory | 50 of 1000 (`retainFinishedJobs`) |
 | Heap growth | ~1.2 KB per archived item (the archive index); nothing else accumulates |
+
+## Built for heavy loads
+
+Measured with `scripts/batch-bench.ts` (one playlist batch, fake tools so the
+network isn't the variable; 12-CPU Intel Mac, 6 workers):
+
+| Items in the batch | 300 | 2,000 | 5,000 |
+|---|---|---|---|
+| Preflight (all items checked) | 0.8 s | 4.2 s | 10.6 s |
+| Scheduler events emitted | 41 · 0.0 MiB | 239 · 0.1 MiB | 579 · 0.3 MiB |
+| Heap growth for the whole batch | 2.9 MiB | 5.1 MiB | 7.3 MiB |
+| Event-loop delay p99 | 4.3 ms | 3.7 ms | 3.9 ms |
+
+On real YouTube urls, chunked preflight checks 6 videos in 7.7 s instead of
+14.1 s (one yt-dlp process per chunk instead of per url), and the jobs reuse
+the metadata it fetched — downloads start without a second extraction.
+
+### Complexity of the hot paths
+
+| Operation | Cost | How |
+|---|---|---|
+| Queue a job / start / cancel / prioritize | O(1) | doubly linked list indexed by id |
+| Job progress → event | O(1), ≤ 4/s per job | cached frozen snapshots, throttled emits |
+| Batch progress → event | O(1), ≤ 4/s per batch | incremental counters; items are paged (`items(id, {offset, limit})`) and streamed one by one (`item` event), never sent whole |
+| Record a download / a pending job | O(1) | append-only logs (`archive.jsonl`, `pending.jsonl`), amortized streaming compaction |
+| "Already downloaded?" | O(1) + one `stat` | in-memory index of path + size only (≈ 273 B per archived file; 50,000 files ≈ 13 MiB) |
+| Choose formats for a video | O(formats) | catalog indexed in one pass |
+| Release finished jobs | O(1) amortized | insertion-ordered set, oldest first |
+| Enqueue a 5,000-item batch | O(n), sliced | 250 jobs per event-loop turn — the UI thread never stalls |
+| SHA-256 of finished files | off the main thread | worker-thread pool, idle workers exit |
 
 ## Memory and resource discipline
 

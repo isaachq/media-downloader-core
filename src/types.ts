@@ -380,7 +380,7 @@ export type BatchSnapshot = {
     readonly ok: number
     readonly unavailable: number
   }
-  readonly items: readonly PreflightItem[]
+  /** Items are not part of the snapshot (a 5,000-item batch would make every event huge): use `scheduler.items()` and the `item` event. */
   readonly jobs: BatchCounts
   readonly error?: JobError | undefined
   readonly createdAt: number
@@ -401,10 +401,21 @@ export type SchedulerOptions = {
   readonly maxActiveBatches?: number | undefined
   /** Check every item before downloading. Default true. */
   readonly preflight?: boolean | undefined
+  /** Minimum interval between counter-only `batch` events of one batch (ms). Default 250. */
+  readonly progressIntervalMs?: number | undefined
+  /**
+   * Preflight metadata kept on disk for reuse by the jobs (~150 KiB each).
+   * Items beyond this are still checked, then extracted again when their
+   * job starts. Default 500.
+   */
+  readonly maxCachedMetadata?: number | undefined
 }
 
 export type SchedulerEvents = {
+  /** Status changes immediately; counter-only changes at most every `progressIntervalMs` per batch. */
   batch: [snapshot: BatchSnapshot]
+  /** One preflight item changed (checked, unavailable, became a job). */
+  item: [batchId: BatchId, item: PreflightItem]
   /** Nothing scheduled, checking or running. */
   idle: []
 }
@@ -479,6 +490,11 @@ export type DownloaderOptions = {
   readonly traceLog?: boolean | undefined
   /** Days of trace files to keep. Default 14. */
   readonly traceRetentionDays?: number | undefined
+  /**
+   * Cached metadata older than this is ignored and extracted again: media
+   * urls in it expire (YouTube's after ~6 h). Default 3 h.
+   */
+  readonly metadataMaxAgeMs?: number | undefined
   /** Finished jobs kept in memory; older ones are released. Default 1000. */
   readonly retainFinishedJobs?: number | undefined
 }

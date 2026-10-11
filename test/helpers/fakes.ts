@@ -13,7 +13,8 @@ export type FakeBinaries = {
 
 /**
  * Behavior is driven by the url:
- *   …list…         a 3-item playlist (fake.test/e1..e3); …mixed… adds an unavailable 4th item
+ *   …list…         a 3-item playlist (fake.test/e1..e3); …mixed… adds an unavailable 4th item;
+ *                  …list?n=500 makes a playlist of 500 items
  *   …nofmt…        has no format matching a height cap (yt-dlp "format is not available")
  *   …slow…         downloads take ~400 ms
  *   …hang…         prints its info, then goes silent forever (a stall)
@@ -30,18 +31,38 @@ const infoJson = args.includes('--load-info-json') ? args[args.indexOf('--load-i
 const url = infoJson ? JSON.parse(fs.readFileSync(infoJson, 'utf8')).webpage_url : args[args.length - 1]
 const id = url.split('/').pop()
 
+if (args.includes('--dump-json')) {
+  // chunked preflight: one JSON line per url, errors on stderr, keep going (--ignore-errors)
+  const urls = args.slice(args.indexOf('--') + 1)
+  for (const u of urls) {
+    const uid = u.split('/').pop()
+    if (u.includes('unavailable')) { console.error('ERROR: [youtube] ' + uid + ': Video unavailable. This video has been removed'); continue }
+    const formats = [
+      {format_id: '140', ext: 'm4a', vcodec: 'none', acodec: 'mp4a.40.2', abr: 128, filesize: 1000},
+      {format_id: '137', ext: 'mp4', vcodec: 'avc1.640028', acodec: 'none', height: 1080, tbr: 4000, filesize: 5000},
+    ]
+    console.log(JSON.stringify({id: uid, title: 'Title ' + uid, extractor_key: 'Fake', duration: 10, webpage_url: u, original_url: u, formats}))
+  }
+  // exitCode + return, not process.exit(): exit() truncates large stdout writes on a pipe
+  process.exitCode = urls.some(u => u.includes('unavailable')) ? 1 : 0
+  return
+}
+
 if (args.includes('--dump-single-json')) {
   if (url.includes('unavailable')) { console.error('ERROR: [youtube] ' + id + ': Video unavailable. This video has been removed'); process.exit(1) }
   const audio = {format_id: '140', ext: 'm4a', vcodec: 'none', acodec: 'mp4a.40.2', abr: 128, filesize: 1000}
   if (url.includes('list')) {
-    const ids = url.includes('mixed') ? ['e1', 'e2', 'unavailable-e3', 'e4'] : ['e1', 'e2', 'e3']
+    const big = /[?&]n=([0-9]+)/.exec(url)
+    const ids = big
+      ? Array.from({length: Number(big[1])}, (_, i) => 'b' + (i + 1))
+      : url.includes('mixed') ? ['e1', 'e2', 'unavailable-e3', 'e4'] : ['e1', 'e2', 'e3']
     const entries = ids.map(e => ({_type: 'url', id: e, url: 'https://fake.test/' + e, title: 'Entry ' + e, duration: 10, ie_key: 'Fake'}))
     console.log(JSON.stringify({_type: 'playlist', id: 'PL1', title: 'Fake List', extractor_key: 'Fake', entries}))
   } else {
     const video = {format_id: '137', ext: 'mp4', vcodec: 'avc1.640028', acodec: 'none', height: 1080, tbr: 4000, filesize: 5000}
     console.log(JSON.stringify({id, title: 'Title ' + id, extractor_key: 'Fake', duration: 10, webpage_url: url, formats: [audio, video]}))
   }
-  process.exit(0)
+  return
 }
 
 const home = args[args.indexOf('--paths') + 1].slice('home:'.length)

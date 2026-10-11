@@ -1,4 +1,4 @@
-import {createReadStream} from 'node:fs'
+import {createReadStream, createWriteStream} from 'node:fs'
 import type {FileHandle} from 'node:fs/promises'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
@@ -20,7 +20,13 @@ export type ArchiveEntry = {
   readonly completedAt: number
 }
 
+/** What a lookup needs — all the archive keeps in memory per entry. */
+export type ArchiveHit = {readonly filepath: string; readonly sizeBytes: number}
+
 type ArchiveRecord = {readonly op: 'put'; readonly entry: ArchiveEntry} | {readonly op: 'del'; readonly key: string}
+
+/** In-memory index entry: the hit, plus the log line holding the full record. */
+type Indexed = ArchiveHit & {readonly line: number}
 
 /** "youtube:dQw4w9WgXcQ:video:mp4:1080" — same media + same profile = same file. */
 export function archiveKey(extractor: string, mediaId: string, profile: FormatProfile): string {
@@ -30,18 +36,39 @@ export function archiveKey(extractor: string, mediaId: string, profile: FormatPr
 /** Compact when the log holds this many more records than live entries. */
 const COMPACT_SLACK = 1000
 
+async function* records(file: string): AsyncGenerator<{readonly record: ArchiveRecord; readonly raw: string}> {
+  try {
+    await fs.access(file)
+  } catch {
+    return // first run
+  }
+  const lines = createInterface({
+    input: createReadStream(file, {encoding: 'utf8'}),
+    crlfDelay: Number.POSITIVE_INFINITY,
+  })
+  for await (const raw of lines) {
+    if (!raw) continue
+    try {
+      yield {record: JSON.parse(raw) as ArchiveRecord, raw}
+    } catch {
+      // torn write from a crash
+    }
+  }
+}
+
 /**
  * Record of everything downloaded and validated, so re-adding a playlist
  * only fetches what's new or missing, and backups can be re-verified later
  * against the stored SHA-256.
  *
  * Storage is an append-only JSON-lines log: recording a download appends one
- * line (O(1)) instead of rewriting the whole file, loading streams line by
- * line, and a torn last line after a crash is simply skipped. The log is
- * compacted on open when superseded records pile up.
+ * line (O(1)). Memory holds only a compact index (key → path, size, log
+ * line); the full records (title, url, checksum…) stay on disk and are
+ * streamed when needed. The log is compacted (streaming, two passes) when
+ * superseded records pile up.
  */
 export class DownloadArchive {
-  #entries = new Map<string, ArchiveEntry>()
+  #index = new Map<string, Indexed>()
   #records = 0
   #handle: FileHandle | undefined
   #opening: Promise<void> | undefined
@@ -50,7 +77,7 @@ export class DownloadArchive {
   constructor(readonly file: string) {}
 
   get size(): number {
-    return this.#entries.size
+    return this.#index.size
   }
 
   open(): Promise<void> {
@@ -60,70 +87,80 @@ export class DownloadArchive {
 
   async #open(): Promise<void> {
     await fs.mkdir(path.dirname(this.file), {recursive: true})
-    await this.#load()
-    if (this.#records > this.#entries.size + COMPACT_SLACK) await this.#compact()
+    for await (const {record} of records(this.file)) {
+      const line = this.#records++
+      if (record.op === 'put') {
+        const {key, filepath, sizeBytes} = record.entry
+        this.#index.set(key, {filepath, sizeBytes, line})
+      } else if (record.op === 'del') {
+        this.#index.delete(record.key)
+      }
+    }
+    if (this.#records > this.#index.size + COMPACT_SLACK) await this.#compact()
     this.#handle = await fs.open(this.file, 'a')
   }
 
-  async #load(): Promise<void> {
-    let stream: ReturnType<typeof createReadStream>
-    try {
-      await fs.access(this.file)
-      stream = createReadStream(this.file, {encoding: 'utf8'})
-    } catch {
-      return // first run
-    }
-    const lines = createInterface({input: stream, crlfDelay: Number.POSITIVE_INFINITY})
-    for await (const line of lines) {
-      if (line.trim() === '') continue
-      let record: ArchiveRecord
-      try {
-        record = JSON.parse(line) as ArchiveRecord
-      } catch {
-        continue // torn write from a crash
-      }
-      this.#records++
-      if (record.op === 'put') this.#entries.set(record.entry.key, record.entry)
-      else if (record.op === 'del') this.#entries.delete(record.key)
-    }
-  }
-
+  /** Rewrite the log with only the latest record of each live key — streamed, constant memory. */
   async #compact(): Promise<void> {
     const tmp = `${this.file}.${process.pid}.compact`
-    const body = [...this.#entries.values()].map(entry => JSON.stringify({op: 'put', entry})).join('\n')
-    await fs.writeFile(tmp, body ? `${body}\n` : '')
+    const out = createWriteStream(tmp)
+    const reindexed = new Map<string, Indexed>()
+    let line = 0
+    let written = 0
+    for await (const {record, raw} of records(this.file)) {
+      const current = line++
+      if (record.op !== 'put') continue
+      const live = this.#index.get(record.entry.key)
+      if (live?.line !== current) continue // superseded or deleted
+      if (!out.write(`${raw}\n`)) await new Promise<void>(resolve => out.once('drain', () => resolve()))
+      reindexed.set(record.entry.key, {filepath: live.filepath, sizeBytes: live.sizeBytes, line: written++})
+    }
+    await new Promise<void>((resolve, reject) => out.end((error?: Error | null) => (error ? reject(error) : resolve())))
     await fs.rename(tmp, this.file)
-    this.#records = this.#entries.size
+    this.#index = reindexed
+    this.#records = written
   }
 
-  /** The entry for `key`, only if its file still exists with the recorded size. */
-  async find(key: string): Promise<ArchiveEntry | undefined> {
+  /** The archived file for `key`, only if it still exists with the recorded size. */
+  async find(key: string): Promise<ArchiveHit | undefined> {
     await this.open()
-    const entry = this.#entries.get(key)
-    if (!entry) return undefined
-    const stat = await fs.stat(entry.filepath).catch(() => undefined)
-    return stat?.isFile() && stat.size === entry.sizeBytes ? entry : undefined
+    const hit = this.#index.get(key)
+    if (!hit) return undefined
+    const stat = await fs.stat(hit.filepath).catch(() => undefined)
+    return stat?.isFile() && stat.size === hit.sizeBytes
+      ? {filepath: hit.filepath, sizeBytes: hit.sizeBytes}
+      : undefined
   }
 
   async add(entry: Omit<ArchiveEntry, 'completedAt'>): Promise<ArchiveEntry> {
     await this.open()
     const full: ArchiveEntry = {...entry, completedAt: Date.now()}
-    this.#entries.set(full.key, full)
-    await this.#append({op: 'put', entry: full})
+    await this.#append({op: 'put', entry: full}, line => {
+      this.#index.set(full.key, {filepath: full.filepath, sizeBytes: full.sizeBytes, line})
+    })
     return full
   }
 
   async remove(key: string): Promise<void> {
     await this.open()
-    if (this.#entries.delete(key)) await this.#append({op: 'del', key})
+    if (!this.#index.has(key)) return
+    await this.#append({op: 'del', key}, () => this.#index.delete(key))
   }
 
-  async entries(): Promise<readonly ArchiveEntry[]> {
+  /** Every live entry with its full record, streamed from disk (used by verification). */
+  async entries(): Promise<ArchiveEntry[]> {
     await this.open()
-    return [...this.#entries.values()]
+    await this.#writes
+    const entries: ArchiveEntry[] = []
+    let line = 0
+    for await (const {record} of records(this.file)) {
+      const current = line++
+      if (record.op === 'put' && this.#index.get(record.entry.key)?.line === current) entries.push(record.entry)
+    }
+    return entries
   }
 
-  /** Flush pending writes and release the file handle. */
+  /** Flush pending writes and release the file handle and the index. */
   async close(): Promise<void> {
     if (!this.#opening) return
     await this.#opening.catch(() => {})
@@ -131,17 +168,21 @@ export class DownloadArchive {
     await this.#handle?.close()
     this.#handle = undefined
     this.#opening = undefined
-    this.#entries.clear()
+    this.#index.clear()
     this.#records = 0
   }
 
-  /** Writes are chained so concurrent jobs never interleave bytes of two records. */
-  #append(record: ArchiveRecord): Promise<void> {
-    const line = `${JSON.stringify(record)}\n`
+  /**
+   * Writes are chained so concurrent jobs never interleave bytes of two
+   * records; `apply` receives the record's line number and updates the
+   * index as the line lands, so index and file always agree.
+   */
+  #append(record: ArchiveRecord, apply: (line: number) => void): Promise<void> {
+    const text = `${JSON.stringify(record)}\n`
     const write = this.#writes.then(async () => {
       if (!this.#handle) throw new Error('Archive is closed.')
-      await this.#handle.write(line)
-      this.#records++
+      await this.#handle.write(text)
+      apply(this.#records++)
     })
     this.#writes = write.catch(() => {})
     return write

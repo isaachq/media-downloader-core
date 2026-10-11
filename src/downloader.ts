@@ -10,7 +10,7 @@ import {
   type ResolvedBinaries,
   type UpdateResult,
 } from './binaries/manager.js'
-import {analyze, assertHttpUrl} from './core/analyze.js'
+import {analyze, assertHttpUrl, type ExtractResult, extractMany} from './core/analyze.js'
 import {type ArchiveEntry, archiveKey, DownloadArchive} from './core/archive.js'
 import {ensureContainer} from './core/convert.js'
 import {type DownloadedInfo, runYtDlp} from './core/download.js'
@@ -22,7 +22,7 @@ import {newId} from './core/ids.js'
 import {Job, type JobPatch} from './core/job.js'
 import {clampConcurrency, cpuCount, maxConcurrency, TaskPool} from './core/pool.js'
 import {utf8Env} from './core/process.js'
-import {QueueStore} from './core/queue-store.js'
+import {PendingJournal} from './core/queue-store.js'
 import {TraceLog} from './core/trace-log.js'
 import {validateFile} from './core/validate.js'
 import type {
@@ -57,6 +57,7 @@ type Settings = {
   readonly progressIntervalMs: number
   readonly minFreeSpaceBytes: number
   readonly retainFinishedJobs: number
+  readonly metadataMaxAgeMs: number
   readonly extraYtDlpArgs: readonly string[]
 }
 
@@ -90,10 +91,10 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
   readonly #settings: Settings
   readonly #pool: TaskPool<JobId>
   readonly #hashes = new HashPool()
-  readonly #queue: QueueStore<JobRequest>
+  readonly #queue: PendingJournal<JobRequest>
   readonly #jobs = new Map<JobId, Job>()
   /** Terminal jobs in finishing order, for releasing the oldest ones. */
-  readonly #finished: JobId[] = []
+  readonly #finished = new Set<JobId>()
   readonly #analyses = new Set<AbortController>()
   /** Folder holding tools, archive, queue state and logs. */
   readonly dataDir: string
@@ -131,11 +132,12 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       progressIntervalMs: Math.max(0, options.progressIntervalMs ?? 250),
       minFreeSpaceBytes: Math.max(0, options.minFreeSpaceBytes ?? 512 * 1024 * 1024),
       retainFinishedJobs: Math.max(0, Math.floor(options.retainFinishedJobs ?? 1000)),
+      metadataMaxAgeMs: Math.max(0, options.metadataMaxAgeMs ?? 3 * 60 * 60 * 1000),
       extraYtDlpArgs: options.extraYtDlpArgs ?? [],
     }
     this.binaries = new BinaryManager(options.dataDir, options.binaries)
     this.archive = new DownloadArchive(path.join(options.dataDir, 'archive.jsonl'))
-    this.#queue = new QueueStore(path.join(options.dataDir, 'queue.json'), () => this.#pendingRequests())
+    this.#queue = new PendingJournal(path.join(options.dataDir, 'pending.jsonl'), () => this.#pendingEntries())
     this.dataDir = options.dataDir
     this.#workRoot = path.join(options.dataDir, 'work')
     this.#cacheDir = path.join(options.dataDir, 'cache')
@@ -226,6 +228,56 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     }
   }
 
+  /**
+   * Check many single-video urls at once: chunks of up to 8 urls per yt-dlp
+   * process (start-up paid once per chunk), chunks run ⌊CPUs/2⌋ at a time.
+   * Results stream through `onResult`; successes carry metadata cached for
+   * the download (when `keepMetadata` allows) so it isn't extracted twice.
+   */
+  async preflight(
+    items: ReadonlyArray<{readonly url: string; readonly id?: string | undefined}>,
+    opts: {
+      readonly signal?: AbortSignal | undefined
+      readonly onResult?: ((url: string, result: ExtractResult) => void) | undefined
+      readonly keepMetadata?: ((url: string) => boolean) | undefined
+    } = {},
+  ): Promise<Map<string, ExtractResult>> {
+    this.#assertOpen()
+    const bins = await this.binaries.resolve()
+    const analysis = new AbortController()
+    const forward = () => analysis.abort()
+    opts.signal?.addEventListener('abort', forward, {once: true})
+    this.#analyses.add(analysis)
+    const results = new Map<string, ExtractResult>()
+    try {
+      const workers = this.concurrency
+      // small batches: one url per process for full parallelism; large ones: ≤ 8 per process
+      const size = Math.min(8, Math.max(1, Math.ceil(items.length / (workers * 2))))
+      const pool = new TaskPool<number>(workers)
+      for (let start = 0; start < items.length; start += size) {
+        const chunk = items.slice(start, start + size)
+        pool.add(start, async () => {
+          if (analysis.signal.aborted) return
+          const chunkResults = await extractMany(chunk, {
+            ytDlp: bins.ytDlp.exe,
+            env: this.#env,
+            cacheDir: this.#cacheDir,
+            commonArgs: this.#commonArgs,
+            signal: analysis.signal,
+            onResult: opts.onResult,
+            keepMetadata: opts.keepMetadata,
+          })
+          for (const [url, result] of chunkResults) results.set(url, result)
+        })
+      }
+      await pool.whenIdle()
+      return results
+    } finally {
+      this.#analyses.delete(analysis)
+      opts.signal?.removeEventListener('abort', forward)
+    }
+  }
+
   // ─── Queue ────────────────────────────────────────────────────────────────
 
   /**
@@ -239,7 +291,8 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     this.#log('info', `queued ${job.request.url} as ${profileKey(job.request.profile)}`, job)
     this.#pool.add(job.id, () => this.#run(job))
     this.#emit(job, true)
-    this.#queue.touch()
+    // the metadata path is session-scoped (cache is wiped on dispose): never persisted
+    this.#queue.put(job.id, {...job.request, infoJsonPath: undefined})
     return job.snapshot()
   }
 
@@ -302,6 +355,8 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
         this.#log('warn', `Dropped an invalid saved job: ${toJobError(error).message}`)
       }
     }
+    // drop the replayed lines: only the re-added jobs (new ids) stay in the journal
+    await this.#queue.compact()
     return restored
   }
 
@@ -344,7 +399,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
   /** Release every finished job (completed / skipped / failed / cancelled). */
   clearFinished(): void {
     for (const id of this.#finished) this.#jobs.delete(id)
-    this.#finished.length = 0
+    this.#finished.clear()
   }
 
   /** Stop starting new jobs; running ones continue. */
@@ -411,7 +466,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     ])
     for (const job of this.#jobs.values()) job.release()
     this.#jobs.clear()
-    this.#finished.length = 0
+    this.#finished.clear()
     this.removeAllListeners()
   }
 
@@ -428,7 +483,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     const {request} = job
     // deterministic per url + profile: a retry or an app restart resumes the .part files
     const workDir = path.join(this.#workRoot, shortHash(`${request.url}|${profileKey(request.profile)}`))
-    let infoJsonPath = request.infoJsonPath
+    let infoJsonPath = await this.#freshMetadata(job)
     let profile = request.profile
     let strategy: AttemptStrategy = 'primary'
 
@@ -673,6 +728,16 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     this.#log(level, message, undefined, context)
   }
 
+  /** The cached metadata of a job, unless it's gone or older than metadataMaxAgeMs (its media urls would have expired). */
+  async #freshMetadata(job: Job): Promise<string | undefined> {
+    const file = job.request.infoJsonPath
+    if (!file) return undefined
+    const stat = await fs.stat(file).catch(() => undefined)
+    if (stat && Date.now() - stat.mtimeMs <= this.#settings.metadataMaxAgeMs) return file
+    if (stat) this.#log('debug', 'cached metadata is stale — extracting fresh', job)
+    return undefined
+  }
+
   async #skipIfArchived(job: Job, extractor: string | undefined, mediaId: string | undefined): Promise<boolean> {
     if (!this.#settings.useArchive || !extractor || !mediaId) return false
     const entry = await this.archive.find(archiveKey(extractor, mediaId, job.request.profile))
@@ -740,22 +805,27 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     this.emit('job', snapshot)
     if (status === 'completed' || status === 'skipped') this.emit('completed', snapshot)
     else if (status === 'failed') this.emit('failed', snapshot)
-    this.#finished.push(job.id)
+    this.#finished.add(job.id)
     this.#releaseOldFinished()
-    this.#queue.touch()
+    this.#queue.delete(job.id)
   }
 
-  /** Keep memory flat over long sessions: forget the oldest finished jobs beyond the limit. */
+  /**
+   * Keep memory flat over long sessions: forget the oldest finished jobs
+   * beyond the limit. The Set is insertion-ordered, so the oldest is its
+   * first value: O(1) per finished job.
+   */
   #releaseOldFinished(): void {
-    const excess = this.#finished.length - this.#settings.retainFinishedJobs
-    if (excess <= 0) return
-    for (const id of this.#finished.splice(0, excess)) this.#jobs.delete(id)
+    while (this.#finished.size > this.#settings.retainFinishedJobs) {
+      const oldest = this.#finished.values().next().value as JobId
+      this.#finished.delete(oldest)
+      this.#jobs.delete(oldest)
+    }
   }
 
   #forget(id: JobId): void {
     this.#jobs.delete(id)
-    const index = this.#finished.indexOf(id)
-    if (index !== -1) this.#finished.splice(index, 1)
+    this.#finished.delete(id)
   }
 
   /** Status changes go out at once; progress at most every `progressIntervalMs` per job. */
@@ -774,10 +844,10 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     }
   }
 
-  #pendingRequests(): JobRequest[] {
-    const pending: JobRequest[] = []
+  #pendingEntries(): Array<readonly [string, JobRequest]> {
+    const pending: Array<readonly [string, JobRequest]> = []
     for (const job of this.#jobs.values()) {
-      if (!job.terminal) pending.push({...job.request, infoJsonPath: undefined})
+      if (!job.terminal) pending.push([job.id, {...job.request, infoJsonPath: undefined}])
     }
     return pending
   }

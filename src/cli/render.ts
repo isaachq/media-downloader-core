@@ -1,7 +1,16 @@
 // Pure renderers: data in, strings out. No I/O, no clocks — callers pass the
 // animation tick and the width, which keeps every screen unit-testable.
 import type {Diagnosis} from '../binaries/doctor.js'
-import type {AnalysisResult, BatchSnapshot, FailureHint, JobSnapshot, JobStep, LogEntry, StepState} from '../types.js'
+import type {
+  AnalysisResult,
+  BatchSnapshot,
+  FailureHint,
+  JobSnapshot,
+  JobStep,
+  LogEntry,
+  PreflightItem,
+  StepState,
+} from '../types.js'
 import {formatBytes, formatClock, formatRate} from '../util/units.js'
 import {fit, type Style} from './term.js'
 
@@ -190,19 +199,18 @@ export function analysisReport(result: AnalysisResult, style: Style, width: numb
   return lines.join('\n')
 }
 
-export function summary(jobs: readonly JobSnapshot[], elapsedMs: number, sessionId: string, style: Style): string {
-  const count = (status: JobSnapshot['status']) => jobs.filter(j => j.status === status).length
-  const failed = jobs.filter(j => j.outcome === 'failed' && j.status !== 'cancelled')
+/** Totals from the batch counters — exact for any size (the engine releases old finished jobs). */
+export function summary(batch: BatchSnapshot, elapsedMs: number, sessionId: string, style: Style): string {
+  const {succeeded, failed} = batch.jobs
+  const unavailable = batch.preflight.unavailable
   const parts = [
-    style.lime(`✓ ${count('completed')} completed`),
-    style.dim(`↷ ${count('skipped')} skipped`),
-    failed.length ? style.red(`✗ ${failed.length} failed`) : style.dim('✗ 0 failed'),
-    count('cancelled') ? style.yellow(`■ ${count('cancelled')} cancelled`) : '',
+    style.lime(`✓ ${succeeded} completed`),
+    failed ? style.red(`✗ ${failed} failed`) : style.dim('✗ 0 failed'),
+    unavailable ? style.yellow(`⊘ ${unavailable} unavailable`) : '',
     style.dim(`⏱ ${formatClock(elapsedMs / 1000) || '0:00'}`),
   ].filter(Boolean)
   const lines = [style.dark(`  ${'─'.repeat(10)} summary ${'─'.repeat(10)}`), `  ${parts.join('   ')}`]
-  if (failed.length)
-    lines.push(style.dim(`  inspect a failure:  mdc logs <job id>   (e.g. mdc logs ${shortId(failed[0]!.id)})`))
+  if (failed || unavailable) lines.push(style.dim(`  inspect:  mdc logs ${shortId(batch.id)}`))
   lines.push(style.dark(`  session ${sessionId}`))
   return lines.join('\n')
 }
@@ -253,20 +261,27 @@ const BATCH_STATUS_COLOR = {
 } as const
 
 /** Closing report of a batch: its result and every item that couldn't be downloaded, with why. */
-export function batchReport(batch: BatchSnapshot, style: Style, width: number): string {
+export function batchReport(
+  batch: BatchSnapshot,
+  unavailable: readonly PreflightItem[],
+  style: Style,
+  width: number,
+): string {
   const tone = BATCH_STATUS_COLOR[batch.status as keyof typeof BATCH_STATUS_COLOR] ?? 'dim'
-  const total = batch.items.length || batch.jobs.total
+  const total = batch.preflight.total || batch.jobs.total
   const lines = [
     style.dark(`  ── batch ${batch.id} ──`),
     `  ${style[tone](batch.status.toUpperCase())}  ${style.green(fit(batch.title ?? batch.url, Math.max(10, width - 40)))} ${style.dim(`· ${batch.jobs.succeeded}/${total} succeeded`)}`,
   ]
-  for (const item of batch.items) {
-    if (item.state !== 'unavailable') continue
+  const shown = unavailable.slice(0, 50)
+  for (const item of shown) {
     const why = item.error?.hint ? HINT_TEXT[item.error.hint] : (item.error?.message ?? 'unavailable')
     lines.push(
       `  ${style.red('✗')} ${style.dark(`#${item.index}`)} ${style.green(fit(item.title ?? item.url, Math.max(10, width - 60)))} ${style.dim('—')} ${style.yellow(why)}`,
     )
   }
+  if (unavailable.length > shown.length)
+    lines.push(style.dark(`    … ${unavailable.length - shown.length} more unavailable`))
   if (batch.error && batch.jobs.total === 0)
     lines.push(`  ${style.red(`[${batch.error.code}]`)} ${batch.error.message}`)
   return lines.join('\n')

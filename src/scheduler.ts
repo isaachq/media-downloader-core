@@ -1,9 +1,10 @@
 import {EventEmitter} from 'node:events'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
-import {assertHttpUrl} from './core/analyze.js'
+import {assertHttpUrl, isYouTubeMix, MAX_LISTED_ITEMS, MIX_DEFAULT_ITEMS} from './core/analyze.js'
 import {estimateBytes, jobTier, matchingChoice, peakBytes} from './core/cost.js'
 import {cancelledError, DownloadError, toJobError} from './core/errors.js'
+import {WorkMeter} from './core/eta.js'
 import {freeSpace, sanitizeFilename} from './core/files.js'
 import {profileProblem} from './core/formats.js'
 import {newId} from './core/ids.js'
@@ -15,6 +16,7 @@ import type {
   BatchEstimate,
   BatchId,
   BatchRequest,
+  BatchSelection,
   BatchSnapshot,
   BatchStatus,
   JobError,
@@ -28,6 +30,7 @@ import type {
   SchedulerOptions,
   VideoAnalysis,
 } from './types.js'
+import {formatBytes} from './util/units.js'
 
 /** Jobs created per event-loop turn while enqueuing a batch. */
 const ENQUEUE_SLICE = 250
@@ -84,6 +87,8 @@ type Batch = {
   finishedAt: number | undefined
   controller: AbortController | undefined
   snapshot: BatchSnapshot | undefined
+  /** Weighted progress and time left of the running jobs (set when they are enqueued). */
+  meter: WorkMeter | undefined
   lastEmit: number
   emitTimer: NodeJS.Timeout | undefined
 }
@@ -151,10 +156,24 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
     const problem = profileProblem(request.profile)
     if (problem) throw new DownloadError('invalid-request', problem)
     if (!path.isAbsolute(request.outDir)) throw new DownloadError('invalid-request', 'outDir must be an absolute path.')
+    const selectionProblem = request.selection && selectionIssue(request.selection)
+    if (selectionProblem) throw new DownloadError('invalid-request', selectionProblem)
+    if (request.analysis && request.analysis.kind !== 'video') {
+      throw new DownloadError('invalid-request', 'analysis must be the analysis of a single video.')
+    }
+    const {maxItems} = request
+    if (maxItems !== undefined && !(Number.isInteger(maxItems) && maxItems >= 1 && maxItems <= MAX_LISTED_ITEMS)) {
+      throw new DownloadError('invalid-request', `maxItems must be an integer from 1 to ${MAX_LISTED_ITEMS}.`)
+    }
 
     const batch: Batch = {
       id: newId() as BatchId,
-      request: {...request, url, outDir: path.resolve(request.outDir)},
+      request: {
+        ...request,
+        url,
+        outDir: path.resolve(request.outDir),
+        maxItems: maxItems ?? (isYouTubeMix(url) ? MIX_DEFAULT_ITEMS : undefined),
+      },
       status: 'scheduled',
       kind: undefined,
       title: undefined,
@@ -171,6 +190,7 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
       cached: 0,
       enqueuing: false,
       estimate: undefined,
+      meter: undefined,
       error: undefined,
       createdAt: Date.now(),
       startedAt: undefined,
@@ -288,7 +308,13 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
     batch.startedAt = Date.now()
     this.#setStatus(batch, 'checking')
     try {
-      const analysis = await this.#engine.analyze(batch.request.url, {signal})
+      const {maxItems, selection, analysis: known} = batch.request
+      const analysis = selection
+        ? fromSelection(batch.request.url, selection)
+        : (known ?? (await this.#engine.analyze(batch.request.url, {signal, ...(maxItems && {maxEntries: maxItems})})))
+      if (maxItems && analysis.kind === 'playlist' && analysis.entries.length >= maxItems) {
+        this.#engine.log('info', `list capped at its first ${maxItems} items`, {batchId: batch.id})
+      }
       if (analysis.kind === 'playlist') await this.#checkPlaylist(batch, analysis, signal)
       else this.#acceptVideo(batch, analysis)
       if (signal.aborted) throw cancelledError()
@@ -455,7 +481,7 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
     batch.estimate = {bytes, requiredBytes, freeBytes: outFree, unknown, archived, long, heavy}
     this.#emitBatch(batch, true)
 
-    const gb = (n: number) => `${(n / 1024 ** 3).toFixed(1)} GB`
+    const gb = (n: number) => formatBytes(n) || '0 B' // SI units, the same the UIs show
     this.#engine.log(
       'info',
       `forecast: ${gb(bytes)} of new files, ${gb(requiredBytes)} needed at peak, ${outFree === undefined ? '?' : gb(outFree)} free · ${long} long, ${heavy} heavy, ${archived} already downloaded`,
@@ -483,6 +509,7 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
     const folder =
       batch.kind === 'playlist' ? path.join(outDir, sanitizeFilename(batch.title ?? 'Playlist', 100)) : outDir
     batch.enqueuing = true
+    batch.meter = new WorkMeter()
     for (let position = 0; position < batch.items.length; position++) {
       if (position > 0 && position % ENQUEUE_SLICE === 0) {
         this.#emitBatch(batch, false)
@@ -509,6 +536,7 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
         infoJsonPath: item.infoJsonPath,
       }
       const job = this.#engine.add(request)
+      batch.meter.add(job.id, item.estimatedBytes)
       batch.jobs.set(job.id, job.outcome)
       this.#byJob.set(job.id, batch.id)
       // the job owns the metadata file now (it deletes it when done)
@@ -533,12 +561,21 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
       if (isRunning) batch.running.add(job.id)
       else batch.running.delete(job.id)
     }
+    let progressed = false
+    if (isRunning && job.progress.fraction !== undefined) {
+      batch.meter?.progress(job.id, job.progress.fraction)
+      progressed = true
+    }
     if (before !== job.outcome) {
       batch.jobs.set(job.id, job.outcome)
       if (job.outcome === 'success') batch.succeeded++
       else if (job.outcome === 'failed') batch.failed++
+      // already-downloaded and cancelled jobs took no real time: keep them out of the throughput
+      if (job.outcome !== 'in-progress')
+        batch.meter?.finish(job.id, job.status !== 'skipped' && job.status !== 'cancelled')
     }
-    if (before !== job.outcome || isRunning !== wasRunning) this.#emitBatch(batch, false)
+    // throttled by #emitBatch: progress moves the ETA at most every progressIntervalMs
+    if (before !== job.outcome || isRunning !== wasRunning || progressed) this.#emitBatch(batch, false)
     if (!batch.enqueuing && batch.status === 'running' && batch.succeeded + batch.failed === batch.jobs.size) {
       this.#finishRun(batch)
     }
@@ -630,6 +667,7 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
       url: batch.request.url,
       profile: batch.request.profile,
       outDir: batch.request.outDir,
+      maxItems: batch.request.maxItems,
       status: batch.status,
       kind: batch.kind,
       title: batch.title,
@@ -641,6 +679,7 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
       createdAt: batch.createdAt,
       startedAt: batch.startedAt,
       finishedAt: batch.finishedAt,
+      progress: batch.status === 'running' ? batch.meter?.estimate() : undefined,
     })
     return batch.snapshot
   }
@@ -672,4 +711,29 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
 function publicItem(item: ItemState): PreflightItem {
   const {extractor: _extractor, infoJsonPath: _infoJsonPath, ...rest} = item
   return rest
+}
+
+/** Why a preview selection can't be scheduled, or undefined. O(entries). */
+function selectionIssue(selection: BatchSelection): string | undefined {
+  const {entries} = selection
+  if (!Array.isArray(entries) || entries.length === 0) return 'selection.entries must not be empty.'
+  if (entries.length > MAX_LISTED_ITEMS) return `selection.entries holds at most ${MAX_LISTED_ITEMS} items.`
+  for (const entry of entries) {
+    if (typeof entry?.url !== 'string' || !/^https?:\/\//.test(entry.url))
+      return 'Every selected entry needs an http(s) url.'
+  }
+  return undefined
+}
+
+/** A preview selection as the playlist analysis the preflight expects, without asking yt-dlp again. */
+function fromSelection(url: string, selection: BatchSelection): PlaylistAnalysis {
+  return {
+    kind: 'playlist',
+    id: '',
+    url,
+    title: selection.title,
+    extractor: selection.entries[0]?.extractor ?? 'Generic',
+    entries: selection.entries,
+    choices: [],
+  }
 }

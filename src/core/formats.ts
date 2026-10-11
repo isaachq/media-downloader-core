@@ -199,7 +199,29 @@ export type RawFormat = {
 
 const PLAYLIST_HEIGHTS: readonly number[] = [2160, 1440, 1080, 720, 480, 360]
 
-const sizeOf = (f: RawFormat | undefined) => f?.filesize ?? f?.filesize_approx ?? undefined
+/**
+ * Bytes of one stream: the size the site reports, else its average bitrate
+ * (`tbr`, kbit/s) × the duration. YouTube omits sizes for many streams but
+ * always reports bitrates, so the second form is what keeps estimates real.
+ */
+function sizeOf(f: RawFormat | undefined, duration: number | undefined): number | undefined {
+  if (!f) return undefined
+  const reported = f.filesize ?? f.filesize_approx
+  if (reported) return reported
+  return f.tbr && duration ? Math.ceil((f.tbr * 1000 * duration) / 8) : undefined
+}
+
+/**
+ * Containers that are always encoded locally land at the encoder's bitrate,
+ * not the source's (bits/s): MP3 at VBR quality 0 averages ~245 kb/s, FLAC of
+ * 48 kHz stereo music ~900 kb/s, WAV is 48 kHz × 16 bit × 2 channels.
+ * Rounded up — a disk check must not under-count.
+ */
+const ENCODED_AUDIO_BITRATE: Readonly<Partial<Record<AudioContainer, number>>> = {
+  mp3: 260_000,
+  flac: 1_000_000,
+  wav: 1_536_000,
+}
 const isStoryboard = (f: RawFormat) => f.format_id.startsWith('sb') || f.ext === 'mhtml'
 const videoRank = (f: RawFormat) => f.tbr ?? 0
 const audioRank = (f: RawFormat) => f.abr ?? f.tbr ?? 0
@@ -280,7 +302,12 @@ export function genericChoices(): FormatChoice[] {
   return [...video, ...audio]
 }
 
-function videoChoice(catalog: FormatCatalog, container: VideoContainer, height: number): FormatChoice | undefined {
+function videoChoice(
+  catalog: FormatCatalog,
+  container: VideoContainer,
+  height: number,
+  duration: number | undefined,
+): FormatChoice | undefined {
   const rules = VIDEO_RULES[container]
   const byCodec = catalog.video.get(height)
   const video = byCodec && pick(byCodec, rules.video, videoRank)
@@ -292,34 +319,37 @@ function videoChoice(catalog: FormatCatalog, container: VideoContainer, height: 
   const audioNative = muxedCodec ? codecAllowed(rules.audio, muxedCodec) : (audio?.native ?? true)
 
   // estimate only when the video size is known — the audio alone would mislead
-  const videoBytes = sizeOf(video.format)
-  const bytes = videoBytes === undefined ? undefined : videoBytes + (sizeOf(audio?.format) ?? 0)
+  const videoBytes = sizeOf(video.format, duration)
+  const bytes = videoBytes === undefined ? undefined : videoBytes + (sizeOf(audio?.format, duration) ?? 0)
   return choice({kind: 'video', container, maxHeight: height}, !video.native || !audioNative, bytes)
 }
 
-function audioChoice(catalog: FormatCatalog, container: AudioContainer): FormatChoice {
+function audioChoice(catalog: FormatCatalog, container: AudioContainer, duration: number | undefined): FormatChoice {
   const source = pick(catalog.audio, AUDIO_RULES[container].audio, audioRank)
   // only m4a / opus can be stream-copied; mp3, flac and wav are always encoded,
   // which is cheap for audio and therefore not flagged as a conversion
   const copyable = container === 'm4a' || container === 'opus'
-  const lossless = container === 'flac' || container === 'wav'
-  return choice({kind: 'audio', container}, copyable && !source?.native, lossless ? undefined : sizeOf(source?.format))
+  const encoded = ENCODED_AUDIO_BITRATE[container]
+  const bytes = encoded ? duration && Math.ceil((encoded * duration) / 8) : sizeOf(source?.format, duration)
+  return choice({kind: 'audio', container}, copyable && !source?.native, bytes || undefined)
 }
 
 /**
  * Concrete choices for one video: every resolution it offers × every video
  * container, then every audio container — each with a size estimate and
- * whether the target codecs require a local conversion.
+ * whether the target codecs require a local conversion. `duration` (seconds)
+ * turns bitrates into sizes when the site reports none.
  */
-export function planChoices(formats: readonly RawFormat[]): FormatChoice[] {
+export function planChoices(formats: readonly RawFormat[], duration?: number): FormatChoice[] {
   const catalog = catalogFormats(formats)
   const heights = [...catalog.video.keys()].sort((a, b) => b - a)
   const unknown = formats.length === 0 // no metadata at all (some sites): let yt-dlp decide
 
   const video = VIDEO_CONTAINERS.flatMap(container =>
-    heights.flatMap(height => videoChoice(catalog, container, height) ?? []),
+    heights.flatMap(height => videoChoice(catalog, container, height, duration) ?? []),
   )
   const fallback = unknown ? [choice({kind: 'video', container: 'mp4'}, false)] : []
-  const audio = catalog.hasAudio || unknown ? AUDIO_CONTAINERS.map(container => audioChoice(catalog, container)) : []
+  const audio =
+    catalog.hasAudio || unknown ? AUDIO_CONTAINERS.map(container => audioChoice(catalog, container, duration)) : []
   return [...video, ...fallback, ...audio]
 }

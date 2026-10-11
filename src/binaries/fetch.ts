@@ -1,5 +1,4 @@
 import {createHash} from 'node:crypto'
-import {createWriteStream} from 'node:fs'
 import * as fs from 'node:fs/promises'
 import {Readable, Transform} from 'node:stream'
 import * as streams from 'node:stream/promises'
@@ -42,11 +41,13 @@ export async function downloadVerified(
     },
   })
 
+  // the write stream owns the handle: it is closed when the pipeline ends or fails
+  const sink = (await fs.open(dest, 'w')).createWriteStream()
   try {
     await streams.pipeline(
       Readable.fromWeb(response.body as WebReadableStream<Uint8Array>),
       meter,
-      createWriteStream(dest),
+      sink,
       opts.signal ? {signal: opts.signal} : {},
     )
     const actual = hash.digest('hex')
@@ -54,6 +55,7 @@ export async function downloadVerified(
       throw new BinaryError(`Checksum mismatch for ${asset.name}: expected ${asset.sha256}, got ${actual}.`)
     }
   } catch (error) {
+    sink.destroy()
     await fs.rm(dest, {force: true})
     throw error
   }

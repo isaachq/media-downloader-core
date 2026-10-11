@@ -117,7 +117,7 @@ export class PendingJournal<T> {
       return []
     }
     for await (const line of lines) {
-      if (!line) continue
+      if (line.length === 0) continue
       try {
         const record = JSON.parse(line) as JournalRecord<T>
         if (record.op === 'put') live.set(record.id, record.value)

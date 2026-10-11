@@ -21,6 +21,7 @@ export {BinaryError, ffmpegRelease, type Release, ytDlpBuildFor, ytDlpRelease} f
 export {assertHttpUrl} from './core/analyze.js'
 export {type ArchiveEntry, archiveKey, DownloadArchive} from './core/archive.js'
 export {ensureContainer} from './core/convert.js'
+export {estimateBytes, jobTier, peakBytes, TIER_WEIGHT} from './core/cost.js'
 export {classifyYtDlpError, DownloadError, isRetryable} from './core/errors.js'
 export {sanitizeFilename} from './core/files.js'
 export {
@@ -40,6 +41,7 @@ export {
 } from './core/formats.js'
 export {HashPool} from './core/hash-pool.js'
 export {clampConcurrency, cpuCount, maxConcurrency, TaskPool} from './core/pool.js'
+export {searchTrace} from './core/trace-log.js'
 export {ffprobe, summarizeProbe, validateFile} from './core/validate.js'
 export {type ArchiveCheck, MediaDownloader, relaxProfile, retryDelay} from './downloader.js'
 export {BatchScheduler} from './scheduler.js'

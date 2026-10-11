@@ -8,7 +8,7 @@ const N = Number(process.argv[2] ?? 50_000)
 const gc = (globalThis as {gc?: () => void}).gc!
 const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdc-archive-bench-'))
 const file = path.join(dir, 'archive.jsonl')
-const lines: string[] = []
+const batch: string[] = []
 for (let i = 0; i < N; i++) {
   const entry = {
     key: `youtube:vid${String(i).padStart(8, '0')}:audio:m4a:0`,
@@ -23,10 +23,10 @@ for (let i = 0; i < N; i++) {
     duration: 215,
     completedAt: Date.now(),
   }
-  lines.push(JSON.stringify({op: 'put', entry}))
+  batch.push(JSON.stringify({op: 'put', entry}))
 }
-await fs.writeFile(file, `${lines.join('\n')}\n`)
-lines.length = 0
+await fs.writeFile(file, `${batch.join('\n')}\n`)
+batch.length = 0
 gc()
 const before = process.memoryUsage().heapUsed
 const t = performance.now()

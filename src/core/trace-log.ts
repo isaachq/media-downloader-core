@@ -1,6 +1,7 @@
-import {createWriteStream, mkdirSync, type WriteStream} from 'node:fs'
+import {createReadStream, createWriteStream, mkdirSync, type WriteStream} from 'node:fs'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
+import {createInterface} from 'node:readline'
 import type {LogEntry} from '../types.js'
 
 const FILE_PATTERN = /^trace-(\d{4}-\d{2}-\d{2})\.jsonl$/
@@ -78,4 +79,42 @@ export class TraceLog {
       .sort()
       .map(file => path.join(this.dir, file))
   }
+}
+
+/**
+ * Every trace entry where a session / batch / job / attempt / step id starts
+ * with `id` (a prefix of 6+ chars works), oldest first. Files are streamed
+ * line by line with a cheap substring pre-filter before JSON.parse, and
+ * `limit` keeps only the last n in a bounded buffer: constant memory for
+ * any amount of logs.
+ */
+export async function searchTrace(
+  dir: string,
+  id: string,
+  opts: {readonly limit?: number | undefined} = {},
+): Promise<{readonly entries: LogEntry[]; readonly total: number}> {
+  const files = (await fs.readdir(dir).catch(() => [])).filter(file => FILE_PATTERN.test(file)).sort()
+  const kept: LogEntry[] = []
+  let total = 0
+  for (const file of files) {
+    const lines = createInterface({
+      input: createReadStream(path.join(dir, file), {encoding: 'utf8'}),
+      crlfDelay: Number.POSITIVE_INFINITY,
+    })
+    for await (const raw of lines) {
+      if (!raw.includes(id)) continue
+      let entry: LogEntry
+      try {
+        entry = JSON.parse(raw) as LogEntry
+      } catch {
+        continue
+      }
+      const ids = [entry.sessionId, entry.batchId, entry.jobId, entry.attemptId, entry.stepId]
+      if (!ids.some(value => value?.startsWith(id))) continue
+      total++
+      kept.push(entry)
+      if (opts.limit && kept.length > opts.limit) kept.shift()
+    }
+  }
+  return {entries: kept, total}
 }

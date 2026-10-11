@@ -31,6 +31,9 @@ const exe = (name: string) => new RegExp(`^${name}(\\.exe)?$`, 'i')
 
 // ─── yt-dlp: official GitHub releases ──────────────────────────────────────
 
+/** A yt-dlp release tag, e.g. "2026.08.19". */
+export type YtDlpVersion = string
+
 const YT_DLP_REPO = 'https://github.com/yt-dlp/yt-dlp/releases'
 const YT_DLP_API_LATEST = 'https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest'
 
@@ -83,20 +86,20 @@ async function text(fetcher: Fetcher, url: string, signal?: AbortSignal): Promis
  */
 export async function latestYtDlpVersion(
   fetcher: Fetcher = fetch,
-  signal?: AbortSignal,
+  abort?: AbortSignal,
   env: NodeJS.ProcessEnv = process.env,
-): Promise<string> {
+): Promise<YtDlpVersion> {
   try {
-    const location = await resolveRedirect(fetcher, `${YT_DLP_REPO}/latest`, signal)
+    const location = await resolveRedirect(fetcher, `${YT_DLP_REPO}/latest`, abort)
     const tag = /\/releases\/tag\/([^/?#]+)/.exec(location)?.[1]
     if (tag) return decodeURIComponent(tag)
   } catch (error) {
-    if (signal?.aborted) throw error
+    if (abort?.aborted) throw error
   }
   const token = env['GITHUB_TOKEN']
   const response = await fetcher(YT_DLP_API_LATEST, {
     headers: {'User-Agent': 'media-download-core', ...(token && {Authorization: `Bearer ${token}`})},
-    ...(signal && {signal}),
+    ...(abort && {signal: abort}),
   })
   if (!response.ok) throw new BinaryError(`Could not find the latest yt-dlp release (HTTP ${response.status}).`)
   const body = (await response.json()) as {tag_name?: unknown}

@@ -169,34 +169,34 @@ export function doctorReport(d: Diagnosis, style: Style): string {
 }
 
 export function analysisReport(result: AnalysisResult, style: Style, width: number): string {
-  const lines: string[] = []
+  const out: string[] = []
   if (result.kind === 'video') {
     const m = result.media
-    lines.push(
+    out.push(
       `${style.lime('▶')} ${style.bold(style.green(fit(m.title, width - 4)))}`,
       `  ${style.dim([m.extractor, m.uploader, m.duration ? formatClock(m.duration) : undefined].filter(Boolean).join(' · '))}`,
     )
   } else {
-    lines.push(
+    out.push(
       `${style.lime('▤')} ${style.bold(style.green(fit(result.title, width - 4)))}`,
       `  ${style.dim(`${result.extractor} · ${result.entries.length} items`)}`,
     )
     for (const entry of result.entries.slice(0, 15)) {
       const duration = entry.duration ? style.dark(` ${formatClock(entry.duration)}`) : ''
-      lines.push(
+      out.push(
         `  ${style.dark(String(entry.index).padStart(4))} ${style.green(fit(entry.title, width - 16))}${duration}`,
       )
     }
-    if (result.entries.length > 15) lines.push(style.dark(`       … ${result.entries.length - 15} more`))
+    if (result.entries.length > 15) out.push(style.dark(`       … ${result.entries.length - 15} more`))
   }
-  lines.push('', style.dim('  formats  (mdc get <url> -f <format> -q <quality>)'))
+  out.push('', style.dim('  formats  (mdc get <url> -f <format> -q <quality>)'))
   for (const choice of result.choices) {
     const p = choice.profile
     const flags = p.kind === 'video' ? `-f ${p.container} -q ${p.maxHeight ?? 'best'}` : `-f ${p.container}`
     const conv = choice.requiresConversion ? style.yellow(' converts locally') : ''
-    lines.push(`  ${style.green(choice.label.padEnd(44))} ${style.dark(flags)}${conv}`)
+    out.push(`  ${style.green(choice.label.padEnd(44))} ${style.dark(flags)}${conv}`)
   }
-  return lines.join('\n')
+  return out.join('\n')
 }
 
 /** Totals from the batch counters — exact for any size (the engine releases old finished jobs). */

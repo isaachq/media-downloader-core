@@ -1,12 +1,11 @@
-import {createReadStream, readFileSync} from 'node:fs'
-import * as fs from 'node:fs/promises'
+import {readFileSync} from 'node:fs'
 import * as path from 'node:path'
-import {createInterface} from 'node:readline'
 import {fileURLToPath} from 'node:url'
 import {BinaryError} from '../binaries/sources.js'
+import {searchTrace} from '../core/trace-log.js'
 import {MediaDownloader} from '../downloader.js'
 import {BatchScheduler} from '../scheduler.js'
-import type {BatchSnapshot, BinaryPaths, ExecutableSpec, LogEntry} from '../types.js'
+import type {BatchSnapshot, BinaryPaths, ExecutableSpec} from '../types.js'
 import {formatBytes} from '../util/units.js'
 import {type Command, type GlobalOptions, HELP, parseCli} from './args.js'
 import {banner, bootSequence} from './banner.js'
@@ -318,38 +317,9 @@ async function verify(ctx: Context): Promise<number> {
   }
 }
 
-/**
- * Stream every trace file line by line (constant memory, any size) and keep
- * entries where any id starts with the given prefix; `limit` keeps only the
- * last n with a ring buffer.
- */
 async function logs(ctx: Context, id: string, limit?: number): Promise<number> {
-  const dir = path.join(ctx.dataDir, 'logs')
-  const files = (await fs.readdir(dir).catch(() => [])).filter(f => /^trace-.*\.jsonl$/.test(f)).sort()
-  const matches = (entry: LogEntry) =>
-    [entry.sessionId, entry.batchId, entry.jobId, entry.attemptId, entry.stepId].some(value => value?.startsWith(id))
-  const kept: LogEntry[] = []
-  let total = 0
-  for (const file of files) {
-    const lines = createInterface({
-      input: createReadStream(path.join(dir, file), {encoding: 'utf8'}),
-      crlfDelay: Number.POSITIVE_INFINITY,
-    })
-    for await (const raw of lines) {
-      if (!raw.includes(id)) continue // cheap pre-filter before JSON.parse
-      let entry: LogEntry
-      try {
-        entry = JSON.parse(raw) as LogEntry
-      } catch {
-        continue
-      }
-      if (!matches(entry)) continue
-      total++
-      kept.push(entry)
-      if (limit && kept.length > limit) kept.shift()
-    }
-  }
-  for (const entry of kept) {
+  const {entries, total} = await searchTrace(path.join(ctx.dataDir, 'logs'), id, {limit})
+  for (const entry of entries) {
     if (ctx.global.json) json(ctx.io.out, entry)
     else line(ctx.io.out, ctx.global.verbose ? traceLine(entry, ctx.style) : logLine(entry, ctx.style))
   }
@@ -357,7 +327,7 @@ async function logs(ctx: Context, id: string, limit?: number): Promise<number> {
     line(
       ctx.io.out,
       total
-        ? ctx.style.dark(`\n  ${kept.length} of ${total} entries for ${id}`)
+        ? ctx.style.dark(`\n  ${entries.length} of ${total} entries for ${id}`)
         : ctx.style.yellow(`no entries for ${id}`),
     )
   }

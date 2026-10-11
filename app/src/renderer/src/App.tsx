@@ -3,7 +3,7 @@ import enUS from 'antd/locale/en_US'
 import esES from 'antd/locale/es_ES'
 import type {BatchSnapshot, Diagnosis} from 'media-downloader-core'
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react'
-import type {AppInfo, AppSettings} from '../../shared/contract'
+import {type AppInfo, type AppSettings, pickLanguage} from '../../shared/contract'
 import {api} from './api'
 import {BOOT_PHASES, type BootPhase, type BootProgress, bootErrorMessage, retrying} from './boot'
 import {AboutModal} from './components/AboutModal'
@@ -209,7 +209,7 @@ export function App({target: injected}: {readonly target?: AppStore}) {
   if (!boot) {
     // before settings arrive, follow the system language and theme
     const early = loaded.current.settings
-    const language = early?.language ?? (navigator.language.toLowerCase().startsWith('es') ? 'es' : 'en')
+    const language = early?.language ?? pickLanguage(navigator.languages)
     const bootDark = early ? early.theme === 'dark' || (early.theme === 'system' && systemDark) : systemDark
     return (
       <ConfigProvider

@@ -5,15 +5,21 @@ import {
   AUDIO_FORMATS,
   type Format,
   type Language,
+  pickLanguage,
   QUALITIES,
   type Quality,
   type ThemeMode,
   VIDEO_FORMATS,
 } from '../shared/contract'
 
-export function defaultSettings(downloadDir: string, maxConcurrency: number, locale: string): AppSettings {
+/** First-run settings; `languages` are the system's preferred languages, in order. */
+export function defaultSettings(
+  downloadDir: string,
+  maxConcurrency: number,
+  languages: readonly string[],
+): AppSettings {
   return {
-    language: locale.toLowerCase().startsWith('es') ? 'es' : 'en',
+    language: pickLanguage(languages),
     theme: 'system',
     downloadDir,
     format: 'mp4',

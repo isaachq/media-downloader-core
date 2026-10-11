@@ -265,7 +265,8 @@ else {
     const max = MediaDownloader.maxConcurrency()
     settings = new SettingsStore(
       path.join(app.getPath('userData'), 'settings.json'),
-      defaultSettings(downloadDir, max, app.getLocale()),
+      // the user's ordered language list (System Settings), not just the app's UI locale
+      defaultSettings(downloadDir, max, [...app.getPreferredSystemLanguages(), app.getLocale()]),
       max,
     )
     const current = await settings.load()

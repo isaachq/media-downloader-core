@@ -1,6 +1,6 @@
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
-import {writeAtomic} from '../core/files.js'
+import {removeRetrying, renameRetrying, writeAtomic} from '../core/files.js'
 
 export type ManagedTool = 'yt-dlp' | 'ffmpeg'
 
@@ -87,8 +87,9 @@ export class ManagedStore {
     executables: Readonly<Record<string, string>>,
   ): Promise<ManagedInstall> {
     const finalDir = path.join(this.root, version)
-    await fs.rm(finalDir, {recursive: true, force: true})
-    await fs.rename(stagingDir, finalDir)
+    // the version was just test-run from staging: on Windows its files may still be locked for a moment
+    await removeRetrying(finalDir)
+    await renameRetrying(stagingDir, finalDir)
     await writeAtomic(this.#pointerFile, JSON.stringify({version, executables} satisfies Pointer))
     void this.prune(version)
     const absolute = Object.fromEntries(

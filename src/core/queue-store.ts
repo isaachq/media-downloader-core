@@ -3,7 +3,7 @@ import type {FileHandle} from 'node:fs/promises'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import {createInterface} from 'node:readline'
-import {writeAtomic} from './files.js'
+import {renameRetrying, writeAtomic} from './files.js'
 
 type StoreFile<T> = {readonly version: 1; readonly requests: readonly T[]}
 
@@ -155,7 +155,7 @@ export class PendingJournal<T> {
       await new Promise<void>((resolve, reject) =>
         out.end((error?: Error | null) => (error ? reject(error) : resolve())),
       )
-      await fs.rename(tmp, this.file)
+      await renameRetrying(tmp, this.file)
       this.#lines = entries.length
     })
     this.#writes = write.catch(() => {})

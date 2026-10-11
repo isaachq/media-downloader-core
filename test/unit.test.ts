@@ -11,7 +11,14 @@ import {estimateBytes, jobTier, peakBytes, TIER_WEIGHT} from '../src/core/cost.j
 import {ProgressTracker} from '../src/core/download.js'
 import {classifyYtDlpError, isRetryable} from '../src/core/errors.js'
 import {WorkMeter} from '../src/core/eta.js'
-import {folderName, mediaFileStem, portableName, sanitizeFilename, uniquePath} from '../src/core/files.js'
+import {
+  folderName,
+  mediaFileStem,
+  portableName,
+  renameRetrying,
+  sanitizeFilename,
+  uniquePath,
+} from '../src/core/files.js'
 import {
   catalogFormats,
   normalizeCodec,
@@ -183,6 +190,46 @@ describe('job cost', () => {
     assert.equal(isYouTubeMix('https://www.youtube.com/playlist?list=PL0123'), false)
     assert.equal(isYouTubeMix('https://example.com/watch?list=RD1'), false)
     assert.equal(isYouTubeMix('not a url'), false)
+  })
+})
+
+describe('renames on Windows (antivirus locks)', () => {
+  const locked = (times: number, code = 'EPERM') => {
+    let calls = 0
+    return {
+      calls: () => calls,
+      rename: async () => {
+        calls++
+        if (calls <= times) throw Object.assign(new Error(code), {code})
+      },
+    }
+  }
+  const noWait = async () => {}
+
+  it('retries a briefly locked file on Windows until it is released', async () => {
+    const fake = locked(3)
+    await renameRetrying('a', 'b', {platform: 'win32', rename: fake.rename, sleep: noWait})
+    assert.equal(fake.calls(), 4)
+  })
+
+  it('fails at once elsewhere: there EPERM is a real permission problem', async () => {
+    const fake = locked(1)
+    await assert.rejects(renameRetrying('a', 'b', {platform: 'darwin', rename: fake.rename, sleep: noWait}), /EPERM/)
+    assert.equal(fake.calls(), 1)
+  })
+
+  it('gives up after ~9 s of waits, and never retries other errors', async () => {
+    const waits: number[] = []
+    const forever = locked(Number.POSITIVE_INFINITY, 'EBUSY')
+    await assert.rejects(
+      renameRetrying('a', 'b', {platform: 'win32', rename: forever.rename, sleep: async ms => waits.push(ms)}),
+      /EBUSY/,
+    )
+    assert.equal(forever.calls(), 12)
+    assert.ok(waits.reduce((a, b) => a + b, 0) < 10_000)
+    const missing = locked(1, 'ENOENT')
+    await assert.rejects(renameRetrying('a', 'b', {platform: 'win32', rename: missing.rename, sleep: noWait}), /ENOENT/)
+    assert.equal(missing.calls(), 1)
   })
 })
 

@@ -5,6 +5,7 @@ import * as path from 'node:path'
 import {Readable, Transform} from 'node:stream'
 import * as streams from 'node:stream/promises'
 import type {ReadableStream as WebReadableStream} from 'node:stream/web'
+import {setTimeout as sleep} from 'node:timers/promises'
 
 const WINDOWS_RESERVED = /^(con|prn|aux|nul|com\d|lpt\d)$/i
 
@@ -116,6 +117,42 @@ export async function uniquePath(target: string): Promise<string> {
   }
 }
 
+/** Errors Windows raises while another process briefly holds a file (antivirus scan, indexer, a process just exited). */
+const TRANSIENT_LOCKS = new Set(['EPERM', 'EACCES', 'EBUSY'])
+const RENAME_ATTEMPTS = 12 // 50 ms doubling, capped at 1 s: ~9 s in all
+
+/**
+ * `fs.rename` that waits out Windows' short-lived locks: right after an .exe
+ * is written or run, Defender scans it and renaming its folder fails with
+ * EPERM for a moment. Elsewhere those errors are real (permissions) and are
+ * thrown at once.
+ */
+export async function renameRetrying(
+  from: string,
+  to: string,
+  deps: {
+    readonly platform?: NodeJS.Platform
+    readonly rename?: (from: string, to: string) => Promise<void>
+    readonly sleep?: (ms: number) => Promise<unknown>
+  } = {},
+): Promise<void> {
+  const rename = deps.rename ?? fs.rename
+  const windows = (deps.platform ?? process.platform) === 'win32'
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await rename(from, to)
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code ?? ''
+      if (!windows || !TRANSIENT_LOCKS.has(code) || attempt >= RENAME_ATTEMPTS) throw error
+      await (deps.sleep ?? sleep)(Math.min(1000, 50 * 2 ** (attempt - 1)))
+    }
+  }
+}
+
+/** Delete, retrying the same Windows locks (Node's own retry for rm). */
+export const removeRetrying = (target: string) =>
+  fs.rm(target, {recursive: true, force: true, maxRetries: 8, retryDelay: 100})
+
 /**
  * Move a validated file into its final folder. Rename when on the same
  * volume (instant, atomic); otherwise copy → verify size → rename → delete,
@@ -126,7 +163,7 @@ export async function moveIntoPlace(source: string, destination: string): Promis
   await fs.mkdir(path.dirname(destination), {recursive: true})
   const target = await uniquePath(destination)
   try {
-    await fs.rename(source, target)
+    await renameRetrying(source, target)
     return target
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'EXDEV') throw error
@@ -137,7 +174,7 @@ export async function moveIntoPlace(source: string, destination: string): Promis
     await fs.copyFile(source, partial)
     const [a, b] = await Promise.all([fs.stat(source), fs.stat(partial)])
     if (a.size !== b.size) throw new Error(`Incomplete copy (${b.size} of ${a.size} bytes).`)
-    await fs.rename(partial, target)
+    await renameRetrying(partial, target)
   } catch (error) {
     await fs.rm(partial, {force: true})
     throw error
@@ -201,7 +238,7 @@ export async function writeAtomic(file: string, data: string): Promise<void> {
   await fs.mkdir(path.dirname(file), {recursive: true})
   const tmp = `${file}.${process.pid}.tmp`
   await fs.writeFile(tmp, data)
-  await fs.rename(tmp, file)
+  await renameRetrying(tmp, file)
 }
 
 /** True if `child` is inside `parent` (after resolving `..`). */

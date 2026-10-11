@@ -4,6 +4,7 @@ import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import {createInterface} from 'node:readline'
 import type {FormatProfile} from '../types.js'
+import {renameRetrying} from './files.js'
 import {profileKey} from './formats.js'
 
 export type ArchiveEntry = {
@@ -116,7 +117,7 @@ export class DownloadArchive {
       reindexed.set(record.entry.key, {filepath: live.filepath, sizeBytes: live.sizeBytes, line: written++})
     }
     await new Promise<void>((resolve, reject) => out.end((error?: Error | null) => (error ? reject(error) : resolve())))
-    await fs.rename(tmp, this.file)
+    await renameRetrying(tmp, this.file)
     this.#index = reindexed
     this.#records = written
   }

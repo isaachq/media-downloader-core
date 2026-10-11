@@ -11,6 +11,10 @@ CI runs the app's unit, UI and end-to-end tests on Ubuntu (on a virtual
 display) next to macOS and Windows, and builds the Linux packages on every
 pull request. Same features as 0.2.0-beta.1.
 
+**Language.** The first launch follows the system's ordered list of preferred
+languages: the first of Spanish / English in it wins, English when neither is
+there. The EN / ES switch still overrides it and is remembered.
+
 **macOS.** The app is now ad-hoc signed. Earlier betas were not signed at all,
 which Apple Silicon Macs refuse to run (reported as "damaged"); Intel Macs
 only showed the usual warning. Opening it the first time still needs

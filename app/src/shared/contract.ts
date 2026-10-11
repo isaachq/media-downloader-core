@@ -18,6 +18,19 @@ import type {
 } from 'media-downloader-core'
 
 export type Language = 'en' | 'es'
+
+/**
+ * The interface language for a system's preferred languages, in the user's
+ * order (e.g. ["es-MX", "en-US"]): the first one the app speaks wins, English
+ * when none is Spanish or English. O(n).
+ */
+export function pickLanguage(preferred: readonly string[]): Language {
+  for (const tag of preferred) {
+    const base = tag.toLowerCase().split(/[-_]/, 1)[0]
+    if (base === 'es' || base === 'en') return base
+  }
+  return 'en'
+}
 export type ThemeMode = 'system' | 'light' | 'dark'
 export type Format = VideoContainer | AudioContainer
 export type Quality = 'best' | '2160' | '1440' | '1080' | '720' | '480' | '360'

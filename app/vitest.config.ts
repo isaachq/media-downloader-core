@@ -5,7 +5,7 @@ const config = defineConfig({
   plugins: [react()],
   test: {
     environment: 'jsdom',
-    include: ['src/renderer/src/**/*.test.tsx', 'src/main/**/*.test.ts'],
+    include: ['src/renderer/src/**/*.test.tsx', 'src/main/**/*.test.ts', 'src/shared/**/*.test.ts'],
     setupFiles: ['src/renderer/src/test/setup.ts'],
     css: false,
     testTimeout: 20_000,

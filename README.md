@@ -61,23 +61,27 @@ npm test           # UI tests (Vitest + Testing Library)
 npm run test:e2e   # the real Electron app end to end (Playwright, fake tools)
 npm run dist:mac   # dist/*.dmg + *.zip (arm64, x64)
 npm run dist:win   # dist/*.exe installer (x64, arm64)
-npm run dist:linux # dist/*.AppImage + *.deb (this machine's architecture)
+npm run dist:linux # dist/*.AppImage + *.deb + *.rpm (this machine's architecture; .rpm needs rpmbuild)
 ```
 
 Beta builds are not code-signed yet: on macOS open the app with right click →
 Open the first time; on Windows choose "More info → Run anyway" in SmartScreen.
 
-**Linux** (x64 and arm64). The `.deb` is the recommended way on Ubuntu / Debian:
+**Linux** (x64 and arm64) — pick your distribution's package:
 
 ```bash
-sudo apt install ./Media-Download-Core-<version>-linux-amd64.deb   # arm64: …-linux-arm64.deb
+# Ubuntu / Debian
+sudo apt install ./Media-Download-Core-<version>-linux-amd64.deb
+# Fedora / RHEL / openSUSE
+sudo dnf install ./Media-Download-Core-<version>-linux-x86_64.rpm
+# then, or from the app menu
 media-download-core
 ```
 
-It adds the menu entry and, on Ubuntu 24.04+, an AppArmor profile that lets
-Chromium's sandbox run (24.04 restricts the user namespaces it needs). The
-`.AppImage` runs on most other distributions (`chmod +x` it first); on Ubuntu
-24.04+ prefer the `.deb`, since an AppImage gets no such profile. Data, tools
+The `.deb` adds an AppArmor profile on Ubuntu 24.04+ so Chromium's sandbox
+can run (24.04 restricts the user namespaces it needs). The `.AppImage` runs on
+most other distributions (`chmod +x` it first; Fedora needs `sudo dnf install
+fuse-libs` for it); on Ubuntu 24.04+ prefer the `.deb`. Data, tools
 and the download history live in `~/.config/Media Download Core`, shared with `mdc`.
 
 The interface is built with [Ant Design](https://github.com/ant-design/ant-design)

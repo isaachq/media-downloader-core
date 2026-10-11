@@ -81,3 +81,12 @@ jobs:
         if: runner.os == 'Linux'
         run: xvfb-run -a npm run test:e2e
         working-directory: app
+      # packaging breaks quietly (a missing tool, a bad target): build the Linux packages
+      # on every PR so a release tag never finds out first
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update && sudo apt-get install -y rpm
+          npx electron-builder --linux --publish never
+          ls -l dist/*.AppImage dist/*.deb dist/*.rpm
+        working-directory: app

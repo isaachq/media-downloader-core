@@ -1,11 +1,15 @@
 # Changelog
 
-## Unreleased
+## App 0.2.0-beta.2 · library 1.1.0
 
-**Linux.** The desktop app ships for Linux as `.AppImage` and `.deb` (x64 and
-arm64). The `.deb` installs an AppArmor profile so Chromium's sandbox works on
-Ubuntu 24.04+. CI runs the app's unit, UI and end-to-end tests on Ubuntu
-(on a virtual display), next to macOS and Windows.
+**Linux.** The desktop app now ships for Linux, x64 and arm64:
+`.deb` (Ubuntu / Debian), `.rpm` (Fedora / RHEL / openSUSE) and `.AppImage`
+(most other distributions). The `.deb` installs an AppArmor profile so
+Chromium's sandbox works on Ubuntu 24.04+.
+
+CI runs the app's unit, UI and end-to-end tests on Ubuntu (on a virtual
+display) next to macOS and Windows, and builds the Linux packages on every
+pull request. Same features as 0.2.0-beta.1.
 
 ## App 0.2.0-beta.1 · library 1.1.0
 

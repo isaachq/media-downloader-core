@@ -4,6 +4,7 @@ import * as path from 'node:path'
 import {Readable, Transform} from 'node:stream'
 import * as streams from 'node:stream/promises'
 import type {ReadableStream as WebReadableStream} from 'node:stream/web'
+import {renameRetrying} from 'media-downloader-core'
 import type {UpdateAsset} from './feed'
 
 /** No byte for this long: the transfer is stuck. */
@@ -58,7 +59,8 @@ export async function downloadUpdate(opts: {
     if (actual !== opts.asset.sha256) {
       throw new UpdateError('The update does not match the checksum GitHub published — it was not installed.')
     }
-    await fs.rename(part, target)
+    // Defender scans a freshly written installer: on Windows the rename may need a moment
+    await renameRetrying(part, target)
     return target
   } catch (error) {
     await fs.rm(part, {force: true})

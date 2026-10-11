@@ -10,7 +10,7 @@ Windows runs the installer silently, Linux replaces the AppImage or installs the
 .deb / .rpm through the password prompt. Tested end to end on macOS: a packaged
 app updated itself to a new build in under 4 seconds.
 
-**TikTok, built in.** Paste a TikTok video, short link or @profile: the
+**TikTok, built in.** Paste a TikTok video, short link or profile (`tiktok.com/@user`): the
 library reads TikTok itself (public pages and listing, no yt-dlp, no request
 signatures) and backs up whole profiles — up to 500 posts by default — through
 the same preview, pool, retries, conversion and integrity checks. MP4 prefers

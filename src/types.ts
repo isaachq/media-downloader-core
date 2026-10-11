@@ -1,4 +1,5 @@
 import type {FileNameStyle} from './core/files.js'
+import type {TikTokOptions} from './sources/tiktok/source.js'
 // Public types. Everything a host application (CLI, Electron, server) needs to
 // drive the engine and render its state. User-facing text is always English
 // and paired with a stable `code` + `params`, so a UI can localize by code.
@@ -251,7 +252,8 @@ export type JobStep = {
 
 /** One try at running the job's steps. */
 /** How an attempt tried: as requested, with fresh metadata, or with a relaxed format. */
-export type AttemptStrategy = 'primary' | 'fresh-extraction' | 'format-fallback'
+/** extractor-fallback: a native source (TikTok) could not read the post — yt-dlp tries instead. */
+export type AttemptStrategy = 'primary' | 'fresh-extraction' | 'format-fallback' | 'extractor-fallback'
 
 export type AttemptRecord = {
   readonly id: TraceId
@@ -438,9 +440,10 @@ export type BatchRequest = {
   /** Playlist items to take (1-based). */
   readonly items?: readonly number[] | undefined
   /**
-   * Take at most this many playlist entries (1–5000), listed by yt-dlp itself so
-   * the rest is never fetched. Default: 50 for a YouTube Mix (an endless,
-   * auto-generated radio — `isYouTubeMix()`), 5000 for anything else.
+   * Take at most this many playlist entries (1–5000), listed by the extractor
+   * itself so the rest is never fetched. Default: 50 for a YouTube Mix (an
+   * endless, auto-generated radio — `isYouTubeMix()`), 500 for a TikTok
+   * profile, 5000 for anything else.
    */
   readonly maxItems?: number | undefined
   /**
@@ -534,6 +537,11 @@ export type DownloaderOptions = {
    * the title as is, made safe for macOS and Windows.
    */
   readonly fileNames?: FileNameStyle | undefined
+  /**
+   * TikTok through the built-in extractor (pages + public listing, paced; no
+   * yt-dlp). `false` hands TikTok urls to yt-dlp like any other site.
+   */
+  readonly tiktok?: false | TikTokOptions | undefined
   /** Store a SHA-256 of every finished file in the archive. Default true. */
   readonly checksums?: boolean | undefined
   /** Skip media already downloaded with the same profile. Default true. */

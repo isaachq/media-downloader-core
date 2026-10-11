@@ -12,7 +12,7 @@ import {
 } from './binaries/manager.js'
 import {analyze, assertHttpUrl, type ExtractResult, extractMany} from './core/analyze.js'
 import {type ArchiveEntry, archiveKey, DownloadArchive} from './core/archive.js'
-import {ensureContainer} from './core/convert.js'
+import {ensureContainer, extractAudio, type MediaTags, writeTags} from './core/convert.js'
 import {jobTier, peakBytes, TIER_WEIGHT} from './core/cost.js'
 import {type DownloadedInfo, runYtDlp} from './core/download.js'
 import {cancelledError, DownloadError, isRetryable, toJobError} from './core/errors.js'
@@ -33,7 +33,9 @@ import {clampConcurrency, cpuCount, maxConcurrency, TaskPool} from './core/pool.
 import {utf8Env} from './core/process.js'
 import {PendingJournal} from './core/queue-store.js'
 import {TraceLog} from './core/trace-log.js'
-import {validateFile} from './core/validate.js'
+import {ffprobe, summarizeProbe, validateFile} from './core/validate.js'
+import {type MediaSource, needsFallback} from './sources/source.js'
+import {TikTokSource} from './sources/tiktok/source.js'
 import type {
   AnalysisResult,
   AttemptStrategy,
@@ -102,6 +104,8 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
   readonly #settings: Settings
   readonly #pool: TaskPool<JobId>
   readonly #hashes = new HashPool()
+  /** Sites handled natively instead of by yt-dlp. */
+  readonly #sources: readonly MediaSource[]
   readonly #queue: PendingJournal<JobRequest>
   readonly #jobs = new Map<JobId, Job>()
   /** Terminal jobs in finishing order, for releasing the oldest ones. */
@@ -148,6 +152,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       longVideoMinutes: Math.max(1, options.longVideoMinutes ?? 30),
       extraYtDlpArgs: options.extraYtDlpArgs ?? [],
     }
+    this.#sources = options.tiktok === false ? [] : [new TikTokSource(options.tiktok ?? {})]
     this.binaries = new BinaryManager(options.dataDir, options.binaries)
     this.archive = new DownloadArchive(path.join(options.dataDir, 'archive.jsonl'))
     this.#queue = new PendingJournal(path.join(options.dataDir, 'pending.jsonl'), () => this.#pendingEntries())
@@ -245,13 +250,25 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
   /** A single video → concrete format choices. A playlist → entries + generic profiles. */
   async analyze(url: string, opts: {signal?: AbortSignal; maxEntries?: number} = {}): Promise<AnalysisResult> {
     this.#assertOpen()
-    const bins = await this.binaries.resolve()
     // tracked so dispose() can stop it; linked to the caller's signal
     const analysis = new AbortController()
     const forward = () => analysis.abort()
     opts.signal?.addEventListener('abort', forward, {once: true})
     this.#analyses.add(analysis)
     try {
+      const source = this.#sourceFor(url)
+      if (source) {
+        try {
+          return await source.analyze(url, {
+            signal: analysis.signal,
+            ...(opts.maxEntries !== undefined && {maxEntries: opts.maxEntries}),
+          })
+        } catch (error) {
+          if (!(error instanceof DownloadError) || !needsFallback(error.details)) throw error
+          this.#log('warn', `${source.name}: ${error.message} — reading ${url} with yt-dlp instead`)
+        }
+      }
+      const bins = await this.binaries.resolve()
       return await analyze(url, {
         ytDlp: bins.ytDlp.exe,
         env: this.#env,
@@ -288,12 +305,39 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     this.#analyses.add(analysis)
     const results = new Map<string, ExtractResult>()
     try {
+      // natively handled items go to their source (paced by it); the rest to yt-dlp — in parallel
+      const bySource = new Map<MediaSource, Array<(typeof items)[number]>>()
+      const generic: Array<(typeof items)[number]> = []
+      for (const item of items) {
+        const source = this.#sourceFor(item.url)
+        if (!source) generic.push(item)
+        else bySource.set(source, [...(bySource.get(source) ?? []), item])
+      }
+      // items a native source can't read right now (blocked / changed) are re-checked by yt-dlp
+      const handBack: Array<(typeof items)[number]> = []
+      const native = Promise.all(
+        [...bySource].map(async ([source, own]) => {
+          const byUrl = new Map(own.map(item => [item.url, item]))
+          await source.preflight(own, {
+            signal: analysis.signal,
+            onResult: (url, result) => {
+              if (!result.ok && needsFallback(result.error.details)) {
+                handBack.push(byUrl.get(url)!)
+                return
+              }
+              results.set(url, result)
+              opts.onResult?.(url, result)
+            },
+          })
+        }),
+      )
+
       const workers = this.concurrency
       // small batches: one url per process for full parallelism; large ones: ≤ 8 per process
-      const size = Math.min(8, Math.max(1, Math.ceil(items.length / (workers * 2))))
+      const size = Math.min(8, Math.max(1, Math.ceil(generic.length / (workers * 2))))
       const pool = new TaskPool<number>(workers)
-      for (let start = 0; start < items.length; start += size) {
-        const chunk = items.slice(start, start + size)
+      for (let start = 0; start < generic.length; start += size) {
+        const chunk = generic.slice(start, start + size)
         pool.add(start, async () => {
           if (analysis.signal.aborted) return
           const chunkResults = await extractMany(chunk, {
@@ -308,12 +352,46 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
           for (const [url, result] of chunkResults) results.set(url, result)
         })
       }
-      await pool.whenIdle()
+      await Promise.all([pool.whenIdle(), native])
+      if (handBack.length) {
+        this.#log(
+          'warn',
+          `${handBack.length} item(s) handed to yt-dlp: the built-in extractor is blocked or out of date`,
+        )
+        const step = Math.min(8, Math.max(1, Math.ceil(handBack.length / (workers * 2))))
+        for (let start = 0; start < handBack.length; start += step) {
+          const chunk = handBack.slice(start, start + step)
+          pool.add(-1 - start, async () => {
+            if (analysis.signal.aborted) return
+            const chunkResults = await extractMany(chunk, {
+              ytDlp: bins.ytDlp.exe,
+              env: this.#env,
+              cacheDir: this.#cacheDir,
+              commonArgs: this.#commonArgs,
+              signal: analysis.signal,
+              onResult: opts.onResult,
+              keepMetadata: opts.keepMetadata,
+            })
+            for (const [url, result] of chunkResults) results.set(url, result)
+          })
+        }
+        await pool.whenIdle()
+      }
       return results
     } finally {
       this.#analyses.delete(analysis)
       opts.signal?.removeEventListener('abort', forward)
     }
+  }
+
+  /** The native source for a url, if any. O(sources). */
+  #sourceFor(url: string): MediaSource | undefined {
+    return this.#sources.find(source => source.available && source.handles(url))
+  }
+
+  /** Whether a file has an audio stream. */
+  async #hasAudio(bins: ResolvedBinaries, file: string, signal: AbortSignal): Promise<boolean> {
+    return summarizeProbe(await ffprobe(bins.ffprobe.exe, file, signal)).audio !== undefined
   }
 
   // ─── Queue ────────────────────────────────────────────────────────────────
@@ -536,7 +614,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
         this.#emit(job, true)
         try {
           await this.#ensureDiskSpace(request)
-          await this.#attempt(job, bins, profile, workDir, infoJsonPath, signal)
+          await this.#attempt(job, bins, profile, workDir, infoJsonPath, strategy, signal)
           job.endAttempt(undefined)
           if (attempt > 1) this.#log('info', `succeeded on attempt ${attempt}/${job.maxAttempts}`, job)
           this.#finish(job, 'completed', {})
@@ -551,8 +629,21 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
           // a corrupt partial may cause anything but a network hiccup: start clean
           if (failure.code !== 'network') await fs.rm(workDir, {recursive: true, force: true})
           // next attempt extracts fresh metadata — cached media urls may have expired
-          if (infoJsonPath) strategy = 'fresh-extraction'
+          if (infoJsonPath && strategy !== 'extractor-fallback') strategy = 'fresh-extraction'
           infoJsonPath = undefined
+
+          // a native source that can't read the site any more: same request through yt-dlp
+          if (needsFallback(failure.details) && strategy !== 'extractor-fallback' && attempt < job.maxAttempts) {
+            job.endAttempt(jobError, 0)
+            this.#log(
+              'warn',
+              `attempt ${attempt}/${job.maxAttempts}: built-in extractor failed (${failure.message}) — trying yt-dlp`,
+              job,
+              {code: failure.code},
+            )
+            strategy = 'extractor-fallback'
+            continue
+          }
 
           // alternative before giving up: the requested resolution doesn't exist → best available
           const relaxed =
@@ -615,38 +706,55 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     profile: FormatProfile,
     workDir: string,
     infoJsonPath: string | undefined,
+    strategy: AttemptStrategy,
     signal: AbortSignal,
   ): Promise<void> {
     const {request} = job
     await fs.mkdir(workDir, {recursive: true})
+    // native source unless an earlier attempt already fell back to yt-dlp
+    const source = strategy === 'extractor-fallback' ? undefined : this.#sourceFor(request.url)
+    let tags: MediaTags | undefined
 
     // ── download (+ yt-dlp post-processing: merge / extract audio / metadata)
     this.#step(job, 'download')
     this.#update(job, {status: 'downloading', progress: {}}, true)
     let info: DownloadedInfo = {}
-    const downloaded = await runYtDlp({
-      ytDlp: bins.ytDlp.exe,
-      ffmpeg: bins.ffmpeg.exe,
-      env: this.#env,
-      url: request.url,
-      infoJsonPath,
-      profile,
-      workDir,
-      fragments: this.#settings.fragmentsPerDownload,
-      commonArgs: this.#commonArgs,
-      embedMetadata: this.#settings.embedMetadata,
-      embedThumbnail: this.#settings.embedThumbnail,
-      extraArgs: this.#settings.extraYtDlpArgs,
-      stallTimeoutMs: this.#settings.stallTimeoutMs,
-      signal,
-      onInfo: next => {
-        info = next
-        this.#update(job, {title: next.title ?? undefined, mediaId: next.id ?? undefined})
-      },
-      onProgress: progress => this.#update(job, {status: 'downloading', progress}),
-      onPostprocess: () => this.#update(job, {status: 'processing', progress: {}}, true),
-    })
+    const onInfo = (next: DownloadedInfo) => {
+      info = next
+      this.#update(job, {title: next.title ?? undefined, mediaId: next.id ?? undefined})
+    }
+    const downloaded = source
+      ? await source.download({
+          url: request.url,
+          profile,
+          workDir,
+          signal,
+          fresh: strategy === 'fresh-extraction' || job.attempt > 1,
+          hasAudio: file => this.#hasAudio(bins, file, signal),
+          onInfo,
+          onProgress: progress => this.#update(job, {status: 'downloading', progress}),
+        })
+      : await runYtDlp({
+          ytDlp: bins.ytDlp.exe,
+          ffmpeg: bins.ffmpeg.exe,
+          env: this.#env,
+          url: request.url,
+          infoJsonPath,
+          profile,
+          workDir,
+          fragments: this.#settings.fragmentsPerDownload,
+          commonArgs: this.#commonArgs,
+          embedMetadata: this.#settings.embedMetadata,
+          embedThumbnail: this.#settings.embedThumbnail,
+          extraArgs: this.#settings.extraYtDlpArgs,
+          stallTimeoutMs: this.#settings.stallTimeoutMs,
+          signal,
+          onInfo,
+          onProgress: progress => this.#update(job, {status: 'downloading', progress}),
+          onPostprocess: () => this.#update(job, {status: 'processing', progress: {}}, true),
+        })
     info = {...info, ...downloaded.info}
+    if (source && 'tags' in downloaded && this.#settings.embedMetadata) tags = downloaded.tags
     this.#stepDone(job, 'download', 'success')
 
     // ── convert (video only, and only when the codecs don't already match)
@@ -665,7 +773,24 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
         onStart: () => this.#update(job, {status: 'converting', progress: {fraction: 0}}, true),
         onProgress: fraction => this.#update(job, {status: 'converting', progress: {fraction}}),
       })
+      // native sources hand over the file untagged: tags go in with a stream copy
+      if (tags) file = await writeTags({ffmpeg: bins.ffmpeg.exe, input: file, tags, signal})
       this.#stepDone(job, 'convert', file === downloaded.filepath ? 'skipped' : 'success')
+    } else if (source) {
+      // native sources deliver video: the soundtrack is extracted (and tagged) here
+      this.#step(job, 'convert')
+      this.#update(job, {status: 'converting', progress: {fraction: 0}}, true)
+      file = await extractAudio({
+        ffmpeg: bins.ffmpeg.exe,
+        ffprobe: bins.ffprobe.exe,
+        input: file,
+        container: profile.container,
+        tags,
+        threads: this.#cpuShare(job),
+        signal,
+        onProgress: fraction => this.#update(job, {status: 'converting', progress: {fraction}}),
+      })
+      this.#stepDone(job, 'convert', 'success')
     } else {
       this.#stepDone(job, 'convert', 'skipped') // yt-dlp already produced the audio format
     }

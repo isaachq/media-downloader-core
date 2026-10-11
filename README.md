@@ -200,6 +200,31 @@ if (list.kind === 'playlist') {
 A **YouTube Mix** (`list=RD…`, see `isYouTubeMix()`) is an endless radio that
 yt-dlp would paginate into the thousands, so it defaults to 50.
 
+## TikTok (built-in extractor)
+
+TikTok videos and whole profiles are read by the library itself, not by
+yt-dlp — over plain HTTP, with the same pool, retries, conversion, integrity
+checks and file naming as everything else:
+
+```ts
+scheduler.schedule({url: 'https://www.tiktok.com/@user', profile: {kind: 'audio', container: 'mp3'}, outDir})
+scheduler.schedule({url: 'https://vm.tiktok.com/ZM…/', profile: {kind: 'video', container: 'mp4'}, outDir})
+```
+
+| | How |
+| --- | --- |
+| A post | Its public page: the data TikTok embeds for its own player. Media is fetched from the CDN with the same session's cookie and a TikTok Referer (the CDN refuses anything else). |
+| A profile | The public listing (`creator/item_list`), walked backwards by date: de-duplicated by id, pinned posts don't move the cursor, a page that repeats itself gets a fresh identity, stalls step back a week instead of looping. Capped at **500 posts** by default (`maxItems`). |
+| Encoding | MP4: **H.264 first** (car stereos, TVs, old phones), H.265 only as a fallback; MKV / WebM: highest resolution. Audio formats fetch the **smallest** encoding — the soundtrack is the same — and an encoding without sound is skipped. Sizes are exact (TikTok reports them), so the disk forecast is too. |
+| Pace | One shared **Pacer** for tiktok.com: 2 requests at a time, ~1.5–2.5 s apart; a refusal (403 / 429 / empty answer) makes *every* request back off 30 s → 10 min. Media downloads aren't paced; conversions run on the ⌊CPUs/2⌋ pool. ~500 posts take roughly 20–40 minutes. |
+| Fallbacks | A verification page is **never solved**: the source steps aside for 10 minutes (a circuit breaker) and yt-dlp handles TikTok meanwhile. A page whose layout changed falls back to yt-dlp for that post (`extractor-fallback` in its attempts). |
+
+No request signatures are generated and no anti-bot challenge is solved.
+Photo posts (slideshows) aren't supported yet and are reported as such.
+TikTok's terms restrict automated access: use this to back up content you
+are allowed to keep, at the default pace. `tiktok: false` sends TikTok to
+yt-dlp like any other site.
+
 ## Retries, sub-tasks and tracing
 
 - Each job runs `download → convert → validate → finalize`; every step has a state (`pending | in-progress | success | failed | skipped`).

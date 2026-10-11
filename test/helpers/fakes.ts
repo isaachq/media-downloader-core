@@ -115,7 +115,22 @@ function fakeFfmpeg(): string {
     ],
   })
   return `
-if (process.argv.includes('-show_format')) { console.log(${JSON.stringify(probe)}); process.exit(0) }
+if (process.argv.includes('-show_format')) {
+  // a file whose content starts with "s" stands for one without sound
+  let silent = false
+  try { silent = require('node:fs').readFileSync(process.argv[process.argv.length - 1]).subarray(0, 1).toString() === 's' } catch {}
+  const probe = ${probe}
+  if (silent) probe.streams = probe.streams.filter(s => s.codec_type !== 'audio')
+  console.log(JSON.stringify(probe))
+  process.exit(0)
+}
+// a conversion (-i in … out): copy the input to the output, like a perfect encoder would
+const input = process.argv.indexOf('-i')
+if (input !== -1) {
+  const out = process.argv[process.argv.length - 1]
+  if (out !== '-') require('node:fs').copyFileSync(process.argv[input + 1], out) // '-': a decode check
+  process.exit(0)
+}
 const flag = process.argv.slice(2).filter(a => a !== '-hide_banner')[0]
 const out = {
   '-version': 'ffmpeg version 9.9.9-fake',

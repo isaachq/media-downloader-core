@@ -2,6 +2,7 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import {type ElectronApplication, _electron as electron, expect, type Page, test} from '@playwright/test'
+import {startFakeTikTok} from '../../test/helpers/fake-tiktok'
 import {writeFakes} from '../../test/helpers/fakes'
 
 // The real Electron app (built by `electron-vite build`), driven end to end.
@@ -21,7 +22,7 @@ test.afterAll(async () => {
   await fs.rm(root, {recursive: true, force: true})
 })
 
-async function launch(name: string, settings: Record<string, unknown> = {}) {
+async function launch(name: string, settings: Record<string, unknown> = {}, env: Record<string, string> = {}) {
   const dataDir = path.join(root, name, 'data')
   const outDir = path.join(root, name, 'out')
   await fs.mkdir(dataDir, {recursive: true})
@@ -40,7 +41,7 @@ async function launch(name: string, settings: Record<string, unknown> = {}) {
   const fakes = await writeFakes(path.join(root, name, 'fakes'))
   const app = await electron.launch({
     ...target,
-    env: {...process.env, MDC_DATA_DIR: dataDir, MDC_DOWNLOAD_DIR: outDir, MDC_BINARIES: JSON.stringify(fakes)},
+    env: {...process.env, MDC_DATA_DIR: dataDir, MDC_DOWNLOAD_DIR: outDir, MDC_BINARIES: JSON.stringify(fakes), ...env},
   })
   const page = await app.firstWindow()
   await page.waitForSelector('[data-testid="theme-mode"]', {state: 'attached'}) // start-up finished
@@ -53,7 +54,7 @@ async function close(app: ElectronApplication) {
 
 /** Paste a link and start it; a list opens the preview, confirmed with everything selected. */
 async function download(page: Page, url: string) {
-  await page.getByLabel('Video or playlist URL').fill(url)
+  await page.getByLabel('Video, playlist or profile URL').fill(url)
   await page
     .getByRole('button', {name: /download|schedule/i})
     .first()
@@ -115,7 +116,7 @@ test('downloads a playlist batch end to end: preflight, jobs, files on disk', as
 
 test('previews a list and downloads only the picked items', async () => {
   const {app, page, outDir} = await launch('pick')
-  await page.getByLabel('Video or playlist URL').fill('https://fake.test/list?n=5')
+  await page.getByLabel('Video, playlist or profile URL').fill('https://fake.test/list?n=5')
   await page
     .getByRole('button', {name: /download/i})
     .first()
@@ -135,6 +136,35 @@ test('previews a list and downloads only the picked items', async () => {
   const files = await fs.readdir(path.join(outDir, 'Fake-List'))
   expect(files.sort()).toEqual(['002-Title-b2-b2.m4a', '005-Title-b5-b5.m4a'])
   await close(app)
+})
+
+test('backs up picked posts of a TikTok profile as MP3 (built-in extractor)', async () => {
+  const site = await startFakeTikTok({posts: 6, pinned: true})
+  try {
+    const {app, page, outDir} = await launch('tiktok', {format: 'mp3'}, {MDC_TIKTOK_ORIGIN: site.origin})
+    await page.getByLabel('Video, playlist or profile URL').fill(`${site.origin}/@${site.user}`)
+    await page
+      .getByRole('button', {name: /download/i})
+      .first()
+      .click()
+    const preview = page.locator('.ant-modal').filter({hasText: 'Choose what to download'})
+    await expect(preview).toContainText('TikTok @fakeuser')
+    await expect(preview).toContainText('6 of 6 selected')
+    await preview.getByRole('button', {name: 'Select none'}).click()
+    await preview.locator('.ant-table-row').nth(0).click()
+    await preview.locator('.ant-table-row').nth(1).click()
+    await page.screenshot({path: path.join(APP_DIR, 'test-results', 'tiktok-preview.png')})
+    await preview.getByRole('button', {name: /Download 2$/}).click()
+
+    const card = page.getByTestId('batch-card').first()
+    await expect(card).toHaveAttribute('data-status', 'completed', {timeout: 60_000})
+    const files = await fs.readdir(path.join(outDir, 'TikTok-fakeuser'))
+    expect(files).toHaveLength(2)
+    for (const file of files) expect(file).toMatch(/^\d{3}-Post-numero-\d-con-acentos-\d+\.mp3$/)
+    await close(app)
+  } finally {
+    await site.close()
+  }
 })
 
 test('reports unavailable items with a reason and finishes with errors', async () => {

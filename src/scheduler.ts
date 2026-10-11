@@ -11,6 +11,8 @@ import {newId} from './core/ids.js'
 import {isTerminal} from './core/job.js'
 import {QueueStore} from './core/queue-store.js'
 import type {MediaDownloader} from './downloader.js'
+import {isTikTokProfile} from './sources/tiktok/links.js'
+import {TIKTOK_PROFILE_DEFAULT_ITEMS} from './sources/tiktok/source.js'
 import type {
   BatchCounts,
   BatchEstimate,
@@ -172,7 +174,9 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
         ...request,
         url,
         outDir: path.resolve(request.outDir),
-        maxItems: maxItems ?? (isYouTubeMix(url) ? MIX_DEFAULT_ITEMS : undefined),
+        maxItems:
+          maxItems ??
+          (isYouTubeMix(url) ? MIX_DEFAULT_ITEMS : isTikTokProfile(url) ? TIKTOK_PROFILE_DEFAULT_ITEMS : undefined),
       },
       status: 'scheduled',
       kind: undefined,

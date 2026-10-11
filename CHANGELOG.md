@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+**TikTok behind its verification page.** When TikTok answers with its "please
+wait" check (which yt-dlp could not get past either), the desktop app opens the
+page in a hidden, sandboxed browser window where TikTok's own check passes by
+itself, then continues over plain HTTP with that session. Nothing is solved by
+our code; a captcha still hands TikTok to yt-dlp. Listing a profile shows its
+progress and can be cancelled; listings are kept for 15 minutes (reopening is
+instant, asking for more continues where it stopped) and a listing more than
+5% short gets a second pass.
+
 ## App 0.2.0-beta.3 · library 1.2.0
 
 **Updates inside the app.** The app looks for new releases (at start-up, every

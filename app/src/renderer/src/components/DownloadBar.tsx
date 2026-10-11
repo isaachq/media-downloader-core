@@ -1,6 +1,6 @@
 import {CloudDownloadOutlined, FolderOpenOutlined, ScheduleOutlined, SnippetsOutlined} from '@ant-design/icons'
 import {App as AntApp, Button, Card, Col, Form, Input, Row, Select, Space, Typography} from 'antd'
-import {useMemo, useState} from 'react'
+import {useMemo, useRef, useState} from 'react'
 import {
   AUDIO_FORMATS,
   type Format,
@@ -15,6 +15,7 @@ import {useApp} from '../context'
 import {isHttpUrl} from '../format'
 import {type MessageKey, useT} from '../i18n'
 import {useStore} from '../store'
+import {AnalyzeLoader} from './AnalyzeLoader'
 import {type PlaylistPreview, type PreviewChoice, PreviewModal} from './PreviewModal'
 
 const ACTIVE = new Set(['checking', 'running'])
@@ -34,6 +35,8 @@ export function DownloadBar() {
   const [busy, setBusy] = useState(false)
   const [preview, setPreview] = useState<{url: string; data: PlaylistPreview} | undefined>()
   const [reloading, setReloading] = useState(false)
+  // set when the user stops the reading: its rejection is not an error to show
+  const cancelled = useRef(false)
 
   const audio = isAudioFormat(settings.format)
   const valid = isHttpUrl(url)
@@ -69,13 +72,14 @@ export function DownloadBar() {
     setTouched(true)
     if (!valid || busy) return
     setBusy(true)
+    cancelled.current = false
     const target = url.trim()
     try {
       const result = await api().analyze(target)
       if (result.kind === 'playlist') setPreview({url: target, data: result})
       else await schedule(target)
     } catch (error) {
-      fail(error)
+      if (!cancelled.current) fail(error)
     } finally {
       setBusy(false)
     }
@@ -199,6 +203,14 @@ export function DownloadBar() {
           </Col>
         </Row>
       </Form>
+      {busy ? (
+        <AnalyzeLoader
+          onCancel={() => {
+            cancelled.current = true
+            void api().cancelAnalyze()
+          }}
+        />
+      ) : null}
       <Typography.Text type="secondary" className="download-hint">
         {waiting
           ? t('download.scheduledHint', {position: waiting})

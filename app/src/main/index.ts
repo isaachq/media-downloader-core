@@ -28,6 +28,7 @@ import {
 } from '../shared/contract'
 import {EventCoalescer} from './events'
 import {defaultSettings, SettingsStore} from './settings'
+import {createTikTokBrowser} from './tiktok-browser'
 import type {InstallKind} from './updates/feed'
 import {detectInstallKind} from './updates/install'
 import {Updater} from './updates/updater'
@@ -52,7 +53,11 @@ let scheduler: BatchScheduler
 let settings: SettingsStore
 /** Settles once the batches pending at last shutdown are back; the renderer's restore phase waits for it. */
 let restoring: Promise<void> = Promise.resolve()
+/** Hidden Chromium for TikTok pages that only open in a browser. */
+const tiktokBrowser = createTikTokBrowser(process.env['MDC_TIKTOK_ORIGIN'])
 let updater: Updater | undefined
+/** The link being read for a preview, if any. */
+let reading: AbortController | undefined
 /** Background update checks: shortly after start-up, then every few hours (when enabled). */
 const FIRST_CHECK_MS = 8000
 const CHECK_EVERY_MS = 6 * 60 * 60_000
@@ -134,10 +139,15 @@ function createEngine(current: AppSettings): void {
     embedMetadata: current.embedMetadata,
     embedThumbnail: current.embedThumbnail,
     fileNames: current.portableNames ? 'portable' : 'original',
-    // test hook: e2e runs point TikTok at a local fake site, without pacing delays
-    ...(process.env['MDC_TIKTOK_ORIGIN'] && {
-      tiktok: {origin: process.env['MDC_TIKTOK_ORIGIN'], pacing: {spacingMs: 0, jitterMs: 0}},
-    }),
+    // TikTok pages that need a real browser go through the app's Chromium; e2e runs
+    // point TikTok at a local fake site, without pacing delays
+    tiktok: {
+      browser: tiktokBrowser.render,
+      ...(process.env['MDC_TIKTOK_ORIGIN'] && {
+        origin: process.env['MDC_TIKTOK_ORIGIN'],
+        pacing: {spacingMs: 0, jitterMs: 0},
+      }),
+    },
     longVideoMinutes: current.longVideoMinutes,
     ...(current.cookiesFromBrowser && {cookiesFromBrowser: current.cookiesFromBrowser}),
     ...(binaries && {binaries}),
@@ -179,6 +189,8 @@ function createWindow(): void {
     window?.show()
   })
   // remember size and position for the next launch (normal bounds even when maximized)
+  // the hidden TikTok reader must never keep the app alive on its own
+  window.on('closed', () => tiktokBrowser.close())
   window.on('close', () => {
     if (!window) return
     writeWindowState(stateFile, {...window.getNormalBounds(), maximized: window.isMaximized()})
@@ -252,7 +264,26 @@ function registerIpc(): void {
         : isTikTokProfile(url)
           ? TIKTOK_PROFILE_DEFAULT_ITEMS
           : MAX_LISTED_ITEMS
-    const analysis = await engine.analyze(url, {maxEntries: cap})
+    // one link is read at a time; a new one (or Cancel) stops the previous reading
+    reading?.abort()
+    const current = new AbortController()
+    reading = current
+    let lastSent = 0
+    const analysis = await engine
+      .analyze(url, {
+        maxEntries: cap,
+        signal: current.signal,
+        onProgress: progress => {
+          // ~8 updates a second are plenty for a progress bar
+          const now = Date.now()
+          if (now - lastSent < 125 && progress.listed !== progress.expected) return
+          lastSent = now
+          send(CHANNEL.analyzeProgress, progress)
+        },
+      })
+      .finally(() => {
+        if (reading === current) reading = undefined
+      })
     if (analysis.kind === 'video') {
       rememberPreview(url, analysis)
       return {kind: 'video', title: analysis.media.title, duration: analysis.media.duration}
@@ -267,6 +298,7 @@ function registerIpc(): void {
       maxItems: cap,
     }
   })
+  ipcMain.handle(CHANNEL.analyzeCancel, () => reading?.abort())
   ipcMain.handle(CHANNEL.schedule, (_event, input: ScheduleInput) => {
     if (typeof input?.url !== 'string' || typeof input.outDir !== 'string') throw new Error('Invalid request.')
     return scheduler.schedule({
@@ -363,6 +395,7 @@ else {
     if (quitting || !engine) return
     event.preventDefault()
     quitting = true
+    tiktokBrowser.close()
     // saves pending batches and jobs, stops processes, keeps partial downloads for next launch
     void scheduler
       .dispose()

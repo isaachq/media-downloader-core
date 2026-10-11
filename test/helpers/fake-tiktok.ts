@@ -19,6 +19,13 @@ export type FakeTikTokConfig = {
   readonly challenges?: number
   /** Video pages answer 403 this many times first. */
   readonly refusals?: number
+  /**
+   * Pages and the listing need a cookie that only a browser earns: without it
+   * they get a verification page whose script sets the cookie and reloads.
+   */
+  readonly jsChallenge?: boolean
+  /** With jsChallenge: even browsers get a captcha (the script never passes). */
+  readonly captcha?: boolean
   /** This post's page has no data script (layout changed). */
   readonly brokenPost?: string
   /** The H.264 encoding of every post has no sound. */
@@ -31,7 +38,7 @@ export type FakeTikTok = {
   readonly user: string
   readonly ids: readonly string[]
   /** Requests per route kind. */
-  readonly hits: Record<'page' | 'profile' | 'list' | 'media' | 'refusedMedia' | 'short', number>
+  readonly hits: Record<'page' | 'profile' | 'list' | 'media' | 'refusedMedia' | 'short' | 'challenge', number>
   close(): Promise<void>
 }
 
@@ -42,7 +49,7 @@ export async function startFakeTikTok(config: FakeTikTokConfig = {}): Promise<Fa
   const count = config.posts ?? 3
   const size = config.mediaBytes ?? 48 * 1024
   const ids = Array.from({length: count}, (_, i) => String(7_400_000_000_000_000_000n + BigInt(count - i)))
-  const hits = {page: 0, profile: 0, list: 0, media: 0, refusedMedia: 0, short: 0}
+  const hits = {page: 0, profile: 0, list: 0, media: 0, refusedMedia: 0, short: 0, challenge: 0}
   let challengesLeft = config.challenges ?? 0
   let refusalsLeft = config.refusals ?? 0
   let listCalls = 0
@@ -110,6 +117,23 @@ export async function startFakeTikTok(config: FakeTikTokConfig = {}): Promise<Fa
       res.end(body)
     }
     const parts = url.pathname.split('/').filter(Boolean)
+    const passed = (req.headers.cookie ?? '').includes('waf_ok=1')
+    const isPage = parts[0]?.startsWith('@')
+    if (config.jsChallenge && !passed && isPage) {
+      hits.challenge++
+      const script = config.captcha ? '' : "document.cookie='waf_ok=1; path=/'; location.reload()"
+      return send(
+        200,
+        `<html><head><title>Please wait...</title></head><body><script>var _wafchallengeid='x';${script}</script></body></html>`,
+        {
+          'Content-Type': 'text/html',
+        },
+      )
+    }
+    if (config.jsChallenge && !passed && parts[0] === 'api') {
+      hits.list++
+      return send(200, '')
+    }
 
     if (parts[0] === 't') {
       hits.short++

@@ -167,6 +167,25 @@ describe('preview before downloading a list', () => {
     expect(input.selection?.entries.map(e => e.title)).toEqual(['Alpha song', 'Delta song'])
   })
 
+  it('shows how far a long listing has got, and Cancel stops it without an error', async () => {
+    const api = new FakeApi()
+    let reject!: (error: Error) => void
+    api.analyze.mockImplementation(() => new Promise((_resolve, fail) => (reject = fail)))
+    api.cancelAnalyze.mockImplementation(async () => reject(new Error('This operation was aborted')))
+    const {user} = await mount(api)
+    await user.type(screen.getByLabelText('Video, playlist or profile URL'), 'https://www.tiktok.com/@someone')
+    await user.click(screen.getByRole('button', {name: /download/i}))
+    const loader = await screen.findByTestId('analyze-loader')
+    expect(loader).toHaveTextContent('Reading the link…')
+    act(() => api.pushAnalyzeProgress({listed: 150, expected: 500}))
+    expect(loader).toHaveTextContent('Reading the list… 150 of 500 items')
+    expect(within(loader).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '30')
+    await user.click(within(loader).getByRole('button', {name: /Cancel/}))
+    expect(api.cancelAnalyze).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(screen.queryByTestId('analyze-loader')).not.toBeInTheDocument())
+    expect(screen.queryByText('This operation was aborted')).not.toBeInTheDocument()
+  })
+
   it('can download only the video the link points at', async () => {
     const {api, user, dialog} = await open(list({singleVideoUrl: 'https://www.youtube.com/watch?v=v1'}))
     await user.click(within(dialog).getByRole('button', {name: 'Only this video'}))

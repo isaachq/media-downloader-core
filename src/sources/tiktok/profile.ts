@@ -20,6 +20,10 @@ export type WalkOptions = {
   readonly now?: (() => number) | undefined
   readonly newDeviceId: () => string
   readonly onProgress?: ((listed: number) => void) | undefined
+  /** Posts already listed (newest first): the walk continues below the oldest of them. */
+  readonly resume?: readonly TikTokPost[] | undefined
+  /** Told at the end whether the profile's whole history was reached. */
+  readonly onEnd?: ((complete: boolean) => void) | undefined
 }
 
 /**
@@ -32,8 +36,13 @@ export type WalkOptions = {
  *    and following their date would skip everything in between).
  */
 export async function walkProfile(listPage: ListPage, opts: WalkOptions): Promise<TikTokPost[]> {
-  const found = new Map<string, TikTokPost>()
+  const found = new Map<string, TikTokPost>((opts.resume ?? []).map(post => [post.id, post]))
   let cursor = (opts.now ?? Date.now)()
+  // continue below the oldest regular post already known
+  for (const post of opts.resume ?? []) {
+    if (!post.pinned && post.createdAt) cursor = Math.min(cursor, post.createdAt * 1000)
+  }
+  let complete = false
   let deviceId = opts.newDeviceId()
   let stalls = 0
   let resets = 0
@@ -54,7 +63,10 @@ export async function walkProfile(listPage: ListPage, opts: WalkOptions): Promis
       }
     }
     if (added > 0) opts.onProgress?.(found.size)
-    if (page.posts.length === 0 && !page.more) break
+    if (page.posts.length === 0 && !page.more) {
+      complete = true
+      break
+    }
 
     const next = Number.isFinite(oldest) ? oldest : oldestPinned
     if (added === 0) {
@@ -69,10 +81,14 @@ export async function walkProfile(listPage: ListPage, opts: WalkOptions): Promis
       continue
     }
     stalls = 0
-    if (!page.more) break
+    if (!page.more) {
+      complete = true
+      break
+    }
     // strictly older than the last page, or the next one may repeat it
     cursor = Number.isFinite(next) && next < cursor ? next : cursor - WEEK_MS
   }
+  opts.onEnd?.(complete || cursor <= EARLIEST_MS)
   if (found.size === 0 && cursor > EARLIEST_MS) {
     // nothing at all from a profile that has posts is a refusal, not an empty account
     throw new TikTokError('refused', 'TikTok returned no posts for this profile.')

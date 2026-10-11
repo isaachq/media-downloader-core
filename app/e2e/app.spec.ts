@@ -170,6 +170,32 @@ test('backs up picked posts of a TikTok profile as MP3 (built-in extractor)', as
   }
 })
 
+test('a TikTok profile behind a verification page opens through the built-in browser', async () => {
+  // plain requests get a "please wait" page whose script sets a cookie and reloads: only a browser passes
+  const site = await startFakeTikTok({posts: 6, jsChallenge: true})
+  try {
+    const {app, page, outDir} = await launch('tiktok-browser', {format: 'mp3'}, {MDC_TIKTOK_ORIGIN: site.origin})
+    await page.getByLabel('Video, playlist or profile URL').fill(`${site.origin}/@${site.user}`)
+    await page
+      .getByRole('button', {name: /download/i})
+      .first()
+      .click()
+    await expect(page.getByTestId('analyze-loader')).toBeVisible()
+    const preview = page.locator('.ant-modal').filter({hasText: 'Choose what to download'})
+    await expect(preview).toContainText('6 of 6 selected', {timeout: 60_000})
+    await preview.getByRole('button', {name: 'Select none'}).click()
+    await preview.locator('.ant-table-row').nth(0).click()
+    await preview.locator('.ant-table-row').nth(1).click()
+    await preview.getByRole('button', {name: /Download 2$/}).click()
+    await expect(page.getByTestId('batch-card').first()).toHaveAttribute('data-status', 'completed', {timeout: 60_000})
+    expect(await fs.readdir(path.join(outDir, 'TikTok-fakeuser'))).toHaveLength(2)
+    expect(site.hits.challenge).toBeGreaterThanOrEqual(1)
+    await close(app)
+  } finally {
+    await site.close()
+  }
+})
+
 test('finds a new version, downloads it and verifies its checksum (dry run)', async () => {
   const payload = Buffer.from('new app '.repeat(20_000))
   const digest = createHash('sha256').update(payload).digest('hex')

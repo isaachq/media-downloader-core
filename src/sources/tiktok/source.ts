@@ -7,16 +7,18 @@ import type {ExtractResult} from '../../core/analyze.js'
 import {DownloadError} from '../../core/errors.js'
 import {genericChoices} from '../../core/formats.js'
 import type {AnalysisResult, FailureHint, MediaSummary, PlaylistAnalysis, VideoAnalysis} from '../../types.js'
+import type {BrowserAssist} from '../browser.js'
 import {type Fetch, HttpSession} from '../http.js'
 import {Pacer, type PacerOptions} from '../pacer.js'
 import {
+  type ListingProgress,
   type MediaSource,
   SOURCE_BLOCKED,
   SOURCE_FORMAT_CHANGED,
   type SourceDownload,
   type SourceFile,
 } from '../source.js'
-import {postFromPage, readListPage, readPageData, type TikTokPost, userFromPage} from './data.js'
+import {postFromPage, readListPage, readPageData, type TikTokPost, type TikTokUser, userFromPage} from './data.js'
 import {TikTokError} from './errors.js'
 import {parseTikTokLink, postUrl, profileUrl} from './links.js'
 import {walkProfile} from './profile.js'
@@ -30,6 +32,13 @@ export type TikTokOptions = {
   /** Tests: serve "TikTok" from another origin. */
   readonly origin?: string | undefined
   readonly fetch?: Fetch | undefined
+  /**
+   * A real browser (the host app's) for pages TikTok only serves after its own
+   * check has run in a browser. Without one, such pages hand TikTok to yt-dlp.
+   */
+  readonly browser?: BrowserAssist | undefined
+  /** Where the source reports what it did (the engine's log). */
+  readonly log?: ((level: 'info' | 'warn', message: string) => void) | undefined
 }
 
 export const TIKTOK_PROFILE_DEFAULT_ITEMS = 500
@@ -37,6 +46,10 @@ export const TIKTOK_PROFILE_DEFAULT_ITEMS = 500
 const PAGE_FRESH_MS = 10 * 60_000
 const CACHE_LIMIT = 5000
 const LIST_PAGE_SIZE = 15
+/** A profile listing is reused (or continued) for this long. */
+const LISTING_FRESH_MS = 15 * 60_000
+/** A profile listing below this share of the expected count gets a second pass. */
+const COMPLETE_SHARE = 0.95
 /** No byte for this long: the transfer is stuck. */
 const STALL_MS = 60_000
 /** Reads of a page / listing page that TikTok refused, retried after the shared cool-down. */
@@ -60,7 +73,15 @@ export class TikTokSource implements MediaSource {
   readonly #pacer: Pacer
   /** Posts seen in listings and pages, by id (insertion order = age: oldest evicted first). */
   readonly #posts = new Map<string, Cached>()
+  /** user name → account, so a profile page is read once per session. */
+  readonly #accounts = new Map<string, TikTokUser>()
+  /** secUid → what its listing gave, reused for LISTING_FRESH_MS (a reopened preview costs nothing). */
+  readonly #listings = new Map<string, {posts: TikTokPost[]; complete: boolean; at: number}>()
+  readonly #log: (level: 'info' | 'warn', message: string) => void
   #blockedUntil = 0
+  readonly #browser: BrowserAssist | undefined
+  /** One browser page at a time: each is a full page load. */
+  readonly #browserTurns = new Pacer({concurrency: 1, spacingMs: 0, jitterMs: 0})
 
   constructor(options: TikTokOptions = {}) {
     this.#origin = (options.origin ?? 'https://www.tiktok.com').replace(/\/$/, '')
@@ -68,6 +89,8 @@ export class TikTokSource implements MediaSource {
     this.#maxProfileItems = Math.max(1, options.maxProfileItems ?? TIKTOK_PROFILE_DEFAULT_ITEMS)
     this.#session = new HttpSession({fetch: options.fetch})
     this.#pacer = new Pacer(options.pacing)
+    this.#browser = options.browser
+    this.#log = options.log ?? (() => {})
   }
 
   get available(): boolean {
@@ -78,10 +101,13 @@ export class TikTokSource implements MediaSource {
     return parseTikTokLink(url, this.#originHost) !== undefined
   }
 
-  async analyze(url: string, opts: {signal?: AbortSignal; maxEntries?: number} = {}): Promise<AnalysisResult> {
+  async analyze(
+    url: string,
+    opts: {signal?: AbortSignal; maxEntries?: number; onProgress?: (progress: ListingProgress) => void} = {},
+  ): Promise<AnalysisResult> {
     try {
       const link = await this.#resolve(url, opts.signal)
-      if (link.kind === 'profile') return await this.#profile(link.user, opts.maxEntries, opts.signal)
+      if (link.kind === 'profile') return await this.#profile(link.user, opts.maxEntries, opts.signal, opts.onProgress)
       const post = await this.#readPost(link.id, link.user, opts.signal)
       return this.#videoAnalysis(post)
     } catch (error) {
@@ -172,7 +198,8 @@ export class TikTokSource implements MediaSource {
         return await read()
       } catch (error) {
         if (error instanceof TikTokError && error.problem === 'challenge') {
-          this.#blockedUntil = Date.now() + BLOCKED_MS
+          // with a browser at hand the caller tries it before stepping aside
+          if (!this.#browser) this.#blockedUntil = Date.now() + BLOCKED_MS
           throw error
         }
         if (signal?.aborted || !(error instanceof TikTokError) || !error.transient || attempt >= READ_ATTEMPTS)
@@ -182,7 +209,43 @@ export class TikTokSource implements MediaSource {
   }
 
   async #page(url: string, signal?: AbortSignal) {
-    return this.#retrying(() => this.#pageOnce(url, signal), signal)
+    try {
+      return await this.#retrying(() => this.#pageOnce(url, signal), signal)
+    } catch (error) {
+      if (!(error instanceof TikTokError) || error.problem !== 'challenge' || !this.#browser) throw error
+      return this.#pageInBrowser(url, signal)
+    }
+  }
+
+  /**
+   * The page as a real browser gets it: TikTok's check runs there by itself.
+   * Its session is adopted, so the listing, the next pages and the media
+   * download go on over plain HTTP — the browser is only needed again when
+   * that session is refused. A captcha or login wall stays a challenge.
+   */
+  async #pageInBrowser(url: string, signal?: AbortSignal) {
+    let scope: ReturnType<typeof readPageData>
+    let page: Awaited<ReturnType<BrowserAssist>>
+    try {
+      page = await this.#browserTurns.run(() => this.#browser!(url, signal), signal)
+      scope = readPageData(page.html)
+    } catch (error) {
+      // the browser got a captcha / login wall too: step aside (yt-dlp) for a while
+      if (error instanceof TikTokError && error.transient) {
+        this.#blockedUntil = Date.now() + BLOCKED_MS
+        this.#log(
+          'warn',
+          `TikTok: even the browser got a verification page — using yt-dlp for ${BLOCKED_MS / 60_000} min`,
+        )
+      }
+      throw error
+    }
+    this.#session.adopt(page)
+    this.#log('info', `TikTok: ${url} needed a browser (verification page) — continuing with its session`)
+    this.#blockedUntil = 0
+    // the refusal that sent us here no longer applies: no cool-down before the listing
+    this.#pacer.resume()
+    return scope
   }
 
   async #pageOnce(url: string, signal?: AbortSignal) {
@@ -213,20 +276,53 @@ export class TikTokSource implements MediaSource {
     return post
   }
 
-  async #profile(user: string, maxEntries: number | undefined, signal?: AbortSignal): Promise<PlaylistAnalysis> {
-    const account = userFromPage(await this.#page(profileUrl(this.#origin, user), signal))
+  async #profile(
+    user: string,
+    maxEntries: number | undefined,
+    abort?: AbortSignal,
+    onProgress?: (progress: ListingProgress) => void,
+  ): Promise<PlaylistAnalysis> {
+    const key = user.toLowerCase()
+    const account = this.#accounts.get(key) ?? userFromPage(await this.#page(profileUrl(this.#origin, user), abort))
+    this.#accounts.set(key, account)
     if (account.privateAccount) throw new TikTokError('private', `@${account.user || user} is a private account.`)
     const max = Math.max(
       1,
       Math.min(maxEntries ?? this.#maxProfileItems, account.videoCount ?? Number.POSITIVE_INFINITY),
     )
-    const posts =
-      account.videoCount === 0
-        ? []
-        : await walkProfile((cursor, deviceId) => this.#listPage(account.secUid, cursor, deviceId, signal), {
-            max,
-            newDeviceId,
-          })
+    onProgress?.({listed: 0, expected: max})
+    // a recent listing of this account answers at once, or is continued where it stopped
+    const known = this.#listings.get(account.secUid)
+    const fresh = known && Date.now() - known.at < LISTING_FRESH_MS ? known : undefined
+    let complete = fresh?.complete ?? false
+    const walk = (resume?: readonly TikTokPost[]) =>
+      walkProfile((cursor, deviceId) => this.#listPage(account.secUid, cursor, deviceId, abort), {
+        max,
+        newDeviceId,
+        resume,
+        onProgress: listed => onProgress?.({listed, expected: max}),
+        onEnd: whole => {
+          complete = whole
+        },
+      })
+    let posts: TikTokPost[]
+    const cached = fresh !== undefined && (fresh.posts.length >= max || fresh.complete)
+    if (account.videoCount === 0) posts = []
+    else if (cached) posts = fresh.posts.slice(0, max)
+    else posts = await walk(fresh?.posts)
+    // the listing is known to come back short between runs: one more pass with a
+    // fresh identity when more than 5% is missing, merged by id
+    if (!cached && posts.length < max * COMPLETE_SHARE) {
+      const merged = new Map(posts.map(post => [post.id, post]))
+      this.#log('info', `TikTok: @${account.user || user} listed ${posts.length} of ${max} — second pass`)
+      for (const post of await walk().catch(() => [])) if (merged.size < max) merged.set(post.id, post)
+      posts = [...merged.values()].sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+    }
+    // the longest listing seen is kept (a smaller request never shrinks it)
+    if (!fresh || posts.length >= fresh.posts.length) {
+      this.#listings.set(account.secUid, {posts, complete, at: fresh?.at ?? Date.now()})
+    }
+    onProgress?.({listed: posts.length, expected: max})
     for (const post of posts) this.#remember(post, false)
     const owner = account.user || user
     return {

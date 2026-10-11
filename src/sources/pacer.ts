@@ -79,6 +79,15 @@ export class Pacer {
     this.#refusals = 0
   }
 
+  /**
+   * The reason to back off is gone (e.g. a browser passed the check the
+   * refusal came from): drop the cool-down, keep the normal spacing.
+   */
+  resume(): void {
+    this.#refusals = 0
+    this.#nextStart = Math.min(this.#nextStart, this.#now() + this.#spacingMs)
+  }
+
   #acquire(signal?: AbortSignal): Promise<void> {
     signal?.throwIfAborted()
     if (this.#inFlight < this.#concurrency) {

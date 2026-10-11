@@ -250,3 +250,12 @@ h5.ant-typography.preview-heading {
 .update-banner {
   margin-bottom: 16px;
 }
+.analyze-loader {
+  margin-top: 12px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: rgba(19, 168, 224, 0.08);
+}
+.analyze-hint {
+  font-size: 12px;
+}

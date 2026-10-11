@@ -9,6 +9,7 @@ import type {
   JobSnapshot,
   JobStatus,
   JobStep,
+  JobTier,
   StepName,
   StepState,
   TerminalStatus,
@@ -70,6 +71,8 @@ export class Job {
     readonly id: JobId,
     readonly request: JobRequest,
     readonly maxAttempts: number,
+    readonly tier: JobTier,
+    readonly weight: number,
   ) {
     this.title = request.title
     this.mediaId = request.mediaId
@@ -186,6 +189,9 @@ export class Job {
       profile: this.request.profile,
       status: this.status,
       outcome: outcomeOf(this.status),
+      tier: this.tier,
+      weight: this.weight,
+      estimatedBytes: this.request.estimatedBytes,
       title: this.title,
       mediaId: this.mediaId,
       playlist: this.request.playlist,

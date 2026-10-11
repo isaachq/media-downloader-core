@@ -13,6 +13,7 @@ import {
 import {analyze, assertHttpUrl, type ExtractResult, extractMany} from './core/analyze.js'
 import {type ArchiveEntry, archiveKey, DownloadArchive} from './core/archive.js'
 import {ensureContainer} from './core/convert.js'
+import {jobTier, peakBytes, TIER_WEIGHT} from './core/cost.js'
 import {type DownloadedInfo, runYtDlp} from './core/download.js'
 import {cancelledError, DownloadError, isRetryable, toJobError} from './core/errors.js'
 import {freeSpace, isInside, moveIntoPlace, sanitizeFilename, shortHash} from './core/files.js'
@@ -58,6 +59,7 @@ type Settings = {
   readonly minFreeSpaceBytes: number
   readonly retainFinishedJobs: number
   readonly metadataMaxAgeMs: number
+  readonly longVideoMinutes: number
   readonly extraYtDlpArgs: readonly string[]
 }
 
@@ -133,6 +135,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       minFreeSpaceBytes: Math.max(0, options.minFreeSpaceBytes ?? 512 * 1024 * 1024),
       retainFinishedJobs: Math.max(0, Math.floor(options.retainFinishedJobs ?? 1000)),
       metadataMaxAgeMs: Math.max(0, options.metadataMaxAgeMs ?? 3 * 60 * 60 * 1000),
+      longVideoMinutes: Math.max(1, options.longVideoMinutes ?? 30),
       extraYtDlpArgs: options.extraYtDlpArgs ?? [],
     }
     this.binaries = new BinaryManager(options.dataDir, options.binaries)
@@ -190,6 +193,21 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     const outcome = await this.binaries.updateYtDlp(opts)
     if (outcome.updated) this.#log('info', `yt-dlp updated to ${outcome.version}.`)
     return outcome
+  }
+
+  /** Folder where jobs download and convert before the validated file is moved out. */
+  get workDir(): string {
+    return this.#workRoot
+  }
+
+  /** Threshold (minutes) above which videos are 'long' / 'heavy' jobs. */
+  get longVideoMinutes(): number {
+    return this.#settings.longVideoMinutes
+  }
+
+  /** Whether this media was already downloaded with this profile (and the file is still there). */
+  async isArchived(extractor: string, mediaId: string, profile: FormatProfile): Promise<boolean> {
+    return (await this.archive.find(archiveKey(extractor, mediaId, profile))) !== undefined
   }
 
   /** Check tools, codecs, data folder and free space without changing anything. */
@@ -286,10 +304,12 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
    */
   add(request: JobRequest): JobSnapshot {
     this.#assertOpen()
-    const job = new Job(newId() as JobId, this.#sanitize(request), this.#settings.maxRetries + 1)
+    const sanitized = this.#sanitize(request)
+    const tier = jobTier(sanitized, this.#settings.longVideoMinutes)
+    const job = new Job(newId() as JobId, sanitized, this.#settings.maxRetries + 1, tier, TIER_WEIGHT[tier])
     this.#jobs.set(job.id, job)
     this.#log('info', `queued ${job.request.url} as ${profileKey(job.request.profile)}`, job)
-    this.#pool.add(job.id, () => this.#run(job))
+    this.#pool.add(job.id, () => this.#run(job), job.weight)
     this.#emit(job, true)
     // the metadata path is session-scoped (cache is wiped on dispose): never persisted
     this.#queue.put(job.id, {...job.request, infoJsonPath: undefined})
@@ -495,7 +515,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
         const attempt = job.beginAttempt(strategy)
         this.#emit(job, true)
         try {
-          await this.#ensureDiskSpace(request.outDir)
+          await this.#ensureDiskSpace(request)
           await this.#attempt(job, bins, profile, workDir, infoJsonPath, signal)
           job.endAttempt(undefined)
           if (attempt > 1) this.#log('info', `succeeded on attempt ${attempt}/${job.maxAttempts}`, job)
@@ -620,7 +640,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
         input: file,
         container: profile.container,
         expectAudio,
-        threads: this.#cpuShare(),
+        threads: this.#cpuShare(job),
         signal,
         onStart: () => this.#update(job, {status: 'converting', progress: {fraction: 0}}, true),
         onProgress: fraction => this.#update(job, {status: 'converting', progress: {fraction}}),
@@ -641,7 +661,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       level: this.#settings.validation,
       expectedDuration: info.duration ?? request.duration,
       expectAudio,
-      threads: this.#cpuShare(),
+      threads: this.#cpuShare(job),
       signal,
       onProgress: fraction => this.#update(job, {status: 'validating', progress: {fraction}}),
     })
@@ -746,16 +766,26 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     return true
   }
 
-  async #ensureDiskSpace(outDir: string): Promise<void> {
+  /**
+   * Room for this job before it starts: its peak on the work volume (parts +
+   * merged file, + a copy when converting) and its final size at the
+   * destination — never less than minFreeSpaceBytes.
+   */
+  async #ensureDiskSpace(request: JobRequest): Promise<void> {
     const min = this.#settings.minFreeSpaceBytes
-    if (min === 0) return
-    for (const dir of [this.#workRoot, outDir]) {
+    const estimate = request.estimatedBytes ?? 0
+    const needs: ReadonlyArray<readonly [string, number]> = [
+      [this.#workRoot, min + peakBytes(estimate, request.requiresConversion ?? false)],
+      [request.outDir, min + estimate],
+    ]
+    for (const [dir, required] of needs) {
+      if (required === 0) continue
       const free = await freeSpace(dir)
-      if (free !== undefined && free < min) {
+      if (free !== undefined && free < required) {
         throw new DownloadError('disk-full', `Not enough free space in ${dir}.`, undefined, {
           dir,
           freeBytes: free,
-          requiredBytes: min,
+          requiredBytes: required,
         })
       }
     }
@@ -766,8 +796,10 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
    * (⌊CPUs/2⌋), split among the jobs running right now: a lone job validates
    * fast, a full pool never oversubscribes.
    */
-  #cpuShare(): number {
-    return Math.max(1, Math.floor(this.#pool.limit / Math.max(1, this.#pool.active)))
+  #cpuShare(job: Job): number {
+    // a job's share of the ⌊CPUs/2⌋ budget is proportional to its weight
+    const used = Math.max(this.#pool.used, job.weight)
+    return Math.max(1, Math.floor((this.#pool.limit * job.weight) / used))
   }
 
   #sanitize(request: JobRequest): JobRequest {

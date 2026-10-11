@@ -23,6 +23,8 @@ export function clampConcurrency(requested: number | undefined, cpus: number = c
 type Node<K> = {
   readonly key: K
   readonly run: () => Promise<void>
+  /** Capacity units this task occupies while running (1 = one normal job). */
+  readonly weight: number
   prev: Node<K> | undefined
   next: Node<K> | undefined
 }
@@ -40,7 +42,10 @@ export class TaskPool<K = string> {
   #head: Node<K> | undefined
   #tail: Node<K> | undefined
   #queued = new Map<K, Node<K>>()
-  #running = new Set<K>()
+  /** Running tasks and the weight each one holds. */
+  #running = new Map<K, number>()
+  /** Sum of the weights running now — O(1) admission checks. */
+  #used = 0
   #paused = false
   #idleWaiters: Array<() => void> = []
 
@@ -72,9 +77,18 @@ export class TaskPool<K = string> {
     this.#drain()
   }
 
-  add(key: K, run: () => Promise<void>): void {
+  /** Capacity units in use by running tasks. */
+  get used(): number {
+    return this.#used
+  }
+
+  /**
+   * Queue a task. `weight` is how much of the capacity it occupies: a pool of
+   * limit 6 runs six weight-1 tasks, four weight-1.5 tasks, or a mix.
+   */
+  add(key: K, run: () => Promise<void>, weight = 1): void {
     if (this.#queued.has(key) || this.#running.has(key)) throw new Error(`Task ${String(key)} already exists.`)
-    const node: Node<K> = {key, run, prev: this.#tail, next: undefined}
+    const node: Node<K> = {key, run, weight: Math.max(0.01, weight), prev: this.#tail, next: undefined}
     if (this.#tail) this.#tail.next = node
     else this.#head = node
     this.#tail = node
@@ -155,17 +169,27 @@ export class TaskPool<K = string> {
     return this.#running.size === 0 && (this.#queued.size === 0 || this.#paused)
   }
 
+  /**
+   * Start queued tasks in FIFO order while the head fits in the remaining
+   * capacity. Strict FIFO (no small task overtakes a waiting big one) keeps
+   * heavy tasks from starving; an empty pool always admits the head, so a
+   * task heavier than the whole capacity still runs (alone).
+   */
   #drain(): void {
-    while (!this.#paused && this.#running.size < this.#limit && this.#head) {
+    while (!this.#paused && this.#head) {
       const node = this.#head
+      if (this.#running.size > 0 && this.#used + node.weight > this.#limit + 1e-9) break
       this.#unlink(node)
-      this.#running.add(node.key)
+      this.#running.set(node.key, node.weight)
+      this.#used += node.weight
       // tasks handle their own errors; the catch only protects the pool
       node
         .run()
         .catch(() => {})
         .finally(() => {
           this.#running.delete(node.key)
+          this.#used -= node.weight
+          if (this.#running.size === 0) this.#used = 0 // drop float drift
           this.#drain()
           this.#checkIdle()
         })

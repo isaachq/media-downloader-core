@@ -2,8 +2,9 @@ import {EventEmitter} from 'node:events'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import {assertHttpUrl} from './core/analyze.js'
+import {estimateBytes, jobTier, matchingChoice, peakBytes} from './core/cost.js'
 import {cancelledError, DownloadError, toJobError} from './core/errors.js'
-import {sanitizeFilename} from './core/files.js'
+import {freeSpace, sanitizeFilename} from './core/files.js'
 import {profileProblem} from './core/formats.js'
 import {newId} from './core/ids.js'
 import {isTerminal} from './core/job.js'
@@ -11,6 +12,7 @@ import {QueueStore} from './core/queue-store.js'
 import type {MediaDownloader} from './downloader.js'
 import type {
   BatchCounts,
+  BatchEstimate,
   BatchId,
   BatchRequest,
   BatchSnapshot,
@@ -29,6 +31,22 @@ import type {
 
 /** Jobs created per event-loop turn while enqueuing a batch. */
 const ENQUEUE_SLICE = 250
+
+/** Items checked against the archive concurrently while forecasting. */
+const FORECAST_SLICE = 200
+
+/**
+ * Free bytes of the destination and work folders, and whether both live on
+ * the same volume (same device id) — then their needs add up.
+ */
+async function volumes(outDir: string, workDir: string): Promise<[number | undefined, number | undefined, boolean]> {
+  const [outFree, workFree] = await Promise.all([freeSpace(outDir), freeSpace(workDir)])
+  const [outStat, workStat] = await Promise.all([
+    fs.stat(outDir).catch(() => undefined),
+    fs.stat(workDir).catch(() => undefined),
+  ])
+  return [outFree, workFree, outStat !== undefined && workStat !== undefined && outStat.dev === workStat.dev]
+}
 
 const yieldToEventLoop = () => new Promise<void>(resolve => setImmediate(resolve))
 
@@ -59,6 +77,7 @@ type Batch = {
   cached: number
   /** Jobs are still being created: the batch can't close yet. */
   enqueuing: boolean
+  estimate: BatchEstimate | undefined
   error: JobError | undefined
   readonly createdAt: number
   startedAt: number | undefined
@@ -97,6 +116,8 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
   readonly #preflight: boolean
   readonly #intervalMs: number
   readonly #maxCached: number
+  readonly #diskCheck: 'block' | 'warn' | 'off'
+  readonly #longMinutes: number
   /** Insertion-ordered: iteration = FIFO for the scheduled ones. */
   readonly #batches = new Map<BatchId, Batch>()
   readonly #byJob = new Map<JobId, BatchId>()
@@ -115,6 +136,8 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
     this.#preflight = options.preflight ?? true
     this.#intervalMs = Math.max(0, options.progressIntervalMs ?? 250)
     this.#maxCached = Math.max(0, Math.floor(options.maxCachedMetadata ?? 500))
+    this.#diskCheck = options.diskCheck ?? 'block'
+    this.#longMinutes = engine.longVideoMinutes
     this.#store = new QueueStore(path.join(engine.dataDir, 'schedule.json'), () =>
       [...this.#batches.values()].filter(batch => !TERMINAL.has(batch.status)).map(batch => batch.request),
     )
@@ -147,6 +170,7 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
       failed: 0,
       cached: 0,
       enqueuing: false,
+      estimate: undefined,
       error: undefined,
       createdAt: Date.now(),
       startedAt: undefined,
@@ -277,6 +301,7 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
         this.#close(batch, 'failed', {code: 'unavailable', message: 'No item of this batch can be downloaded.'})
         return
       }
+      if (!(await this.#forecast(batch))) return
       this.#setStatus(batch, 'running')
       await this.#enqueue(batch, signal)
     } catch (error) {
@@ -356,22 +381,96 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
     )
   }
 
-  /** A checked item: downloadable if the source offers the requested kind of stream. */
+  /** A checked item: downloadable if the source offers the requested kind of stream; sized and classified. */
   #resolveItem(batch: Batch, position: number, analysis: VideoAnalysis): void {
-    const kind = batch.request.profile.kind
-    const choice = analysis.choices.find(c => c.profile.kind === kind)
-    const facts = {
-      title: analysis.media.title,
-      duration: analysis.media.duration ?? batch.items[position]?.duration,
-      infoJsonPath: analysis.infoJsonPath,
-    }
-    if (choice) this.#settleItem(batch, position, 'ok', {...facts, requiresConversion: choice.requiresConversion})
-    else {
+    const {profile} = batch.request
+    const choice =
+      matchingChoice(profile, analysis.choices) ?? analysis.choices.find(c => c.profile.kind === profile.kind)
+    const duration = analysis.media.duration ?? batch.items[position]?.duration
+    const requiresConversion = choice?.requiresConversion ?? false
+    const facts = {title: analysis.media.title, duration, infoJsonPath: analysis.infoJsonPath}
+    if (!choice) {
       this.#settleItem(batch, position, 'unavailable', {
         ...facts,
-        error: {code: 'unavailable', hint: 'format-unavailable', message: `No ${kind} formats.`},
+        error: {code: 'unavailable', hint: 'format-unavailable', message: `No ${profile.kind} formats.`},
+      })
+      return
+    }
+    this.#settleItem(batch, position, 'ok', {
+      ...facts,
+      requiresConversion,
+      estimatedBytes: estimateBytes(profile, analysis.choices, duration),
+      tier: jobTier({profile, duration, requiresConversion}, this.#longMinutes),
+    })
+  }
+
+  /**
+   * Disk and load forecast once every item is checked: archived items cost
+   * nothing; the rest need their final size at the destination plus, at
+   * peak, the temporary copies of the jobs running at once on the work
+   * volume. O(n) over the items, one stat per item for the archive check.
+   */
+  async #forecast(batch: Batch): Promise<boolean> {
+    const {profile, outDir} = batch.request
+    let bytes = 0
+    let unknown = 0
+    let archived = 0
+    let long = 0
+    let heavy = 0
+    let largestPeak = 0
+    let candidates = 0
+    for (let start = 0; start < batch.items.length; start += FORECAST_SLICE) {
+      const slice = batch.items.slice(start, start + FORECAST_SLICE)
+      const done = await Promise.all(
+        slice.map(item =>
+          item.state === 'ok' && item.extractor && item.mediaId
+            ? this.#engine.isArchived(item.extractor, item.mediaId, profile)
+            : false,
+        ),
+      )
+      slice.forEach((item, offset) => {
+        if (item.state !== 'ok') return
+        if (done[offset]) {
+          archived++
+          batch.items[start + offset] = {...item, archived: true}
+          return
+        }
+        candidates++
+        if (item.tier === 'long') long++
+        if (item.tier === 'heavy') heavy++
+        if (item.estimatedBytes === undefined) unknown++
+        else {
+          bytes += item.estimatedBytes
+          largestPeak = Math.max(largestPeak, peakBytes(item.estimatedBytes, item.requiresConversion ?? false))
+        }
       })
     }
+
+    // temporary space: the largest job's peak times the jobs that can run at once
+    const temp = largestPeak * Math.min(candidates, this.#engine.concurrency)
+    const [outFree, workFree, sameVolume] = await volumes(outDir, this.#engine.workDir)
+    const requiredBytes = sameVolume ? bytes + temp : Math.max(bytes, temp)
+    const shortOut = outFree !== undefined && outFree < (sameVolume ? bytes + temp : bytes)
+    const shortWork = !sameVolume && workFree !== undefined && workFree < temp
+    batch.estimate = {bytes, requiredBytes, freeBytes: outFree, unknown, archived, long, heavy}
+    this.#emitBatch(batch, true)
+
+    const gb = (n: number) => `${(n / 1024 ** 3).toFixed(1)} GB`
+    this.#engine.log(
+      'info',
+      `forecast: ${gb(bytes)} of new files, ${gb(requiredBytes)} needed at peak, ${outFree === undefined ? '?' : gb(outFree)} free · ${long} long, ${heavy} heavy, ${archived} already downloaded`,
+      {batchId: batch.id},
+    )
+    if (!(shortOut || shortWork) || this.#diskCheck === 'off') return true
+    const dir = shortOut ? outDir : this.#engine.workDir
+    const free = (shortOut ? outFree : workFree) ?? 0
+    const message = `Not enough disk space: the batch needs ${gb(requiredBytes)} and ${dir} has ${gb(free)} free.`
+    if (this.#diskCheck === 'warn') {
+      this.#engine.log('warn', message, {batchId: batch.id, code: 'disk-full'})
+      return true
+    }
+    this.#close(batch, 'failed', {code: 'disk-full', message, params: {dir, requiredBytes, freeBytes: free}})
+    return false
   }
 
   /**
@@ -401,6 +500,8 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
         mediaId: item.mediaId,
         extractor: item.extractor,
         duration: item.duration,
+        estimatedBytes: item.estimatedBytes,
+        requiresConversion: item.requiresConversion,
         playlist:
           batch.kind === 'playlist'
             ? {id: batch.playlistId ?? batch.id, title: batch.title ?? 'Playlist', index: item.index}
@@ -534,6 +635,7 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
       title: batch.title,
       position,
       preflight: {total: batch.items.length, checked: batch.checked, ok: batch.ok, unavailable: batch.unavailable},
+      estimate: batch.estimate,
       jobs: this.#counts(batch),
       error: batch.error,
       createdAt: batch.createdAt,

@@ -138,6 +138,32 @@ On real YouTube urls, chunked preflight checks 6 videos in 7.7 s instead of
 14.1 s (one yt-dlp process per chunk instead of per url), and the jobs reuse
 the metadata it fetched — downloads start without a second extraction.
 
+### Long videos: weighted concurrency and a disk forecast
+
+A 6-minute clip and a 2-hour 4K video don't cost the same: the long one is
+gigabytes on disk (2× while merging, 3× when converting) and minutes to
+hours of CPU to validate or convert. Every job is classified from its
+preflight data and occupies capacity accordingly:
+
+| Tier | When | Weight | At once on 12 CPUs (capacity 6) |
+|---|---|---|---|
+| normal | under 30 min (any audio) | 1 | 6 (N/2) |
+| long | video of 30 min or more | 1.5 | 4 (**N/3**) |
+| heavy | long and 1440p+/uncapped, or converted locally | 2 | 3 (N/4) |
+
+Mixed batches share the capacity (e.g. 2 long + 3 normal = 6 units), in
+strict FIFO order so heavy jobs never starve; ffmpeg threads are split in
+proportion to weight. `longVideoMinutes` tunes the threshold.
+
+When the preflight ends, the scheduler **forecasts the disk**: estimated
+size of every new item (the site's figure, or duration × a conservative
+bitrate), archived items excluded, plus the peak of temporary copies of the
+jobs that run at once — on the same volume or separately, by device id. If
+it doesn't fit, the batch stops **before downloading anything**:
+`Not enough disk space: the batch needs 48.2 GB and ~/Videos has 31.0 GB free`
+(`diskCheck: 'block' | 'warn' | 'off'`). Each job re-checks its own peak
+before it starts.
+
 ### Complexity of the hot paths
 
 | Operation | Cost | How |

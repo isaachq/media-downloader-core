@@ -136,6 +136,66 @@ describe('BatchScheduler', () => {
     assert.ok(logs.some(l => l.batchId === batch.id && /format not available — trying video:mp4:best/.test(l.message)))
   })
 
+  it('runs long videos at ⌊N/3⌋ at once (weight 1.5) and classifies them', async () => {
+    const {engine, scheduler, out} = setup('long')
+    let running = 0
+    let peak = 0
+    engine.on('job', job => {
+      const active = engine
+        .jobs()
+        .filter(j => ['downloading', 'processing', 'converting', 'validating', 'finalizing'].includes(j.status))
+      running = active.length
+      peak = Math.max(peak, running)
+      assert.equal(job.tier, 'long')
+    })
+    const video = {kind: 'video', container: 'mp4', maxHeight: 1080} as const
+    const batch = scheduler.schedule({url: 'https://fake.test/list?n=8&dur=3600', profile: video, outDir: out})
+    await scheduler.whenIdle()
+    const done = scheduler.batch(batch.id)!
+    assert.equal(done.status, 'completed')
+    assert.equal(done.estimate?.long, 8)
+    assert.ok(
+      peak <= Math.max(1, Math.floor(engine.concurrency / 1.5)),
+      `peak ${peak} with capacity ${engine.concurrency}`,
+    )
+  })
+
+  it('blocks a batch that does not fit on disk before downloading anything', async () => {
+    const {scheduler, out} = setup('disk')
+    const huge = 10 ** 15 // 1 PB per item
+    const batch = scheduler.schedule({url: `https://fake.test/list?n=3&size=${huge}`, profile: audio, outDir: out})
+    await scheduler.whenIdle()
+    const done = scheduler.batch(batch.id)!
+    assert.equal(done.status, 'failed')
+    assert.equal(done.error?.code, 'disk-full')
+    assert.equal(done.jobs.total, 0, 'nothing was downloaded')
+    assert.ok((done.estimate?.bytes ?? 0) >= 3 * huge)
+    assert.match(done.error?.message ?? '', /needs .* GB and .* has .* GB free/)
+  })
+
+  it("'warn' mode logs the shortage and continues", async () => {
+    const {engine, scheduler, out} = setup('disk-warn', {diskCheck: 'warn'})
+    const logs: LogEntry[] = []
+    engine.on('log', entry => logs.push(entry))
+    const batch = scheduler.schedule({url: `https://fake.test/list?n=2&size=${10 ** 15}`, profile: audio, outDir: out})
+    await scheduler.whenIdle()
+    assert.ok(logs.some(l => l.batchId === batch.id && l.code === 'disk-full' && l.level === 'warn'))
+    assert.notEqual(scheduler.batch(batch.id)?.status, 'scheduled')
+  })
+
+  it('already downloaded items cost no disk in the forecast', async () => {
+    const {scheduler, out} = setup('forecast-archived')
+    const first = scheduler.schedule({url: 'https://fake.test/list?n=3', profile: audio, outDir: out})
+    await scheduler.whenIdle()
+    assert.equal(scheduler.batch(first.id)?.estimate?.archived, 0)
+    const second = scheduler.schedule({url: 'https://fake.test/list?n=3', profile: audio, outDir: out})
+    await scheduler.whenIdle()
+    const again = scheduler.batch(second.id)!
+    assert.equal(again.estimate?.archived, 3)
+    assert.equal(again.estimate?.bytes, 0)
+    assert.ok(scheduler.items(second.id).every(item => item.archived))
+  })
+
   it('every batch log line carries the batch id', async () => {
     const {engine, scheduler, out} = setup('trace')
     const logs: LogEntry[] = []

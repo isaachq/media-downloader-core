@@ -6,6 +6,7 @@ import {describe, it} from 'node:test'
 import {compareVersions} from '../src/binaries/manager.js'
 import {parseChecksums, ytDlpBuildFor} from '../src/binaries/sources.js'
 import {archiveKey, DownloadArchive} from '../src/core/archive.js'
+import {estimateBytes, jobTier, peakBytes, TIER_WEIGHT} from '../src/core/cost.js'
 import {ProgressTracker} from '../src/core/download.js'
 import {classifyYtDlpError, isRetryable} from '../src/core/errors.js'
 import {sanitizeFilename, uniquePath} from '../src/core/files.js'
@@ -80,6 +81,76 @@ describe('TaskPool', () => {
     })
     await pool.whenIdle()
     assert.equal(ok, true)
+  })
+})
+
+describe('weighted pool (long and heavy jobs)', () => {
+  const run = async (limit: number, weights: number[]) => {
+    const pool = new TaskPool(limit)
+    let used = 0
+    let peakUsed = 0
+    let peakCount = 0
+    let running = 0
+    const order: number[] = []
+    weights.forEach((weight, i) => {
+      pool.add(
+        String(i),
+        async () => {
+          order.push(i)
+          used += weight
+          running++
+          peakUsed = Math.max(peakUsed, used)
+          peakCount = Math.max(peakCount, running)
+          await new Promise(resolve => setTimeout(resolve, 15))
+          used -= weight
+          running--
+        },
+        weight,
+      )
+    })
+    await pool.whenIdle()
+    return {peakUsed, peakCount, order}
+  }
+
+  it('runs N/3 long jobs (weight 1.5) where N/2 normal ones would fit', async () => {
+    assert.equal((await run(6, Array(12).fill(1))).peakCount, 6)
+    assert.equal((await run(6, Array(12).fill(1.5))).peakCount, 4)
+    assert.equal((await run(6, Array(12).fill(2))).peakCount, 3)
+  })
+
+  it('mixes weights without exceeding the capacity and keeps FIFO order', async () => {
+    const result = await run(6, [2, 1, 1, 1.5, 1, 2, 1, 1.5])
+    assert.ok(result.peakUsed <= 6)
+    assert.deepEqual(result.order, [0, 1, 2, 3, 4, 5, 6, 7])
+  })
+
+  it('a task heavier than the whole capacity still runs, alone', async () => {
+    const result = await run(1, [2, 2])
+    assert.equal(result.peakCount, 1)
+  })
+})
+
+describe('job cost', () => {
+  const video = (maxHeight?: number) => ({kind: 'video', container: 'mp4', maxHeight}) as const
+  it('classifies by duration, resolution and conversion', () => {
+    assert.equal(jobTier({profile: video(1080), duration: 600}), 'normal')
+    assert.equal(jobTier({profile: video(1080), duration: 3600}), 'long')
+    assert.equal(jobTier({profile: video(2160), duration: 3600}), 'heavy')
+    assert.equal(jobTier({profile: video(), duration: 3600}), 'heavy', 'uncapped may be 4K')
+    assert.equal(jobTier({profile: video(720), duration: 3600, requiresConversion: true}), 'heavy')
+    assert.equal(jobTier({profile: {kind: 'audio', container: 'mp3'}, duration: 7200}), 'normal')
+    assert.equal(jobTier({profile: video(1080), duration: 1200}, 15), 'long', 'threshold is configurable')
+    assert.deepEqual(TIER_WEIGHT, {normal: 1, long: 1.5, heavy: 2})
+  })
+
+  it('estimates size from the site, or from duration × a typical bitrate', () => {
+    const choices = buildChoicesFixture()
+    assert.equal(estimateBytes(video(1080), choices, 600), 63_000_000)
+    // no size reported: 1 h of 1080p ≈ (6 Mb/s + 320 kb/s) × 3600 / 8
+    assert.equal(estimateBytes(video(1080), [], 3600), Math.ceil((3600 * 6_320_000) / 8))
+    assert.equal(estimateBytes(video(1080), [], undefined), undefined)
+    assert.equal(peakBytes(100, false), 200)
+    assert.equal(peakBytes(100, true), 300)
   })
 })
 
@@ -301,3 +372,18 @@ describe('download archive', () => {
     await fs.rm(dir, {recursive: true})
   })
 })
+
+function buildChoicesFixture() {
+  return planChoices([
+    {format_id: '140', ext: 'm4a', vcodec: 'none', acodec: 'mp4a.40.2', abr: 129, filesize: 3_000_000},
+    {
+      format_id: '137',
+      ext: 'mp4',
+      vcodec: 'avc1.640028',
+      acodec: 'none',
+      height: 1080,
+      tbr: 4000,
+      filesize: 60_000_000,
+    },
+  ])
+}

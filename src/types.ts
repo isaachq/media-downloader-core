@@ -228,6 +228,12 @@ export type JobProgress = {
   readonly fragmentCount?: number | undefined
 }
 
+/**
+ * Resource class of a job, from its duration, resolution and conversion
+ * needs: normal (weight 1) · long (1.5 → ⌊N/3⌋ at once) · heavy (2 → ⌊N/4⌋).
+ */
+export type JobTier = 'normal' | 'long' | 'heavy'
+
 /** The sub-tasks every job runs, in order. */
 export type StepName = 'download' | 'convert' | 'validate' | 'finalize'
 export type StepState = 'pending' | 'in-progress' | 'success' | 'failed' | 'skipped'
@@ -284,6 +290,11 @@ export type JobSnapshot = {
   readonly mediaId?: string | undefined
   readonly playlist?: PlaylistRef | undefined
   readonly outcome: JobOutcome
+  readonly tier: JobTier
+  /** Capacity units held while running (see JobTier). */
+  readonly weight: number
+  /** Expected size of the final file, when known. */
+  readonly estimatedBytes?: number | undefined
   readonly progress: JobProgress
   /** Sub-task states of the current (or last) attempt. */
   readonly steps: readonly JobStep[]
@@ -312,8 +323,12 @@ export type JobRequest = {
   readonly title?: string | undefined
   readonly mediaId?: string | undefined
   readonly extractor?: string | undefined
-  /** Expected duration in seconds, cross-checked by validation. */
+  /** Expected duration in seconds, cross-checked by validation (and used to size the job). */
   readonly duration?: number | undefined
+  /** Expected final size; drives the disk-space check before the job starts. */
+  readonly estimatedBytes?: number | undefined
+  /** The profile's codecs aren't offered: the file will be converted locally (heavier). */
+  readonly requiresConversion?: boolean | undefined
   readonly playlist?: PlaylistRef | undefined
   /** From analyze(); ignored unless it lives in the engine's cache folder. */
   readonly infoJsonPath?: string | undefined
@@ -352,6 +367,11 @@ export type PreflightItem = {
   readonly state: PreflightState
   /** Set when the requested profile needs a local conversion for this item. */
   readonly requiresConversion?: boolean | undefined
+  /** Expected final size (site figure, or duration × typical bitrate). */
+  readonly estimatedBytes?: number | undefined
+  readonly tier?: JobTier | undefined
+  /** Already in the download archive: it will be skipped, costs no disk. */
+  readonly archived?: boolean | undefined
   readonly error?: JobError | undefined
   readonly jobId?: JobId | undefined
 }
@@ -380,12 +400,27 @@ export type BatchSnapshot = {
     readonly ok: number
     readonly unavailable: number
   }
+  /** Disk and load forecast, set when the preflight ends. */
+  readonly estimate?: BatchEstimate | undefined
   /** Items are not part of the snapshot (a 5,000-item batch would make every event huge): use `scheduler.items()` and the `item` event. */
   readonly jobs: BatchCounts
   readonly error?: JobError | undefined
   readonly createdAt: number
   readonly startedAt?: number | undefined
   readonly finishedAt?: number | undefined
+}
+
+export type BatchEstimate = {
+  /** Bytes the new files will occupy (archived items excluded). */
+  readonly bytes: number
+  /** Free bytes plus what the batch needs at its peak (final files + temporary copies). */
+  readonly requiredBytes: number
+  readonly freeBytes?: number | undefined
+  /** Items whose size couldn't be estimated (no size, no duration). */
+  readonly unknown: number
+  readonly archived: number
+  readonly long: number
+  readonly heavy: number
 }
 
 export type BatchRequest = {
@@ -409,6 +444,12 @@ export type SchedulerOptions = {
    * job starts. Default 500.
    */
   readonly maxCachedMetadata?: number | undefined
+  /**
+   * After the preflight, compare the batch's estimated disk needs with the
+   * free space: 'block' (default) fails the batch before downloading
+   * anything, 'warn' logs and continues, 'off' skips the check.
+   */
+  readonly diskCheck?: 'block' | 'warn' | 'off' | undefined
 }
 
 export type SchedulerEvents = {
@@ -495,6 +536,8 @@ export type DownloaderOptions = {
    * urls in it expire (YouTube's after ~6 h). Default 3 h.
    */
   readonly metadataMaxAgeMs?: number | undefined
+  /** Videos at least this long are 'long' (N/3) or 'heavy' (N/4) jobs. Default 30. */
+  readonly longVideoMinutes?: number | undefined
   /** Finished jobs kept in memory; older ones are released. Default 1000. */
   readonly retainFinishedJobs?: number | undefined
 }

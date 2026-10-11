@@ -148,6 +148,8 @@ describe('terminal rendering', () => {
     profile: {kind: 'audio', container: 'm4a'},
     status: 'downloading',
     outcome: 'in-progress',
+    tier: 'normal',
+    weight: 1,
     progress: {fraction: 0.5, speed: 2_000_000, eta: 12},
     steps: [
       {id: 'a', name: 'download', state: 'in-progress'},

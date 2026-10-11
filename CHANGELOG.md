@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## App 0.2.0-beta.4 · library 1.3.0
 
 **TikTok behind its verification page.** When TikTok answers with its "please
 wait" check (which yt-dlp could not get past either), the desktop app opens the

@@ -35,10 +35,16 @@ the ⌊CPUs/2⌋ pool and verified file by file.
 
 ![Paste a link, download it as MP4, check its integrity report](docs/demo.gif)
 
-### What's new in beta 3
+### What's new in beta 4
 
-- **TikTok, built in** — paste a video, a short link (`vm.tiktok.com/…`) or a whole profile (`tiktok.com/@user`, up to 500 posts by default) and pick what to back up from the preview. When TikTok asks for its "please wait" check, the app opens the page in its own hidden browser and carries on.
-- **Progress while a link is read** — a long profile or playlist shows how far the listing has got ("150 of 500 items") and can be cancelled; reopening the same profile is instant.
+- **TikTok behind its verification page** — when TikTok answers with its "please wait" check (yt-dlp can't get past it either), the app opens the page in its own hidden, sandboxed browser, where the check passes by itself, and carries on over plain HTTP with that session. Nothing is solved by our code; a captcha still hands TikTok to yt-dlp.
+- **Progress while a link is read** — a long profile or playlist shows how far the listing has got ("150 of 500 items") and can be cancelled.
+- **Faster second looks** — a profile listed in the last 15 minutes reopens instantly, and asking for more continues where the listing stopped; a listing that comes back short gets a second pass.
+- **The first update you don't install by hand** — beta 3 shows a banner for beta 4: one button and the app updates itself.
+
+### In beta 3
+
+- **TikTok, built in** — paste a video, a short link (`vm.tiktok.com/…`) or a whole profile (`tiktok.com/@user`, up to 500 posts by default) and pick what to back up from the preview.
 - **Car & USB friendly names** — `001-Cancion-Nandu-k1gsZ.mp3`: letters, numbers and hyphens only, and MP3 tags in ID3v2.3, the version car stereos read.
 - **Updates inside the app** — a banner announces a new version; one button downloads it, checks it against GitHub's SHA-256, installs it and restarts.
 - **Linux** — `.deb`, `.rpm` and AppImage for x64 and ARM; **Windows** setup survives antivirus locks; **macOS** builds are signed ad hoc so they run on Apple Silicon.

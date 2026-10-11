@@ -390,6 +390,8 @@ export type BatchSnapshot = {
   readonly profile: FormatProfile
   readonly outDir: string
   readonly status: BatchStatus
+  /** The entry cap in effect (see `BatchRequest.maxItems`); undefined = the 5000 default. */
+  readonly maxItems?: number | undefined
   readonly kind?: 'video' | 'playlist' | undefined
   readonly title?: string | undefined
   /** Position among scheduled batches (1 = next), while scheduled. */
@@ -402,6 +404,11 @@ export type BatchSnapshot = {
   }
   /** Disk and load forecast, set when the preflight ends. */
   readonly estimate?: BatchEstimate | undefined
+  /**
+   * While running: progress weighted by size, and the estimated seconds left,
+   * measured from this machine's actual throughput (see `WorkMeter`).
+   */
+  readonly progress?: {readonly fraction: number; readonly etaSeconds?: number | undefined} | undefined
   /** Items are not part of the snapshot (a 5,000-item batch would make every event huge): use `scheduler.items()` and the `item` event. */
   readonly jobs: BatchCounts
   readonly error?: JobError | undefined
@@ -429,6 +436,29 @@ export type BatchRequest = {
   readonly outDir: string
   /** Playlist items to take (1-based). */
   readonly items?: readonly number[] | undefined
+  /**
+   * Take at most this many playlist entries (1–5000), listed by yt-dlp itself so
+   * the rest is never fetched. Default: 50 for a YouTube Mix (an endless,
+   * auto-generated radio — `isYouTubeMix()`), 5000 for anything else.
+   */
+  readonly maxItems?: number | undefined
+  /**
+   * Entries picked from a preview (`analyze()`): the batch downloads exactly
+   * these and does not list the url again — faster, and stable for lists that
+   * change between calls such as a YouTube Mix. Overrides `items`/`maxItems`.
+   */
+  readonly selection?: BatchSelection | undefined
+  /**
+   * The url's analysis when the caller already has it (e.g. from a preview):
+   * the batch starts from it instead of asking yt-dlp again (~2 s saved per
+   * video). Stale media links are refreshed by the jobs as usual.
+   */
+  readonly analysis?: VideoAnalysis | undefined
+}
+
+export type BatchSelection = {
+  readonly title: string
+  readonly entries: readonly PlaylistEntry[]
 }
 
 export type SchedulerOptions = {

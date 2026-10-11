@@ -71,6 +71,87 @@ describe('BatchScheduler', () => {
     assert.ok(done.startedAt! <= scheduler.batch(second.id)!.startedAt!)
   })
 
+  it('caps a list at maxItems (listed by yt-dlp itself) and rejects invalid caps', async () => {
+    const {scheduler, out} = setup('cap')
+    const capped = scheduler.schedule({url: 'https://fake.test/list?n=80', profile: audio, outDir: out, maxItems: 30})
+    assert.equal(capped.maxItems, 30)
+    await scheduler.whenIdle()
+    const done = scheduler.batch(capped.id)!
+    assert.equal(done.preflight.total, 30)
+    assert.equal(done.jobs.succeeded, 30)
+    for (const bad of [0, -1, 1.5, 5001]) {
+      assert.throws(
+        () => scheduler.schedule({url: 'https://fake.test/list', profile: audio, outDir: out, maxItems: bad}),
+        /maxItems/,
+      )
+    }
+  })
+
+  it('downloads exactly a preview selection without listing the url again', async () => {
+    const {scheduler, out} = setup('selection')
+    const entry = (id: string, index: number) => ({
+      id,
+      index,
+      url: `https://fake.test/${id}`,
+      title: `Picked ${id}`,
+      duration: 10,
+      extractor: 'Fake',
+      isLive: false,
+    })
+    // the url would list 80 items; the selection holds 2 of them
+    const batch = scheduler.schedule({
+      url: 'https://fake.test/list?n=80',
+      profile: audio,
+      outDir: out,
+      selection: {title: 'My picks', entries: [entry('b3', 3), entry('b7', 7)]},
+    })
+    await scheduler.whenIdle()
+    const done = scheduler.batch(batch.id)!
+    assert.equal(done.title, 'My picks')
+    assert.equal(done.preflight.total, 2)
+    assert.equal(done.jobs.succeeded, 2)
+    assert.deepEqual(
+      scheduler.items(batch.id).map(item => item.index),
+      [3, 7],
+    )
+    assert.throws(
+      () =>
+        scheduler.schedule({
+          url: 'https://fake.test/x',
+          profile: audio,
+          outDir: out,
+          selection: {title: 'x', entries: []},
+        }),
+      /must not be empty/,
+    )
+  })
+
+  it('a YouTube Mix is capped at 50 items unless the request says otherwise', () => {
+    const {scheduler, out} = setup('mix')
+    const mix = 'https://www.youtube.com/watch?v=k1gsZ-OsGpI&list=RDk1gsZ-OsGpI&start_radio=1'
+    const byDefault = scheduler.schedule({url: mix, profile: audio, outDir: out})
+    const chosen = scheduler.schedule({url: mix, profile: audio, outDir: out, maxItems: 10})
+    const plain = scheduler.schedule({url: 'https://www.youtube.com/playlist?list=PLx', profile: audio, outDir: out})
+    assert.equal(byDefault.maxItems, 50)
+    assert.equal(chosen.maxItems, 10)
+    assert.equal(plain.maxItems, undefined)
+    for (const batch of [byDefault, chosen, plain]) scheduler.cancel(batch.id)
+  })
+
+  it('running batches report weighted progress and, once measured, the time left', async () => {
+    const {scheduler, out} = setup('eta', {progressIntervalMs: 0})
+    const seen: Array<NonNullable<BatchSnapshot['progress']>> = []
+    scheduler.on('batch', batch => {
+      if (batch.progress) seen.push(batch.progress)
+    })
+    const batch = scheduler.schedule({url: 'https://fake.test/list?n=6', profile: audio, outDir: out})
+    await scheduler.whenIdle()
+    assert.ok(seen.length > 0, 'progress is reported while running')
+    for (const p of seen) assert.ok(p.fraction >= 0 && p.fraction <= 1)
+    assert.ok(seen.some(p => p.fraction > 0))
+    assert.equal(scheduler.batch(batch.id)?.progress, undefined, 'gone once closed')
+  })
+
   it('preflight closes unavailable items with their hint and reuses the checked metadata', async () => {
     const {scheduler, dataDir, out} = setup('preflight')
     const batch = scheduler.schedule({url: 'https://fake.test/list-mixed', profile: audio, outDir: out})
@@ -170,7 +251,7 @@ describe('BatchScheduler', () => {
     assert.equal(done.error?.code, 'disk-full')
     assert.equal(done.jobs.total, 0, 'nothing was downloaded')
     assert.ok((done.estimate?.bytes ?? 0) >= 3 * huge)
-    assert.match(done.error?.message ?? '', /needs .* GB and .* has .* GB free/)
+    assert.match(done.error?.message ?? '', /needs [0-9.,]+ [kMGT]?B and .* has [0-9.,]+ [kMGT]?B free/)
   })
 
   it("'warn' mode logs the shortage and continues", async () => {

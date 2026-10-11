@@ -61,7 +61,8 @@ if (args.includes('--dump-single-json')) {
       ? Array.from({length: Number(big[1])}, (_, i) => 'b' + (i + 1))
       : url.includes('mixed') ? ['e1', 'e2', 'unavailable-e3', 'e4'] : ['e1', 'e2', 'e3']
     const passOn = ['dur', 'size'].map(k => [k, new URL(url).searchParams.get(k)]).filter(([, v]) => v).map(([k, v]) => k + '=' + v).join('&')
-    const entries = ids.map(e => ({_type: 'url', id: e, url: 'https://fake.test/' + e + (passOn ? '?' + passOn : ''), title: 'Entry ' + e, duration: 10, ie_key: 'Fake'}))
+    const end = args.includes('--playlist-end') ? Number(args[args.indexOf('--playlist-end') + 1]) : ids.length
+    const entries = ids.slice(0, end).map(e => ({_type: 'url', id: e, url: 'https://fake.test/' + e + (passOn ? '?' + passOn : ''), title: 'Entry ' + e, duration: 10, ie_key: 'Fake'}))
     console.log(JSON.stringify({_type: 'playlist', id: 'PL1', title: 'Fake List', extractor_key: 'Fake', entries}))
   } else {
     const video = {format_id: '137', ext: 'mp4', vcodec: 'avc1.640028', acodec: 'none', height: 1080, tbr: 4000, filesize: 5000}

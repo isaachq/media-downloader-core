@@ -76,7 +76,7 @@ async function dumpJson(url: string, opts: AnalyzeOptions): Promise<{info: RawIn
     ['--flat-playlist'],
     ['--yes-playlist'],
     ['--no-warnings'],
-    ['--playlist-end', String(opts.maxEntries ?? 5000)],
+    ['--playlist-end', String(opts.maxEntries ?? MAX_LISTED_ITEMS)],
   ])
   const argv = [...options, ...opts.commonArgs, '--', url]
   const result = await invoke(opts.ytDlp, argv, {signal: opts.signal, env: opts.env})
@@ -98,6 +98,24 @@ function singleVideoUrl(url: string): string | undefined {
     return `https://www.youtube.com/watch?v=${encodeURIComponent(v)}`
   }
   return undefined
+}
+
+/** Entries taken from a YouTube Mix unless the caller says otherwise. */
+export const MIX_DEFAULT_ITEMS = 50
+/** Upper bound for any listing: channels and mixes can be practically endless. */
+export const MAX_LISTED_ITEMS = 5000
+
+/**
+ * A YouTube Mix ("list=RD…"): a radio YouTube generates on the fly from one
+ * video. yt-dlp keeps paginating it into the thousands, so batches cap it.
+ */
+export function isYouTubeMix(url: string): boolean {
+  try {
+    const u = new URL(url)
+    return /(^|\.)(youtube\.com|youtu\.be)$/.test(u.hostname) && /^RD/.test(u.searchParams.get('list') ?? '')
+  } catch {
+    return false
+  }
 }
 
 /** Channel urls list their tabs (Videos, Shorts, Live) as nested playlists. */
@@ -151,7 +169,7 @@ async function analyzeUrl(url: string, opts: AnalyzeOptions, depth: number): Pro
   const infoJsonPath = path.join(opts.cacheDir, `info-${shortHash(url)}-${Date.now()}.json`)
   await fs.writeFile(infoJsonPath, raw)
   const media = summarize(info, url)
-  const choices = planChoices(info.formats ?? [])
+  const choices = planChoices(info.formats ?? [], info.duration ?? undefined)
   return {kind: 'video', media, choices, infoJsonPath} satisfies VideoAnalysis
 }
 
@@ -217,7 +235,12 @@ export async function extractMany(
       if (infoJsonPath) writes.push(fs.writeFile(infoJsonPath, line))
       settle(url, {
         ok: true,
-        analysis: {kind: 'video', media: summarize(info, url), choices: planChoices(info.formats ?? []), infoJsonPath},
+        analysis: {
+          kind: 'video',
+          media: summarize(info, url),
+          choices: planChoices(info.formats ?? [], info.duration ?? undefined),
+          infoJsonPath,
+        },
       })
     },
   })

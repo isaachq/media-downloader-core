@@ -5,10 +5,12 @@ import * as path from 'node:path'
 import {describe, it} from 'node:test'
 import {compareVersions} from '../src/binaries/manager.js'
 import {parseChecksums, ytDlpBuildFor} from '../src/binaries/sources.js'
+import {isYouTubeMix} from '../src/core/analyze.js'
 import {archiveKey, DownloadArchive} from '../src/core/archive.js'
 import {estimateBytes, jobTier, peakBytes, TIER_WEIGHT} from '../src/core/cost.js'
 import {ProgressTracker} from '../src/core/download.js'
 import {classifyYtDlpError, isRetryable} from '../src/core/errors.js'
+import {WorkMeter} from '../src/core/eta.js'
 import {sanitizeFilename, uniquePath} from '../src/core/files.js'
 import {
   catalogFormats,
@@ -151,6 +153,96 @@ describe('job cost', () => {
     assert.equal(estimateBytes(video(1080), [], undefined), undefined)
     assert.equal(peakBytes(100, false), 200)
     assert.equal(peakBytes(100, true), 300)
+  })
+
+  it('turns bitrates into sizes when the site reports none, and uses the encoder rate for mp3/flac/wav', () => {
+    // a 213 s video: YouTube reports tbr (kbit/s) but no filesize — as for the 1080p stream measured in a real run
+    const choices = planChoices(
+      [
+        {format_id: '137', ext: 'mp4', vcodec: 'avc1.640028', acodec: 'none', height: 1080, tbr: 330},
+        {format_id: '140', ext: 'm4a', vcodec: 'none', acodec: 'mp4a.40.2', abr: 129, tbr: 129},
+      ],
+      213,
+    )
+    const size = (container: string) => choices.find(c => c.profile.container === container)?.estimatedBytes
+    assert.equal(size('mp4'), Math.ceil((330_000 * 213) / 8) + Math.ceil((129_000 * 213) / 8)) // ≈ 12.2 MB, as measured
+    assert.equal(size('m4a'), Math.ceil((129_000 * 213) / 8), 'stream copy: the source size')
+    assert.equal(size('mp3'), Math.ceil((260_000 * 213) / 8), 'encoded: the encoder bitrate (measured 7.0 MB)')
+    assert.equal(size('wav'), Math.ceil((1_536_000 * 213) / 8))
+    assert.equal(
+      planChoices([{format_id: '137', ext: 'mp4', vcodec: 'avc1', acodec: 'none', height: 1080, tbr: 330}])[0]
+        ?.estimatedBytes,
+      undefined,
+      'no duration, no guess',
+    )
+  })
+
+  it('recognizes a YouTube Mix', () => {
+    assert.equal(isYouTubeMix('https://www.youtube.com/watch?v=k1gsZ-OsGpI&list=RDk1gsZ-OsGpI&start_radio=1'), true)
+    assert.equal(isYouTubeMix('https://music.youtube.com/watch?v=x&list=RDAMVMx'), true)
+    assert.equal(isYouTubeMix('https://www.youtube.com/playlist?list=PL0123'), false)
+    assert.equal(isYouTubeMix('https://example.com/watch?list=RD1'), false)
+    assert.equal(isYouTubeMix('not a url'), false)
+  })
+})
+
+describe('time left (WorkMeter)', () => {
+  it('measures throughput from work done, weighted by size, and projects the rest', () => {
+    let now = 0
+    const meter = new WorkMeter(() => now)
+    meter.add('a', 100)
+    meter.add('b', 100)
+    meter.add('c', 200)
+    assert.deepEqual(meter.estimate(), {fraction: 0}, 'nothing measured yet')
+    now = 10_000
+    meter.progress('a', 1)
+    meter.finish('a', true) // 100 of 400 in 10 s → 10/s
+    meter.progress('b', 0.5) // +50
+    const e = meter.estimate()
+    assert.equal(e.fraction, 150 / 400)
+    assert.equal(e.etaSeconds, Math.ceil(250 / (150 / 10)), '250 left at 15/s')
+  })
+
+  it('waits for the warm-up and ignores jobs that took no time', () => {
+    let now = 0
+    const meter = new WorkMeter(() => now)
+    meter.add('done-before', 100)
+    meter.add('real', 100)
+    now = 1000
+    meter.finish('done-before', false) // already downloaded: out of the total
+    meter.progress('real', 0.5)
+    assert.equal(meter.estimate().etaSeconds, undefined, 'under 3 s')
+    now = 5000
+    assert.deepEqual(meter.estimate(), {fraction: 0.5, etaSeconds: 5})
+  })
+
+  it('follows the recent pace: a slow start does not weigh on the whole batch', () => {
+    let now = 0
+    const meter = new WorkMeter(() => now)
+    meter.add('a', 1000)
+    // first 20 s: start-up, 1 unit/s
+    for (now = 0; now <= 20_000; now += 1000) {
+      meter.progress('a', now / 1000 / 1000)
+      meter.estimate()
+    }
+    // next 40 s: full speed, 10 units/s
+    for (; now <= 60_000; now += 1000) {
+      meter.progress('a', (20 + ((now - 20_000) / 1000) * 10) / 1000)
+      meter.estimate()
+    }
+    now -= 1000
+    const {fraction, etaSeconds} = meter.estimate()
+    assert.equal(fraction, 0.42) // 420 of 1000
+    // since-start average would say 580 / 7 ≈ 83 s; the last 30 s say 580 / 10 = 58 s
+    assert.equal(etaSeconds, 58)
+  })
+
+  it('gives unknown sizes the average of the known ones', () => {
+    const meter = new WorkMeter(() => 0)
+    meter.add('known', 300)
+    meter.add('unknown', undefined)
+    meter.finish('known', true)
+    assert.equal(meter.estimate().fraction, 0.5)
   })
 })
 

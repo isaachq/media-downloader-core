@@ -1,7 +1,7 @@
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import {type Executable, invoke} from '../binaries/executable.js'
-import type {VideoContainer} from '../types.js'
+import type {AudioContainer, VideoContainer} from '../types.js'
 import {type Option, toArgv} from './argv.js'
 import {cancelledError, DownloadError} from './errors.js'
 import {VIDEO_RULES} from './formats.js'
@@ -111,4 +111,139 @@ export async function ensureContainer(opts: ConvertOptions): Promise<string> {
   }
   await fs.rm(opts.input, {force: true})
   return output
+}
+
+// ─── Audio from a video (sources that only deliver video files) ────────────
+
+/** Tags written into a finished file. */
+export type MediaTags = {
+  readonly title?: string | undefined
+  readonly artist?: string | undefined
+  readonly date?: string | undefined
+  readonly comment?: string | undefined
+}
+
+const tagArgs = (tags: MediaTags | undefined): Option[] =>
+  Object.entries(tags ?? {}).flatMap(([key, value]) =>
+    typeof value === 'string' && value ? [['-metadata', `${key}=${value}`] as Option] : [],
+  )
+
+// per target: [extension, encoder args] — m4a copies AAC untouched (no generation loss)
+const AUDIO_TARGETS: Readonly<Record<AudioContainer, {readonly ext: string; readonly args: readonly Option[]}>> = {
+  m4a: {
+    ext: 'm4a',
+    args: [
+      ['-c:a', 'copy'],
+      ['-movflags', '+faststart'],
+    ],
+  },
+  mp3: {
+    ext: 'mp3',
+    // VBR ~245 kb/s; ID3v2.3 + v1: the tag versions car stereos and old players read
+    args: [
+      ['-c:a', 'libmp3lame'],
+      ['-q:a', '0'],
+      ['-id3v2_version', '3'],
+      ['-write_id3v1', '1'],
+    ],
+  },
+  opus: {
+    ext: 'opus',
+    args: [
+      ['-c:a', 'libopus'],
+      ['-b:a', '160k'],
+    ],
+  },
+  flac: {ext: 'flac', args: [['-c:a', 'flac']]},
+  wav: {ext: 'wav', args: [['-c:a', 'pcm_s16le']]},
+}
+
+/**
+ * The soundtrack of a video file as `container`, tagged — one ffmpeg pass.
+ * An m4a target re-encodes only when the source audio isn't AAC.
+ */
+export async function extractAudio(opts: {
+  readonly ffmpeg: Executable
+  readonly ffprobe: Executable
+  readonly input: string
+  readonly container: AudioContainer
+  readonly tags?: MediaTags | undefined
+  readonly threads: number
+  readonly signal?: AbortSignal | undefined
+  readonly onProgress?: ((fraction: number) => void) | undefined
+}): Promise<string> {
+  const summary = summarizeProbe(await ffprobe(opts.ffprobe, opts.input, opts.signal))
+  if (!summary.audio) throw new DownloadError('conversion', 'The downloaded file has no sound to extract.')
+  const target = AUDIO_TARGETS[opts.container]
+  const args =
+    opts.container === 'm4a' && summary.audio.codec_name !== 'aac'
+      ? [['-c:a', 'aac'] as Option, ['-b:a', '192k'] as Option, ['-movflags', '+faststart'] as Option]
+      : target.args
+  const stem = path.basename(opts.input, path.extname(opts.input))
+  const output = path.join(path.dirname(opts.input), `${stem}.audio.${target.ext}`)
+  await runFfmpeg(opts, output, [['-map', '0:a:0'], ['-vn'], ['-sn'], ...args, ...tagArgs(opts.tags)], summary.duration)
+  await fs.rm(opts.input, {force: true})
+  return output
+}
+
+/** Write tags into a finished file without re-encoding (a stream copy). */
+export async function writeTags(opts: {
+  readonly ffmpeg: Executable
+  readonly input: string
+  readonly tags: MediaTags
+  readonly signal?: AbortSignal | undefined
+}): Promise<string> {
+  const ext = path.extname(opts.input)
+  const output = `${opts.input.slice(0, -ext.length)}.tagged${ext}`
+  const mp4 = /^\.(mp4|m4a|mov)$/i.test(ext)
+  await runFfmpeg({...opts, threads: 1}, output, [
+    ['-map', '0'],
+    ['-c', 'copy'],
+    ...tagArgs(opts.tags),
+    ...(mp4 ? [['-movflags', '+faststart'] as Option] : []),
+  ])
+  await fs.rm(opts.input, {force: true})
+  return output
+}
+
+async function runFfmpeg(
+  opts: {
+    readonly ffmpeg: Executable
+    readonly input: string
+    readonly threads: number
+    readonly signal?: AbortSignal | undefined
+    readonly onProgress?: ((fraction: number) => void) | undefined
+  },
+  output: string,
+  options: readonly Option[],
+  duration?: number,
+): Promise<void> {
+  const argv = toArgv([
+    ['-hide_banner'],
+    ['-nostdin'],
+    ['-y'],
+    ['-v', 'error'],
+    ['-threads', String(Math.max(1, opts.threads))],
+    ['-i', opts.input],
+    ...options,
+    ['-progress', 'pipe:1'],
+    ['-nostats'],
+  ])
+  argv.push(output)
+  const result = await invoke(opts.ffmpeg, argv, {
+    signal: opts.signal,
+    collectStdout: false,
+    onStdoutLine: ffmpegProgressReader(seconds => {
+      if (duration && duration > 0) opts.onProgress?.(Math.min(1, seconds / duration))
+    }),
+  })
+  if (result.aborted || result.code !== 0) {
+    await fs.rm(output, {force: true})
+    if (result.aborted) throw cancelledError()
+    throw new DownloadError(
+      'conversion',
+      `ffmpeg could not write ${path.basename(output)}.`,
+      lastLines(result.stderr) || `ffmpeg exit ${result.code}`,
+    )
+  }
 }

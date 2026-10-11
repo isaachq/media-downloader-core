@@ -6,12 +6,14 @@ import {
   type BinaryPaths,
   type Diagnosis,
   type FormatProfile,
+  isTikTokProfile,
   isYouTubeMix,
   type JobId,
   MAX_LISTED_ITEMS,
   MediaDownloader,
   MIX_DEFAULT_ITEMS,
   searchTrace,
+  TIKTOK_PROFILE_DEFAULT_ITEMS,
   type VideoAnalysis,
 } from 'media-downloader-core'
 import {
@@ -92,6 +94,10 @@ function createEngine(current: AppSettings): void {
     embedMetadata: current.embedMetadata,
     embedThumbnail: current.embedThumbnail,
     fileNames: current.portableNames ? 'portable' : 'original',
+    // test hook: e2e runs point TikTok at a local fake site, without pacing delays
+    ...(process.env['MDC_TIKTOK_ORIGIN'] && {
+      tiktok: {origin: process.env['MDC_TIKTOK_ORIGIN'], pacing: {spacingMs: 0, jitterMs: 0}},
+    }),
     longVideoMinutes: current.longVideoMinutes,
     ...(current.cookiesFromBrowser && {cookiesFromBrowser: current.cookiesFromBrowser}),
     ...(binaries && {binaries}),
@@ -199,7 +205,13 @@ function registerIpc(): void {
     if (typeof url !== 'string') throw new Error('Invalid request.')
     const mix = isYouTubeMix(url)
     const valid = Number.isInteger(maxItems) && (maxItems as number) >= 1 && (maxItems as number) <= MAX_LISTED_ITEMS
-    const cap = valid ? (maxItems as number) : mix ? MIX_DEFAULT_ITEMS : MAX_LISTED_ITEMS
+    const cap = valid
+      ? (maxItems as number)
+      : mix
+        ? MIX_DEFAULT_ITEMS
+        : isTikTokProfile(url)
+          ? TIKTOK_PROFILE_DEFAULT_ITEMS
+          : MAX_LISTED_ITEMS
     const analysis = await engine.analyze(url, {maxEntries: cap})
     if (analysis.kind === 'video') {
       rememberPreview(url, analysis)

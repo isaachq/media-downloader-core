@@ -59,7 +59,7 @@ describe('start-up', () => {
 describe('download bar', () => {
   it('rejects an invalid url and schedules a valid one with the chosen format, quality and folder', async () => {
     const {api, user} = await mount()
-    const input = screen.getByLabelText('Video or playlist URL')
+    const input = screen.getByLabelText('Video, playlist or profile URL')
     await user.type(input, 'not a url')
     await user.click(screen.getByRole('button', {name: /download/i}))
     expect(await screen.findByText('Enter a valid http(s) link')).toBeInTheDocument()
@@ -135,7 +135,7 @@ describe('preview before downloading a list', () => {
     const api = new FakeApi()
     api.preview = preview
     const ctx = await mount(api)
-    await ctx.user.type(screen.getByLabelText('Video or playlist URL'), LINK)
+    await ctx.user.type(screen.getByLabelText('Video, playlist or profile URL'), LINK)
     await ctx.user.click(screen.getByRole('button', {name: /download/i}))
     const dialog = (await screen.findByText('Choose what to download')).closest('.ant-modal') as HTMLElement
     return {...ctx, dialog}

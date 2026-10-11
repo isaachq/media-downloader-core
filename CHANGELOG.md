@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+**TikTok, built in.** Paste a TikTok video, short link or @profile: the
+library reads TikTok itself (public pages and listing, no yt-dlp, no request
+signatures) and backs up whole profiles — up to 500 posts by default — through
+the same preview, pool, retries, conversion and integrity checks. MP4 prefers
+H.264 (plays in cars and TVs); audio formats fetch the smallest encoding.
+Requests are paced and back off together; a verification page hands TikTok to
+yt-dlp for 10 minutes instead of being solved. Tested against a local fake
+TikTok (19 tests) and the real site.
+
 **Car & USB friendly names (default).** Files and playlist folders are named
 with ASCII letters, digits and hyphens only — accents become plain letters
 (Canción → Cancion), emoji and symbols are dropped — because car stereos, TVs

@@ -13,8 +13,8 @@ const en = {
   'theme.dark': 'Dark',
 
   'download.title': 'New download',
-  'download.url': 'Video or playlist URL',
-  'download.urlPlaceholder': 'https://www.youtube.com/watch?v=… or a playlist link',
+  'download.url': 'Video, playlist or profile URL',
+  'download.urlPlaceholder': 'YouTube video or playlist, TikTok video or @profile…',
   'download.invalidUrl': 'Enter a valid http(s) link',
   'download.paste': 'Paste',
   'download.format': 'Format',
@@ -261,8 +261,8 @@ const es: Record<MessageKey, string> = {
   'theme.dark': 'Oscuro',
 
   'download.title': 'Nueva descarga',
-  'download.url': 'URL del video o playlist',
-  'download.urlPlaceholder': 'https://www.youtube.com/watch?v=… o el enlace de una playlist',
+  'download.url': 'URL del video, playlist o perfil',
+  'download.urlPlaceholder': 'Video o playlist de YouTube, video o @perfil de TikTok…',
   'download.invalidUrl': 'Ingresa un enlace http(s) válido',
   'download.paste': 'Pegar',
   'download.format': 'Formato',

@@ -52,7 +52,7 @@ async function main() {
     await cdp.send('Page.startScreencast', {format: 'jpeg', quality: 90, maxWidth: SIZE.width, maxHeight: SIZE.height})
     await page.waitForTimeout(1200)
 
-    const input = page.getByLabel('Video or playlist URL')
+    const input = page.getByLabel('Video, playlist or profile URL')
     await input.click()
     await input.pressSequentially(URL, {delay: 35})
     await page.waitForTimeout(500)

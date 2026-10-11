@@ -266,8 +266,13 @@ describe('QueueStore', () => {
       30,
     )
     for (let i = 0; i < 100; i++) store.touch()
-    await new Promise(resolve => setTimeout(resolve, 80))
-    assert.equal(snapshots, 1)
+    assert.equal(snapshots, 0, 'debounced: nothing written yet')
+    // wait for the write itself rather than a fixed time (a loaded machine fires timers late)
+    for (const deadline = Date.now() + 5000; snapshots === 0 && Date.now() < deadline; ) {
+      await new Promise(resolve => setTimeout(resolve, 10))
+    }
+    await new Promise(resolve => setTimeout(resolve, 60)) // a second write would have come by now
+    assert.equal(snapshots, 1, '100 changes, one write')
     assert.equal((await store.load()).length, 1)
 
     await store.freeze()

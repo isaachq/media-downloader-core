@@ -16,7 +16,15 @@ import {ensureContainer} from './core/convert.js'
 import {jobTier, peakBytes, TIER_WEIGHT} from './core/cost.js'
 import {type DownloadedInfo, runYtDlp} from './core/download.js'
 import {cancelledError, DownloadError, isRetryable, toJobError} from './core/errors.js'
-import {freeSpace, isInside, moveIntoPlace, sanitizeFilename, shortHash} from './core/files.js'
+import {
+  type FileNameStyle,
+  folderName,
+  freeSpace,
+  isInside,
+  mediaFileStem,
+  moveIntoPlace,
+  shortHash,
+} from './core/files.js'
 import {profileKey, profileProblem, rulesFor} from './core/formats.js'
 import {HashPool} from './core/hash-pool.js'
 import {newId} from './core/ids.js'
@@ -47,6 +55,7 @@ import type {
 
 type Settings = {
   validation: ValidationLevel
+  fileNames: FileNameStyle
   readonly fragmentsPerDownload: number
   readonly checksums: boolean
   readonly useArchive: boolean
@@ -123,6 +132,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     if (!path.isAbsolute(options.dataDir)) throw new TypeError('dataDir must be an absolute path.')
     this.#settings = {
       validation: options.validation ?? 'full',
+      fileNames: options.fileNames ?? 'portable',
       fragmentsPerDownload: Math.max(1, Math.floor(options.fragmentsPerDownload ?? 3)),
       checksums: options.checksums ?? true,
       useArchive: options.useArchive ?? true,
@@ -180,6 +190,16 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
 
   setValidation(level: ValidationLevel): void {
     this.#settings.validation = level
+  }
+
+  /** Applies to files finished from now on. */
+  setFileNames(style: FileNameStyle): void {
+    this.#settings.fileNames = style
+  }
+
+  /** The folder a playlist / profile titled `title` is saved into, under the current naming style. */
+  folderFor(outDir: string, title: string): string {
+    return path.join(outDir, folderName(title, this.#settings.fileNames))
   }
 
   // ─── Binaries ─────────────────────────────────────────────────────────────
@@ -341,7 +361,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     opts: {indexes?: readonly number[]} = {},
   ): JobSnapshot[] {
     const wanted = opts.indexes ? new Set(opts.indexes) : undefined
-    const folder = path.join(outDir, sanitizeFilename(analysis.title, 100))
+    const folder = this.folderFor(outDir, analysis.title)
     const snapshots: JobSnapshot[] = []
     for (const entry of analysis.entries) {
       if (entry.isLive || (wanted && !wanted.has(entry.index))) continue
@@ -681,9 +701,12 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     this.#update(job, {status: 'finalizing', progress: {}}, true)
     const mediaTitle = info.title ?? request.title ?? 'media'
     const mediaId = info.id ?? request.mediaId
-    const stem = `${sanitizeFilename(mediaTitle, 150)}${mediaId ? ` [${sanitizeFilename(mediaId, 40)}]` : ''}`
-    const prefix = request.playlist ? `${String(request.playlist.index).padStart(3, '0')} - ` : ''
-    const finalPath = await moveIntoPlace(file, path.join(request.outDir, `${prefix}${stem}${path.extname(file)}`))
+    const stem = mediaFileStem(this.#settings.fileNames, {
+      title: mediaTitle,
+      id: mediaId,
+      index: request.playlist?.index,
+    })
+    const finalPath = await moveIntoPlace(file, path.join(request.outDir, `${stem}${path.extname(file)}`))
     await fs.rm(workDir, {recursive: true, force: true})
 
     if (this.#settings.checksums) report = {...report, sha256: await this.#hashes.sha256(finalPath, signal)}

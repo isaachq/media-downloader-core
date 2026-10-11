@@ -158,6 +158,9 @@ const en = {
   'settings.metadata': 'Write title / artist tags',
   'settings.thumbnail': 'Embed thumbnail as cover',
   'settings.notifications': 'Notify when a batch finishes',
+  'settings.portableNames': 'Car & USB friendly names (letters, numbers and hyphens only)',
+  'settings.portableNamesHelp':
+    'Example: 001-Cancion-Nandu-k1gsZ.mp3 — no accents, symbols or emoji, so car stereos, TVs and USB sticks read every file.',
   'settings.appearance': 'Appearance',
   'settings.tools': 'Tools',
   'settings.doctor': 'Run diagnostics',
@@ -403,6 +406,9 @@ const es: Record<MessageKey, string> = {
   'settings.metadata': 'Escribir etiquetas de título / artista',
   'settings.thumbnail': 'Incrustar miniatura como portada',
   'settings.notifications': 'Avisar cuando termine un lote',
+  'settings.portableNames': 'Nombres compatibles con autos y USB (solo letras, números y guiones)',
+  'settings.portableNamesHelp':
+    'Ejemplo: 001-Cancion-Nandu-k1gsZ.mp3 — sin acentos, símbolos ni emojis, para que estéreos de auto, TVs y memorias USB lean todos los archivos.',
   'settings.appearance': 'Apariencia',
   'settings.tools': 'Herramientas',
   'settings.doctor': 'Ejecutar diagnóstico',

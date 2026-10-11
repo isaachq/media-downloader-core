@@ -25,6 +25,82 @@ export function sanitizeFilename(name: string, maxLength = 120): string {
   return clean || 'untitled'
 }
 
+/**
+ * How finished files and playlist folders are named.
+ *  - 'portable' (default): ASCII letters, digits and hyphens only — what car
+ *    stereos, TVs and FAT32 USB sticks read reliably.
+ *  - 'original': the title as is (accents, symbols, emoji), made safe for
+ *    macOS and Windows.
+ */
+export type FileNameStyle = 'portable' | 'original'
+
+// letters NFKD can't split into "base + accent"
+const TRANSLITERATE: Readonly<Record<string, string>> = {
+  ß: 'ss',
+  ẞ: 'SS',
+  æ: 'ae',
+  Æ: 'AE',
+  œ: 'oe',
+  Œ: 'OE',
+  ø: 'o',
+  Ø: 'O',
+  ł: 'l',
+  Ł: 'L',
+  đ: 'd',
+  Đ: 'D',
+  ð: 'd',
+  Ð: 'D',
+  þ: 'th',
+  Þ: 'Th',
+  ı: 'i',
+  ŋ: 'ng',
+  Ŋ: 'NG',
+}
+const TRANSLITERABLE = new RegExp(`[${Object.keys(TRANSLITERATE).join('')}]`, 'g')
+
+/**
+ * "Canción Ñandú — ¡Live! 🎸 (2024)" → "Cancion-Nandu-Live-2024". O(n):
+ * NFKD splits accented letters and compatibility forms (full-width, ligatures,
+ * circled digits) into ASCII + marks, the marks are dropped, apostrophes
+ * vanish ("Don't" → "Dont") and every other run of non-alphanumerics becomes
+ * one hyphen. Scripts with no ASCII form (Japanese, Cyrillic…) end up empty —
+ * callers fall back to the media id.
+ */
+export function portableName(text: string, maxLength = 120): string {
+  let name = text
+    .normalize('NFKD')
+    .replace(TRANSLITERABLE, char => TRANSLITERATE[char] ?? '')
+    .replace(/\p{M}+/gu, '')
+    .replace(/['’‘`´]/g, '')
+    .replace(/[^A-Za-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  if (name.length > maxLength) name = name.slice(0, maxLength).replace(/-+$/, '')
+  return WINDOWS_RESERVED.test(name) ? `${name}-file` : name
+}
+
+/** A folder name for a playlist / profile title. */
+export function folderName(title: string, style: FileNameStyle): string {
+  return style === 'portable' ? portableName(title, 100) || 'Playlist' : sanitizeFilename(title, 100)
+}
+
+/**
+ * The name of a finished file without its extension:
+ *   portable  "001-Song-Title-k1gsZ-OsGpI"
+ *   original  "001 - Song Title [k1gsZ-OsGpI]"
+ */
+export function mediaFileStem(
+  style: FileNameStyle,
+  media: {readonly title: string; readonly id?: string | undefined; readonly index?: number | undefined},
+): string {
+  const index = media.index === undefined ? undefined : String(media.index).padStart(3, '0')
+  if (style === 'original') {
+    const id = media.id ? ` [${sanitizeFilename(media.id, 40)}]` : ''
+    return `${index ? `${index} - ` : ''}${sanitizeFilename(media.title, 150)}${id}`
+  }
+  const parts = [index, portableName(media.title, 120), media.id ? portableName(media.id, 40) : undefined]
+  return parts.filter(Boolean).join('-') || 'media'
+}
+
 /** "file.mp4" → "file (2).mp4" while the name is taken. */
 export async function uniquePath(target: string): Promise<string> {
   const ext = path.extname(target)

@@ -406,6 +406,12 @@ describe('settings', () => {
     await waitFor(() => expect(api.setSettings).toHaveBeenCalledWith({embedThumbnail: true}))
     expect(screen.getByText('Applies the next time the app starts.')).toBeInTheDocument()
 
+    // car / USB friendly names are on by default and apply at once
+    expect(screen.getByRole('switch', {name: /Car & USB friendly names/})).toBeChecked()
+    await user.click(screen.getByText(/Car & USB friendly names/))
+    await waitFor(() => expect(api.setSettings).toHaveBeenCalledWith({portableNames: false}))
+    expect(screen.getByText(/001-Cancion-Nandu-k1gsZ\.mp3/)).toBeInTheDocument()
+
     // the whole row is the hit target, not just the switch
     await user.click(screen.getByText('Write title / artist tags'))
     await waitFor(() => expect(api.setSettings).toHaveBeenCalledWith({embedMetadata: false}))

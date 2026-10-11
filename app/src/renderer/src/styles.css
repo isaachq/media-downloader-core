@@ -243,3 +243,7 @@ h5.ant-typography.preview-heading {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.switch-help {
+  margin: 4px 0 0 56px;
+  font-size: 12px;
+}

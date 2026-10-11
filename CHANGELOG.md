@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+**Car & USB friendly names (default).** Files and playlist folders are named
+with ASCII letters, digits and hyphens only — accents become plain letters
+(Canción → Cancion), emoji and symbols are dropped — because car stereos, TVs
+and FAT32 USB sticks often skip anything else:
+`001-Coldplay-Paradise-Official-Video-1G4isv-Fylg.mp3`. Titles with no Latin
+form fall back to the media id. Settings → "Car & USB friendly names" switches
+back to the original titles; the library option is `fileNames`.
+
+**MP3 tags car stereos can read.** MP3s now carry ID3v2.3 tags plus an ID3v1
+fallback instead of ID3v2.4, which many car stereos and older players ignore.
+
 ## App 0.2.0-beta.2 · library 1.1.0
 
 **Linux.** The desktop app now ships for Linux, x64 and arm64:

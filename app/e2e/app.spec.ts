@@ -103,12 +103,12 @@ test('downloads a playlist batch end to end: preflight, jobs, files on disk', as
   })
   expect(onTop).toBe(true)
 
-  const files = await fs.readdir(path.join(outDir, 'Fake List'))
+  const files = await fs.readdir(path.join(outDir, 'Fake-List'))
   expect(files.sort()).toEqual([
-    '001 - Title b1 [b1].m4a',
-    '002 - Title b2 [b2].m4a',
-    '003 - Title b3 [b3].m4a',
-    '004 - Title b4 [b4].m4a',
+    '001-Title-b1-b1.m4a',
+    '002-Title-b2-b2.m4a',
+    '003-Title-b3-b3.m4a',
+    '004-Title-b4-b4.m4a',
   ])
   await close(app)
 })
@@ -132,8 +132,8 @@ test('previews a list and downloads only the picked items', async () => {
   const card = page.getByTestId('batch-card').first()
   await expect(card).toHaveAttribute('data-status', 'completed', {timeout: 60_000})
   await expect(card).toContainText('2/2 done')
-  const files = await fs.readdir(path.join(outDir, 'Fake List'))
-  expect(files.sort()).toEqual(['002 - Title b2 [b2].m4a', '005 - Title b5 [b5].m4a'])
+  const files = await fs.readdir(path.join(outDir, 'Fake-List'))
+  expect(files.sort()).toEqual(['002-Title-b2-b2.m4a', '005-Title-b5-b5.m4a'])
   await close(app)
 })
 

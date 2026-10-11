@@ -289,8 +289,8 @@ describe('mdc end to end', () => {
     assert.equal(new Set(finals.map(e => e['id'])).size, 2)
     assert.ok(events.some(e => e.type === 'log'))
     assert.equal(events.at(-1)?.type, 'summary')
-    const files = await fs.readdir(path.join(out, 'Fake List'))
-    assert.deepEqual(files.sort(), ['001 - Title e1 [e1].m4a', '003 - Title e3 [e3].m4a'])
+    const files = await fs.readdir(path.join(out, 'Fake-List'))
+    assert.deepEqual(files.sort(), ['001-Title-e1-e1.m4a', '003-Title-e3-e3.m4a'])
   })
 
   it('get exits 1 when some items fail, and logs replays the whole batch by its id', async () => {

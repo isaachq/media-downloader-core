@@ -13,6 +13,7 @@ import {
   Slider,
   Space,
   Switch,
+  Typography,
 } from 'antd'
 import type {ValidationLevel} from 'media-downloader-core'
 import {useState} from 'react'
@@ -120,6 +121,18 @@ export function SettingsDrawer({open, onClose, onDoctor, onReinstall}: Props) {
             >
               {t('settings.notifications')}
             </SwitchRow>
+            <div>
+              <SwitchRow
+                id="opt-portable"
+                checked={settings.portableNames}
+                onChange={value => change({portableNames: value})}
+              >
+                {t('settings.portableNames')}
+              </SwitchRow>
+              <Typography.Paragraph type="secondary" className="switch-help">
+                {t('settings.portableNamesHelp')}
+              </Typography.Paragraph>
+            </div>
           </Space>
         </Form.Item>
 

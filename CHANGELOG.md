@@ -1,6 +1,14 @@
 # Changelog
 
-## Unreleased
+## App 0.2.0-beta.3 · library 1.2.0
+
+**Updates inside the app.** The app looks for new releases (at start-up, every
+6 hours, or from About); one button downloads the update in the background,
+verifies its size and GitHub's SHA-256, installs it and restarts. macOS swaps
+the app bundle after quitting (Squirrel needs a paid certificate, this doesn't),
+Windows runs the installer silently, Linux replaces the AppImage or installs the
+.deb / .rpm through the password prompt. Tested end to end on macOS: a packaged
+app updated itself to a new build in under 4 seconds.
 
 **TikTok, built in.** Paste a TikTok video, short link or @profile: the
 library reads TikTok itself (public pages and listing, no yt-dlp, no request

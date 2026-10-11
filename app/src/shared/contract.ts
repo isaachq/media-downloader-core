@@ -4,12 +4,14 @@
 import type {
   AudioContainer,
   BatchId,
+  BatchSelection,
   BatchSnapshot,
   Diagnosis,
   InstallProgress,
   JobId,
   JobSnapshot,
   LogEntry,
+  PlaylistEntry,
   PreflightItem,
   ValidationLevel,
   VideoContainer,
@@ -79,7 +81,25 @@ export type ScheduleInput = {
   readonly format: Format
   readonly quality: Quality
   readonly outDir: string
+  /** Entries picked in the preview: downloaded as-is, the list is not fetched again. */
+  readonly selection?: BatchSelection | undefined
 }
+
+/** What a link holds, for the preview — without local paths or format lists. */
+export type Preview =
+  | {readonly kind: 'video'; readonly title: string; readonly duration?: number | undefined}
+  | {
+      readonly kind: 'playlist'
+      readonly title: string
+      readonly uploader?: string | undefined
+      readonly entries: readonly PlaylistEntry[]
+      /** Set when the link is one video inside a list (watch?v=…&list=…). */
+      readonly singleVideoUrl?: string | undefined
+      /** A YouTube Mix: generated on the fly, practically endless. */
+      readonly mix: boolean
+      /** The entry cap the listing used. */
+      readonly maxItems: number
+    }
 
 export type SetupOutcome = {
   readonly ready: boolean
@@ -95,6 +115,8 @@ export type MdcApi = {
   chooseFolder(current?: string): Promise<string | undefined>
   doctor(): Promise<Diagnosis>
   setup(force: boolean): Promise<SetupOutcome>
+  /** List what a link holds; `maxItems` caps long lists (a Mix defaults to 50). */
+  analyze(url: string, maxItems?: number): Promise<Preview>
   schedule(input: ScheduleInput): Promise<BatchSnapshot>
   state(): Promise<{readonly batches: readonly BatchSnapshot[]; readonly jobs: readonly JobSnapshot[]}>
   items(batchId: BatchId, offset: number, limit: number): Promise<PreflightItem[]>
@@ -118,6 +140,7 @@ export const CHANNEL = {
   doctor: 'mdc:doctor',
   setup: 'mdc:setup',
   setupProgress: 'mdc:setup-progress',
+  analyze: 'mdc:analyze',
   schedule: 'mdc:schedule',
   state: 'mdc:state',
   items: 'mdc:items',

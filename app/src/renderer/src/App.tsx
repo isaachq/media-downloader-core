@@ -1,12 +1,14 @@
-import {App as AntApp, ConfigProvider, Layout, Spin, Tabs, Typography, theme} from 'antd'
+import {App as AntApp, ConfigProvider, Layout, Tabs, Typography, theme} from 'antd'
 import enUS from 'antd/locale/en_US'
 import esES from 'antd/locale/es_ES'
 import type {BatchSnapshot, Diagnosis} from 'media-downloader-core'
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react'
 import type {AppInfo, AppSettings} from '../../shared/contract'
 import {api} from './api'
+import {BOOT_PHASES, type BootPhase, type BootProgress, bootErrorMessage, retrying} from './boot'
 import {AboutModal} from './components/AboutModal'
 import {BatchList} from './components/BatchList'
+import {BootScreen} from './components/BootScreen'
 import {DownloadBar} from './components/DownloadBar'
 import {Header} from './components/Header'
 import {JobTable} from './components/JobTable'
@@ -113,6 +115,8 @@ function Shell({
           <Stats />
           <Tabs
             className="main-tabs"
+            // only the visible tab renders: a hidden 1,500-row table must not follow every event
+            destroyOnHidden
             items={[
               {key: 'batches', label: t('tabs.batches'), children: <BatchList />},
               {key: 'jobs', label: t('tabs.jobs'), children: <JobTable />},
@@ -151,26 +155,75 @@ function Shell({
 export function App({target: injected}: {readonly target?: AppStore}) {
   const [target] = useState(() => injected ?? new AppStore())
   const [boot, setBoot] = useState<{info: AppInfo; settings: AppSettings; diagnosis: Diagnosis} | undefined>()
-  const [failure, setFailure] = useState<string | undefined>()
+  const [progress, setProgress] = useState<BootProgress>({status: 'running', phase: 'connect', attempt: 1})
   const systemDark = useSystemDark()
+  // what the finished phases produced: a retry resumes at the phase that failed
+  const loaded = useRef<{info?: AppInfo; settings?: AppSettings; restored?: true; diagnosis?: Diagnosis}>({})
+  const starting = useRef(false)
+
+  const start = useCallback(async () => {
+    if (starting.current) return // StrictMode runs effects twice in development
+    starting.current = true
+    const bridge = api()
+    const done = loaded.current
+    const phases: Record<BootPhase, {readonly finished: () => boolean; readonly run: () => Promise<unknown>}> = {
+      connect: {finished: () => done.info !== undefined, run: async () => (done.info = await bridge.info())},
+      settings: {
+        finished: () => done.settings !== undefined,
+        run: async () => (done.settings = await bridge.getSettings()),
+      },
+      restore: {
+        finished: () => done.restored === true,
+        run: async () => {
+          target.load(await bridge.state())
+          done.restored = true
+        },
+      },
+      tools: {finished: () => done.diagnosis !== undefined, run: async () => (done.diagnosis = await bridge.doctor())},
+    }
+    try {
+      for (const phase of BOOT_PHASES) {
+        if (phases[phase].finished()) continue
+        try {
+          await retrying(phases[phase].run, attempt => setProgress({status: 'running', phase, attempt}))
+        } catch (error) {
+          setProgress({status: 'failed', phase, error: bootErrorMessage(error)})
+          return
+        }
+      }
+      setBoot({info: done.info!, settings: done.settings!, diagnosis: done.diagnosis!})
+    } finally {
+      starting.current = false
+    }
+  }, [target])
 
   useEffect(() => {
-    const bridge = api()
-    void Promise.all([bridge.info(), bridge.getSettings(), bridge.state(), bridge.doctor()])
-      .then(([info, settings, state, diagnosis]) => {
-        target.load(state)
-        setBoot({info, settings, diagnosis})
-      })
-      .catch(error => setFailure(String(error)))
-  }, [target])
+    void start()
+  }, [start])
 
   const updateSettings = useCallback(async (patch: Partial<AppSettings>) => {
     const settings = await api().setSettings(patch)
     setBoot(current => (current ? {...current, settings} : current))
   }, [])
 
-  if (failure) return <div className="boot-error">{failure}</div>
-  if (!boot) return <Spin size="large" className="boot-spin" />
+  if (!boot) {
+    // before settings arrive, follow the system language and theme
+    const early = loaded.current.settings
+    const language = early?.language ?? (navigator.language.toLowerCase().startsWith('es') ? 'es' : 'en')
+    const bootDark = early ? early.theme === 'dark' || (early.theme === 'system' && systemDark) : systemDark
+    return (
+      <ConfigProvider
+        theme={{
+          algorithm: bootDark ? theme.darkAlgorithm : theme.defaultAlgorithm,
+          token: {colorPrimary: CYAN, colorInfo: CYAN},
+        }}
+      >
+        <div className={bootDark ? 'theme-dark boot-root' : 'theme-light boot-root'}>
+          <BootScreen progress={progress} t={translator(language)} onRetry={() => void start()} />
+        </div>
+      </ConfigProvider>
+    )
+  }
 
   const dark = boot.settings.theme === 'dark' || (boot.settings.theme === 'system' && systemDark)
   const context: AppContextValue = {info: boot.info, settings: boot.settings, dark, updateSettings}

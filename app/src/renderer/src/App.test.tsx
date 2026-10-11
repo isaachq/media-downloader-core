@@ -2,6 +2,7 @@ import {act, render, screen, waitFor, within} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type {BatchId, LogEntry} from 'media-downloader-core'
 import {afterEach, describe, expect, it} from 'vitest'
+import type {Preview} from '../../shared/contract'
 import {App} from './App'
 import {setApi} from './api'
 import {AppStore} from './store'
@@ -13,9 +14,47 @@ async function mount(api = new FakeApi()) {
   setApi(api)
   const target = new AppStore()
   render(<App target={target} />)
-  await screen.findByText('Media Download Core')
+  await screen.findByTestId('theme-mode', {}, {timeout: 5000}) // rendered once the start-up phases are done
   return {api, target, user: userEvent.setup()}
 }
+
+describe('start-up', () => {
+  it('walks the phases, retries a failing one and opens the app', async () => {
+    const api = new FakeApi()
+    const real = api.doctor.getMockImplementation()!
+    api.doctor
+      .mockRejectedValueOnce(new Error('ffprobe timed out'))
+      .mockRejectedValueOnce(new Error('ffprobe timed out'))
+    setApi(api)
+    render(<App target={new AppStore()} />)
+    expect(await screen.findByText('Checking yt-dlp and FFmpeg…')).toBeInTheDocument()
+    expect(await screen.findByText('Retrying (2/3)…')).toBeInTheDocument()
+    await screen.findByTestId('theme-mode', {}, {timeout: 5000})
+    expect(api.doctor).toHaveBeenCalledTimes(3)
+    api.doctor.mockImplementation(real)
+  })
+
+  it('says which phase failed and why, and Retry resumes from that phase', async () => {
+    const api = new FakeApi()
+    api.getSettings.mockRejectedValue(
+      new Error(
+        "Error invoking remote method 'mdc:settings:get': Error: EACCES: permission denied, open 'settings.json'",
+      ),
+    )
+    setApi(api)
+    render(<App target={new AppStore()} />)
+    const screenEl = await screen.findByTestId('boot-screen', {}, {timeout: 5000})
+    await waitFor(() => expect(screenEl).toHaveAttribute('data-status', 'failed'), {timeout: 5000})
+    expect(screen.getByText('Failed at: Loading your settings…')).toBeInTheDocument()
+    expect(screen.getByTestId('boot-error')).toHaveTextContent("EACCES: permission denied, open 'settings.json'")
+    expect(api.getSettings).toHaveBeenCalledTimes(3)
+
+    api.getSettings.mockResolvedValue(api.settings)
+    await userEvent.setup().click(screen.getByRole('button', {name: /retry/i}))
+    await screen.findByTestId('theme-mode', {}, {timeout: 5000})
+    expect(api.info).toHaveBeenCalledTimes(1) // finished phases are not repeated
+  })
+})
 
 describe('download bar', () => {
   it('rejects an invalid url and schedules a valid one with the chosen format, quality and folder', async () => {
@@ -56,12 +95,100 @@ describe('download bar', () => {
   it('says a new link will be scheduled while a batch is running', async () => {
     await mount(new FakeApi({state: {batches: [batch({status: 'running'})], jobs: []}}))
     expect(screen.getByRole('button', {name: /schedule/i})).toBeInTheDocument()
-    expect(screen.getByText(/this one will start when it finishes/)).toBeInTheDocument()
+    expect(screen.getByText(/a new link is queued and starts on its own after it/)).toBeInTheDocument()
   })
 
   it('shows the capacity rule (N/2, and fewer for long videos)', async () => {
     await mount()
     expect(screen.getByText('Up to 6 downloads at once on 12 CPUs · 4 for long videos')).toBeInTheDocument()
+  })
+})
+
+describe('preview before downloading a list', () => {
+  const entry = (index: number, title: string, uploader = 'Some channel') => ({
+    id: `v${index}`,
+    index,
+    url: `https://www.youtube.com/watch?v=v${index}`,
+    title,
+    uploader,
+    duration: 200 + index,
+    extractor: 'Youtube',
+    isLive: false,
+  })
+  const list = (patch: Partial<Extract<Preview, {kind: 'playlist'}>> = {}): Preview => ({
+    kind: 'playlist',
+    title: 'Road trip',
+    uploader: 'DJ Test',
+    entries: [
+      entry(1, 'Alpha song'),
+      entry(2, 'Beta song', 'Other artist'),
+      entry(3, 'Gamma song'),
+      entry(4, 'Delta song'),
+    ],
+    mix: false,
+    maxItems: 5000,
+    ...patch,
+  })
+  const LINK = 'https://www.youtube.com/watch?v=v1&list=PLx'
+
+  async function open(preview: Preview) {
+    const api = new FakeApi()
+    api.preview = preview
+    const ctx = await mount(api)
+    await ctx.user.type(screen.getByLabelText('Video or playlist URL'), LINK)
+    await ctx.user.click(screen.getByRole('button', {name: /download/i}))
+    const dialog = (await screen.findByText('Choose what to download')).closest('.ant-modal') as HTMLElement
+    return {...ctx, dialog}
+  }
+
+  it('lists everything first, lets you pick some, and schedules exactly those', async () => {
+    const {api, user, dialog} = await open(list())
+    expect(api.analyze).toHaveBeenCalledWith(LINK)
+    expect(api.schedule).not.toHaveBeenCalled()
+    expect(within(dialog).getByText('Delta song')).toBeInTheDocument()
+    expect(within(dialog).getByTestId('preview-summary')).toHaveTextContent('4 of 4 selected · 13:30')
+
+    // filter, then unselect what is visible: only the match is affected
+    await user.type(within(dialog).getByLabelText('Filter by title or channel'), 'other artist')
+    expect(within(dialog).queryByText('Alpha song')).not.toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', {name: 'Select none'}))
+    expect(within(dialog).getByTestId('preview-summary')).toHaveTextContent('3 of 4 selected')
+    await user.clear(within(dialog).getByLabelText('Filter by title or channel'))
+
+    // a click on the row toggles it too
+    await user.click(within(dialog).getByText('Gamma song'))
+    expect(within(dialog).getByTestId('preview-summary')).toHaveTextContent('2 of 4 selected · 6:45')
+
+    await user.click(within(dialog).getByRole('button', {name: /Download 2/}))
+    await waitFor(() => expect(api.schedule).toHaveBeenCalledTimes(1))
+    const input = api.schedule.mock.calls[0]![0]
+    expect(input.url).toBe(LINK)
+    expect(input.selection?.title).toBe('Road trip')
+    expect(input.selection?.entries.map(e => e.title)).toEqual(['Alpha song', 'Delta song'])
+  })
+
+  it('can download only the video the link points at', async () => {
+    const {api, user, dialog} = await open(list({singleVideoUrl: 'https://www.youtube.com/watch?v=v1'}))
+    await user.click(within(dialog).getByRole('button', {name: 'Only this video'}))
+    await waitFor(() => expect(api.schedule).toHaveBeenCalledTimes(1))
+    expect(api.schedule.mock.calls[0]![0]).toMatchObject({url: 'https://www.youtube.com/watch?v=v1'})
+    expect(api.schedule.mock.calls[0]![0].selection).toBeUndefined()
+  })
+
+  it('explains a YouTube Mix and reloads it with another size', async () => {
+    const {api, user, dialog} = await open(list({mix: true, maxItems: 50}))
+    expect(within(dialog).getByText(/YouTube Mix — generated on the fly/)).toBeInTheDocument()
+    const size = within(dialog).getByLabelText('Load')
+    await user.clear(size)
+    await user.type(size, '20')
+    await user.click(within(dialog).getByRole('button', {name: /Reload/}))
+    await waitFor(() => expect(api.analyze).toHaveBeenLastCalledWith(LINK, 20))
+  })
+
+  it('cannot confirm an empty selection', async () => {
+    const {user, dialog} = await open(list())
+    await user.click(within(dialog).getByRole('button', {name: 'Select none'}))
+    expect(within(dialog).getByRole('button', {name: /Download 0/})).toBeDisabled()
   })
 })
 
@@ -129,6 +256,34 @@ describe('batches', () => {
       }),
     )
     expect(await screen.findByText('Already downloaded')).toBeInTheDocument()
+  })
+
+  it('shows the estimated time left of a running batch, and says when it is still measuring', async () => {
+    const measured = batch({status: 'running', title: 'Measured', progress: {fraction: 0.4, etaSeconds: 754}})
+    const fresh = batch({status: 'running', title: 'Fresh', progress: {fraction: 0}})
+    await mount(new FakeApi({state: {batches: [measured, fresh], jobs: []}}))
+    const [first, second] = screen.getAllByTestId('batch-eta')
+    expect(first).toHaveTextContent(/About 13 min left · done around \d{1,2}:\d{2}.*\(estimate/)
+    expect(second).toHaveTextContent('Estimating the time left…')
+  })
+
+  it('clears finished batches and keeps the ones still working', async () => {
+    const done = batch({status: 'completed', title: 'Done list'})
+    const failed = batch({status: 'failed', title: 'Broken list'})
+    const running = batch({status: 'running', title: 'Busy list'})
+    const finishedJob = job({batchId: done.id, status: 'completed', outcome: 'success', title: 'Old video'})
+    const {api, user} = await mount(new FakeApi({state: {batches: [done, failed, running], jobs: [finishedJob]}}))
+    expect(screen.getAllByTestId('batch-card')).toHaveLength(3)
+
+    await user.click(screen.getByRole('button', {name: /Clear finished batches \(2\)/}))
+    await waitFor(() => expect(api.clearFinished).toHaveBeenCalledTimes(1))
+    expect(screen.getAllByTestId('batch-card')).toHaveLength(1)
+    expect(screen.getByText('Busy list')).toBeInTheDocument()
+    expect(screen.queryByText('Done list')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', {name: /Clear finished batches \(0\)/})).toBeDisabled()
+
+    await user.click(screen.getByRole('tab', {name: 'Downloads'}))
+    expect(screen.queryByText('Old video')).not.toBeInTheDocument()
   })
 
   it('notifies when a batch finishes', async () => {
@@ -250,6 +405,20 @@ describe('settings', () => {
 })
 
 describe('setup', () => {
+  it('opens Diagnose from Settings in front of the drawer', async () => {
+    const {api, user} = await mount()
+    await user.click(screen.getByRole('button', {name: /settings/i}))
+    await user.click(await screen.findByRole('button', {name: /run diagnostics/i}))
+    await waitFor(() => expect(api.doctor).toHaveBeenCalledTimes(2)) // boot + click
+    await screen.findByText('One-time setup')
+    const modal = document.querySelector('.ant-modal-wrap') as HTMLElement
+    expect(modal).toBeVisible()
+    const drawer = document.querySelector('.ant-drawer') as HTMLElement
+    // Ant Design layers popups from 1000; an unset z-index means that base
+    const layer = (element: HTMLElement) => Number.parseInt(getComputedStyle(element).zIndex, 10) || 1000
+    expect(layer(modal)).toBeGreaterThan(layer(drawer))
+  })
+
   it('opens on first run, installs with progress and finishes ready', async () => {
     const api = new FakeApi({diagnosis: NOT_READY})
     const {user} = await mount(api)
@@ -280,6 +449,31 @@ describe('logs', () => {
     await user.type(screen.getByPlaceholderText(/Batch, job, attempt or step id/), 'AbCdEf123456{Enter}')
     await waitFor(() => expect(api.searchLogs).toHaveBeenCalledWith('AbCdEf123456', 500))
     expect(await screen.findByText('batch scheduled: https://x')).toBeInTheDocument()
+  })
+
+  it('shows the trace ids of every live line, and clicking one traces it', async () => {
+    const api = new FakeApi()
+    const ids = {
+      batchId: `B${'1'.repeat(31)}`,
+      jobId: `J${'2'.repeat(31)}`,
+      attemptId: `A${'3'.repeat(31)}`,
+      stepId: `T${'4'.repeat(31)}`,
+    }
+    const entry = {level: 'info', message: 'download finished', time: 0, sessionId: 'S'.repeat(32), ...ids} as LogEntry
+    api.searchLogs.mockResolvedValue({entries: [entry], total: 1})
+    const {user} = await mount(api)
+    act(() => api.emit({logs: [entry]}))
+    await user.click(screen.getByRole('button', {name: /logs/i}))
+    const line = (await screen.findByText('download finished')).closest('.log-line') as HTMLElement
+    const shown = within(line).getByTestId('log-ids')
+    for (const id of Object.values(ids)) expect(shown).toHaveTextContent(id)
+    expect(shown).toHaveTextContent(/batch.*job.*attempt.*step/)
+
+    await user.click(within(line).getByText(ids.jobId))
+    await waitFor(() => expect(api.searchLogs).toHaveBeenCalledWith(ids.jobId, 500))
+    expect(screen.getByRole('tab', {name: 'Trace an id', selected: true})).toBeInTheDocument()
+    expect(screen.getByPlaceholderText(/Batch, job, attempt or step id/)).toHaveValue(ids.jobId)
+    expect(await screen.findByText('1 of 1 entries')).toBeInTheDocument()
   })
 })
 

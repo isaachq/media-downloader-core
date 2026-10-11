@@ -43,7 +43,7 @@ async function launch(name: string, settings: Record<string, unknown> = {}) {
     env: {...process.env, MDC_DATA_DIR: dataDir, MDC_DOWNLOAD_DIR: outDir, MDC_BINARIES: JSON.stringify(fakes)},
   })
   const page = await app.firstWindow()
-  await page.waitForSelector('text=Media Download Core')
+  await page.waitForSelector('[data-testid="theme-mode"]', {state: 'attached'}) // start-up finished
   return {app, page, dataDir, outDir}
 }
 
@@ -51,12 +51,19 @@ async function close(app: ElectronApplication) {
   await app.close()
 }
 
+/** Paste a link and start it; a list opens the preview, confirmed with everything selected. */
 async function download(page: Page, url: string) {
   await page.getByLabel('Video or playlist URL').fill(url)
   await page
     .getByRole('button', {name: /download|schedule/i})
     .first()
     .click()
+  if (url.includes('list')) {
+    await page
+      .locator('.ant-modal')
+      .getByRole('button', {name: /Download \d+$/})
+      .click()
+  }
 }
 
 test('downloads a playlist batch end to end: preflight, jobs, files on disk', async () => {
@@ -85,6 +92,17 @@ test('downloads a playlist batch end to end: preflight, jobs, files on disk', as
   await page.waitForTimeout(500)
   await page.screenshot({path: path.join(APP_DIR, 'test-results', 'settings.png')})
 
+  // Diagnose from Settings: the setup modal must be the topmost element, in front of the drawer
+  await page.getByRole('button', {name: /run diagnostics/i}).click()
+  const modal = page.locator('.ant-modal').filter({hasText: 'One-time setup'})
+  await expect(modal).toBeVisible()
+  const box = (await modal.boundingBox())!
+  const onTop = await page.evaluate(({x, y}) => document.elementFromPoint(x, y)?.closest('.ant-modal') !== null, {
+    x: box.x + box.width / 2,
+    y: box.y + box.height / 2,
+  })
+  expect(onTop).toBe(true)
+
   const files = await fs.readdir(path.join(outDir, 'Fake List'))
   expect(files.sort()).toEqual([
     '001 - Title b1 [b1].m4a',
@@ -92,6 +110,30 @@ test('downloads a playlist batch end to end: preflight, jobs, files on disk', as
     '003 - Title b3 [b3].m4a',
     '004 - Title b4 [b4].m4a',
   ])
+  await close(app)
+})
+
+test('previews a list and downloads only the picked items', async () => {
+  const {app, page, outDir} = await launch('pick')
+  await page.getByLabel('Video or playlist URL').fill('https://fake.test/list?n=5')
+  await page
+    .getByRole('button', {name: /download/i})
+    .first()
+    .click()
+  const preview = page.locator('.ant-modal').filter({hasText: 'Choose what to download'})
+  await expect(preview).toContainText('5 of 5 selected')
+  await preview.getByRole('button', {name: 'Select none'}).click()
+  await preview.getByText('Entry b2').click()
+  await preview.getByText('Entry b5').click()
+  await expect(preview).toContainText('2 of 5 selected')
+  await page.screenshot({path: path.join(APP_DIR, 'test-results', 'preview.png')})
+  await preview.getByRole('button', {name: 'Download 2'}).click()
+
+  const card = page.getByTestId('batch-card').first()
+  await expect(card).toHaveAttribute('data-status', 'completed', {timeout: 60_000})
+  await expect(card).toContainText('2/2 done')
+  const files = await fs.readdir(path.join(outDir, 'Fake List'))
+  expect(files.sort()).toEqual(['002 - Title b2 [b2].m4a', '005 - Title b5 [b5].m4a'])
   await close(app)
 })
 

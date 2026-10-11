@@ -51,7 +51,9 @@ export function JobTable() {
       ellipsis: true,
       render: (_, job) => (
         <Space direction="vertical" size={0} className="job-title">
-          <Typography.Text ellipsis={{tooltip: job.title ?? job.url}}>{job.title ?? job.url}</Typography.Text>
+          <Typography.Text className="one-line" title={job.title ?? job.url}>
+            {job.title ?? job.url}
+          </Typography.Text>
           <Space size={4}>
             <Typography.Text type="secondary" className="mono">
               {job.id.slice(0, 8)}
@@ -89,7 +91,7 @@ export function JobTable() {
                 {rate(job.progress.speed, settings.language)} {job.progress.eta ? `· ${clock(job.progress.eta)}` : ''}
               </Typography.Text>
             ) : job.error ? (
-              <Typography.Text type="danger" ellipsis={{tooltip: job.error.message}}>
+              <Typography.Text type="danger" className="one-line" title={job.error.message}>
                 {job.error.hint ? t(`hint.${job.error.hint}` as MessageKey) : job.error.message}
               </Typography.Text>
             ) : null}
@@ -155,8 +157,7 @@ export function JobTable() {
         <Button
           onClick={async () => {
             await api().clearFinished()
-            for (const [id, job] of store.jobs) if (job.outcome !== 'in-progress') store.jobs.delete(id)
-            store.apply({batches: [], jobs: [], items: [], logs: []})
+            store.clearFinished()
           }}
         >
           {t('job.clearFinished')}

@@ -9,9 +9,19 @@
       content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'"
     />
     <title>Media Download Core</title>
+    <style>
+      html, body { margin: 0; background: #eef6fb; }
+      @media (prefers-color-scheme: dark) { html, body { background: #0b1420; color: #e6edf3; } }
+      .pre-boot { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+        font: 600 20px Inter, system-ui, -apple-system, 'Segoe UI', sans-serif; }
+      .pre-boot-bar { width: 260px; height: 6px; border-radius: 3px; background: rgba(19, 168, 224, 0.18); overflow: hidden; }
+      .pre-boot-bar::after { content: ''; display: block; width: 40%; height: 100%; border-radius: 3px; background: #13a8e0;
+        animation: pre-boot 1.1s ease-in-out infinite; }
+      @keyframes pre-boot { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><div class="pre-boot">Media Download Core<div class="pre-boot-bar"></div></div></div>
     <script type="module" src="./src/main.tsx"></script>
   </body>
 </html>

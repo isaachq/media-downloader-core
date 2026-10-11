@@ -17,6 +17,7 @@ const api: MdcApi = {
   chooseFolder: current => ipcRenderer.invoke(CHANNEL.chooseFolder, current),
   doctor: () => ipcRenderer.invoke(CHANNEL.doctor),
   setup: force => ipcRenderer.invoke(CHANNEL.setup, force),
+  analyze: (url, maxItems) => ipcRenderer.invoke(CHANNEL.analyze, url, maxItems),
   schedule: input => ipcRenderer.invoke(CHANNEL.schedule, input),
   state: () => ipcRenderer.invoke(CHANNEL.state),
   items: (batchId, offset, limit) => ipcRenderer.invoke(CHANNEL.items, batchId, offset, limit),

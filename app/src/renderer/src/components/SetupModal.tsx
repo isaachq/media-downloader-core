@@ -52,6 +52,8 @@ export function SetupModal({open, diagnosis, force, onDone, onClose}: Props) {
 
   return (
     <Modal
+      // above the drawers: "Diagnose" / "Reinstall" are launched from Settings, which stays open behind
+      zIndex={1100}
       open={open}
       title={t('setup.title')}
       closable={ready}

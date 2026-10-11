@@ -169,6 +169,36 @@ describe('MediaDownloader orchestration', () => {
       {indexes: [1, 3]},
     )
     await dl.whenIdle()
+    // portable by default: ASCII letters, digits and hyphens — what car stereos and USB sticks read
+    const files = (await fs.readdir(path.join(outDir, 'My-Mix'))).sort()
+    assert.deepEqual(files, ['001-Title-p1-p1.m4a', '003-Title-p3-p3.m4a'])
+  })
+  it("keeps titles as they are with fileNames: 'original'", async () => {
+    const dl = await makeDownloader('playlist-original', {fileNames: 'original'})
+    const outDir = path.join(root, 'out-playlist-original')
+    const entry = (index: number) => ({
+      id: `p${index}`,
+      url: `https://fake/p${index}`,
+      title: `Song ${index}`,
+      extractor: 'Fake',
+      isLive: false,
+      index,
+    })
+    dl.addPlaylist(
+      {
+        kind: 'playlist',
+        id: 'PL1',
+        url: 'https://fake/list',
+        title: 'My: Mix?',
+        extractor: 'Fake',
+        entries: [1, 2, 3].map(entry),
+        choices: [],
+      },
+      audio,
+      outDir,
+      {indexes: [1, 3]},
+    )
+    await dl.whenIdle()
     const files = (await fs.readdir(path.join(outDir, 'My_ Mix_'))).sort()
     assert.deepEqual(files, ['001 - Title p1 [p1].m4a', '003 - Title p3 [p3].m4a'])
   })

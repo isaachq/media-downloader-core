@@ -96,6 +96,7 @@ shared with the `mdc` command line.
 - **Integrity**: the verdict of every file, with codecs, decoded vs expected duration and SHA-256 one click away.
 - **Settings**: download folder, simultaneous downloads (capped at ⌊CPUs/2⌋), integrity level, long-video threshold, browser cookies, tags and cover art, notifications.
 - **Logs**: live, every line with its batch / job / attempt / step ids (click one to trace it), plus tracing of any session / batch / job / attempt / step id.
+- **Car & USB friendly names** (default): only letters, numbers and hyphens — `001-Cancion-Nandu-k1gsZ.mp3` — and MP3 tags in ID3v2.3, the version car stereos read. Switch it off in Settings to keep titles as they are.
 - **Setup**: first launch installs yt-dlp and FFmpeg from their official sources, checksum-verified; the tools are shared with `mdc`.
 - English and Spanish, light / dark / system theme, window size and position — all remembered.
 - A start-up screen shows each phase; a failing phase is retried and, if it still fails, says why and resumes from there.

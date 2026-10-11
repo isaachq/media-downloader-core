@@ -1,3 +1,4 @@
+import type {FileNameStyle} from './core/files.js'
 // Public types. Everything a host application (CLI, Electron, server) needs to
 // drive the engine and render its state. User-facing text is always English
 // and paired with a stable `code` + `params`, so a UI can localize by code.
@@ -527,6 +528,12 @@ export type DownloaderOptions = {
   readonly fragmentsPerDownload?: number | undefined
   /** Default 'full'. */
   readonly validation?: ValidationLevel | undefined
+  /**
+   * 'portable' (default): file and folder names with ASCII letters, digits and
+   * hyphens only, as car stereos, TVs and FAT32 USB sticks need. 'original':
+   * the title as is, made safe for macOS and Windows.
+   */
+  readonly fileNames?: FileNameStyle | undefined
   /** Store a SHA-256 of every finished file in the archive. Default true. */
   readonly checksums?: boolean | undefined
   /** Skip media already downloaded with the same profile. Default true. */

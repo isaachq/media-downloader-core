@@ -11,7 +11,7 @@ import {estimateBytes, jobTier, peakBytes, TIER_WEIGHT} from '../src/core/cost.j
 import {ProgressTracker} from '../src/core/download.js'
 import {classifyYtDlpError, isRetryable} from '../src/core/errors.js'
 import {WorkMeter} from '../src/core/eta.js'
-import {sanitizeFilename, uniquePath} from '../src/core/files.js'
+import {folderName, mediaFileStem, portableName, sanitizeFilename, uniquePath} from '../src/core/files.js'
 import {
   catalogFormats,
   normalizeCodec,
@@ -183,6 +183,36 @@ describe('job cost', () => {
     assert.equal(isYouTubeMix('https://www.youtube.com/playlist?list=PL0123'), false)
     assert.equal(isYouTubeMix('https://example.com/watch?list=RD1'), false)
     assert.equal(isYouTubeMix('not a url'), false)
+  })
+})
+
+describe('portable file names (car stereos, TVs, USB sticks)', () => {
+  it('keeps only ASCII letters, digits and hyphens', () => {
+    assert.equal(
+      portableName('Coldplay - Hymn For The Weekend [Seeb Remix] (Official Audio)'),
+      'Coldplay-Hymn-For-The-Weekend-Seeb-Remix-Official-Audio',
+    )
+    assert.equal(portableName('Canción Ñandú — ¡En vivo! 🎸 (2024)'), 'Cancion-Nandu-En-vivo-2024')
+    assert.equal(portableName("Don't Stop Me Now"), 'Dont-Stop-Me-Now')
+    assert.equal(portableName('Straße · Æther · Øresund · Łódź'), 'Strasse-AEther-Oresund-Lodz')
+    assert.equal(portableName('ｆｕｌｌ　ｗｉｄｔｈ ①②'), 'full-width-12', 'compatibility forms become ASCII')
+    assert.match(portableName('a'.repeat(300), 120), /^a{120}$/)
+    assert.equal(portableName('CON'), 'CON-file', 'Windows reserved names')
+  })
+
+  it('falls back to the id when a title has no ASCII form', () => {
+    assert.equal(portableName('東京 🎌 Москва'), '')
+    assert.equal(mediaFileStem('portable', {title: '東京', id: 'abc_123', index: 7}), '007-abc-123')
+    assert.equal(mediaFileStem('portable', {title: '🎵'}), 'media')
+    assert.equal(folderName('🎵🎵', 'portable'), 'Playlist')
+  })
+
+  it("'original' keeps the title as is, safe for macOS and Windows", () => {
+    assert.equal(
+      mediaFileStem('original', {title: 'Canción: ¿Live?', id: 'x1', index: 2}),
+      '002 - Canción_ ¿Live_ [x1]',
+    )
+    assert.equal(folderName('Mix: 🎸', 'original'), 'Mix_ 🎸')
   })
 })
 

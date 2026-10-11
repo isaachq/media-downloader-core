@@ -31,6 +31,7 @@ export function defaultSettings(
     embedThumbnail: false,
     longVideoMinutes: 30,
     notifications: true,
+    portableNames: true,
   }
 }
 
@@ -62,6 +63,7 @@ export function mergeSettings(current: AppSettings, patch: unknown, maxConcurren
   if (Number.isInteger(p['longVideoMinutes']))
     next.longVideoMinutes = Math.min(600, Math.max(5, p['longVideoMinutes'] as number))
   if (typeof p['notifications'] === 'boolean') next.notifications = p['notifications']
+  if (typeof p['portableNames'] === 'boolean') next.portableNames = p['portableNames']
   return next
 }
 

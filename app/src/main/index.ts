@@ -91,6 +91,7 @@ function createEngine(current: AppSettings): void {
     validation: current.validation,
     embedMetadata: current.embedMetadata,
     embedThumbnail: current.embedThumbnail,
+    fileNames: current.portableNames ? 'portable' : 'original',
     longVideoMinutes: current.longVideoMinutes,
     ...(current.cookiesFromBrowser && {cookiesFromBrowser: current.cookiesFromBrowser}),
     ...(binaries && {binaries}),
@@ -166,6 +167,7 @@ function registerIpc(): void {
     // live settings apply at once; the rest on next launch (the UI says so)
     if (next.concurrency !== before.concurrency) engine.setConcurrency(next.concurrency)
     if (next.validation !== before.validation) engine.setValidation(next.validation)
+    if (next.portableNames !== before.portableNames) engine.setFileNames(next.portableNames ? 'portable' : 'original')
     if (next.theme !== before.theme) nativeTheme.themeSource = next.theme
     if (RESTART_SETTINGS.some(key => next[key] !== before[key])) {
       engine.log('info', 'settings changed that apply on the next launch')

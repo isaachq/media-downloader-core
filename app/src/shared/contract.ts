@@ -58,6 +58,8 @@ export type AppSettings = {
   /** Videos this long or more count as long/heavy jobs. Applied on next launch. */
   readonly longVideoMinutes: number
   readonly notifications: boolean
+  /** File and folder names with ASCII letters, digits and hyphens only (car stereos, TVs, USB sticks). */
+  readonly portableNames: boolean
 }
 
 /** Settings the engine reads at construction — changing them asks for a restart. */

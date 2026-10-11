@@ -5,7 +5,7 @@ import {assertHttpUrl, isYouTubeMix, MAX_LISTED_ITEMS, MIX_DEFAULT_ITEMS} from '
 import {estimateBytes, jobTier, matchingChoice, peakBytes} from './core/cost.js'
 import {cancelledError, DownloadError, toJobError} from './core/errors.js'
 import {WorkMeter} from './core/eta.js'
-import {freeSpace, sanitizeFilename} from './core/files.js'
+import {freeSpace} from './core/files.js'
 import {profileProblem} from './core/formats.js'
 import {newId} from './core/ids.js'
 import {isTerminal} from './core/job.js'
@@ -506,8 +506,7 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
    */
   async #enqueue(batch: Batch, signal: AbortSignal): Promise<void> {
     const {profile, outDir} = batch.request
-    const folder =
-      batch.kind === 'playlist' ? path.join(outDir, sanitizeFilename(batch.title ?? 'Playlist', 100)) : outDir
+    const folder = batch.kind === 'playlist' ? this.#engine.folderFor(outDir, batch.title ?? 'Playlist') : outDir
     batch.enqueuing = true
     batch.meter = new WorkMeter()
     for (let position = 0; position < batch.items.length; position++) {

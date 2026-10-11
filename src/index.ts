@@ -24,7 +24,7 @@ export {ensureContainer} from './core/convert.js'
 export {estimateBytes, jobTier, peakBytes, TIER_WEIGHT} from './core/cost.js'
 export {classifyYtDlpError, DownloadError, isRetryable} from './core/errors.js'
 export {type WorkEstimate, WorkMeter} from './core/eta.js'
-export {sanitizeFilename} from './core/files.js'
+export {type FileNameStyle, folderName, mediaFileStem, portableName, sanitizeFilename} from './core/files.js'
 export {
   AUDIO_CONTAINERS,
   AUDIO_RULES,

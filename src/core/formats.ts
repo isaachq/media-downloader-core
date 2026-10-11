@@ -152,6 +152,11 @@ export function profileOptions(profile: FormatProfile): Option[] {
     ['--extract-audio'],
     ['--audio-format', profile.container],
     ['--audio-quality', profile.quality ?? '0'],
+    // ID3v2.4 (the default) is unreadable for many car stereos and older players:
+    // write v2.3 plus a v1 fallback when the tags are embedded
+    ...(profile.container === 'mp3'
+      ? [['--postprocessor-args', 'Metadata+ffmpeg_o:-id3v2_version 3 -write_id3v1 1'] as Option]
+      : []),
   ]
 }
 

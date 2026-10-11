@@ -33,6 +33,7 @@ export const SETTINGS: AppSettings = {
   embedThumbnail: false,
   longVideoMinutes: 30,
   notifications: true,
+  portableNames: true,
 }
 
 export const READY: Diagnosis = {

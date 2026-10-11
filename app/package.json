@@ -79,7 +79,7 @@
           ]
         }
       ],
-      "identity": null,
+      "identity": "-",
       "hardenedRuntime": false
     },
     "dmg": {

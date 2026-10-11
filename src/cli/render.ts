@@ -1,7 +1,7 @@
 // Pure renderers: data in, strings out. No I/O, no clocks — callers pass the
 // animation tick and the width, which keeps every screen unit-testable.
 import type {Diagnosis} from '../binaries/doctor.js'
-import type {AnalysisResult, JobSnapshot, JobStep, LogEntry, StepState} from '../types.js'
+import type {AnalysisResult, BatchSnapshot, FailureHint, JobSnapshot, JobStep, LogEntry, StepState} from '../types.js'
 import {formatBytes, formatClock, formatRate} from '../util/units.js'
 import {fit, type Style} from './term.js'
 
@@ -84,7 +84,8 @@ export function finishedLine(job: JobSnapshot, style: Style, width: number): str
       const v = job.validation
       // "mp4 h264+aac 12 MB", or just "mp3 5 MB" when the container is the codec
       const codecs = [v?.video?.codec, v?.audio?.codec].filter(Boolean).join('+')
-      const container = v?.container.split(',')[0] ?? ''
+      // the file's extension says more than ffprobe's family name ("mov,mp4,m4a…")
+      const container = job.filepath ? (job.filepath.split('.').pop() ?? '') : (v?.container.split(',')[0] ?? '')
       const facts = v
         ? [container === codecs ? '' : container, codecs, formatBytes(v.sizeBytes)].filter(Boolean).join(' ')
         : ''
@@ -109,7 +110,7 @@ export function logLine(entry: LogEntry, style: Style): string {
   const color = entry.level === 'error' ? style.red : entry.level === 'warn' ? style.yellow : style.dim
   const where = entry.jobId
     ? `${shortId(entry.jobId)}${entry.attempt ? ` #${entry.attempt}/${entry.maxAttempts}` : ''}${entry.step ? ` ${entry.step}` : ''}`
-    : shortId(entry.sessionId)
+    : shortId(entry.batchId ?? entry.sessionId)
   return `${style.dark(time)} ${color(LEVEL_TAG[entry.level])} ${style.dim(where)}  ${color(entry.message)}`
 }
 
@@ -203,5 +204,70 @@ export function summary(jobs: readonly JobSnapshot[], elapsedMs: number, session
   if (failed.length)
     lines.push(style.dim(`  inspect a failure:  mdc logs <job id>   (e.g. mdc logs ${shortId(failed[0]!.id)})`))
   lines.push(style.dark(`  session ${sessionId}`))
+  return lines.join('\n')
+}
+
+/** What to do about a failure, in plain words. */
+export const HINT_TEXT: Readonly<Record<FailureHint, string>> = {
+  'needs-sign-in': 'sign-in required — retry with --cookies <your browser>',
+  private: 'private video',
+  removed: 'removed or unavailable',
+  'geo-blocked': 'blocked in your country',
+  'members-only': 'members-only — needs the cookies of a member account (--cookies)',
+  'not-started': 'live or premiere has not started',
+  'unsupported-url': 'site or url not supported',
+  'format-unavailable': 'the requested format is not offered',
+  'retry-later': 'rate-limited by the site — try again later',
+}
+
+/** "checking ▰▰▰▱▱ 12/50 · 10 ok · 2 unavailable" — the live preflight row. */
+export function preflightLine(batch: BatchSnapshot, style: Style): string {
+  const {total, checked, ok, unavailable} = batch.preflight
+  const bad = unavailable ? style.yellow(` · ${unavailable} unavailable`) : ''
+  return `${style.lime('◆')} ${style.dim(shortId(batch.id))} ${progressBar(total ? checked / total : undefined, 16, style)} ${style.cyan('CHECKING')} ${style.green(`${checked}/${total}`)} ${style.dim(`· ${ok} ok`)}${bad}`
+}
+
+/** Permanent line for a batch status change. */
+export function batchLine(batch: BatchSnapshot, style: Style, width: number): string | undefined {
+  const name = fit(batch.title ?? batch.url, Math.max(10, width - 40))
+  switch (batch.status) {
+    case 'scheduled':
+      return `${style.dark('◆')} ${style.dim(shortId(batch.id))} ${style.dim('scheduled')} ${style.green(name)}${batch.position && batch.position > 1 ? style.dark(` (#${batch.position} in line)`) : ''}`
+    case 'checking':
+      return `${style.lime('◆')} ${style.dim(shortId(batch.id))} ${style.dim('checking')} ${style.green(name)}`
+    case 'running': {
+      const {ok, unavailable} = batch.preflight
+      const skipped = unavailable ? style.yellow(` · ${unavailable} unavailable`) : ''
+      return `${style.lime('◆')} ${style.dim(shortId(batch.id))} ${style.dim(batch.kind === 'playlist' ? 'playlist' : 'video')} ${style.green(name)} ${style.dim(`· ${ok} job${ok === 1 ? '' : 's'}`)}${skipped} ${style.dark(`→ ${batch.outDir}`)}`
+    }
+    default:
+      return undefined
+  }
+}
+
+const BATCH_STATUS_COLOR = {
+  completed: 'lime',
+  'completed-with-errors': 'yellow',
+  failed: 'red',
+  cancelled: 'yellow',
+} as const
+
+/** Closing report of a batch: its result and every item that couldn't be downloaded, with why. */
+export function batchReport(batch: BatchSnapshot, style: Style, width: number): string {
+  const tone = BATCH_STATUS_COLOR[batch.status as keyof typeof BATCH_STATUS_COLOR] ?? 'dim'
+  const total = batch.items.length || batch.jobs.total
+  const lines = [
+    style.dark(`  ── batch ${batch.id} ──`),
+    `  ${style[tone](batch.status.toUpperCase())}  ${style.green(fit(batch.title ?? batch.url, Math.max(10, width - 40)))} ${style.dim(`· ${batch.jobs.succeeded}/${total} succeeded`)}`,
+  ]
+  for (const item of batch.items) {
+    if (item.state !== 'unavailable') continue
+    const why = item.error?.hint ? HINT_TEXT[item.error.hint] : (item.error?.message ?? 'unavailable')
+    lines.push(
+      `  ${style.red('✗')} ${style.dark(`#${item.index}`)} ${style.green(fit(item.title ?? item.url, Math.max(10, width - 60)))} ${style.dim('—')} ${style.yellow(why)}`,
+    )
+  }
+  if (batch.error && batch.jobs.total === 0)
+    lines.push(`  ${style.red(`[${batch.error.code}]`)} ${batch.error.message}`)
   return lines.join('\n')
 }

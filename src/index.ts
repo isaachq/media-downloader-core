@@ -41,6 +41,7 @@ export {
 export {HashPool} from './core/hash-pool.js'
 export {clampConcurrency, cpuCount, maxConcurrency, TaskPool} from './core/pool.js'
 export {ffprobe, summarizeProbe, validateFile} from './core/validate.js'
-export {type ArchiveCheck, MediaDownloader} from './downloader.js'
+export {type ArchiveCheck, MediaDownloader, relaxProfile, retryDelay} from './downloader.js'
+export {BatchScheduler} from './scheduler.js'
 export type * from './types.js'
 export {formatBytes, formatClock, formatRate} from './util/units.js'

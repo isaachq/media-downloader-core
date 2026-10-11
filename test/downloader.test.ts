@@ -13,8 +13,11 @@ import {type FakeBinaries, writeFakes} from './helpers/fakes.js'
 let root = ''
 let bins: FakeBinaries
 
+/** Every engine a test creates is disposed after the file, so no timer or write outlives it. */
+const engines: MediaDownloader[] = []
+
 async function makeDownloader(sub: string, extra: Partial<ConstructorParameters<typeof MediaDownloader>[0]> = {}) {
-  return new MediaDownloader({
+  const engine = new MediaDownloader({
     dataDir: path.join(root, sub),
     binaries: bins,
     validation: 'none',
@@ -24,6 +27,8 @@ async function makeDownloader(sub: string, extra: Partial<ConstructorParameters<
     progressIntervalMs: 0,
     ...extra,
   })
+  engines.push(engine)
+  return engine
 }
 
 const audio = {kind: 'audio', container: 'm4a'} as const
@@ -35,6 +40,7 @@ before(async () => {
 })
 
 after(async () => {
+  await Promise.all(engines.map(engine => engine.dispose()))
   await fs.rm(root, {recursive: true, force: true})
 })
 

@@ -27,6 +27,7 @@ import {TraceLog} from './core/trace-log.js'
 import {validateFile} from './core/validate.js'
 import type {
   AnalysisResult,
+  AttemptStrategy,
   DownloaderEvents,
   DownloaderOptions,
   FormatProfile,
@@ -89,12 +90,13 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
   readonly #settings: Settings
   readonly #pool: TaskPool<JobId>
   readonly #hashes = new HashPool()
-  readonly #queue: QueueStore
+  readonly #queue: QueueStore<JobRequest>
   readonly #jobs = new Map<JobId, Job>()
   /** Terminal jobs in finishing order, for releasing the oldest ones. */
   readonly #finished: JobId[] = []
   readonly #analyses = new Set<AbortController>()
-  readonly #dataDir: string
+  /** Folder holding tools, archive, queue state and logs. */
+  readonly dataDir: string
   readonly #workRoot: string
   readonly #cacheDir: string
   readonly #env: NodeJS.ProcessEnv
@@ -134,7 +136,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     this.binaries = new BinaryManager(options.dataDir, options.binaries)
     this.archive = new DownloadArchive(path.join(options.dataDir, 'archive.jsonl'))
     this.#queue = new QueueStore(path.join(options.dataDir, 'queue.json'), () => this.#pendingRequests())
-    this.#dataDir = options.dataDir
+    this.dataDir = options.dataDir
     this.#workRoot = path.join(options.dataDir, 'work')
     this.#cacheDir = path.join(options.dataDir, 'cache')
     this.#trace =
@@ -190,12 +192,12 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
 
   /** Check tools, codecs, data folder and free space without changing anything. */
   diagnose(): Promise<Diagnosis> {
-    return diagnose(this.binaries, this.#dataDir)
+    return diagnose(this.binaries, this.dataDir)
   }
 
   /** Install whatever is missing, outdated or incapable (everything with `force`), then re-check. */
   setup(opts: InstallOptions & {readonly force?: boolean | undefined} = {}): Promise<SetupResult> {
-    return setup(this.binaries, this.#dataDir, opts)
+    return setup(this.binaries, this.dataDir, opts)
   }
 
   // ─── Analysis ─────────────────────────────────────────────────────────────
@@ -286,10 +288,14 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     return snapshots
   }
 
-  /** Re-queue whatever was pending when the app last closed (or crashed). Partial files resume. */
-  async restoreQueue(): Promise<JobSnapshot[]> {
+  /**
+   * Re-queue whatever was pending when the app last closed (or crashed).
+   * Partial files resume. `filter` lets a scheduler keep the jobs it restores itself.
+   */
+  async restoreQueue(filter: (request: JobRequest) => boolean = () => true): Promise<JobSnapshot[]> {
     const restored: JobSnapshot[] = []
     for (const request of await this.#queue.load()) {
+      if (!filter(request)) continue
       try {
         restored.push(this.add({...request, infoJsonPath: undefined}))
       } catch (error) {
@@ -423,17 +429,19 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     // deterministic per url + profile: a retry or an app restart resumes the .part files
     const workDir = path.join(this.#workRoot, shortHash(`${request.url}|${profileKey(request.profile)}`))
     let infoJsonPath = request.infoJsonPath
+    let profile = request.profile
+    let strategy: AttemptStrategy = 'primary'
 
     try {
       const bins = await this.binaries.resolve()
       if (await this.#skipIfArchived(job, request.extractor, request.mediaId)) return
 
       for (;;) {
-        const attempt = job.beginAttempt()
+        const attempt = job.beginAttempt(strategy)
         this.#emit(job, true)
         try {
           await this.#ensureDiskSpace(request.outDir)
-          await this.#attempt(job, bins, workDir, infoJsonPath, signal)
+          await this.#attempt(job, bins, profile, workDir, infoJsonPath, signal)
           job.endAttempt(undefined)
           if (attempt > 1) this.#log('info', `succeeded on attempt ${attempt}/${job.maxAttempts}`, job)
           this.#finish(job, 'completed', {})
@@ -447,7 +455,25 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
           const step = job.currentStep
           // a corrupt partial may cause anything but a network hiccup: start clean
           if (failure.code !== 'network') await fs.rm(workDir, {recursive: true, force: true})
-          infoJsonPath = undefined // cached media urls may have expired: extract fresh
+          // next attempt extracts fresh metadata — cached media urls may have expired
+          if (infoJsonPath) strategy = 'fresh-extraction'
+          infoJsonPath = undefined
+
+          // alternative before giving up: the requested resolution doesn't exist → best available
+          const relaxed =
+            failure.hint === 'format-unavailable' && strategy !== 'format-fallback' ? relaxProfile(profile) : undefined
+          if (relaxed && attempt < job.maxAttempts) {
+            job.endAttempt(jobError, 0)
+            this.#log(
+              'warn',
+              `attempt ${attempt}/${job.maxAttempts}: format not available — trying ${profileKey(relaxed)} instead`,
+              job,
+              {code: failure.code},
+            )
+            profile = relaxed
+            strategy = 'format-fallback'
+            continue
+          }
 
           if (!isRetryable(failure.code) || attempt >= job.maxAttempts) {
             job.endAttempt(jobError)
@@ -491,12 +517,12 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
   async #attempt(
     job: Job,
     bins: ResolvedBinaries,
+    profile: FormatProfile,
     workDir: string,
     infoJsonPath: string | undefined,
     signal: AbortSignal,
   ): Promise<void> {
     const {request} = job
-    const {profile} = request
     await fs.mkdir(workDir, {recursive: true})
 
     // ── download (+ yt-dlp post-processing: merge / extract audio / metadata)
@@ -592,10 +618,11 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     const extractor = info.extractor ?? request.extractor
     if (extractor && mediaId) {
       await this.archive.add({
-        key: archiveKey(extractor, mediaId, profile),
+        // archived under the requested profile, so re-adding the same request skips it
+        key: archiveKey(extractor, mediaId, request.profile),
         extractor,
         mediaId,
-        profile: profileKey(profile),
+        profile: profileKey(request.profile),
         title: mediaTitle,
         url: request.url,
         filepath: finalPath,
@@ -623,6 +650,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     const entry: LogEntry = job
       ? {
           ...base,
+          batchId: job.request.batchId,
           jobId: job.id,
           attemptId: job.attemptId,
           stepId: job.stepId,
@@ -634,6 +662,15 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       : {...base, ...extra}
     this.#trace?.write(entry)
     this.emit('log', entry)
+  }
+
+  /** Append to this engine's log stream and trace file (used by the scheduler; open to hosts). */
+  log(
+    level: LogLevel,
+    message: string,
+    context: Omit<Partial<LogEntry>, 'level' | 'message' | 'time' | 'sessionId'> = {},
+  ): void {
+    this.#log(level, message, undefined, context)
   }
 
   async #skipIfArchived(job: Job, extractor: string | undefined, mediaId: string | undefined): Promise<boolean> {
@@ -744,6 +781,12 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     }
     return pending
   }
+}
+
+/** A looser profile to try when the requested one has no matching format: drop the resolution cap. */
+export function relaxProfile(profile: FormatProfile): FormatProfile | undefined {
+  if (profile.kind === 'video' && profile.maxHeight !== undefined) return {kind: 'video', container: profile.container}
+  return undefined
 }
 
 /**

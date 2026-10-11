@@ -5,13 +5,14 @@ import {createInterface} from 'node:readline'
 import {fileURLToPath} from 'node:url'
 import {BinaryError} from '../binaries/sources.js'
 import {MediaDownloader} from '../downloader.js'
-import type {BinaryPaths, ExecutableSpec, JobSnapshot, LogEntry} from '../types.js'
+import {BatchScheduler} from '../scheduler.js'
+import type {BatchSnapshot, BinaryPaths, ExecutableSpec, JobSnapshot, LogEntry} from '../types.js'
 import {formatBytes} from '../util/units.js'
 import {type Command, type GlobalOptions, HELP, parseCli} from './args.js'
 import {banner, bootSequence} from './banner.js'
 import {Dashboard} from './dashboard.js'
 import {defaultDataDir, defaultDownloadDir} from './paths.js'
-import {analysisReport, doctorReport, logLine, progressBar, summary, traceLine} from './render.js'
+import {analysisReport, batchReport, doctorReport, logLine, progressBar, summary, traceLine} from './render.js'
 import {createStyle, type Output, processOutput, type Style, wantsColor} from './term.js'
 
 export const EXIT = {ok: 0, failures: 1, usage: 2, notReady: 3, interrupted: 130} as const
@@ -214,7 +215,9 @@ async function get(ctx: Context, command: Extract<Command, {name: 'get'}>): Prom
   const dl = engine(ctx, {
     ...(command.threads && {concurrency: command.threads}),
     ...(command.validation && {validation: command.validation}),
+    ...(command.cookies && {cookiesFromBrowser: command.cookies}),
   })
+  const scheduler = new BatchScheduler(dl, {preflight: command.check})
   const {out, err} = ctx.io
   const started = Date.now()
   let interrupted = false
@@ -225,7 +228,7 @@ async function get(ctx: Context, command: Extract<Command, {name: 'get'}>): Prom
       err,
       `\n${ctx.style.yellow('■ interrupt')} ${ctx.style.dim('— stopping; partial downloads are kept and resume next time (Ctrl+C again to force)')}`,
     )
-    void dl.dispose()
+    void scheduler.dispose().then(() => dl.dispose())
   }
   process.once('SIGINT', onInterrupt)
 
@@ -234,46 +237,54 @@ async function get(ctx: Context, command: Extract<Command, {name: 'get'}>): Prom
     intro(ctx)
     if (!(await boot(ctx, dl))) return EXIT.notReady
     if (ctx.global.json) {
+      scheduler.on('batch', batch => json(out, {type: 'batch', ...batch}))
       dl.on('job', snapshot => json(out, {type: 'job', ...snapshot}))
       dl.on('log', entry => json(out, {type: 'log', ...entry}))
     } else {
+      let lastStatus: BatchSnapshot['status'] | undefined
+      scheduler.on('batch', batch => {
+        if (batch.status === 'checking') dashboard?.preflight(batch)
+        if (batch.status === lastStatus) return
+        lastStatus = batch.status
+        dashboard?.batch(batch)
+      })
       dl.on('job', snapshot => {
         dashboard?.job(snapshot)
         dashboard?.setQueued(dl.stats.queued)
       })
       dl.on('log', entry => dashboard?.log(entry))
-      line(out, `  ${ctx.style.dark('»')} ${ctx.style.dim('analyzing')} ${ctx.style.green(command.url)}`)
     }
 
-    const analysis = await dl.analyze(command.url)
     const outDir = path.resolve(command.out ?? defaultDownloadDir())
-    const jobs =
-      analysis.kind === 'playlist'
-        ? dl.addPlaylist(analysis, command.profile, outDir, command.items ? {indexes: command.items} : {})
-        : [dl.addVideo(analysis, command.profile, outDir)]
-    if (!ctx.global.json) {
-      const what =
-        analysis.kind === 'playlist' ? `playlist "${analysis.title}" · ${jobs.length} items` : analysis.media.title
-      line(
-        out,
-        `  ${ctx.style.dark('»')} ${ctx.style.dim('queued')} ${ctx.style.green(what)} ${ctx.style.dark(`→ ${outDir}`)}\n`,
-      )
-    }
-
-    await dl.whenIdle()
+    const scheduled = scheduler.schedule({url: command.url, profile: command.profile, outDir, items: command.items})
+    await scheduler.whenIdle()
     // stop streaming before the summary, so it is always the last line (shutdown logs go to the trace file)
+    scheduler.removeAllListeners('batch')
     dl.removeAllListeners('job')
     dl.removeAllListeners('log')
-    const finished: JobSnapshot[] = dl.jobs()
     dashboard?.stop()
-    if (ctx.global.json) json(out, {type: 'summary', sessionId: dl.sessionId, elapsedMs: Date.now() - started})
-    else line(out, `\n${summary(finished, Date.now() - started, dl.sessionId, ctx.style)}`)
 
-    if (interrupted) return EXIT.interrupted
-    return finished.some(job => job.outcome === 'failed') ? EXIT.failures : EXIT.ok
+    const batch = scheduler.batch(scheduled.id)!
+    const finished: JobSnapshot[] = dl.jobs()
+    if (ctx.global.json) {
+      json(out, {
+        type: 'summary',
+        sessionId: dl.sessionId,
+        batchId: batch.id,
+        status: batch.status,
+        elapsedMs: Date.now() - started,
+      })
+    } else {
+      line(out, `\n${batchReport(batch, ctx.style, out.columns)}`)
+      line(out, summary(finished, Date.now() - started, dl.sessionId, ctx.style))
+    }
+
+    if (interrupted || batch.status === 'cancelled') return EXIT.interrupted
+    return batch.status === 'completed' ? EXIT.ok : EXIT.failures
   } finally {
     dashboard?.stop()
     process.removeListener('SIGINT', onInterrupt)
+    await scheduler.dispose()
     await dl.dispose()
   }
 }
@@ -311,7 +322,7 @@ async function logs(ctx: Context, id: string, limit?: number): Promise<number> {
   const dir = path.join(ctx.dataDir, 'logs')
   const files = (await fs.readdir(dir).catch(() => [])).filter(f => /^trace-.*\.jsonl$/.test(f)).sort()
   const matches = (entry: LogEntry) =>
-    [entry.sessionId, entry.jobId, entry.attemptId, entry.stepId].some(value => value?.startsWith(id))
+    [entry.sessionId, entry.batchId, entry.jobId, entry.attemptId, entry.stepId].some(value => value?.startsWith(id))
   const kept: LogEntry[] = []
   let total = 0
   for (const file of files) {

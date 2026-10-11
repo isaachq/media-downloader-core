@@ -1,4 +1,4 @@
-import type {ErrorCode, JobError, MessageParams} from '../types.js'
+import type {ErrorCode, FailureHint, JobError, MessageParams} from '../types.js'
 
 export class DownloadError extends Error {
   override readonly name = 'DownloadError'
@@ -8,12 +8,13 @@ export class DownloadError extends Error {
     message: string,
     readonly details?: string,
     readonly params?: MessageParams,
+    readonly hint?: FailureHint,
   ) {
     super(message)
   }
 
   toJSON(): JobError {
-    return {code: this.code, message: this.message, details: this.details, params: this.params}
+    return {code: this.code, message: this.message, hint: this.hint, details: this.details, params: this.params}
   }
 }
 
@@ -92,16 +93,35 @@ export function ytDlpErrorMessage(stderr: string): string {
   return message.trim()
 }
 
+/** First matching rule wins: specific causes before generic "unavailable". */
+const HINTS: ReadonlyArray<readonly [RegExp, FailureHint]> = [
+  [/private video/i, 'private'],
+  [/members.only|join this channel/i, 'members-only'],
+  [/sign in to confirm|age.restricted|requires? (?:a )?(?:login|authentication)|cookies/i, 'needs-sign-in'],
+  [/not available in your country|geo.?restrict/i, 'geo-blocked'],
+  [/premieres in|live event will begin|is upcoming/i, 'not-started'],
+  [/unsupported url|is not a valid url/i, 'unsupported-url'],
+  [/requested format is not available|no video formats found/i, 'format-unavailable'],
+  [/HTTP Error 429|too many requests/i, 'retry-later'],
+  [/removed|unavailable|terminated|copyright|HTTP Error 404|HTTP Error 410/i, 'removed'],
+]
+
+export function hintFor(message: string): FailureHint | undefined {
+  return HINTS.find(([pattern]) => pattern.test(message))?.[1]
+}
+
 export function classifyYtDlpError(stderr: string, exitCode: number | null): DownloadError {
   const message = ytDlpErrorMessage(stderr) || `yt-dlp exited with code ${exitCode}.`
   const context = `${message}\n${stderr.slice(-4000)}`
   const details = stderr.trim().split('\n').slice(-10).join('\n')
 
   // order matters: disk errors trump everything, a 403 page may also say "unavailable"
+  const hint = hintFor(message)
   if (DISK_FULL.some(re => re.test(context))) return new DownloadError('disk-full', 'No space left on device.', details)
-  if (UNAVAILABLE.some(re => re.test(message))) return new DownloadError('unavailable', message, details)
+  if (UNAVAILABLE.some(re => re.test(message)))
+    return new DownloadError('unavailable', message, details, undefined, hint)
   if (EXPIRED.some(re => re.test(message))) return new DownloadError('expired', message, details)
-  if (NETWORK.some(re => re.test(context))) return new DownloadError('network', message, details)
+  if (NETWORK.some(re => re.test(context))) return new DownloadError('network', message, details, undefined, hint)
   return new DownloadError('unknown', message, details)
 }
 

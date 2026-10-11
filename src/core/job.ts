@@ -1,5 +1,6 @@
 import type {
   AttemptRecord,
+  AttemptStrategy,
   JobError,
   JobId,
   JobOutcome,
@@ -108,8 +109,8 @@ export class Job {
   }
 
   /** Start a new attempt: every step goes back to pending, with fresh ids. */
-  beginAttempt(): number {
-    this.#attempts.push({id: newId(), attempt: this.#attempts.length + 1, startedAt: Date.now()})
+  beginAttempt(strategy: AttemptStrategy): number {
+    this.#attempts.push({id: newId(), strategy, attempt: this.#attempts.length + 1, startedAt: Date.now()})
     this.#steps = freshSteps()
     this.#currentStep = undefined
     this.#snapshot = undefined
@@ -180,6 +181,7 @@ export class Job {
   snapshot(): JobSnapshot {
     this.#snapshot ??= Object.freeze({
       id: this.id,
+      batchId: this.request.batchId,
       url: this.request.url,
       profile: this.request.profile,
       status: this.status,

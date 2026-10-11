@@ -1,5 +1,5 @@
-import type {JobId, JobSnapshot, LogEntry} from '../types.js'
-import {finishedLine, jobLine, logLine} from './render.js'
+import type {BatchSnapshot, JobId, JobSnapshot, LogEntry} from '../types.js'
+import {batchLine, finishedLine, jobLine, logLine, preflightLine} from './render.js'
 import {cursor, type Output, type Style} from './term.js'
 
 const FRAME_MS = 100
@@ -16,6 +16,8 @@ const MAX_ROWS = 12
 export class Dashboard {
   readonly #active = new Map<JobId, JobSnapshot>()
   #queued = 0
+  /** Live preflight row while a batch is being checked. */
+  #preflight: BatchSnapshot | undefined
   #drawn = 0
   #tick = 0
   #timer: NodeJS.Timeout | undefined
@@ -54,6 +56,29 @@ export class Dashboard {
     this.#dirty = true
   }
 
+  /** A batch changed status: print it permanently; the live preflight row ends with checking. */
+  batch(batch: BatchSnapshot): void {
+    if (batch.status !== 'checking') this.#preflight = undefined
+    const text = batchLine(batch, this.style, this.out.columns)
+    if (text) this.#print(text)
+    if (batch.status === 'running') {
+      // why some items won't become jobs, right when the batch starts
+      for (const item of batch.items) {
+        if (item.state !== 'unavailable') continue
+        this.#print(
+          this.style.dim(`  ✗ #${item.index} ${item.title ?? item.url} — ${item.error?.message ?? 'unavailable'}`),
+        )
+      }
+    }
+    this.#dirty = true
+  }
+
+  /** Preflight progress (repainted in place; not printed on non-TTY outputs). */
+  preflight(batch: BatchSnapshot): void {
+    this.#preflight = batch
+    this.#dirty = true
+  }
+
   setQueued(count: number): void {
     if (count !== this.#queued) this.#dirty = true
     this.#queued = count
@@ -83,12 +108,14 @@ export class Dashboard {
 
   #frame(): void {
     this.#tick++
-    const animating = [...this.#active.values()].some(job => job.progress.fraction === undefined)
+    const animating =
+      this.#preflight !== undefined || [...this.#active.values()].some(job => job.progress.fraction === undefined)
     if (!this.#dirty && !animating) return
     this.#dirty = false
     const rows = [...this.#active.values()]
       .slice(0, MAX_ROWS)
       .map(job => jobLine(job, this.style, this.out.columns, this.#tick))
+    if (this.#preflight) rows.unshift(preflightLine(this.#preflight, this.style))
     const hidden = this.#active.size - rows.length
     if (hidden > 0) rows.push(this.style.dim(`  … ${hidden} more running`))
     if (this.#queued > 0) rows.push(this.style.dark(`  ${this.#queued} queued`))

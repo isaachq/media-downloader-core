@@ -17,6 +17,10 @@ export type GetOptions = {
   readonly items?: readonly number[] | undefined
   readonly threads?: number | undefined
   readonly validation?: ValidationLevel | undefined
+  /** Browser to read cookies from, for sign-in / age-restricted media. */
+  readonly cookies?: string | undefined
+  /** Preflight-check every item before downloading. */
+  readonly check: boolean
 }
 
 export type Command =
@@ -52,6 +56,8 @@ const OPTIONS = {
   threads: {type: 'string', short: 't'},
   validation: {type: 'string'},
   'audio-quality': {type: 'string'},
+  cookies: {type: 'string'},
+  'no-check': {type: 'boolean', default: false},
   // setup / logs
   force: {type: 'boolean', default: false},
   limit: {type: 'string', short: 'n'},
@@ -163,6 +169,8 @@ export function parseCli(argv: readonly string[]): ParsedCli {
         items,
         threads,
         validation: v.validation as ValidationLevel | undefined,
+        cookies: v.cookies,
+        check: !v['no-check'],
       })
     }
   }
@@ -171,7 +179,7 @@ export function parseCli(argv: readonly string[]): ParsedCli {
 export const HELP = `usage: mdc <command> [options]
 
 commands
-  get <url>        download a video or playlist (validated, archived)
+  get <url>        download a video or playlist: preflight check → jobs on CPUs/2 threads
   info <url>       show title, playlist items and available formats
   doctor           check yt-dlp, ffmpeg (codecs), data folder and space
   setup            install / repair yt-dlp and ffmpeg (checksum-verified)
@@ -187,6 +195,9 @@ get options
   -i, --items <list>      playlist items, e.g. 1-5,8
   -t, --threads <n>       simultaneous downloads (capped at CPUs/2)
       --validation <v>    full (default) quick none
+      --cookies <browser> use your browser's cookies (chrome, firefox, safari, edge…)
+                          for private, members-only or age-restricted media
+      --no-check          skip the preflight check of playlist items
 
 other options
       --force             setup: reinstall even if everything looks fine

@@ -10,7 +10,7 @@ import {defaultDataDir} from '../src/cli/paths.js'
 import {jobLine, logLine, progressBar, stepTrack, summary} from '../src/cli/render.js'
 import {createStyle, fit, stripAnsi, visibleLength, wantsColor} from '../src/cli/term.js'
 import {run} from '../src/core/process.js'
-import type {JobSnapshot, LogEntry} from '../src/types.js'
+import type {BatchSnapshot, JobSnapshot, LogEntry} from '../src/types.js'
 import {type FakeBinaries, writeFakes} from './helpers/fakes.js'
 
 const plain = createStyle(false)
@@ -41,6 +41,8 @@ describe('argument parsing', () => {
       items: [1, 2, 3, 7],
       threads: 4,
       validation: undefined,
+      cookies: undefined,
+      check: true,
     })
   })
 
@@ -88,7 +90,10 @@ describe('argument parsing', () => {
   })
 
   it('shares the Electron userData folder by default', () => {
-    assert.match(defaultDataDir({}, 'darwin'), /Library\/Application Support\/Media Download Core$/)
+    assert.equal(
+      defaultDataDir({}, 'darwin'),
+      path.join(os.homedir(), 'Library', 'Application Support', 'Media Download Core'),
+    )
     assert.match(defaultDataDir({APPDATA: 'C:\\Users\\me\\AppData\\Roaming'}, 'win32'), /Media Download Core$/)
     assert.equal(defaultDataDir({MDC_DATA_DIR: '/custom'}, 'linux'), path.resolve('/custom'))
   })
@@ -274,10 +279,10 @@ describe('mdc end to end', () => {
     assert.deepEqual(files.sort(), ['001 - Title e1 [e1].m4a', '003 - Title e3 [e3].m4a'])
   })
 
-  it('get exits 1 on a failed download and logs replays its flow by job id', async () => {
+  it('get exits 1 when some items fail, and logs replays the whole batch by its id', async () => {
     const result = await mdc([
       'get',
-      'https://fake.test/unavailable9',
+      'https://fake.test/list-mixed',
       '-f',
       'm4a',
       '-o',
@@ -287,15 +292,29 @@ describe('mdc end to end', () => {
       '--json',
     ])
     assert.equal(result.code, EXIT.failures)
-    const failed = ndjson(result.stdout).find(e => e.type === 'job' && e['outcome'] === 'failed')
-    const jobId = String(failed?.['id'])
-    assert.match(jobId, /^[A-Za-z0-9]{32}$/)
+    const events = ndjson(result.stdout)
+    const summaryEvent = events.at(-1)!
+    assert.equal(summaryEvent.type, 'summary')
+    assert.equal(summaryEvent['status'], 'completed-with-errors')
+    const batchId = String(summaryEvent['batchId'])
+    assert.match(batchId, /^[A-Za-z0-9]{32}$/)
+    const closed = events.filter(e => e.type === 'batch').at(-1) as unknown as BatchSnapshot
+    const bad = closed.items.find(item => item.state === 'unavailable')
+    assert.equal(bad?.error?.hint, 'removed')
 
-    const logs = await mdc(['logs', jobId.slice(0, 10)])
+    const logs = await mdc(['logs', batchId.slice(0, 10)])
     assert.equal(logs.code, EXIT.ok)
-    assert.match(logs.stdout, /queued https:\/\/fake\.test\/unavailable9/)
-    assert.match(logs.stdout, /\[unavailable\]/)
-    assert.match(logs.stdout, /finished: failed/)
+    assert.match(logs.stdout, /batch scheduled: https:\/\/fake\.test\/list-mixed/)
+    assert.match(logs.stdout, /preflight: 3\/4 downloadable, 1 unavailable/)
+    assert.match(logs.stdout, /finished: completed/)
+    assert.match(logs.stdout, /batch closed: completed-with-errors — 3\/4 succeeded/)
+  })
+
+  it('get on a single unavailable url exits 1 with the reason', async () => {
+    const result = await mdc(['get', 'https://fake.test/unavailable9', '-f', 'm4a', '-o', path.join(root, 'o4')])
+    assert.equal(result.code, EXIT.failures)
+    assert.match(result.stdout, /FAILED/)
+    assert.match(result.stdout, /\[unavailable\]/)
   })
 
   it('renders the human dashboard without a TTY (plain lines)', async () => {

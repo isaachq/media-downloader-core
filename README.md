@@ -55,12 +55,43 @@ After extraction every binary must run and ffmpeg must provide the encoders,
 decoders and muxers the profiles need (libx264, libvpx-vp9, libopus,
 libmp3lame, AV1 decoding…), or the install is rejected and nothing changes.
 
+## Scheduling: schedule → batch → jobs
+
+```ts
+import {BatchScheduler, MediaDownloader} from 'media-downloader-core'
+
+const engine = new MediaDownloader({dataDir})
+const scheduler = new BatchScheduler(engine)        // maxActiveBatches: 1
+await scheduler.restore()                           // batches pending at last shutdown
+scheduler.on('batch', batch => render(batch))       // status, preflight, counts
+scheduler.schedule({url, profile, outDir})          // never blocks — waits its turn
+```
+
+Submitting a url never blocks and never overloads the machine. Each url
+becomes a **batch**; batches run one at a time (configurable) and each fans
+out into jobs on the ⌊CPUs/2⌋ pool:
+
+1. **checking** — the url is resolved and every item is checked in parallel
+   (bounded by the same pool). The metadata fetched here is handed to the
+   jobs, so nothing is extracted twice — downloads start immediately.
+2. **running** — one job per downloadable item. Unavailable items are closed
+   right away with a reason and an actionable hint (`private`, `removed`,
+   `geo-blocked`, `needs-sign-in` → "use --cookies", …).
+3. **closed** — `completed`, `completed-with-errors`, `failed` or
+   `cancelled`, with a report of what couldn't be downloaded and why; then
+   the next scheduled batch starts.
+
+Before a job gives up it tries alternatives: fresh extraction for expired
+links, and the best available format when the requested resolution doesn't
+exist (`format-fallback`, recorded in its attempt history). Pending batches
+are saved and resumed by `restore()` after a restart.
+
 ## Retries, sub-tasks and tracing
 
 - Each job runs `download → convert → validate → finalize`; every step has a state (`pending | in-progress | success | failed | skipped`).
 - Transient failures are retried up to 3 times; the wait doubles (2 s, 4 s, 8 s) and never exceeds 15 s. A download with no activity for 2 min is treated as stalled and retried.
 - Every attempt records the step it failed in, the error, and the last status/progress it reached.
-- Ids are 32-character base62 strings: `sessionId → jobId → attemptId → stepId`. Every log line carries them and is appended to `logs/trace-YYYY-MM-DD.jsonl` (14 days kept); `mdc logs <id>` replays any of them.
+- Ids are 32-character base62 strings: `sessionId → batchId → jobId → attemptId → stepId`. Every log line carries them and is appended to `logs/trace-YYYY-MM-DD.jsonl` (14 days kept); `mdc logs <id>` replays any of them.
 
 ## Concurrency model
 

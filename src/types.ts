@@ -108,8 +108,24 @@ export type ErrorCode =
 
 export type MessageParams = Readonly<Record<string, string | number>>
 
+/**
+ * What a user can do about a failure that retrying won't fix — shown next to
+ * the error so a job can be closed with an actionable reason.
+ */
+export type FailureHint =
+  | 'needs-sign-in'
+  | 'private'
+  | 'removed'
+  | 'geo-blocked'
+  | 'members-only'
+  | 'not-started'
+  | 'unsupported-url'
+  | 'format-unavailable'
+  | 'retry-later'
+
 export type JobError = {
   readonly code: ErrorCode
+  readonly hint?: FailureHint | undefined
   /** English, for logs; localize by `code`. */
   readonly message: string
   readonly params?: MessageParams | undefined
@@ -227,8 +243,12 @@ export type JobStep = {
 }
 
 /** One try at running the job's steps. */
+/** How an attempt tried: as requested, with fresh metadata, or with a relaxed format. */
+export type AttemptStrategy = 'primary' | 'fresh-extraction' | 'format-fallback'
+
 export type AttemptRecord = {
   readonly id: TraceId
+  readonly strategy: AttemptStrategy
   /** 1-based. */
   readonly attempt: number
   readonly startedAt: number
@@ -255,6 +275,8 @@ export type PlaylistRef = {
 /** Immutable view of a job, emitted on every change. */
 export type JobSnapshot = {
   readonly id: JobId
+  /** The batch this job belongs to, when created by the scheduler. */
+  readonly batchId?: BatchId | undefined
   readonly url: string
   readonly profile: FormatProfile
   readonly status: JobStatus
@@ -283,6 +305,7 @@ export type JobSnapshot = {
 export type JobRequest = {
   /** http(s) page url. */
   readonly url: string
+  readonly batchId?: BatchId | undefined
   readonly profile: FormatProfile
   /** Absolute destination folder. Playlist jobs get a sub-folder named after the playlist. */
   readonly outDir: string
@@ -294,6 +317,96 @@ export type JobRequest = {
   readonly playlist?: PlaylistRef | undefined
   /** From analyze(); ignored unless it lives in the engine's cache folder. */
   readonly infoJsonPath?: string | undefined
+}
+
+// ─── Batches (scheduler) ────────────────────────────────────────────────────
+// schedule → batch → jobs: every url submitted becomes a batch, batches run
+// one after another (by default), and each batch fans out into jobs that run
+// on the ⌊CPUs/2⌋ pool. Submitting never blocks: a batch just waits its turn.
+
+declare const batchIdBrand: unique symbol
+export type BatchId = TraceId & {readonly [batchIdBrand]: true}
+
+export type BatchStatus =
+  /** Waiting for the batches ahead of it. */
+  | 'scheduled'
+  /** Preflight: resolving the url and checking every item is downloadable. */
+  | 'checking'
+  | 'running'
+  | 'completed'
+  /** Finished, some items succeeded and some didn't. */
+  | 'completed-with-errors'
+  /** Finished with no successful item. */
+  | 'failed'
+  | 'cancelled'
+
+export type PreflightState = 'pending' | 'checking' | 'ok' | 'unavailable'
+
+export type PreflightItem = {
+  /** 1-based position (playlist index; 1 for a single video). */
+  readonly index: number
+  readonly url: string
+  readonly title?: string | undefined
+  readonly mediaId?: string | undefined
+  readonly duration?: number | undefined
+  readonly state: PreflightState
+  /** Set when the requested profile needs a local conversion for this item. */
+  readonly requiresConversion?: boolean | undefined
+  readonly error?: JobError | undefined
+  readonly jobId?: JobId | undefined
+}
+
+export type BatchCounts = {
+  readonly total: number
+  readonly queued: number
+  readonly running: number
+  readonly succeeded: number
+  readonly failed: number
+}
+
+export type BatchSnapshot = {
+  readonly id: BatchId
+  readonly url: string
+  readonly profile: FormatProfile
+  readonly outDir: string
+  readonly status: BatchStatus
+  readonly kind?: 'video' | 'playlist' | undefined
+  readonly title?: string | undefined
+  /** Position among scheduled batches (1 = next), while scheduled. */
+  readonly position?: number | undefined
+  readonly preflight: {
+    readonly total: number
+    readonly checked: number
+    readonly ok: number
+    readonly unavailable: number
+  }
+  readonly items: readonly PreflightItem[]
+  readonly jobs: BatchCounts
+  readonly error?: JobError | undefined
+  readonly createdAt: number
+  readonly startedAt?: number | undefined
+  readonly finishedAt?: number | undefined
+}
+
+export type BatchRequest = {
+  readonly url: string
+  readonly profile: FormatProfile
+  readonly outDir: string
+  /** Playlist items to take (1-based). */
+  readonly items?: readonly number[] | undefined
+}
+
+export type SchedulerOptions = {
+  /** Batches processed at the same time. Default 1: one batch saturates the ⌊CPUs/2⌋ pool already. */
+  readonly maxActiveBatches?: number | undefined
+  /** Check every item before downloading. Default true. */
+  readonly preflight?: boolean | undefined
+}
+
+export type SchedulerEvents = {
+  batch: [snapshot: BatchSnapshot]
+  /** Nothing scheduled, checking or running. */
+  idle: []
 }
 
 // ─── Options ────────────────────────────────────────────────────────────────
@@ -379,6 +492,7 @@ export type LogEntry = {
   readonly time: number
   /** One per MediaDownloader instance (app launch / CLI run). */
   readonly sessionId: TraceId
+  readonly batchId?: BatchId | undefined
   readonly jobId?: JobId | undefined
   readonly attemptId?: TraceId | undefined
   readonly stepId?: TraceId | undefined

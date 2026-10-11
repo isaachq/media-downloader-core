@@ -8,7 +8,7 @@ import {crc32} from 'node:zlib'
 import {FFMPEG_REQUIREMENTS, parseCodecList, parseFfmpegVersion} from '../src/binaries/capabilities.js'
 import {ytDlpAgeDays} from '../src/binaries/doctor.js'
 import {BinaryManager} from '../src/binaries/manager.js'
-import {type Fetcher, ffmpegRelease, pickBtbnBuild, ytDlpRelease} from '../src/binaries/sources.js'
+import {type Fetcher, ffmpegRelease, latestYtDlpVersion, pickBtbnBuild, ytDlpRelease} from '../src/binaries/sources.js'
 import {run} from '../src/core/process.js'
 
 const sha = (data: Uint8Array) => createHash('sha256').update(data).digest('hex')
@@ -101,6 +101,33 @@ describe('release sources', () => {
         ['ffprobe.zip', '2'.repeat(64)],
       ],
     )
+  })
+
+  it('finds the latest yt-dlp through the web redirect, without the rate-limited API', async () => {
+    const fetcher = fakeFetch({
+      'https://github.com/yt-dlp/yt-dlp/releases/latest': () =>
+        new Response(null, {
+          status: 302,
+          headers: {location: 'https://github.com/yt-dlp/yt-dlp/releases/tag/2099.02.02'},
+        }),
+      'https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest': () => new Response('rate limited', {status: 403}),
+    })
+    assert.equal(await latestYtDlpVersion(fetcher), '2099.02.02')
+    assert.ok(!fetcher.calls.some(url => url.includes('api.github.com')))
+  })
+
+  it('falls back to the API (with GITHUB_TOKEN) when the redirect is unavailable', async () => {
+    let auth: string | null = null
+    const fetcher = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input)
+      if (url.includes('api.github.com')) {
+        auth = new Headers(init?.headers).get('authorization')
+        return new Response(JSON.stringify({tag_name: '2099.03.03'}), {status: 200})
+      }
+      return new Response('nope', {status: 500})
+    }) as Fetcher
+    assert.equal(await latestYtDlpVersion(fetcher, undefined, {GITHUB_TOKEN: 't0k3n'}), '2099.03.03')
+    assert.equal(auth, 'Bearer t0k3n')
   })
 
   it('resolves yt-dlp from the latest tag and SHA2-256SUMS', async () => {

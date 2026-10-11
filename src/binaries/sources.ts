@@ -75,8 +75,31 @@ async function text(fetcher: Fetcher, url: string, signal?: AbortSignal): Promis
   return response.text()
 }
 
-export async function latestYtDlpVersion(fetcher: Fetcher = fetch, signal?: AbortSignal): Promise<string> {
-  const body = JSON.parse(await text(fetcher, YT_DLP_API_LATEST, signal)) as {tag_name?: unknown}
+/**
+ * Latest yt-dlp tag. Primary: the web redirect /releases/latest →
+ * /releases/tag/<version>, which has no API rate limit (the REST API allows
+ * 60 calls/hour per IP — easily exhausted behind shared IPs or on CI).
+ * Fallback: the REST API, authenticated when GITHUB_TOKEN is set.
+ */
+export async function latestYtDlpVersion(
+  fetcher: Fetcher = fetch,
+  signal?: AbortSignal,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<string> {
+  try {
+    const location = await resolveRedirect(fetcher, `${YT_DLP_REPO}/latest`, signal)
+    const tag = /\/releases\/tag\/([^/?#]+)/.exec(location)?.[1]
+    if (tag) return decodeURIComponent(tag)
+  } catch (error) {
+    if (signal?.aborted) throw error
+  }
+  const token = env['GITHUB_TOKEN']
+  const response = await fetcher(YT_DLP_API_LATEST, {
+    headers: {'User-Agent': 'media-download-core', ...(token && {Authorization: `Bearer ${token}`})},
+    ...(signal && {signal}),
+  })
+  if (!response.ok) throw new BinaryError(`Could not find the latest yt-dlp release (HTTP ${response.status}).`)
+  const body = (await response.json()) as {tag_name?: unknown}
   if (typeof body.tag_name !== 'string') throw new BinaryError('Unexpected response from the GitHub releases API.')
   return body.tag_name
 }

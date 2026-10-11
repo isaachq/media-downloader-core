@@ -43,6 +43,53 @@ the ⌊CPUs/2⌋ pool and verified file by file.
 
 ![Dark theme in Spanish](docs/screenshots/home-dark-es.png)
 
+### Installing
+
+Download the installer for your system from the
+[releases page](https://github.com/isaachq/media-downloader-core/releases).
+On first launch the app installs yt-dlp and FFmpeg from their official sources
+(checksum-verified). The betas are not signed with an Apple or Microsoft
+certificate yet, so the system warns the first time; this is expected.
+
+**macOS** (Apple Silicon and Intel) — `.dmg`
+
+1. Open the `.dmg` and drag **Media Download Core** to **Applications**.
+2. Open the app. macOS says *"Apple could not verify 'Media Download Core' is
+   free of malware…"* — click **Done**.
+3. Go to **System Settings → Privacy & Security** and click **"Open Anyway"**
+   next to the message about Media Download Core. Confirm with your password.
+4. From then on it opens normally.
+
+> Right click → Open no longer skips this on macOS 15 and later. Alternative,
+> in Terminal: `xattr -dr com.apple.quarantine "/Applications/Media Download Core.app"`
+
+**Windows** (x64 and ARM) — `.exe`
+
+1. Run the installer. If SmartScreen says *"Windows protected your PC"*, click
+   **More info → Run anyway**.
+
+**Linux** (x64 and arm64) — pick your distribution's package:
+
+```bash
+# Ubuntu / Debian
+sudo apt install ./Media-Download-Core-<version>-linux-amd64.deb
+# Fedora / RHEL / openSUSE
+sudo dnf install ./Media-Download-Core-<version>-linux-x86_64.rpm
+# then open it from the app menu, or
+media-download-core
+```
+
+The `.deb` adds an AppArmor profile on Ubuntu 24.04+ so Chromium's sandbox
+can run (24.04 restricts the user namespaces it needs). The `.AppImage` runs on
+most other distributions (`chmod +x` it first; Fedora needs `sudo dnf install
+fuse-libs` for it); on Ubuntu 24.04+ prefer the `.deb`.
+
+Settings, tools and the download history live in `~/Library/Application Support/Media Download Core`
+(macOS), `%APPDATA%\Media Download Core` (Windows) or `~/.config/Media Download Core` (Linux),
+shared with the `mdc` command line.
+
+### Features
+
 - **Preview**: a playlist, YouTube Mix or channel opens a list of everything it holds first — filter, select all / some, or just the linked video — and only the picked items are downloaded. A Mix (an endless, auto-generated radio) loads its first 50 by default; load more from the preview.
 - **Batches**: preflight (available / unavailable with the reason), disk forecast from real bitrates, progress weighted by size and the **estimated time left** — measured from this computer's real throughput, so you can start a big batch and walk away — plus paged item list, cancel, clear finished. New links queue behind the running batch.
 - **Downloads**: one row per job with progress, speed, ETA, the D·C·V·F sub-tasks (failed / in-progress / success), retries and their reason.
@@ -52,6 +99,8 @@ the ⌊CPUs/2⌋ pool and verified file by file.
 - **Setup**: first launch installs yt-dlp and FFmpeg from their official sources, checksum-verified; the tools are shared with `mdc`.
 - English and Spanish, light / dark / system theme, window size and position — all remembered.
 - A start-up screen shows each phase; a failing phase is retried and, if it still fails, says why and resumes from there.
+
+### Building from source
 
 ```bash
 cd app
@@ -63,34 +112,6 @@ npm run dist:mac   # dist/*.dmg + *.zip (arm64, x64)
 npm run dist:win   # dist/*.exe installer (x64, arm64)
 npm run dist:linux # dist/*.AppImage + *.deb + *.rpm (this machine's architecture; .rpm needs rpmbuild)
 ```
-
-Beta builds are not signed with an Apple or Microsoft certificate yet, so the
-system warns the first time:
-
-- **macOS** shows *"Apple could not verify Media Download Core is free of
-  malware"*. Click **Done**, open **System Settings → Privacy & Security**,
-  and choose **Open Anyway** next to the message about the app (once). Or, in
-  Terminal: `xattr -dr com.apple.quarantine "/Applications/Media Download Core.app"`.
-  (Right click → Open no longer works on macOS 15 and later.) The app is
-  ad-hoc signed, so it runs on Apple Silicon and Intel alike.
-- **Windows** SmartScreen: **More info → Run anyway**.
-
-**Linux** (x64 and arm64) — pick your distribution's package:
-
-```bash
-# Ubuntu / Debian
-sudo apt install ./Media-Download-Core-<version>-linux-amd64.deb
-# Fedora / RHEL / openSUSE
-sudo dnf install ./Media-Download-Core-<version>-linux-x86_64.rpm
-# then, or from the app menu
-media-download-core
-```
-
-The `.deb` adds an AppArmor profile on Ubuntu 24.04+ so Chromium's sandbox
-can run (24.04 restricts the user namespaces it needs). The `.AppImage` runs on
-most other distributions (`chmod +x` it first; Fedora needs `sudo dnf install
-fuse-libs` for it); on Ubuntu 24.04+ prefer the `.deb`. Data, tools
-and the download history live in `~/.config/Media Download Core`, shared with `mdc`.
 
 The interface is built with [Ant Design](https://github.com/ant-design/ant-design)
 (MIT) — thank you to the Ant Design team for an excellent, free component library.

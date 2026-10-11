@@ -37,9 +37,15 @@ export class TraceLog {
 
   #rotate(day: string): void {
     this.#stream?.end()
+    this.#stream = undefined
     this.#day = day
-    // synchronous on purpose, but only once per day (µs): write() stays a plain ordered append
-    mkdirSync(this.dir, {recursive: true})
+    try {
+      // synchronous on purpose, but only once per day (µs): write() stays a plain ordered append
+      mkdirSync(this.dir, {recursive: true})
+    } catch {
+      this.#closed = true // unusable folder: tracing turns itself off, the engine carries on
+      return
+    }
     this.#stream = createWriteStream(path.join(this.dir, `trace-${day}.jsonl`), {flags: 'a'})
     this.#stream.on('error', () => {}) // a full disk must never crash the host; entries are dropped
     void this.#prune()

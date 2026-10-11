@@ -10,6 +10,24 @@ type Pointer = {
   readonly executables: Readonly<Record<string, string>>
 }
 
+/** Validate a parsed current.json; also accepts the 1.0 format `{version, executable}` (yt-dlp only). */
+function readPointer(raw: unknown, tool: ManagedTool): Pointer | undefined {
+  if (typeof raw !== 'object' || raw === null) return undefined
+  const {version, executables, executable} = raw as Record<string, unknown>
+  if (typeof version !== 'string' || !/^[\w.-]+$/.test(version)) return undefined
+  if (typeof executables === 'object' && executables !== null) {
+    const entries = Object.entries(executables)
+    if (entries.every(([, file]) => typeof file === 'string' && !file.includes('..'))) {
+      return {version, executables: Object.fromEntries(entries) as Record<string, string>}
+    }
+    return undefined
+  }
+  if (tool === 'yt-dlp' && typeof executable === 'string' && !executable.includes('..')) {
+    return {version, executables: {'yt-dlp': executable}}
+  }
+  return undefined
+}
+
 export type ManagedInstall = {
   readonly version: string
   /** Absolute path of each executable, by name ("yt-dlp", "ffmpeg", "ffprobe"). */
@@ -37,12 +55,14 @@ export class ManagedStore {
   }
 
   async current(): Promise<ManagedInstall | undefined> {
-    let pointer: Pointer
+    let raw: unknown
     try {
-      pointer = JSON.parse(await fs.readFile(this.#pointerFile, 'utf8')) as Pointer
+      raw = JSON.parse(await fs.readFile(this.#pointerFile, 'utf8'))
     } catch {
       return undefined
     }
+    const pointer = readPointer(raw, this.tool)
+    if (!pointer) return undefined // unreadable pointer: behave as "not installed", setup rewrites it
     const base = path.join(this.root, pointer.version)
     const executables = Object.fromEntries(
       Object.entries(pointer.executables).map(([name, relative]) => [name, path.join(base, relative)]),

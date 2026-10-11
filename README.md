@@ -20,6 +20,48 @@ if (result.kind === 'playlist') dl.addPlaylist(result, {kind: 'audio', container
 await dl.whenIdle()
 ```
 
+## Command line: `mdc`
+
+```bash
+npm install -g media-downloader-core     # or: npx mdc …
+mdc setup                                # install + verify yt-dlp and ffmpeg (SHA-256, codec check)
+mdc doctor                               # tools, versions, codecs, data folder, free space
+mdc info  "https://youtube.com/playlist?list=…"
+mdc get   "https://youtube.com/playlist?list=…" -f m4a -i 1-20 -o ~/Music
+mdc get   "https://youtu.be/…" -f mp4 -q 1080
+mdc logs  <id>                           # replay a session / job / attempt / step from the trace logs
+mdc verify                               # re-hash every archived file
+```
+
+A live dashboard shows each job's progress, speed, retries and sub-task
+track (`D✓ C– V▸ F·` = download, convert, validate, finalize). `--json`
+streams NDJSON for scripts. Exit codes: 0 ok · 1 some downloads failed ·
+2 usage · 3 environment not ready · 130 interrupted (partial downloads are
+kept and resume next time).
+
+The CLI and the desktop app share one data folder (tools, archive, logs):
+`~/Library/Application Support/Media Download Core` (macOS),
+`%APPDATA%\Media Download Core` (Windows), `~/.config/Media Download Core` (Linux).
+
+## Setup sources
+
+| Tool | Source | Verification |
+|---|---|---|
+| yt-dlp | official GitHub releases (onedir builds) | `SHA2-256SUMS` of the release |
+| ffmpeg / ffprobe — macOS | Martin Riedl static builds (arm64, x64) | per-file `.sha256` |
+| ffmpeg / ffprobe — Windows, Linux | BtbN static GPL builds (latest stable) | `checksums.sha256` of the release |
+
+After extraction every binary must run and ffmpeg must provide the encoders,
+decoders and muxers the profiles need (libx264, libvpx-vp9, libopus,
+libmp3lame, AV1 decoding…), or the install is rejected and nothing changes.
+
+## Retries, sub-tasks and tracing
+
+- Each job runs `download → convert → validate → finalize`; every step has a state (`pending | in-progress | success | failed | skipped`).
+- Transient failures are retried up to 3 times; the wait doubles (2 s, 4 s, 8 s) and never exceeds 15 s. A download with no activity for 2 min is treated as stalled and retried.
+- Every attempt records the step it failed in, the error, and the last status/progress it reached.
+- Ids are 32-character base62 strings: `sessionId → jobId → attemptId → stepId`. Every log line carries them and is appended to `logs/trace-YYYY-MM-DD.jsonl` (14 days kept); `mdc logs <id>` replays any of them.
+
 ## Concurrency model
 
 One JavaScript thread orchestrates. The heavy work happens elsewhere, in parallel:

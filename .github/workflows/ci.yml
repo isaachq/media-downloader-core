@@ -36,3 +36,9 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+
+      # the real thing: download, checksum-verify and test yt-dlp + ffmpeg, then diagnose
+      - name: mdc setup (real install)
+        run: node dist/cli.js setup --force --data-dir ./.ci-data --no-color
+      - name: mdc doctor
+        run: node dist/cli.js doctor --data-dir ./.ci-data --no-color

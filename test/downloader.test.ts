@@ -8,52 +8,10 @@ import {after, before, describe, it} from 'node:test'
 import {ID_PATTERN} from '../src/core/ids.js'
 import {MediaDownloader, retryDelay} from '../src/downloader.js'
 import type {JobSnapshot, JobStatus, LogEntry, StepName} from '../src/types.js'
-
-const FAKE_YTDLP = `
-const fs = require('node:fs')
-const path = require('node:path')
-const args = process.argv.slice(2)
-if (args[0] === '--version') { console.log('2099.01.01'); process.exit(0) }
-const home = args[args.indexOf('--paths') + 1].slice('home:'.length)
-const url = args[args.length - 1]
-const id = url.split('/').pop()
-const delay = url.includes('slow') ? 400 : 60
-if (url.includes('hang')) {
-  console.log('__MDC_INFO__' + JSON.stringify({id, title: 'Hang', duration: 10, extractor: 'Fake', formatId: '140'}))
-  setInterval(() => {}, 1000) // alive but silent: a stalled download
-  return
-}
-if (url.includes('unavailable')) { console.error('ERROR: [youtube] ' + id + ': Video unavailable'); process.exit(1) }
-const counter = path.join(home, '..', '..', 'attempts-' + id)
-const attempts = (fs.existsSync(counter) ? Number(fs.readFileSync(counter, 'utf8')) : 0) + 1
-fs.writeFileSync(counter, String(attempts))
-if (url.includes('flaky') && attempts === 1) { console.error('ERROR: Unable to download webpage: timed out'); process.exit(1) }
-console.log('__MDC_INFO__' + JSON.stringify({id, title: 'Title ' + id, duration: 10, extractor: 'Fake', formatId: '140', acodec: 'mp4a.40.2', filesize: 1000}))
-let sent = 0
-const timer = setInterval(() => {
-  sent += 250
-  console.log('__MDC_PROGRESS__' + JSON.stringify({status: 'downloading', downloaded: sent, total: 1000, file: 'x.m4a'}))
-  if (sent >= 1000) {
-    clearInterval(timer)
-    const file = path.join(home, 'Title ' + id + ' [' + id + '].m4a')
-    fs.writeFileSync(file, 'fake audio ' + id)
-    console.log('__MDC_DONE__' + JSON.stringify({filepath: file}))
-  }
-}, delay / 4)
-`
-
-const FAKE_FF = `
-process.exit(process.argv[2] === '-version' ? 0 : 1)
-`
+import {type FakeBinaries, writeFakes} from './helpers/fakes.js'
 
 let root = ''
-// fakes run as `node <script>` — a command with leading args, so they work on Windows too
-type Fake = {command: string; args: string[]}
-const bins: {ytDlp: Fake; ffmpeg: Fake; ffprobe: Fake} = {
-  ytDlp: {command: process.execPath, args: []},
-  ffmpeg: {command: process.execPath, args: []},
-  ffprobe: {command: process.execPath, args: []},
-}
+let bins: FakeBinaries
 
 async function makeDownloader(sub: string, extra: Partial<ConstructorParameters<typeof MediaDownloader>[0]> = {}) {
   return new MediaDownloader({
@@ -73,15 +31,7 @@ const audio = {kind: 'audio', container: 'm4a'} as const
 // shared by every suite below: fake binaries in a temp folder
 before(async () => {
   root = await fs.mkdtemp(path.join(os.tmpdir(), 'mdc-dl-'))
-  for (const [name, body] of [
-    ['yt-dlp', FAKE_YTDLP],
-    ['ffmpeg', FAKE_FF],
-    ['ffprobe', FAKE_FF],
-  ] as const) {
-    const script = path.join(root, `${name}.cjs`)
-    await fs.writeFile(script, body)
-    bins[name === 'yt-dlp' ? 'ytDlp' : name] = {command: process.execPath, args: [script]}
-  }
+  bins = await writeFakes(path.join(root, 'bin'))
 })
 
 after(async () => {

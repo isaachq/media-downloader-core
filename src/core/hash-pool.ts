@@ -96,13 +96,14 @@ export class HashPool {
 
   #spawn(): Slot {
     const worker = new Worker(WORKER_SOURCE, {eval: true})
-    worker.unref() // never keeps the host process alive on its own
     const slot: Slot = {worker}
     worker.on('message', (reply: Reply) => this.#settle(slot, reply))
     worker.on('error', error => void this.#retire(slot, error))
     worker.on('exit', () => {
       if (this.#slots.delete(slot)) slot.task?.reject(new Error('Hash worker exited unexpectedly.'))
     })
+    // idle workers never keep the host alive (set after the listeners, which re-ref the channel)
+    worker.unref()
     this.#slots.add(slot)
     return slot
   }
@@ -111,6 +112,7 @@ export class HashPool {
     if (slot.idleTimer) clearTimeout(slot.idleTimer)
     slot.idleTimer = undefined
     slot.task = task
+    slot.worker.ref() // busy: the process must wait for this result
     if (task.signal) {
       // a running hash can't be interrupted from outside, so abort = discard the worker
       slot.onAbort = () => void this.#retire(slot, cancelledError())
@@ -133,6 +135,7 @@ export class HashPool {
   /** Detach the slot's current task and its abort listener. */
   #release(slot: Slot): void {
     if (slot.task?.signal && slot.onAbort) slot.task.signal.removeEventListener('abort', slot.onAbort)
+    slot.worker.unref() // idle again
     slot.task = undefined
     slot.onAbort = undefined
   }

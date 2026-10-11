@@ -4,6 +4,7 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import {after, before, describe, it} from 'node:test'
+import {pathToFileURL} from 'node:url'
 import {assertHttpUrl} from '../src/core/analyze.js'
 import {archiveKey, DownloadArchive} from '../src/core/archive.js'
 import {buildYtDlpArgs, type YtDlpRunOptions} from '../src/core/download.js'
@@ -12,7 +13,7 @@ import {isInside, sha256File} from '../src/core/files.js'
 import {profileProblem} from '../src/core/formats.js'
 import {HashPool} from '../src/core/hash-pool.js'
 import {ID_PATTERN, newId} from '../src/core/ids.js'
-import {LineSplitter, lastLines, TailBuffer} from '../src/core/process.js'
+import {LineSplitter, lastLines, run, TailBuffer} from '../src/core/process.js'
 import {QueueStore} from '../src/core/queue-store.js'
 
 let dir = ''
@@ -135,6 +136,23 @@ describe('HashPool', () => {
     assert.equal(pool.workerCount, 0, 'idle workers should exit')
     assert.equal(await sha256File(files[0]!.file), files[0]!.expected)
     await pool.close()
+  })
+
+  it('waits for a running hash, but never keeps the process alive once idle', async () => {
+    const blob = path.join(dir, 'alive.bin')
+    await fs.writeFile(blob, Buffer.alloc(1024 * 1024, 7))
+    const script = path.join(dir, 'hash-exit.mts')
+    const pool = path.resolve('src/core/hash-pool.ts')
+    await fs.writeFile(
+      script,
+      `import {HashPool} from ${JSON.stringify(pathToFileURL(pool).href)}\n` +
+        `console.log(await new HashPool(2, 60_000).sha256(${JSON.stringify(blob)}))\n`,
+    )
+    const started = Date.now()
+    const result = await run(process.execPath, ['--import', 'tsx', script])
+    assert.equal(result.code, 0, result.stderr)
+    assert.match(result.stdout.trim(), /^[a-f0-9]{64}$/)
+    assert.ok(Date.now() - started < 15_000, 'process waited for the idle worker timeout')
   })
 
   it('rejects missing files and aborted requests', async () => {

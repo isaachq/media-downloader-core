@@ -395,8 +395,9 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     for (const analysis of this.#analyses) analysis.abort()
     for (const job of this.#jobs.values()) job.controller?.abort()
     await this.#pool.whenIdle()
-    this.#log('info', 'engine disposed')
-    await Promise.all([
+    this.#log('debug', 'engine disposed')
+    // cleanup is best effort: one failing step (e.g. an unreadable folder) must not skip the others
+    await Promise.allSettled([
       this.archive.close(),
       this.#hashes.close(),
       this.#trace?.close(),

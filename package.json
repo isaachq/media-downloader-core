@@ -6,6 +6,10 @@
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "mdc": "./dist/cli.js",
+    "media-download-core": "./dist/cli.js"
+  },
   "exports": {
     ".": {
       "import": {
@@ -36,7 +40,8 @@
     "check": "npm run typecheck && npm run lint && npm test",
     "stress": "node --expose-gc --import tsx scripts/stress.ts",
     "demo": "tsx examples/demo.ts",
-    "prepublishOnly": "npm run check && npm run build"
+    "prepublishOnly": "npm run check && npm run build",
+    "mdc": "tsx src/cli/bin.ts"
   },
   "license": "PolyForm-Noncommercial-1.0.0",
   "devDependencies": {

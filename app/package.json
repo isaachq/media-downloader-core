@@ -1,0 +1,105 @@
+{
+  "name": "media-download-core-app",
+  "productName": "Media Download Core",
+  "version": "0.1.0-beta.1",
+  "description": "Desktop app for media-downloader-core: heavy batch downloads with integrity validation.",
+  "private": true,
+  "main": "./out/main/index.js",
+  "author": "isaachq <isaac.hernandez.qz@gmail.com>",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:e2e": "electron-vite build && playwright test",
+    "dist:mac": "electron-vite build && electron-builder --mac --publish never",
+    "dist:win": "electron-vite build && electron-builder --win --publish never",
+    "icon": "electron scripts/render-icon.cjs"
+  },
+  "devDependencies": {
+    "@ant-design/icons": "6.3.4",
+    "@playwright/test": "1.64.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "16.3.3",
+    "@testing-library/user-event": "14.6.7",
+    "@types/node": "22.20.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "5.2.0",
+    "antd": "6.6.5",
+    "electron": "44.7.0",
+    "electron-builder": "26.15.3",
+    "electron-vite": "5.0.0",
+    "jsdom": "30.1.2",
+    "media-downloader-core": "file:..",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "typescript": "5.9.3",
+    "vite": "7.3.7",
+    "vitest": "4.1.11"
+  },
+  "allowScripts": {
+    "esbuild": true
+  },
+  "build": {
+    "appId": "io.github.isaachq.mediadownloadcore",
+    "productName": "Media Download Core",
+    "copyright": "Copyright (c) 2026 isaachq",
+    "artifactName": "Media-Download-Core-${version}-${os}-${arch}.${ext}",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**",
+      "package.json"
+    ],
+    "asar": true,
+    "extraMetadata": {
+      "main": "out/main/index.js"
+    },
+    "mac": {
+      "category": "public.app-category.utilities",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "identity": null,
+      "hardenedRuntime": false
+    },
+    "dmg": {
+      "title": "Media Download Core ${version}"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false
+    }
+  }
+}

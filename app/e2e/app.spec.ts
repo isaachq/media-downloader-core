@@ -1,0 +1,128 @@
+import * as fs from 'node:fs/promises'
+import * as os from 'node:os'
+import * as path from 'node:path'
+import {type ElectronApplication, _electron as electron, expect, type Page, test} from '@playwright/test'
+import {writeFakes} from '../../test/helpers/fakes'
+
+// The real Electron app (built by `electron-vite build`), driven end to end.
+// yt-dlp / ffmpeg are the engine's test fakes, injected through MDC_BINARIES,
+// so the run is fast, offline and deterministic.
+
+const APP_DIR = path.resolve(__dirname, '..')
+// MDC_E2E_EXECUTABLE runs the suite against a packaged build instead of out/
+const PACKAGED = process.env.MDC_E2E_EXECUTABLE
+const target = PACKAGED ? {executablePath: PACKAGED, args: []} : {args: [APP_DIR]}
+let root = ''
+
+test.beforeAll(async () => {
+  root = await fs.mkdtemp(path.join(os.tmpdir(), 'mdc-e2e-'))
+})
+test.afterAll(async () => {
+  await fs.rm(root, {recursive: true, force: true})
+})
+
+async function launch(name: string, settings: Record<string, unknown> = {}) {
+  const dataDir = path.join(root, name, 'data')
+  const outDir = path.join(root, name, 'out')
+  await fs.mkdir(dataDir, {recursive: true})
+  // fakes can't decode media, so the integrity check is turned off for these runs
+  await fs.writeFile(
+    path.join(dataDir, 'settings.json'),
+    JSON.stringify({
+      validation: 'none',
+      format: 'm4a',
+      language: 'en',
+      theme: 'light',
+      downloadDir: outDir,
+      ...settings,
+    }),
+  )
+  const fakes = await writeFakes(path.join(root, name, 'fakes'))
+  const app = await electron.launch({
+    ...target,
+    env: {...process.env, MDC_DATA_DIR: dataDir, MDC_DOWNLOAD_DIR: outDir, MDC_BINARIES: JSON.stringify(fakes)},
+  })
+  const page = await app.firstWindow()
+  await page.waitForSelector('text=Media Download Core')
+  return {app, page, dataDir, outDir}
+}
+
+async function close(app: ElectronApplication) {
+  await app.close()
+}
+
+async function download(page: Page, url: string) {
+  await page.getByLabel('Video or playlist URL').fill(url)
+  await page
+    .getByRole('button', {name: /download|schedule/i})
+    .first()
+    .click()
+}
+
+test('downloads a playlist batch end to end: preflight, jobs, files on disk', async () => {
+  const {app, page, outDir} = await launch('batch')
+  await expect(page.getByText('One-time setup')).toHaveCount(0) // tools are ready
+  await page.screenshot({path: path.join(APP_DIR, 'test-results', 'home-light.png')})
+
+  await download(page, 'https://fake.test/list?n=4')
+  const card = page.getByTestId('batch-card').first()
+  await expect(card).toHaveAttribute('data-status', 'completed', {timeout: 60_000})
+  await expect(card).toContainText('4/4 done')
+  await expect(page.getByText('Batch finished')).toBeVisible()
+
+  await card.getByRole('button', {name: /items/i}).click()
+  // clean screenshot: dismiss the notification and let the toast expire
+  await page.locator('.ant-notification-notice-close').click()
+  await expect(page.locator('.ant-message-notice, .ant-notification-notice')).toHaveCount(0, {timeout: 8_000})
+  await page.screenshot({path: path.join(APP_DIR, 'test-results', 'batch.png'), fullPage: true})
+
+  await page.getByRole('tab', {name: 'Downloads'}).click()
+  await expect(page.locator('[data-testid="job-status"][data-status="completed"]')).toHaveCount(4)
+  await page.waitForTimeout(400)
+  await page.screenshot({path: path.join(APP_DIR, 'test-results', 'downloads.png')})
+
+  await page.getByRole('button', {name: /settings/i}).click()
+  await page.waitForTimeout(500)
+  await page.screenshot({path: path.join(APP_DIR, 'test-results', 'settings.png')})
+
+  const files = await fs.readdir(path.join(outDir, 'Fake List'))
+  expect(files.sort()).toEqual([
+    '001 - Title b1 [b1].m4a',
+    '002 - Title b2 [b2].m4a',
+    '003 - Title b3 [b3].m4a',
+    '004 - Title b4 [b4].m4a',
+  ])
+  await close(app)
+})
+
+test('reports unavailable items with a reason and finishes with errors', async () => {
+  const {app, page} = await launch('mixed')
+  await download(page, 'https://fake.test/list-mixed')
+  const card = page.getByTestId('batch-card').first()
+  await expect(card).toHaveAttribute('data-status', 'completed-with-errors', {timeout: 60_000})
+  await card.getByRole('button', {name: /items/i}).click()
+  await expect(card.getByText('Removed or unavailable')).toBeVisible()
+  await close(app)
+})
+
+test('remembers language and theme across restarts', async () => {
+  const first = await launch('prefs')
+  await first.page.getByText('ES', {exact: true}).click()
+  await expect(first.page.getByText('Nueva descarga')).toBeVisible()
+  await first.page.getByLabel('Oscuro').click()
+  await expect(first.page.getByTestId('theme-mode')).toHaveText('dark')
+  await first.page.waitForTimeout(600) // let Ant Design's theme transition finish
+  await first.page.screenshot({path: path.join(APP_DIR, 'test-results', 'home-dark-es.png')})
+  await close(first.app)
+
+  // relaunch on the same data folder (settings.json is not rewritten this time)
+  const fakes = await writeFakes(path.join(root, 'prefs', 'fakes'))
+  const app = await electron.launch({
+    ...target,
+    env: {...process.env, MDC_DATA_DIR: first.dataDir, MDC_BINARIES: JSON.stringify(fakes)},
+  })
+  const page = await app.firstWindow()
+  await expect(page.getByText('Nueva descarga')).toBeVisible()
+  await expect(page.getByTestId('theme-mode')).toHaveText('dark')
+  await close(app)
+})

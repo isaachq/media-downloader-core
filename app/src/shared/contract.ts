@@ -1,0 +1,133 @@
+// The contract between the main process (engine owner), the preload bridge
+// and the renderer. Types only cross the boundary — no engine code runs in
+// the renderer.
+import type {
+  AudioContainer,
+  BatchId,
+  BatchSnapshot,
+  Diagnosis,
+  InstallProgress,
+  JobId,
+  JobSnapshot,
+  LogEntry,
+  PreflightItem,
+  ValidationLevel,
+  VideoContainer,
+} from 'media-downloader-core'
+
+export type Language = 'en' | 'es'
+export type ThemeMode = 'system' | 'light' | 'dark'
+export type Format = VideoContainer | AudioContainer
+export type Quality = 'best' | '2160' | '1440' | '1080' | '720' | '480' | '360'
+
+export const VIDEO_FORMATS: readonly VideoContainer[] = ['mp4', 'webm', 'mkv']
+export const AUDIO_FORMATS: readonly AudioContainer[] = ['m4a', 'mp3', 'opus', 'flac', 'wav']
+export const QUALITIES: readonly Quality[] = ['best', '2160', '1440', '1080', '720', '480', '360']
+
+export const isAudioFormat = (format: Format): format is AudioContainer =>
+  (AUDIO_FORMATS as readonly string[]).includes(format)
+
+export type AppSettings = {
+  readonly language: Language
+  readonly theme: ThemeMode
+  readonly downloadDir: string
+  readonly format: Format
+  readonly quality: Quality
+  /** Simultaneous jobs; the engine clamps it to ⌊CPUs/2⌋. */
+  readonly concurrency: number
+  readonly validation: ValidationLevel
+  /** Browser to read cookies from ('' = none). Applied on next launch. */
+  readonly cookiesFromBrowser: string
+  readonly embedMetadata: boolean
+  readonly embedThumbnail: boolean
+  /** Videos this long or more count as long/heavy jobs. Applied on next launch. */
+  readonly longVideoMinutes: number
+  readonly notifications: boolean
+}
+
+/** Settings the engine reads at construction — changing them asks for a restart. */
+export const RESTART_SETTINGS: ReadonlyArray<keyof AppSettings> = [
+  'cookiesFromBrowser',
+  'embedMetadata',
+  'embedThumbnail',
+  'longVideoMinutes',
+]
+
+export type AppInfo = {
+  readonly version: string
+  readonly platform: string
+  readonly cpus: number
+  readonly maxConcurrency: number
+  readonly dataDir: string
+  readonly sessionId: string
+}
+
+/**
+ * Everything that changed since the last flush, sent at most every 100 ms:
+ * the latest snapshot per job / batch (older ones are dropped, not queued),
+ * resolved preflight items and new log lines.
+ */
+export type EventBundle = {
+  readonly jobs: readonly JobSnapshot[]
+  readonly batches: readonly BatchSnapshot[]
+  readonly items: ReadonlyArray<{readonly batchId: BatchId; readonly item: PreflightItem}>
+  readonly logs: readonly LogEntry[]
+}
+
+export type ScheduleInput = {
+  readonly url: string
+  readonly format: Format
+  readonly quality: Quality
+  readonly outDir: string
+}
+
+export type SetupOutcome = {
+  readonly ready: boolean
+  readonly installed: readonly string[]
+  readonly diagnosis: Diagnosis
+}
+
+/** What the preload exposes as `window.mdc`. */
+export type MdcApi = {
+  info(): Promise<AppInfo>
+  getSettings(): Promise<AppSettings>
+  setSettings(patch: Partial<AppSettings>): Promise<AppSettings>
+  chooseFolder(current?: string): Promise<string | undefined>
+  doctor(): Promise<Diagnosis>
+  setup(force: boolean): Promise<SetupOutcome>
+  schedule(input: ScheduleInput): Promise<BatchSnapshot>
+  state(): Promise<{readonly batches: readonly BatchSnapshot[]; readonly jobs: readonly JobSnapshot[]}>
+  items(batchId: BatchId, offset: number, limit: number): Promise<PreflightItem[]>
+  cancelBatch(batchId: BatchId): Promise<void>
+  cancelJob(jobId: JobId): Promise<void>
+  retryJob(jobId: JobId): Promise<void>
+  pause(): Promise<void>
+  resume(): Promise<void>
+  clearFinished(): Promise<void>
+  searchLogs(id: string, limit: number): Promise<{readonly entries: readonly LogEntry[]; readonly total: number}>
+  reveal(path: string): Promise<void>
+  onEvents(listener: (bundle: EventBundle) => void): () => void
+  onSetupProgress(listener: (progress: InstallProgress) => void): () => void
+}
+
+export const CHANNEL = {
+  info: 'mdc:info',
+  getSettings: 'mdc:settings:get',
+  setSettings: 'mdc:settings:set',
+  chooseFolder: 'mdc:choose-folder',
+  doctor: 'mdc:doctor',
+  setup: 'mdc:setup',
+  setupProgress: 'mdc:setup-progress',
+  schedule: 'mdc:schedule',
+  state: 'mdc:state',
+  items: 'mdc:items',
+  cancelBatch: 'mdc:cancel-batch',
+  cancelJob: 'mdc:cancel-job',
+  retryJob: 'mdc:retry-job',
+  pause: 'mdc:pause',
+  resume: 'mdc:resume',
+  clearFinished: 'mdc:clear-finished',
+  searchLogs: 'mdc:search-logs',
+  reveal: 'mdc:reveal',
+  events: 'mdc:events',
+} as const

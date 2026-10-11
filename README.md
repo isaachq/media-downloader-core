@@ -6,9 +6,10 @@ unattended backup. Every hot path is O(1) or O(n) by design, work runs on a
 ⌊CPUs/2⌋ pool of processes and threads so the machine stays responsive,
 memory stays flat, and **every file is validated** before it's delivered.
 
-UI-agnostic — drive it from the `mdc` CLI, an Electron main process or a
-server. Zero runtime dependencies: it orchestrates `yt-dlp`, `ffmpeg` and
-`ffprobe`, and installs/verifies them itself (`mdc setup`).
+UI-agnostic — drive it from the `mdc` CLI, the [desktop app](#desktop-app-beta),
+an Electron main process or a server. Zero runtime dependencies: it
+orchestrates `yt-dlp`, `ffmpeg` and `ffprobe`, and installs/verifies them
+itself (`mdc setup`).
 
 > **Educational project.** It is meant for learning and for backing up content
 > you own or are allowed to download. Respect each site's terms of service and
@@ -24,6 +25,41 @@ const result = await dl.analyze('https://www.youtube.com/playlist?list=…')
 if (result.kind === 'playlist') dl.addPlaylist(result, {kind: 'audio', container: 'm4a'}, '/Users/me/Music')
 await dl.whenIdle()
 ```
+
+## Desktop app (beta)
+
+[`app/`](app) is a desktop front end for macOS and Windows: Electron, React and
+[Ant Design](https://ant.design). Paste a video or playlist link, pick a format
+and a quality, and the batch is checked, forecast for disk space, downloaded on
+the ⌊CPUs/2⌋ pool and verified file by file.
+
+| Light | Dark (Español) |
+| --- | --- |
+| ![Batch with its preflight and items](docs/screenshots/batch.png) | ![Dark theme in Spanish](docs/screenshots/home-dark-es.png) |
+
+- **Batches**: preflight (available / unavailable with the reason), disk forecast, live progress, paged item list, cancel. New links queue behind the running batch.
+- **Downloads**: one row per job with progress, speed, ETA, the D·C·V·F sub-tasks (failed / in-progress / success), retries and their reason.
+- **Integrity**: the verdict of every file, with codecs, decoded vs expected duration and SHA-256 one click away.
+- **Settings**: download folder, simultaneous downloads (capped at ⌊CPUs/2⌋), integrity level, long-video threshold, browser cookies, tags and cover art, notifications.
+- **Logs**: live, plus tracing of any session / batch / job / attempt / step id.
+- **Setup**: first launch installs yt-dlp and FFmpeg from their official sources, checksum-verified; the tools are shared with `mdc`.
+- English and Spanish, light / dark / system theme, all remembered.
+
+```bash
+cd app
+npm install
+npm run dev        # development, hot reload
+npm test           # UI tests (Vitest + Testing Library)
+npm run test:e2e   # the real Electron app end to end (Playwright, fake tools)
+npm run dist:mac   # dist/*.dmg + *.zip (arm64, x64)
+npm run dist:win   # dist/*.exe installer (x64, arm64)
+```
+
+Beta builds are not code-signed yet: on macOS open the app with right click →
+Open the first time; on Windows choose "More info → Run anyway" in SmartScreen.
+
+The interface is built with [Ant Design](https://github.com/ant-design/ant-design)
+(MIT) — thank you to the Ant Design team for an excellent, free component library.
 
 ## Command line: `mdc`
 

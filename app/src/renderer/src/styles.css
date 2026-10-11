@@ -1,0 +1,157 @@
+:root {
+  --ok: #3fb950;
+  --warn: #d4a72c;
+  --bad: #f85149;
+}
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+}
+body {
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.theme-light {
+  background: #eef6fb;
+}
+.theme-dark {
+  background: #0b1420;
+}
+.app-layout {
+  min-height: 100vh;
+  background: transparent;
+}
+.banner {
+  position: relative;
+  height: 190px;
+  overflow: hidden;
+}
+.banner-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.banner-content {
+  position: relative;
+  height: 100%;
+  padding: 18px 28px;
+  box-sizing: border-box;
+}
+.header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.app-title.ant-typography {
+  margin: 0;
+  color: #fff;
+  text-shadow: 0 2px 10px rgba(0, 40, 80, 0.35);
+}
+.app-tagline.ant-typography {
+  color: rgba(255, 255, 255, 0.92);
+}
+.app-content {
+  max-width: 1280px;
+  width: 100%;
+  margin: -46px auto 0;
+  padding: 0 24px 24px;
+  box-sizing: border-box;
+  position: relative;
+}
+.download-card {
+  box-shadow: 0 8px 28px rgba(15, 60, 100, 0.14);
+}
+.download-hint {
+  display: block;
+  margin-top: -6px;
+}
+.stats {
+  margin: 16px 0;
+}
+.capacity-label {
+  font-size: 13px;
+  opacity: 0.75;
+  margin-bottom: 6px;
+}
+.main-tabs {
+  margin-top: 4px;
+}
+.full {
+  width: 100%;
+}
+.mono {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+.batch-card {
+  border-left: 3px solid #13a8e0;
+}
+.batch-title {
+  max-width: 560px;
+}
+.step-track .step {
+  margin-inline-end: 0;
+  min-width: 24px;
+  text-align: center;
+  font-weight: 600;
+}
+.integrity-tag {
+  cursor: pointer;
+}
+.integrity-report {
+  max-width: 420px;
+}
+.issues {
+  margin: 0;
+  padding-left: 18px;
+}
+.log-ids {
+  margin-top: 2px;
+}
+.app-footer {
+  text-align: center;
+  background: transparent;
+}
+.boot-spin {
+  display: flex;
+  justify-content: center;
+  margin-top: 30vh;
+}
+.boot-error {
+  padding: 40px;
+  color: var(--bad);
+}
+.restart-alert {
+  margin-bottom: 12px;
+}
+.job-progress {
+  width: 100%;
+}
+.job-progress > .ant-space-item {
+  width: 100%;
+}
+.header-actions .ant-segmented {
+  backdrop-filter: blur(6px);
+}
+.switch-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+.stats .ant-col > .ant-card {
+  height: 100%;
+}
+/* skipped: not needed for this file (no conversion, check off) — muted, struck through */
+.step-track .step-skipped {
+  opacity: 0.45;
+  text-decoration: line-through;
+  border-style: dashed;
+}
+.step-track .step-pending {
+  opacity: 0.7;
+}

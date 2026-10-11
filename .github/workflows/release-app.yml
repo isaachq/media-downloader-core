@@ -73,8 +73,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # notes: the newest CHANGELOG section, then the install hint
-          awk '/^## /{n++} n==1' source/CHANGELOG.md > notes.md
+          # notes: the newest CHANGELOG section, then the install hint. A bare @word would
+          # mention (and notify) a GitHub user of that name: such words become code
+          awk '/^## /{n++} n==1' source/CHANGELOG.md \
+            | sed -E 's/(^|[^A-Za-z0-9/`._-])@([A-Za-z0-9][A-Za-z0-9-]*)/\1`@\2`/g' > notes.md
           printf '\n---\nmacOS (arm64, x64), Windows (x64, arm64) and Linux (.deb, .rpm and AppImage, x64 and arm64). Not signed with an Apple / Microsoft certificate yet: on macOS use System Settings → Privacy & Security → Open Anyway (once); on Windows, More info → Run anyway. Details in the README.\n' >> notes.md
           gh release create "$GITHUB_REF_NAME" installers/* \
             --repo "$GITHUB_REPOSITORY" --prerelease \

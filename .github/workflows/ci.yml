@@ -49,7 +49,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -66,6 +66,18 @@ jobs:
         working-directory: app
       - run: npm test
         working-directory: app
+      # Ubuntu 24.04 restricts unprivileged user namespaces, which Chromium's sandbox
+      # needs; installed packages get an AppArmor profile for it (see the .deb), here
+      # the runner allows them so the app is tested with its sandbox on
+      - name: Allow Chromium's sandbox (Linux)
+        if: runner.os == 'Linux'
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       # the real Electron app, driven by Playwright with the engine's fake tools
-      - run: npm run test:e2e
+      - name: End-to-end
+        if: runner.os != 'Linux'
+        run: npm run test:e2e
+        working-directory: app
+      - name: End-to-end (virtual display)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npm run test:e2e
         working-directory: app

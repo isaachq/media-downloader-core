@@ -14,9 +14,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:e2e": "electron-vite build && playwright test",
+    "icon": "electron scripts/render-icon.cjs",
     "dist:mac": "electron-vite build && electron-builder --mac --publish never",
     "dist:win": "electron-vite build && electron-builder --win --x64 --publish never && electron-builder --win --arm64 --publish never",
-    "icon": "electron scripts/render-icon.cjs"
+    "dist:linux": "electron-vite build && electron-builder --linux --publish never"
   },
   "devDependencies": {
     "@ant-design/icons": "6.3.4",
@@ -94,6 +95,37 @@
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "deleteAppDataOnUninstall": false
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "AudioVideo",
+      "executableName": "media-download-core",
+      "synopsis": "Heavy-duty batch downloads, verified file by file",
+      "maintainer": "isaachq <isaac.hernandez.qz@gmail.com>",
+      "desktop": {
+        "entry": {
+          "Name": "Media Download Core",
+          "Comment": "Heavy-duty batch downloads, verified file by file",
+          "Keywords": "download;playlist;video;audio;"
+        }
+      },
+      "icon": "build/icons"
+    },
+    "deb": {
+      "depends": [
+        "libgtk-3-0",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libuuid1",
+        "libsecret-1-0"
+      ]
     }
-  }
+  },
+  "homepage": "https://github.com/isaachq/media-downloader-core"
 }

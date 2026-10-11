@@ -1,5 +1,6 @@
 // Renders build/icon.svg to build/icon.png (1024²) with Electron's own Chromium.
-// electron-builder derives the .icns (macOS) and .ico (Windows) from that PNG.
+// electron-builder derives the .icns (macOS) and .ico (Windows) from that PNG; Linux desktops
+// want the standard sizes too: for s in 16 24 32 48 64 128 256 512; do sips -z $s $s build/icon.png --out build/icons/${s}x${s}.png; done
 // Usage: npx electron scripts/render-icon.cjs
 const {app, BrowserWindow} = require('electron')
 const fs = require('node:fs')

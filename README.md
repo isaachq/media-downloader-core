@@ -33,17 +33,25 @@ await dl.whenIdle()
 and a quality, and the batch is checked, forecast for disk space, downloaded on
 the ⌊CPUs/2⌋ pool and verified file by file.
 
-| Light | Dark (Español) |
-| --- | --- |
-| ![Batch with its preflight and items](docs/screenshots/batch.png) | ![Dark theme in Spanish](docs/screenshots/home-dark-es.png) |
+![Paste a link, download it as MP4, check its integrity report](docs/demo.gif)
 
-- **Batches**: preflight (available / unavailable with the reason), disk forecast, live progress, paged item list, cancel. New links queue behind the running batch.
+*A real run: paste a link → MP4 (H.264/AAC) → every frame decoded and checked → integrity report.*
+
+| Preview of a YouTube Mix | Downloading, with the estimated time left |
+| --- | --- |
+| ![Pick what to download from a Mix](docs/screenshots/preview.png) | ![A running batch with its forecast and estimated time left](docs/screenshots/batch.png) |
+
+![Dark theme in Spanish](docs/screenshots/home-dark-es.png)
+
+- **Preview**: a playlist, YouTube Mix or channel opens a list of everything it holds first — filter, select all / some, or just the linked video — and only the picked items are downloaded. A Mix (an endless, auto-generated radio) loads its first 50 by default; load more from the preview.
+- **Batches**: preflight (available / unavailable with the reason), disk forecast from real bitrates, progress weighted by size and the **estimated time left** — measured from this computer's real throughput, so you can start a big batch and walk away — plus paged item list, cancel, clear finished. New links queue behind the running batch.
 - **Downloads**: one row per job with progress, speed, ETA, the D·C·V·F sub-tasks (failed / in-progress / success), retries and their reason.
 - **Integrity**: the verdict of every file, with codecs, decoded vs expected duration and SHA-256 one click away.
 - **Settings**: download folder, simultaneous downloads (capped at ⌊CPUs/2⌋), integrity level, long-video threshold, browser cookies, tags and cover art, notifications.
-- **Logs**: live, plus tracing of any session / batch / job / attempt / step id.
+- **Logs**: live, every line with its batch / job / attempt / step ids (click one to trace it), plus tracing of any session / batch / job / attempt / step id.
 - **Setup**: first launch installs yt-dlp and FFmpeg from their official sources, checksum-verified; the tools are shared with `mdc`.
-- English and Spanish, light / dark / system theme, all remembered.
+- English and Spanish, light / dark / system theme, window size and position — all remembered.
+- A start-up screen shows each phase; a failing phase is retried and, if it still fails, says why and resumes from there.
 
 ```bash
 cd app
@@ -126,6 +134,23 @@ Before a job gives up it tries alternatives: fresh extraction for expired
 links, and the best available format when the requested resolution doesn't
 exist (`format-fallback`, recorded in its attempt history). Pending batches
 are saved and resumed by `restore()` after a restart.
+
+**Pick before downloading.** `engine.analyze(url, {maxEntries})` lists a
+playlist without extracting each item; pass the entries the user picked as
+`selection` and the batch downloads exactly those, without listing the url
+again — stable even for lists that change between calls:
+
+```ts
+const list = await engine.analyze(url, {maxEntries: 200})
+if (list.kind === 'playlist') {
+  const picked = list.entries.filter(entry => wanted.has(entry.id))
+  scheduler.schedule({url, profile, outDir, selection: {title: list.title, entries: picked}})
+}
+```
+
+`maxItems` caps a list (listed by yt-dlp itself, so the rest is never fetched).
+A **YouTube Mix** (`list=RD…`, see `isYouTubeMix()`) is an endless radio that
+yt-dlp would paginate into the thousands, so it defaults to 50.
 
 ## Retries, sub-tasks and tracing
 
@@ -327,6 +352,10 @@ npm run stress      # orchestrator benchmark with fake binaries
 npm run demo -- "https://www.youtube.com/watch?v=jNQXAC9IVRw"     # list choices
 npm run demo -- "https://www.youtube.com/watch?v=jNQXAC9IVRw" 0   # download choice 0
 ```
+
+## Changes
+
+See [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

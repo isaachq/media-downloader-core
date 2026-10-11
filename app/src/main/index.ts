@@ -28,6 +28,9 @@ import {
 } from '../shared/contract'
 import {EventCoalescer} from './events'
 import {defaultSettings, SettingsStore} from './settings'
+import type {InstallKind} from './updates/feed'
+import {detectInstallKind} from './updates/install'
+import {Updater} from './updates/updater'
 import {MIN_SIZE, readWindowState, restoreBounds, writeWindowState} from './window-state'
 
 // Test hooks: e2e runs point the app at a temp data folder and fake tools.
@@ -49,6 +52,43 @@ let scheduler: BatchScheduler
 let settings: SettingsStore
 /** Settles once the batches pending at last shutdown are back; the renderer's restore phase waits for it. */
 let restoring: Promise<void> = Promise.resolve()
+let updater: Updater | undefined
+/** Background update checks: shortly after start-up, then every few hours (when enabled). */
+const FIRST_CHECK_MS = 8000
+const CHECK_EVERY_MS = 6 * 60 * 60_000
+const BUNDLE_ID = 'io.github.isaachq.mediadownloadcore'
+
+async function createUpdater(): Promise<void> {
+  const env = process.env
+  // test hooks: a local release feed, a forced install kind, stop before installing
+  const kind =
+    (env['MDC_UPDATE_KIND'] as InstallKind | undefined) ??
+    (app.isPackaged ? await detectInstallKind(process.execPath, env) : undefined)
+  updater = new Updater({
+    current: app.getVersion(),
+    kind,
+    arch: process.arch,
+    dir: path.join(app.getPath('userData'), 'updates'),
+    bundleId: BUNDLE_ID,
+    execPath: process.execPath,
+    env,
+    feedUrl: env['MDC_UPDATE_FEED'],
+    trustedPrefix: env['MDC_UPDATE_TRUSTED'],
+    dryRun: env['MDC_UPDATE_DRY_RUN'] === '1',
+    exit: how => {
+      engine.log('info', `update installed — ${how === 'relaunch' ? 'restarting' : 'closing for the swap'}`)
+      if (how === 'relaunch') app.relaunch()
+      app.quit()
+    },
+  })
+  updater.onChange(state => send(CHANNEL.update, state))
+  await updater.cleanUp()
+  const background = () => {
+    if (settings.current.autoUpdate) void updater?.check({quiet: true})
+  }
+  setTimeout(background, FIRST_CHECK_MS).unref()
+  setInterval(background, CHECK_EVERY_MS).unref()
+}
 /** Tool check started with the process: ready (or nearly) when the window asks for it. */
 let warmDiagnosis: Promise<Diagnosis> | undefined
 
@@ -262,6 +302,9 @@ function registerIpc(): void {
       limit: Number.isInteger(limit) ? (limit as number) : 500,
     })
   })
+  ipcMain.handle(CHANNEL.updateState, () => updater?.state ?? {status: 'idle'})
+  ipcMain.handle(CHANNEL.updateCheck, () => updater?.check() ?? {status: 'idle'})
+  ipcMain.handle(CHANNEL.updateInstall, () => updater?.update())
   ipcMain.handle(CHANNEL.reveal, (_event, file: unknown) => {
     if (typeof file === 'string' && path.isAbsolute(file)) shell.showItemInFolder(file)
   })
@@ -295,6 +338,7 @@ else {
       .then(() => undefined)
       .catch(error => engine.log('error', `could not restore pending batches: ${String(error)}`))
     createWindow()
+    await createUpdater()
     await restoring
     // YouTube breaks old yt-dlp versions: refresh in the background once tools are in place
     void firstDiagnosis

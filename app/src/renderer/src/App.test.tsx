@@ -491,6 +491,57 @@ describe('logs', () => {
   })
 })
 
+describe('updates', () => {
+  it('announces a new version; one button downloads, installs and restarts', async () => {
+    const api = new FakeApi()
+    api.update = {
+      status: 'available',
+      version: '0.3.0-beta.1',
+      notes: 'TikTok',
+      page: 'https://example.com/r',
+      size: 126e6,
+    }
+    const {user} = await mount(api)
+    const banner = await screen.findByTestId('update-banner')
+    expect(banner).toHaveTextContent('Version 0.3.0-beta.1 is available')
+    expect(banner).toHaveTextContent('126 MB')
+    await user.click(within(banner).getByRole('button', {name: 'Update now'}))
+    expect(api.installUpdate).toHaveBeenCalledTimes(1)
+
+    act(() => api.pushUpdate({status: 'downloading', version: '0.3.0-beta.1', page: 'p', received: 63e6, total: 126e6}))
+    expect(screen.getByTestId('update-banner')).toHaveTextContent('Downloading version 0.3.0-beta.1')
+    expect(screen.getByTestId('update-banner')).toHaveTextContent('50%')
+    act(() => api.pushUpdate({status: 'installing', version: '0.3.0-beta.1', page: 'p'}))
+    expect(screen.getByTestId('update-banner')).toHaveTextContent('the app restarts in a moment')
+  })
+
+  it('stays out of the way when up to date, and explains a failed install', async () => {
+    const api = new FakeApi()
+    await mount(api)
+    expect(screen.queryByTestId('update-banner')).not.toBeInTheDocument()
+    act(() =>
+      api.pushUpdate({status: 'error', version: '0.3.0', page: 'p', message: 'The update does not match the checksum'}),
+    )
+    const banner = screen.getByTestId('update-banner')
+    expect(banner).toHaveTextContent('The update could not be installed')
+    expect(banner).toHaveTextContent('checksum')
+    expect(within(banner).getByRole('button', {name: /Try again/})).toBeInTheDocument()
+  })
+
+  it('About checks for updates on demand; Settings can turn the automatic check off', async () => {
+    const {api, user} = await mount()
+    await user.click(screen.getByRole('button', {name: /about/i}))
+    await user.click(await screen.findByRole('button', {name: 'Check for updates'}))
+    expect(api.checkForUpdates).toHaveBeenCalledTimes(1)
+    expect(screen.getByText('You have the latest version')).toBeInTheDocument()
+    await user.keyboard('{Escape}')
+
+    await user.click(screen.getByRole('button', {name: /settings/i}))
+    await user.click(await screen.findByText('Check for updates automatically'))
+    await waitFor(() => expect(api.setSettings).toHaveBeenCalledWith({autoUpdate: false}))
+  })
+})
+
 describe('about', () => {
   it('thanks Ant Design and lists the open-source credits', async () => {
     const {user} = await mount()

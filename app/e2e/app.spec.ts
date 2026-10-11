@@ -1,4 +1,7 @@
+import {createHash} from 'node:crypto'
 import * as fs from 'node:fs/promises'
+import * as http from 'node:http'
+import type {AddressInfo} from 'node:net'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import {type ElectronApplication, _electron as electron, expect, type Page, test} from '@playwright/test'
@@ -164,6 +167,68 @@ test('backs up picked posts of a TikTok profile as MP3 (built-in extractor)', as
     await close(app)
   } finally {
     await site.close()
+  }
+})
+
+test('finds a new version, downloads it and verifies its checksum (dry run)', async () => {
+  const payload = Buffer.from('new app '.repeat(20_000))
+  const digest = createHash('sha256').update(payload).digest('hex')
+  let origin = ''
+  const feed = http.createServer((req, res) => {
+    if (req.url === '/releases') {
+      res.writeHead(200, {'Content-Type': 'application/json'})
+      res.end(
+        JSON.stringify([
+          {
+            tag_name: 'app-v99.0.0',
+            draft: false,
+            body: 'Everything is new',
+            html_url: `${origin}/page`,
+            assets: [
+              {
+                name: `Media-Download-Core-99.0.0-mac-${process.arch === 'arm64' ? 'arm64' : 'x64'}.zip`,
+                size: payload.length,
+                digest: `sha256:${digest}`,
+                browser_download_url: `${origin}/download/app.zip`,
+              },
+            ],
+          },
+        ]),
+      )
+      return
+    }
+    res.writeHead(200, {'Content-Length': String(payload.length)})
+    res.end(payload)
+  })
+  await new Promise<void>(resolve => feed.listen(0, '127.0.0.1', resolve))
+  origin = `http://127.0.0.1:${(feed.address() as AddressInfo).port}`
+  try {
+    const {app, page, dataDir} = await launch(
+      'update',
+      {},
+      {
+        MDC_UPDATE_FEED: `${origin}/releases`,
+        MDC_UPDATE_TRUSTED: `${origin}/download/`,
+        MDC_UPDATE_KIND: 'mac-app',
+        MDC_UPDATE_DRY_RUN: '1',
+      },
+    )
+    await page.getByRole('button', {name: /about/i}).click()
+    await page.getByRole('button', {name: 'Check for updates'}).click()
+    const banner = page.getByTestId('update-banner')
+    await expect(banner).toContainText('Version 99.0.0 is available')
+    await page.keyboard.press('Escape')
+    await page.screenshot({path: path.join(APP_DIR, 'test-results', 'update-available.png')})
+    await banner.getByRole('button', {name: 'Update now'}).click()
+    await expect(banner).toHaveAttribute('data-status', 'ready', {timeout: 30_000})
+    await expect(banner).toContainText('Version 99.0.0 downloaded and verified')
+    const saved = await fs.readFile(
+      path.join(dataDir, 'updates', `Media-Download-Core-99.0.0-mac-${process.arch === 'arm64' ? 'arm64' : 'x64'}.zip`),
+    )
+    expect(createHash('sha256').update(saved).digest('hex')).toBe(digest)
+    await close(app)
+  } finally {
+    await new Promise(resolve => feed.close(resolve))
   }
 })
 

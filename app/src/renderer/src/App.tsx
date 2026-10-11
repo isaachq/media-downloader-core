@@ -16,6 +16,7 @@ import {LogsDrawer} from './components/LogsDrawer'
 import {SettingsDrawer} from './components/SettingsDrawer'
 import {SetupModal} from './components/SetupModal'
 import {Stats} from './components/Stats'
+import {UpdateBanner} from './components/UpdateBanner'
 import {AppContext, type AppContextValue} from './context'
 import {I18nContext, type Translate, translator} from './i18n'
 import {AppStore, StoreContext} from './store'
@@ -111,6 +112,7 @@ function Shell({
           onAbout={() => setPanel('about')}
         />
         <Layout.Content className="app-content">
+          <UpdateBanner />
           <DownloadBar />
           <Stats />
           <Tabs

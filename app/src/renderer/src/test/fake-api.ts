@@ -9,7 +9,15 @@ import type {
   PreflightItem,
 } from 'media-downloader-core'
 import {vi} from 'vitest'
-import type {AppInfo, AppSettings, EventBundle, MdcApi, Preview, ScheduleInput} from '../../../shared/contract'
+import type {
+  AppInfo,
+  AppSettings,
+  EventBundle,
+  MdcApi,
+  Preview,
+  ScheduleInput,
+  UpdateState,
+} from '../../../shared/contract'
 
 export const INFO: AppInfo = {
   version: '0.1.0-test',
@@ -34,6 +42,7 @@ export const SETTINGS: AppSettings = {
   longVideoMinutes: 30,
   notifications: true,
   portableNames: true,
+  autoUpdate: true,
 }
 
 export const READY: Diagnosis = {
@@ -155,6 +164,21 @@ export class FakeApi implements MdcApi {
     }),
   )
   reveal = vi.fn(async () => {})
+  update: UpdateState = {status: 'up-to-date', checkedAt: 0}
+  #updates = new Set<(state: UpdateState) => void>()
+  updateState = vi.fn(async () => this.update)
+  checkForUpdates = vi.fn(async () => this.update)
+  installUpdate = vi.fn(async () => {})
+
+  onUpdate(listener: (state: UpdateState) => void): () => void {
+    this.#updates.add(listener)
+    return () => this.#updates.delete(listener)
+  }
+
+  pushUpdate(state: UpdateState): void {
+    this.update = state
+    for (const listener of this.#updates) listener(state)
+  }
 
   onEvents(listener: (bundle: EventBundle) => void): () => void {
     this.#events.add(listener)

@@ -18,6 +18,8 @@ export type FakePlayerSiteConfig = {
   readonly mediaBytes?: number
   /** What a page past the last one answers: the last page again (default), no results, or 404. */
   readonly pastEnd?: 'repeat' | 'empty' | 'missing'
+  /** Page 1 of a listing answers this late (the other pages answer first). */
+  readonly firstPageDelayMs?: number
 }
 
 export type FakePlayerSite = {
@@ -91,6 +93,10 @@ export async function startFakePlayerSite(config: FakePlayerSiteConfig = {}): Pr
       const page = Number(url.searchParams.get('page') ?? 1)
       if (page > pages && config.pastEnd === 'missing') return send(404, 'no such page')
       if (page > pages) return send(200, listing(parts[2] ?? '', config.pastEnd === 'empty' ? pages + 1 : pages))
+      if (page === 1 && config.firstPageDelayMs) {
+        setTimeout(() => send(200, listing(parts[2] ?? '', page)), config.firstPageDelayMs)
+        return
+      }
       return send(200, listing(parts[2] ?? '', page))
     }
     if (parts[0] === 'video') {

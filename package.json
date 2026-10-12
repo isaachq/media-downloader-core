@@ -1,14 +1,14 @@
 {
   "name": "media-downloader-core",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "description": "Download engine for heavy workloads (many videos, huge playlists): yt-dlp + ffmpeg on a CPUs/2 worker pool, O(1) hot paths, codec-guaranteed formats and full integrity validation.",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "mdc": "./dist/cli.js",
-    "media-download-core": "./dist/cli.js"
+    "mdc": "dist/cli.js",
+    "media-download-core": "dist/cli.js"
   },
   "exports": {
     ".": {
@@ -56,7 +56,10 @@
     "typescript": "5.9.3"
   },
   "author": "isaachq <isaac.hernandez.qz@gmail.com>",
-  "repository": "github:isaachq/media-downloader-core",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/isaachq/media-downloader-core.git"
+  },
   "homepage": "https://github.com/isaachq/media-downloader-core#readme",
   "bugs": "https://github.com/isaachq/media-downloader-core/issues",
   "keywords": [

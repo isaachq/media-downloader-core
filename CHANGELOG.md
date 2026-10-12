@@ -1,5 +1,17 @@
 # Changelog
 
+## Library 1.6.1
+
+**Capped listings of player-page sites stop at the cap, whatever page answers
+first.** The listing reads its first pages together and then reads ahead only
+as far as the cap needs — sized by page 1. When page 1 answered last, the
+size was unknown and the read-ahead went on: 26 of 20 pages in the worst
+case instead of 2 (the results were right, the requests weren't needed). The
+page size is now the largest page read so far, which never undercounts.
+`package.json` is in the form npm publishes (`npm pkg fix`), and the
+workflow builds before publishing, so publishing warns about nothing. The
+library publishes with npm Trusted Publishing: no token is stored anywhere.
+
 ## App 0.2.0-beta.7 · library 1.6.0
 
 **Sync Up: TikTok accounts kept in step with their folders.** Turned on in

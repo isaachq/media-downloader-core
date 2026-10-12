@@ -2,10 +2,10 @@
 // install version A with its NSIS installer, offer version B from a local
 // feed, press "Update now" as a user does, and check what happens after the
 // app closes — B installed for the same scope, the new version started — or,
-// when the installer fails, the old version started again and saying why.
+// when the installer fails, the old version, opened again, saying so.
 //
 //   npx tsx app/e2e/windows-update.ts <A.exe> <B.exe> <B version> <user|machine> [fail]
-import {execFileSync} from 'node:child_process'
+import {execFileSync, spawn} from 'node:child_process'
 import {createHash} from 'node:crypto'
 import * as fs from 'node:fs/promises'
 import * as http from 'node:http'
@@ -147,12 +147,25 @@ async function main() {
   }
   const deadline = Date.now() + 4 * 60_000
   let done = false
-  while (!done && Date.now() < deadline) {
-    await sleep(3000)
-    const now = installs()
-    done = failing
-      ? (await helperLog()).includes('NOT INSTALLED') && running() > 0
-      : now.find(entry => entry.hive === scopeHive)?.version === versionB && running() > 0
+  if (failing) {
+    // the "installer" fails: the old version stays; opened again (as a user would), it says the update did not finish
+    await sleep(20_000)
+    if (installs().find(entry => entry.hive === scopeHive)?.version === versionB)
+      throw new Error('a failing installer installed B')
+    spawn(exe, [], {
+      detached: true,
+      stdio: 'ignore',
+      env: {...process.env, MDC_DATA_DIR: dataDir, MDC_BINARIES: JSON.stringify(fakes)},
+    }).unref()
+    while (!done && Date.now() < deadline) {
+      await sleep(3000)
+      done = /last update:.*did not finish/.test(await readTrace())
+    }
+  } else {
+    while (!done && Date.now() < deadline) {
+      await sleep(3000)
+      done = installs().find(entry => entry.hive === scopeHive)?.version === versionB && running() > 0
+    }
   }
   await sleep(5000) // the new version's start-up logs the helper's steps
   server.close()

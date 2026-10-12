@@ -49,7 +49,7 @@ import {defaultSettings, SettingsStore} from './settings'
 import {taskbarState} from './taskbar'
 import {createTikTokBrowser} from './tiktok-browser'
 import type {InstallKind} from './updates/feed'
-import {detectInstallKind, NOT_INSTALLED} from './updates/install'
+import {detectInstallKind} from './updates/install'
 import {Updater} from './updates/updater'
 import {MIN_SIZE, readWindowState, restoreBounds, writeWindowState} from './window-state'
 
@@ -116,10 +116,8 @@ async function createUpdater(): Promise<void> {
   updater.onChange(state => send(CHANNEL.update, state))
   const previous = await updater.cleanUp()
   if (previous) {
-    engine.log(
-      previous.includes(NOT_INSTALLED) ? 'warn' : 'info',
-      `last update: ${previous.trim().split(/\r?\n/).join(' | ')}`,
-    )
+    const failed = updater.state.status === 'error' ? ` — ${updater.state.message}` : ''
+    engine.log(failed ? 'warn' : 'info', `last update: ${previous.trim().split(/\r?\n/).join(' | ')}${failed}`)
   }
   const background = () => {
     if (settings.current.autoUpdate) void updater?.check({quiet: true})

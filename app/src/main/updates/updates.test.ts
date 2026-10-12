@@ -8,7 +8,7 @@ import * as path from 'node:path'
 import {afterAll, beforeAll, describe, expect, it} from 'vitest'
 import {downloadUpdate, UpdateError} from './download'
 import {pickUpdate, RELEASES_PAGE} from './feed'
-import {bundleOf, INSTALL_LOG, windowsInstallScript, windowsScope} from './install'
+import {bundleOf, INSTALL_LOG, windowsInstallerArgs, windowsScope} from './install'
 import {Updater} from './updater'
 import {compareVersions, parseVersion} from './version'
 
@@ -117,16 +117,9 @@ describe('install helpers', () => {
     expect(await windowsScope(exe, registry('HKCU', 'C:\\Other'))).toBe('machine')
   })
 
-  it("the Windows helper: same scope, the administrator's prompt when needed, a log, never a dead end", () => {
-    const script = windowsInstallScript()
-    expect(script).toContain("'/allusers'")
-    expect(script).toContain("'/currentuser'")
-    expect(script).toContain('-Verb RunAs')
-    expect(script).toContain('$p.WaitForExit()')
-    // a failed update starts the old version again and says why
-    expect(script).toMatch(/function Fail[\s\S]*NOT INSTALLED:[\s\S]*Start-Process -FilePath \$AppExe/)
-    expect(script).toContain('Wait-Process -Id $AppPid -Timeout 120')
-    expect(script.split('\r\n').length).toBeGreaterThan(10)
+  it("the NSIS installer's own update mode, for the same scope", () => {
+    expect(windowsInstallerArgs('user')).toEqual(['--updated', '/S', '--force-run', '/currentuser'])
+    expect(windowsInstallerArgs('machine')).toEqual(['--updated', '/S', '--force-run', '/allusers'])
   })
 })
 
@@ -269,6 +262,41 @@ describe('Updater', () => {
       page: RELEASES_PAGE,
     })
     await expect(fs.access(leftovers)).rejects.toThrow()
+  })
+
+  it('an update that did not finish is noticed on the next start: still the older version', async () => {
+    const leftovers = path.join(dir, 'unfinished-install')
+    await fs.mkdir(leftovers, {recursive: true})
+    const log = [
+      '2026-10-12T07:00:00Z update to 0.2.0-beta.8: setup.exe',
+      '2026-10-12T07:00:00Z installed for user',
+      '2026-10-12T07:00:00Z installer started (pid 4242)',
+    ].join('\r\n')
+    const updater = (current: string, folder: string) =>
+      new Updater({
+        current,
+        kind: 'windows-nsis',
+        arch: 'x64',
+        dir: folder,
+        bundleId: 'x',
+        execPath: 'C:\\x.exe',
+        env: {},
+        exit: () => {},
+      })
+    await fs.writeFile(path.join(leftovers, INSTALL_LOG), log)
+    const stale = updater('0.2.0-beta.7.2', leftovers)
+    await stale.cleanUp()
+    expect(stale.state).toMatchObject({status: 'error', version: '0.2.0-beta.8'})
+    expect(stale.state.status === 'error' && stale.state.message).toMatch(
+      /did not finish: this is still 0\.2\.0-beta\.7\.2/,
+    )
+    // the new version running: all went well, nothing to say
+    const fresh = path.join(dir, 'finished-install')
+    await fs.mkdir(fresh, {recursive: true})
+    await fs.writeFile(path.join(fresh, INSTALL_LOG), log)
+    const updated = updater('0.2.0-beta.8', fresh)
+    expect(await updated.cleanUp()).toContain('installer started')
+    expect(updated.state.status).toBe('idle')
   })
 
   it('a copy that cannot update itself says so instead of checking', async () => {

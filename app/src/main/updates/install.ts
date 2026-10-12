@@ -142,6 +142,8 @@ async function installMac(ctx: InstallContext): Promise<'quit'> {
 export const INSTALL_LOG = 'install.log'
 /** The line that marks an update that did not go in. */
 export const NOT_INSTALLED = 'NOT INSTALLED:'
+/** How install.log names the version it installs ("update to 0.2.0-beta.8: file.exe"). */
+export const UPDATE_TO = 'update to'
 
 /**
  * Where this copy is installed, as the NSIS installer sees it: for everyone
@@ -201,57 +203,58 @@ const writable = (dir: string): Promise<boolean> =>
   )
 
 /**
- * The PowerShell helper: waits for this process to exit, runs the NSIS
- * installer silently for the same scope — asking for an administrator's
- * permission (the usual Windows prompt) when the install is for everyone and
- * the folder needs it — and writes each step to install.log. When the
- * update does not go in (permission declined, installer failed, the app did
- * not close), it starts the old version again: never a silent dead end.
+ * The NSIS installer's own update mode, as electron-updater runs it:
+ * `--updated` makes it wait for this app to close (and close what is left of
+ * it), `/S` installs silently for the same scope, `--force-run` starts the
+ * new version. No helper of ours in between: on Windows a PowerShell helper
+ * started by the app died with it, before its first line (reproduced on a
+ * real machine).
  */
-export function windowsInstallScript(): string {
-  return [
-    'param([int]$AppPid, [string]$Installer, [string]$AppExe, [string]$Log, [string]$Scope, [int]$Elevate)',
-    '# Media Download Core: run the installer once the running copy has quit',
-    'function Note([string]$Text) { Add-Content -LiteralPath $Log -Value ((Get-Date).ToString("o") + " " + $Text) }',
-    'function Fail([string]$Why) {',
-    `  Note "${NOT_INSTALLED} $Why"`,
-    '  if (Test-Path -LiteralPath $AppExe) { Start-Process -FilePath $AppExe }',
-    '  exit 1',
-    '}',
-    'Note "waiting for the app (pid $AppPid) to close"',
-    'Wait-Process -Id $AppPid -Timeout 120 -ErrorAction SilentlyContinue',
-    "if (Get-Process -Id $AppPid -ErrorAction SilentlyContinue) { Fail 'the app did not close' }",
-    "$flags = @('/S', '--force-run', $(if ($Scope -eq 'machine') { '/allusers' } else { '/currentuser' }))",
-    'Note "installing for $Scope (administrator: $Elevate)"',
-    'try {',
-    '  if ($Elevate -eq 1) { $p = Start-Process -FilePath $Installer -ArgumentList $flags -Verb RunAs -PassThru }',
-    '  else { $p = Start-Process -FilePath $Installer -ArgumentList $flags -PassThru }',
-    '  # the process alone, not the app it starts at the end',
-    '  $p.WaitForExit()',
-    '  if ($p.ExitCode -ne 0) { Fail "the installer ended with code $($p.ExitCode)" }',
-    '} catch {',
-    '  Fail "the installer did not run: $($_.Exception.Message)"',
-    '}',
-    "Note 'installed'",
-    '',
-  ].join('\r\n')
+export function windowsInstallerArgs(scope: 'machine' | 'user'): string[] {
+  return ['--updated', '/S', '--force-run', scope === 'machine' ? '/allusers' : '/currentuser']
 }
 
-/** The NSIS installer, silently and for the same scope, once this process has exited; it starts the new version. */
+/**
+ * Hand the update to the NSIS installer, which runs once this process has
+ * exited. Each step goes to install.log; whether the update went in is known
+ * on the next start (Updater.cleanUp compares the version then running with
+ * the one installed here).
+ */
 async function installWindows(ctx: InstallContext): Promise<'quit'> {
+  const log = path.join(ctx.workDir, INSTALL_LOG)
+  const step = (text: string) => fs.appendFile(log, `${new Date().toISOString()} ${text}\r\n`)
+  await step(`${UPDATE_TO} ${ctx.version}: ${path.basename(ctx.file)}`)
   const scope = await windowsScope(ctx.execPath)
   const elevate = scope === 'machine' && !(await writable(path.win32.dirname(ctx.execPath)))
-  const script = path.join(ctx.workDir, 'install.ps1')
-  await fs.writeFile(script, windowsInstallScript())
-  const log = path.join(ctx.workDir, INSTALL_LOG)
-  await fs.writeFile(log, `${new Date().toISOString()} update to ${ctx.version}: ${path.basename(ctx.file)}\r\n`)
-  detached('powershell.exe', [
-    ...['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', script],
-    ...['-AppPid', String(ctx.pid), '-Installer', ctx.file, '-AppExe', ctx.execPath],
-    ...['-Log', log, '-Scope', scope, '-Elevate', elevate ? '1' : '0'],
-  ])
+  await step(`installed for ${scope}${elevate ? ', needs an administrator' : ''}`)
+  const args = windowsInstallerArgs(scope)
+  // electron-builder ships elevate.exe with NSIS apps: the Windows administrator prompt, then the installer
+  const elevateExe = path.join(path.win32.dirname(ctx.execPath), 'resources', 'elevate.exe')
+  const launch = (command: string, commandArgs: string[]) =>
+    new Promise<string>(resolve => {
+      const child = spawn(command, commandArgs, {detached: true, stdio: 'ignore'})
+      child.once('spawn', () => {
+        child.unref()
+        resolve(`installer started (pid ${child.pid})`)
+      })
+      child.once('error', error => resolve(`${NOT_INSTALLED} the installer could not start: ${error.message}`))
+    })
+  let started =
+    elevate && (await exists(elevateExe)) ? await launch(elevateExe, [ctx.file, ...args]) : await launch(ctx.file, args)
+  // an installer Windows won't start without an administrator: through elevate.exe, as electron-updater does
+  if (started.startsWith(NOT_INSTALLED) && /EACCES|UNKNOWN|elevation/i.test(started) && (await exists(elevateExe))) {
+    started = await launch(elevateExe, [ctx.file, ...args])
+  }
+  await step(started)
+  if (started.startsWith(NOT_INSTALLED)) throw new UpdateError(started.slice(NOT_INSTALLED.length).trim())
   return 'quit'
 }
+
+const exists = (file: string): Promise<boolean> =>
+  fs.access(file).then(
+    () => true,
+    () => false,
+  )
 
 // ─── Linux ───────────────────────────────────────────────────────────────────
 

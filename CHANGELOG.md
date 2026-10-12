@@ -9,18 +9,21 @@ YouTube's bot check handled — with the fix below.
 
 **The update on Windows, fixed.** "Update now" downloaded the new version,
 the app closed — and nothing was installed; the app had to be reinstalled
-by hand. Now:
+by hand. Reproduced on a real Windows machine: the PowerShell helper that
+was to run the installer once the app closed died with the app, before its
+first line. Now:
 
-- The installer runs for the scope the app was installed for (this user, or
-  everyone), read from Windows' own record of the install — and asks for an
-  administrator's permission, with the usual Windows prompt, only when an
+- The app hands the update straight to the installer, in its own update
+  mode (`--updated`, as electron-updater does): the installer waits for the
+  app to close, installs silently and starts the new version.
+- It installs for the scope the app was installed for (this user, or
+  everyone), read from Windows' record of the install, and asks for an
+  administrator's permission — the usual Windows prompt — only when an
   install for everyone needs it.
-- The helper that installs after the app closes writes down every step. If
-  the update doesn't go in — permission declined, the installer failing,
-  the app not closing — it opens the version you had, and the app says why.
-  Never again a closed app and nothing else.
+- Every step is written down; if the update doesn't go in, the next start
+  says so ("The update to … did not finish") instead of nothing at all.
 - The app closes for the update even if something hangs while it shuts
-  down (after 20 s), so the installer can always run.
+  down (after 20 s).
 - A test installs the app on a real Windows machine and updates it, for one
   user and for everyone, and with an installer that fails.
 

@@ -3,7 +3,8 @@ import * as path from 'node:path'
 import type {UpdateState} from '../../shared/contract'
 import {downloadUpdate, UpdateError} from './download'
 import {type InstallKind, pickUpdate, RELEASES_API, RELEASES_PAGE, type UpdateOffer} from './feed'
-import {INSTALL_LOG, type InstallContext, installUpdate, NOT_INSTALLED} from './install'
+import {INSTALL_LOG, type InstallContext, installUpdate, NOT_INSTALLED, UPDATE_TO} from './install'
+import {compareVersions, parseVersion} from './version'
 
 export type UpdaterOptions = {
   readonly current: string
@@ -46,17 +47,30 @@ export class Updater {
    * ~130 MB each): at start-up all of it is either installed or stale.
    */
   /**
-   * Remove what earlier updates left behind. The Windows helper's log is read
-   * first: an update that did not go in says why (state 'error') instead of
-   * vanishing. Returns that log, for the trace.
+   * Remove what earlier updates left behind. The Windows install log is read
+   * first: an update that did not go in — it says why, or this copy is still
+   * older than the version it handed to the installer — is reported (state
+   * 'error') instead of vanishing. Returns that log, for the trace.
    */
   async cleanUp(): Promise<string | undefined> {
     const log = await fs.readFile(path.join(this.#opts.dir, INSTALL_LOG), 'utf8').catch(() => undefined)
     await fs.rm(this.#opts.dir, {recursive: true, force: true}).catch(() => {})
-    const failed = log?.split(/\r?\n/).find(line => line.includes(NOT_INSTALLED))
+    if (!log) return undefined
+    const lines = log.split(/\r?\n/)
+    const failed = lines.find(line => line.includes(NOT_INSTALLED))
+    const target = lines.map(line => new RegExp(`${UPDATE_TO} (\\S+):`).exec(line)?.[1]).find(Boolean)
+    const wanted = target ? parseVersion(target) : undefined
+    const running = parseVersion(this.#opts.current)
     if (failed) {
       const why = failed.slice(failed.indexOf(NOT_INSTALLED) + NOT_INSTALLED.length).trim()
       this.#set({status: 'error', message: `The last update was not installed: ${why}.`, page: RELEASES_PAGE})
+    } else if (target && wanted && running && compareVersions(running, wanted) < 0) {
+      this.#set({
+        status: 'error',
+        message: `The update to ${target} did not finish: this is still ${this.#opts.current}. Try again, or install it from the releases page.`,
+        version: target,
+        page: RELEASES_PAGE,
+      })
     }
     return log
   }

@@ -2,10 +2,10 @@
 // install version A with its NSIS installer, offer version B from a local
 // feed, press "Update now" as a user does, and check what happens after the
 // app closes — B installed for the same scope, the new version started — or,
-// when the installer fails, the old version started again and saying why.
+// when the installer fails, the old version, opened again, saying so.
 //
 //   npx tsx app/e2e/windows-update.ts <A.exe> <B.exe> <B version> <user|machine> [fail]
-import {execFileSync} from 'node:child_process'
+import {execFileSync, spawn} from 'node:child_process'
 import {createHash} from 'node:crypto'
 import * as fs from 'node:fs/promises'
 import * as http from 'node:http'
@@ -147,12 +147,25 @@ async function main() {
   }
   const deadline = Date.now() + 4 * 60_000
   let done = false
-  while (!done && Date.now() < deadline) {
-    await sleep(3000)
-    const now = installs()
-    done = failing
-      ? (await helperLog()).includes('NOT INSTALLED') && running() > 0
-      : now.find(entry => entry.hive === scopeHive)?.version === versionB && running() > 0
+  if (failing) {
+    // the "installer" fails: the old version stays; opened again (as a user would), it says the update did not finish
+    await sleep(20_000)
+    if (installs().find(entry => entry.hive === scopeHive)?.version === versionB)
+      throw new Error('a failing installer installed B')
+    spawn(exe, [], {
+      detached: true,
+      stdio: 'ignore',
+      env: {...process.env, MDC_DATA_DIR: dataDir, MDC_BINARIES: JSON.stringify(fakes)},
+    }).unref()
+    while (!done && Date.now() < deadline) {
+      await sleep(3000)
+      done = /last update:.*did not finish/.test(await readTrace())
+    }
+  } else {
+    while (!done && Date.now() < deadline) {
+      await sleep(3000)
+      done = installs().find(entry => entry.hive === scopeHive)?.version === versionB && running() > 0
+    }
   }
   await sleep(5000) // the new version's start-up logs the helper's steps
   server.close()
@@ -160,6 +173,22 @@ async function main() {
   console.log('installed after:', JSON.stringify(after))
   console.log('processes running:', running())
   console.log('helper log:', (await helperLog()) || '(none)')
+  const updates = path.join(dataDir, 'updates')
+  console.log('updates folder:', (await fs.readdir(updates).catch(() => [] as string[])).join(', ') || '(empty)')
+  console.log(
+    'helper output:',
+    (await fs.readFile(path.join(updates, 'install-helper.log'), 'utf8').catch(() => '(none)')) || '(empty)',
+  )
+  const trace = (await readTrace()).split('\n').filter(Boolean)
+  console.log('app trace (update and last lines):')
+  for (const line of [...trace.filter(l => /update|quit|clos/i.test(l)), ...trace.slice(-8)])
+    console.log('  ', line.slice(0, 300))
+  const crashes = await fs.readdir(path.join(dataDir, 'Crashpad', 'reports')).catch(() => [] as string[])
+  console.log('crash reports:', crashes.join(', ') || '(none)')
+  console.log(
+    'powershell running:',
+    ps("(Get-Process -Name powershell -ErrorAction SilentlyContinue | ForEach-Object { $_.Id }) -join ','"),
+  )
   if (!done)
     throw new Error(
       `no ${failing ? 'reported failure with the old version running' : `${versionB} running for ${scope}`} within 4 minutes`,

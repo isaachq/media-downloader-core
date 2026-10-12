@@ -1,8 +1,8 @@
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import type {ExtractResult} from '../../core/analyze.js'
-import {cancelledError, DownloadError} from '../../core/errors.js'
 import {estimateBytes} from '../../core/cost.js'
+import {cancelledError, DownloadError} from '../../core/errors.js'
 import {AUDIO_CONTAINERS, genericChoices} from '../../core/formats.js'
 import type {
   AnalysisResult,

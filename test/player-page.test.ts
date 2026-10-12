@@ -3,11 +3,11 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import {after, before, describe, it} from 'node:test'
+import {estimateBytes} from '../src/core/cost.js'
 import {MediaDownloader} from '../src/downloader.js'
 import {BatchScheduler} from '../src/scheduler.js'
 import {parsePlayerPageSites} from '../src/sources/player-page/config.js'
 import {decodeEntities, firstPage, readListing, readVideoPage, videoMatcher} from '../src/sources/player-page/parse.js'
-import {estimateBytes} from '../src/core/cost.js'
 import {candidates, PlayerPageSource, playerChoices} from '../src/sources/player-page/source.js'
 import {startFakePlayerSite} from './helpers/fake-player-site.js'
 import {type FakeBinaries, writeFakes} from './helpers/fakes.js'
@@ -97,7 +97,10 @@ describe('player pages: reading', () => {
     assert.ok(at(1080) < 3e9)
     // a 480p-only page stays 480p whatever the cap
     assert.equal(estimateBytes(best, playerChoices({...hour, heights: [480]}), 3600), at(480))
-    assert.equal(estimateBytes({...best, maxHeight: 720}, playerChoices({...hour, heights: [1080, 720]}), 3600), at(720))
+    assert.equal(
+      estimateBytes({...best, maxHeight: 720}, playerChoices({...hour, heights: [1080, 720]}), 3600),
+      at(720),
+    )
     // unknown heights: sized as 1080p
     assert.equal(estimateBytes(best, playerChoices({...hour, heights: []}), 3600), at(1080))
     // audio: the smallest rendition is what gets downloaded

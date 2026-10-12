@@ -107,8 +107,14 @@ xattr -dr com.apple.quarantine "/Applications/Media Download Core.app"
 
 **Windows** (x64 and ARM) — `.exe`
 
-1. Run the installer. If SmartScreen says *"Windows protected your PC"*, click
-   **More info → Run anyway**.
+1. Open the `.exe`. If a blue window says *"Windows protected your PC"*
+   (SmartScreen), click **More info**.
+2. Click **Run anyway**. The installer opens, finishes by itself and starts the app.
+
+> **Why the warning?** This is a free project made at home, and the installer
+> isn't signed with a paid Microsoft certificate yet. SmartScreen warns about
+> that missing signature, not about the file: the code is public here, and
+> Windows stops asking as more people install it.
 
 **Linux** (x64 and arm64) — pick your distribution's package:
 

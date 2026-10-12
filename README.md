@@ -48,6 +48,7 @@ the ⌊CPUs/2⌋ pool and verified file by file.
 ### What's new in beta 9
 
 - **Player-page links on any site** — a search or video page from a site whose videos each have a page with a player now works without adding the site to `sites.json` first: any link yt-dlp doesn't support is tried as a player page, whatever its host. No site is named in the app. [How it works](#player-page-sites-configured-locally).
+- **Lighter integrity checks** — the full check of an H.264 video takes ~17% less CPU, and still finds every error it found before.
 
 ### In beta 8
 

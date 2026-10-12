@@ -27,6 +27,22 @@ the app:
 - Chunked checks match yt-dlp's `ERROR: Unsupported URL: <url>` to its own
   url; it names no id, so it used to be assigned in order.
 
+**Integrity checks ~17% lighter on H.264.** Profiled with a new performance
+harness: orchestration already runs at 99% of what the tools allow, memory
+stays flat however many jobs run, SHA-256 goes at 1.2 GiB/s. The one heavy
+cost per job is the `full` check, ffmpeg decoding every frame. It now skips
+the deblocking filter, which only smooths frames already rebuilt and reads
+nothing from the file: every error is still found (60 of 60 random
+corruptions, as before), for 5.28 s → 4.39 s per minute of 1080p H.264 on one
+thread. VP9 and AV1 barely change.
+
+**Performance harness** (`npm run perf`): every benchmark run several times in
+fresh processes, medians compared with a per-machine baseline (worse/better
+past a threshold, `--fail-on-regression`), the machine recorded with each
+result; `npm run perf -- profile <scenario>` writes a CPU profile and lists
+the hottest functions. Benchmarks print `--json`; a `validate` scenario
+times integrity checks on a real 1080p clip (needs ffmpeg).
+
 ## App 0.2.0-beta.8 · library 1.8.0
 
 Beta 8: YouTube's bot check handled one step at a time — tokens the app

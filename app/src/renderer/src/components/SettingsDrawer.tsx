@@ -46,8 +46,8 @@ export function SettingsDrawer({open, onClose, onDoctor, onReinstall}: Props) {
   }
 
   return (
-    <Drawer title={t('settings.title')} open={open} onClose={onClose} width={480} destroyOnHidden>
-      {restartNeeded ? <Alert type="info" showIcon message={t('settings.restart')} className="restart-alert" /> : null}
+    <Drawer title={t('settings.title')} open={open} onClose={onClose} size={480} destroyOnHidden>
+      {restartNeeded ? <Alert type="info" showIcon title={t('settings.restart')} className="restart-alert" /> : null}
       <Form layout="vertical">
         <Divider titlePlacement="start">{t('settings.downloads')}</Divider>
         <Form.Item label={t('settings.folder')}>
@@ -74,7 +74,7 @@ export function SettingsDrawer({open, onClose, onDoctor, onReinstall}: Props) {
             value={settings.validation}
             onChange={event => change({validation: event.target.value as ValidationLevel})}
           >
-            <Space direction="vertical">
+            <Space orientation="vertical">
               <Radio value="full">{t('settings.validation.full')}</Radio>
               <Radio value="quick">{t('settings.validation.quick')}</Radio>
               <Radio value="none">{t('settings.validation.none')}</Radio>
@@ -99,7 +99,7 @@ export function SettingsDrawer({open, onClose, onDoctor, onReinstall}: Props) {
           />
         </Form.Item>
         <Form.Item>
-          <Space direction="vertical" size="middle">
+          <Space orientation="vertical" size="middle">
             <SwitchRow
               id="opt-metadata"
               checked={settings.embedMetadata}
@@ -121,6 +121,14 @@ export function SettingsDrawer({open, onClose, onDoctor, onReinstall}: Props) {
             >
               {t('settings.notifications')}
             </SwitchRow>
+            <div>
+              <SwitchRow id="opt-sync" checked={settings.syncEnabled} onChange={value => change({syncEnabled: value})}>
+                {t('settings.sync')}
+              </SwitchRow>
+              <Typography.Paragraph type="secondary" className="switch-help">
+                {t('settings.syncHelp')}
+              </Typography.Paragraph>
+            </div>
             <SwitchRow id="opt-update" checked={settings.autoUpdate} onChange={value => change({autoUpdate: value})}>
               {t('settings.autoUpdate')}
             </SwitchRow>

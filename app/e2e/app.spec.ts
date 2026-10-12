@@ -253,6 +253,58 @@ test('backs up picked posts of a TikTok profile as MP3 (built-in extractor)', as
   }
 })
 
+test('Sync Up keeps a TikTok account in step with its folder, in the format of the folder', async () => {
+  const site = await startFakeTikTok({posts: 5})
+  try {
+    // downloaded earlier as MP3 (the app's format is M4A now): recognized by the post number in the name
+    const folder = path.join(root, 'sync', 'out', 'TikTok-fakeuser')
+    await fs.mkdir(folder, {recursive: true})
+    for (const id of site.ids.slice(2)) await fs.writeFile(path.join(folder, `old-${id}.mp3`), 'audio')
+    const {app, page} = await launch('sync', {format: 'm4a', syncEnabled: true}, {MDC_TIKTOK_ORIGIN: site.origin})
+    await page.getByRole('tab', {name: 'Sync Up'}).click()
+    await page.getByTestId('sync-add').click()
+    const dialog = page.locator('.ant-modal').filter({hasText: 'TikTok account'})
+    await dialog.getByLabel('TikTok account').fill('@fakeuser')
+    // the folder follows the account, and its files decide the format
+    await expect(dialog.getByRole('textbox', {name: 'Folder'})).toHaveValue(folder)
+    await expect(dialog.getByTestId('sync-folder-info')).toContainText('This folder has 3 MP3 files')
+    await page.screenshot({path: path.join(APP_DIR, 'test-results', 'sync-add.png')})
+    await dialog.getByRole('button', {name: 'Add', exact: true}).click()
+    const card = page.getByTestId('sync-card')
+    await expect(card).toContainText('@fakeuser')
+    await expect(card).toContainText('MP3')
+
+    // a check downloads nothing
+    await card.getByTestId('sync-more').click()
+    await page.getByRole('menuitem', {name: /Check$/}).click()
+    const result = page.getByTestId('sync-check-result')
+    await expect(result).toContainText('New: 2', {timeout: 60_000})
+    await expect(result).toContainText('in the folder: 3')
+    expect(await fs.readdir(folder)).toHaveLength(3)
+    await page.getByRole('button', {name: 'Download 2'}).click()
+
+    await expect(card).toContainText('downloaded: 2', {timeout: 60_000})
+    const files = (await fs.readdir(folder)).sort()
+    expect(files).toHaveLength(5)
+    // one format in the folder; new files go straight into it, no index prefix
+    expect(files.every(file => file.endsWith('.mp3'))).toBe(true)
+    for (const id of site.ids.slice(0, 2)) {
+      expect(files.some(file => file.endsWith(`-${id}.mp3`) && !/^\d{3}-/.test(file))).toBe(true)
+    }
+    await page.screenshot({path: path.join(APP_DIR, 'test-results', 'sync-up.png')})
+
+    // the sync is an ordinary batch, below
+    await expect(page.getByTestId('batch-card').first()).toContainText('Sync @fakeuser')
+
+    // nothing new the second time
+    await card.getByTestId('sync-run').click()
+    await expect(page.getByText('Up to date: nothing new')).toBeVisible({timeout: 60_000})
+    await close(app)
+  } finally {
+    await site.close()
+  }
+})
+
 test('a TikTok profile behind a verification page opens through the built-in browser', async () => {
   // plain requests get a "please wait" page whose script sets a cookie and reloads: only a browser passes
   const site = await startFakeTikTok({posts: 6, jsChallenge: true})

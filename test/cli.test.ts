@@ -11,6 +11,7 @@ import {jobLine, logLine, progressBar, stepTrack, summary} from '../src/cli/rend
 import {createStyle, fit, stripAnsi, visibleLength, wantsColor} from '../src/cli/term.js'
 import {run} from '../src/core/process.js'
 import type {BatchSnapshot, JobSnapshot, LogEntry, PreflightItem} from '../src/types.js'
+import {startFakeTikTok} from './helpers/fake-tiktok.js'
 import {type FakeBinaries, writeFakes} from './helpers/fakes.js'
 
 const plain = createStyle(false)
@@ -96,6 +97,57 @@ describe('argument parsing', () => {
     )
     assert.match(defaultDataDir({APPDATA: 'C:\\Users\\me\\AppData\\Roaming'}, 'win32'), /Media Download Core$/)
     assert.equal(defaultDataDir({MDC_DATA_DIR: '/custom'}, 'linux'), path.resolve('/custom'))
+  })
+})
+
+describe('sync arguments', () => {
+  const sync = (args: string[]) => {
+    const parsed = parseCli(['sync', ...args])
+    return parsed.ok ? parsed.command : parsed.error
+  }
+
+  it('parses add, run, list and remove', () => {
+    assert.deepEqual(sync(['add', '@name', '--folder', '/m/n', '--daily', '07:30', '-f', 'mp3']), {
+      name: 'sync',
+      action: 'add',
+      account: 'https://www.tiktok.com/@name',
+      folder: '/m/n',
+      profile: {kind: 'audio', container: 'mp3'},
+      schedule: {every: 'day', at: '07:30'},
+    })
+    assert.deepEqual(sync(['add', 'name', '--folder', '/m', '--every', '6']), {
+      name: 'sync',
+      action: 'add',
+      account: 'https://www.tiktok.com/@name',
+      folder: '/m',
+      schedule: {every: 'hours', hours: 6},
+    })
+    assert.deepEqual(sync(['run', '--due']), {
+      name: 'sync',
+      action: 'run',
+      target: undefined,
+      due: true,
+      deep: false,
+      dryRun: false,
+    })
+    assert.deepEqual(sync(['run', '@name', '--deep', '--dry-run']), {
+      name: 'sync',
+      action: 'run',
+      target: '@name',
+      due: false,
+      deep: true,
+      dryRun: true,
+    })
+    assert.deepEqual(sync([]), {name: 'sync', action: 'list'})
+    assert.deepEqual(sync(['remove', '@name']), {name: 'sync', action: 'remove', target: '@name'})
+  })
+
+  it('says what is wrong', () => {
+    assert.match(String(sync(['add', '@name'])), /--folder/)
+    assert.match(String(sync(['add', '@name', '--folder', '/m', '--daily', '25:00'])), /HH:MM/)
+    assert.match(String(sync(['add', '@name', '--folder', '/m', '--daily', '07:00', '--every', '2'])), /choose one/)
+    assert.match(String(sync(['run', '@name', '--due'])), /--due/)
+    assert.match(String(sync(['pull'])), /unknown sync action/)
   })
 })
 
@@ -232,6 +284,49 @@ describe('mdc end to end', () => {
       .trim()
       .split('\n')
       .map(line => JSON.parse(line) as {type?: string} & Record<string, unknown>)
+
+  it('sync: follows an account into a folder that holds some posts, tells what is new, downloads it', async () => {
+    const site = await startFakeTikTok({posts: 30})
+    const dataDir = path.join(root, 'sync-data')
+    const folder = path.join(root, 'sync-folder')
+    await fs.mkdir(folder, {recursive: true})
+    for (const id of site.ids.slice(-25)) await fs.writeFile(path.join(folder, `Post-${id}.mp4`), 'x')
+    const cmd = (args: string[]) =>
+      run(process.execPath, ['--import', 'tsx', bin, 'sync', ...args, '--data-dir', dataDir], {
+        env: {...process.env, MDC_BINARIES: JSON.stringify(fakes), MDC_TIKTOK_ORIGIN: site.origin, NO_COLOR: '1'},
+        timeoutMs: 60_000,
+      })
+    try {
+      const added = await cmd(['add', `@${site.user}`, '--folder', folder, '--daily', '08:00'])
+      assert.equal(added.code, EXIT.ok, added.stderr)
+      assert.match(added.stdout, new RegExp(`following @${site.user}`))
+
+      const plan = ndjson((await cmd(['run', '--dry-run', '--json', '-Q'])).stdout).find(item => item.type === 'plan')!
+      assert.equal((plan['entries'] as unknown[]).length, 5)
+      assert.equal(plan['inFolder'], 25)
+      assert.equal((await fs.readdir(folder)).length, 25, 'a dry run downloads nothing')
+
+      const done = await cmd(['run', `@${site.user}`, '-Q'])
+      assert.equal(done.code, EXIT.ok, done.stderr)
+      assert.match(done.stdout, /5 new · 5 downloaded · 25 in the folder/)
+      assert.equal((await fs.readdir(folder)).length, 30)
+
+      const list = await cmd(['list'])
+      assert.match(list.stdout, new RegExp(`@${site.user}`))
+      assert.match(list.stdout, /daily 08:00/)
+      // not due yet: a scheduled run (cron) does nothing
+      const due = await cmd(['run', '--due'])
+      assert.equal(due.code, EXIT.ok)
+      assert.match(due.stdout, /nothing due/)
+
+      const removed = await cmd(['remove', `@${site.user}`])
+      assert.equal(removed.code, EXIT.ok)
+      assert.equal((await fs.readdir(folder)).length, 30, 'the folder is left as it is')
+      assert.match((await cmd(['list'])).stdout, /no synced accounts/)
+    } finally {
+      await site.close()
+    }
+  })
 
   it('--version, --help and usage errors', async () => {
     assert.match((await mdc(['--version'])).stdout.trim(), /^\d+\.\d+\.\d+$/)

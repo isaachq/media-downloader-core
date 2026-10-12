@@ -317,3 +317,45 @@ h5.ant-typography.preview-heading {
   max-height: 360px;
   overflow: auto;
 }
+/* Sync Up: one block per account, a line between them */
+.sync-account {
+  padding: 12px 0;
+  border-top: 1px solid var(--ant-color-split, rgba(5, 5, 5, 0.06));
+  min-width: 0;
+}
+.sync-intro {
+  flex: 1 1 360px;
+}
+.sync-time {
+  width: 100px;
+}
+.sync-hours {
+  width: 150px;
+}
+.sync-progress {
+  flex: 1;
+  max-width: 280px;
+  margin: 0;
+}
+/* Rows: a line between rows, content and its actions on one line */
+.rows-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--ant-color-split, rgba(5, 5, 5, 0.06));
+}
+.rows-item:last-child {
+  border-bottom: none;
+}
+.rows-item > * {
+  min-width: 0;
+}
+/* number fields next to their label (Space.Addon) */
+.seconds-input {
+  width: 90px;
+}
+.cap-input {
+  width: 110px;
+}

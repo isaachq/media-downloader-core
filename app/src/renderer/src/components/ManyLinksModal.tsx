@@ -1,7 +1,8 @@
 import {CloseOutlined, ScheduleOutlined} from '@ant-design/icons'
-import {Alert, Button, List, Modal, Typography} from 'antd'
+import {Alert, Button, Modal, Typography} from 'antd'
 import {useState} from 'react'
 import {useT} from '../i18n'
+import {Rows} from './Rows'
 
 /**
  * Several links pasted or dropped at once: review them (drop any), then each
@@ -26,7 +27,7 @@ export function ManyLinksModal({
       open
       title={t('many.title', {count: urls.length})}
       onCancel={onCancel}
-      maskClosable={false}
+      mask={{closable: false}}
       width={760}
       footer={[
         <Button key="cancel" onClick={onCancel}>
@@ -52,31 +53,27 @@ export function ManyLinksModal({
         </Button>,
       ]}
     >
-      <Alert type="info" showIcon message={t('many.hint')} className="many-hint" />
+      <Alert type="info" showIcon title={t('many.hint')} className="many-hint" />
       {repeated > 0 ? (
         <Typography.Text type="secondary">{t('many.repeated', {count: repeated})}</Typography.Text>
       ) : null}
-      <List
-        size="small"
+      <Rows
         className="many-list"
-        dataSource={[...urls]}
-        renderItem={(url, index) => (
-          <List.Item
-            actions={[
-              <Button
-                key="remove"
-                size="small"
-                type="text"
-                icon={<CloseOutlined />}
-                aria-label={t('many.remove')}
-                onClick={() => setUrls(urls.filter((_, i) => i !== index))}
-              />,
-            ]}
-          >
+        items={urls}
+        rowKey={(url, index) => `${index}:${url}`}
+        render={(url, index) => (
+          <>
             <Typography.Text className="one-line mono" title={url}>
               {index + 1}. {url}
             </Typography.Text>
-          </List.Item>
+            <Button
+              size="small"
+              type="text"
+              icon={<CloseOutlined />}
+              aria-label={t('many.remove')}
+              onClick={() => setUrls(urls.filter((_, i) => i !== index))}
+            />
+          </>
         )}
       />
     </Modal>

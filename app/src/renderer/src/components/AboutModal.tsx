@@ -1,8 +1,9 @@
 import {HeartFilled} from '@ant-design/icons'
-import {Button, Descriptions, List, Modal, Space, Typography} from 'antd'
+import {Button, Descriptions, Modal, Space, Typography} from 'antd'
 import {api} from '../api'
 import {useApp} from '../context'
 import {useT} from '../i18n'
+import {Rows} from './Rows'
 import {useUpdateState} from './UpdateBanner'
 
 const CREDITS: ReadonlyArray<readonly [name: string, license: string, url: string]> = [
@@ -41,16 +42,16 @@ export function AboutModal({open, onClose}: {readonly open: boolean; readonly on
         <HeartFilled style={{color: 'var(--bad)'}} /> {t('about.thanks')}
       </Typography.Paragraph>
       <Typography.Paragraph>{t('about.antd')}</Typography.Paragraph>
-      <List
-        size="small"
-        dataSource={[...CREDITS]}
-        renderItem={([name, license, url]) => (
-          <List.Item>
+      <Rows
+        items={CREDITS}
+        rowKey={([name]) => name}
+        render={([name, license, url]) => (
+          <>
             <Typography.Link href={url} target="_blank">
               {name}
             </Typography.Link>
             <Typography.Text type="secondary">{license}</Typography.Text>
-          </List.Item>
+          </>
         )}
       />
       <Typography.Paragraph type="secondary">{t('about.license')}</Typography.Paragraph>

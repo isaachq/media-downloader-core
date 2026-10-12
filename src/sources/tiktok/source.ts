@@ -106,11 +106,18 @@ export class TikTokSource implements MediaSource {
 
   async analyze(
     url: string,
-    opts: {signal?: AbortSignal; maxEntries?: number; onProgress?: (progress: ListingProgress) => void} = {},
+    opts: {
+      signal?: AbortSignal
+      maxEntries?: number
+      onProgress?: (progress: ListingProgress) => void
+      known?: ReadonlySet<string>
+    } = {},
   ): Promise<AnalysisResult> {
     try {
       const link = await this.#resolve(url, opts.signal)
-      if (link.kind === 'profile') return await this.#profile(link.user, opts.maxEntries, opts.signal, opts.onProgress)
+      if (link.kind === 'profile') {
+        return await this.#profile(link.user, opts.maxEntries, opts.signal, opts.onProgress, opts.known)
+      }
       const post = await this.#readPost(link.id, link.user, opts.signal)
       return this.#videoAnalysis(post)
     } catch (error) {
@@ -409,6 +416,8 @@ export class TikTokSource implements MediaSource {
     maxEntries: number | undefined,
     abort?: AbortSignal,
     onProgress?: (progress: ListingProgress) => void,
+    /** Posts already had: list from the newest until they start (an incremental sync). */
+    owned?: ReadonlySet<string>,
   ): Promise<PlaylistAnalysis> {
     const key = user.toLowerCase()
     const account = this.#accounts.get(key) ?? userFromPage(await this.#page(profileUrl(this.#origin, user), abort))
@@ -421,7 +430,9 @@ export class TikTokSource implements MediaSource {
     onProgress?.({listed: 0, expected: max})
     // a recent listing of this account answers at once, or is continued where it stopped
     const known = this.#listings.get(account.secUid)
-    const fresh = known && Date.now() - known.at < LISTING_FRESH_MS ? known : undefined
+    // an incremental walk wants the newest posts: it starts afresh, never from a kept listing
+    const fresh = known && !owned && Date.now() - known.at < LISTING_FRESH_MS ? known : undefined
+    let caughtUp = false
     let complete = fresh?.complete ?? false
     const walk = (target: number, resume?: readonly TikTokPost[]) =>
       walkProfile((cursor, deviceId) => this.#listPage(account.secUid, cursor, deviceId, abort), {
@@ -432,6 +443,10 @@ export class TikTokSource implements MediaSource {
         // once the end was reached, a later (second) pass that stops short doesn't undo it
         onEnd: whole => {
           complete ||= whole
+        },
+        known: owned,
+        onCaughtUp: () => {
+          caughtUp = true
         },
       })
     // every chunk is kept as soon as it is listed: a refusal, a cancel or a
@@ -451,7 +466,7 @@ export class TikTokSource implements MediaSource {
           const target = Math.min(max, posts.length + PROFILE_CHUNK)
           posts = await walk(target, posts)
           keep(posts)
-          if (posts.length < target) break // the listing ended or stalled: the second pass below decides
+          if (caughtUp || posts.length < target) break // the listing ended or stalled: the second pass below decides
         }
       } catch (error) {
         // a cancel cancels; a refusal half-way returns what was listed (the preview offers to continue)
@@ -466,7 +481,7 @@ export class TikTokSource implements MediaSource {
     // fresh identity when more than 5% is missing, merged by id. Up to one chunk
     // it walks again from the top (gaps can be anywhere); beyond that it
     // continues below the oldest post (a full re-walk would cost as much again)
-    if (!cached && !abort?.aborted && posts.length > 0 && posts.length < max * COMPLETE_SHARE) {
+    if (!cached && !caughtUp && !abort?.aborted && posts.length > 0 && posts.length < max * COMPLETE_SHARE) {
       this.#log('info', `TikTok: @${account.user || user} listed ${posts.length} of ${max} — second pass`)
       const again = await walk(max, max <= PROFILE_CHUNK ? undefined : posts).catch(() => [])
       const merged = new Map(posts.map(post => [post.id, post]))
@@ -488,6 +503,8 @@ export class TikTokSource implements MediaSource {
       choices: genericChoices(),
       total: account.videoCount,
       complete,
+      // set by the walk's callback: TypeScript can't see that it may have changed
+      caughtUp: (caughtUp as boolean) || undefined,
     }
   }
 

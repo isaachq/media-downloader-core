@@ -587,7 +587,9 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
    */
   async #enqueue(batch: Batch, signal: AbortSignal): Promise<void> {
     const {profile, outDir} = batch.request
-    const folder = batch.kind === 'playlist' ? this.#engine.folderFor(outDir, batch.title ?? 'Playlist') : outDir
+    const flat = batch.request.flat === true
+    const folder =
+      batch.kind === 'playlist' && !flat ? this.#engine.folderFor(outDir, batch.title ?? 'Playlist') : outDir
     batch.enqueuing = true
     batch.meter = new WorkMeter()
     for (let position = 0; position < batch.items.length; position++) {
@@ -603,14 +605,16 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
         profile,
         outDir: folder,
         batchId: batch.id,
+        batchTitle: batch.title,
         title: item.title,
         mediaId: item.mediaId,
         extractor: item.extractor,
         duration: item.duration,
         estimatedBytes: item.estimatedBytes,
         requiresConversion: item.requiresConversion,
+        // a flat batch names files without a position: they join a folder that has its own order
         playlist:
-          batch.kind === 'playlist'
+          batch.kind === 'playlist' && !flat
             ? {id: batch.playlistId ?? batch.id, title: batch.title ?? 'Playlist', index: item.index}
             : undefined,
         infoJsonPath: item.infoJsonPath,

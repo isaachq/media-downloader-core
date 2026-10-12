@@ -2,6 +2,26 @@
 
 ## App 0.2.0-beta.7 · library 1.6.0
 
+**Sync Up: TikTok accounts kept in step with their folders.** Turned on in
+Settings, it sits next to New download. Add an account — its folder may
+already hold its videos, recognized by the post id in their names, the
+history or their tags — and each sync downloads only what the folder is
+missing, as one ordinary batch: now, daily at a time, or every few hours
+(while the app is open; `mdc sync run --due` from cron, launchd or Task
+Scheduler otherwise). The first sync reads the whole account, to fill gaps
+anywhere; later ones stop where the folder's posts start (seconds). A folder
+keeps one format: a folder of MP4 files gets MP4, and a different format, a
+mixed folder or a stray file in another format is refused before anything
+downloads. *Check* tells what is new without downloading; *Full check* also
+tells what TikTok no longer lists. Each account keeps a history of its runs.
+Tried on a real 835-file folder: 4 posts were missing (3 of them years old);
+they were downloaded as MP4 like the rest.
+
+**No warnings.** Every deprecated Ant Design 6 property is gone (Space
+`orientation`, Alert and notification `title`, Drawer `size`, Statistic
+`styles`, Modal `mask`, `Space.Addon`, `Listy` instead of `List`), and the UI
+tests now fail on any warning, so none comes back.
+
 **Retry what failed, and see why.** A batch counts its failures by cause —
 removed, private, network, rate-limited… — and items the check found
 unavailable, on its card and in the run report. "Retry failed (N)" downloads
@@ -43,7 +63,11 @@ how many items are left.
 beta 4–6: settings, the 935-file history, the logs of earlier runs and a
 pending queue in the old format all open as they were.
 
-**Library.** `scheduler.retryFailed()` / `retryJob()`, `problems` on batch
+**Library.** `SyncManager` (subscriptions, `check` / `run` / `runDue` /
+`startSchedule` / `whenDone`, a lock per subscription across processes),
+`scanFolder()`, `folderFormat()`, `syncProfile()`; `mdc sync`
+(list / add / run / remove, `--due`, `--deep`, `--dry-run`); batches can
+download `flat` into their folder. `scheduler.retryFailed()` / `retryJob()`, `problems` on batch
 snapshots, `archive.list({batchId})` and `archive.groups()`,
 `verifyArchive(…, {keys | batchId})` in parallel, `SourceFile.bundle` (a
 folder of finished files), `slideshowOptions()`. Ready for npm (a

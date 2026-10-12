@@ -32,6 +32,8 @@ export interface MediaSource {
       readonly maxEntries?: number
       /** Listing progress of a long list: entries read so far, of how many expected. */
       readonly onProgress?: (progress: ListingProgress) => void
+      /** Entry ids already had: a source that can, lists only what is newer (an incremental sync). */
+      readonly known?: ReadonlySet<string>
     },
   ): Promise<AnalysisResult>
   /** Check many items (preflight); results stream through `onResult`. */

@@ -15,6 +15,8 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000
 export const EARLIEST_MS = Date.UTC(2014, 3, 1)
 /** Fresh identities to try when the listing starts repeating itself. */
 const IDENTITY_RESETS = 2
+/** Regular posts in a row already known before an incremental walk stops: everything older is known too. */
+export const KNOWN_RUN = 20
 /** Week-steps over empty / repeated pages before concluding the listing is over. */
 const MAX_STALLS = 8
 
@@ -27,6 +29,13 @@ export type WalkOptions = {
   readonly resume?: readonly TikTokPost[] | undefined
   /** Told at the end whether the profile's whole history was reached. */
   readonly onEnd?: ((complete: boolean) => void) | undefined
+  /**
+   * Posts already had (a sync's folder): the walk stops after KNOWN_RUN of
+   * them in a row — newer posts come first, so the rest are known too.
+   */
+  readonly known?: ReadonlySet<string> | undefined
+  /** Told when the walk stopped on known posts. */
+  readonly onCaughtUp?: (() => void) | undefined
 }
 
 /**
@@ -49,6 +58,8 @@ export async function walkProfile(listPage: ListPage, opts: WalkOptions): Promis
   let deviceId = opts.newDeviceId()
   let stalls = 0
   let resets = 0
+  let knownRun = 0
+  let caughtUp = false
 
   while (found.size < opts.max && cursor > EARLIEST_MS) {
     const page = await listPage(cursor, deviceId)
@@ -59,13 +70,19 @@ export async function walkProfile(listPage: ListPage, opts: WalkOptions): Promis
       const post = readPost(raw)
       const at = (post.createdAt ?? 0) * 1000
       if (post.pinned) oldestPinned = Math.min(oldestPinned, at)
-      else oldest = Math.min(oldest, at)
+      else {
+        oldest = Math.min(oldest, at)
+        // pinned posts are old by nature: only regular ones count towards "caught up"
+        knownRun = opts.known?.has(post.id) ? knownRun + 1 : 0
+        if (opts.known && knownRun >= KNOWN_RUN) caughtUp = true
+      }
       if (!found.has(post.id) && found.size < opts.max) {
         found.set(post.id, post)
         added++
       }
     }
     if (added > 0) opts.onProgress?.(found.size)
+    if (caughtUp) break
     if (page.posts.length === 0 && !page.more) {
       complete = true
       break
@@ -91,6 +108,7 @@ export async function walkProfile(listPage: ListPage, opts: WalkOptions): Promis
     // strictly older than the last page, or the next one may repeat it
     cursor = Number.isFinite(next) && next < cursor ? next : cursor - WEEK_MS
   }
+  if (caughtUp) opts.onCaughtUp?.()
   opts.onEnd?.(complete || cursor <= EARLIEST_MS)
   if (found.size === 0 && cursor > EARLIEST_MS) {
     // nothing at all from a profile that has posts is a refusal, not an empty account

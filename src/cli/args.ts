@@ -1,5 +1,6 @@
 import {parseArgs} from 'node:util'
 import {AUDIO_CONTAINERS, VIDEO_CONTAINERS} from '../core/formats.js'
+import {type SyncSchedule, syncSchedule} from '../sync/subscriptions.js'
 import type {AudioContainer, FormatProfile, ValidationLevel, VideoContainer} from '../types.js'
 
 export type GlobalOptions = {
@@ -23,6 +24,28 @@ export type GetOptions = {
   readonly check: boolean
 }
 
+export type SyncCommand =
+  | {readonly action: 'list'}
+  | {
+      readonly action: 'add'
+      readonly account: string
+      readonly folder: string
+      /** -f / -q; absent: the folder's own format (MP4 for an empty folder). */
+      readonly profile?: FormatProfile | undefined
+      readonly schedule: SyncSchedule
+    }
+  | {
+      readonly action: 'run'
+      /** An id (or its start) or @account; all of them when absent. */
+      readonly target?: string | undefined
+      /** Only those whose scheduled time has come (for cron / launchd / Task Scheduler). */
+      readonly due: boolean
+      readonly deep: boolean
+      /** Tell what is new, download nothing. */
+      readonly dryRun: boolean
+    }
+  | {readonly action: 'remove'; readonly target: string}
+
 export type Command =
   | {readonly name: 'help'}
   | {readonly name: 'version'}
@@ -33,6 +56,7 @@ export type Command =
   | ({readonly name: 'get'} & GetOptions)
   | {readonly name: 'verify'}
   | {readonly name: 'logs'; readonly id: string; readonly limit?: number | undefined}
+  | ({readonly name: 'sync'} & SyncCommand)
 
 export type ParsedCli =
   | {readonly ok: true; readonly command: Command; readonly global: GlobalOptions}
@@ -61,9 +85,17 @@ const OPTIONS = {
   // setup / logs
   force: {type: 'boolean', default: false},
   limit: {type: 'string', short: 'n'},
+  // sync
+  folder: {type: 'string'},
+  daily: {type: 'string'},
+  every: {type: 'string'},
+  manual: {type: 'boolean', default: false},
+  due: {type: 'boolean', default: false},
+  deep: {type: 'boolean', default: false},
+  'dry-run': {type: 'boolean', default: false},
 } as const
 
-const COMMANDS = ['help', 'version', 'doctor', 'setup', 'update', 'info', 'get', 'verify', 'logs'] as const
+const COMMANDS = ['help', 'version', 'doctor', 'setup', 'update', 'info', 'get', 'verify', 'logs', 'sync'] as const
 const VALIDATION: readonly ValidationLevel[] = ['full', 'quick', 'none']
 
 /** "1-5,8,10-12" → [1,2,3,4,5,8,10,11,12]; sorted, unique, 1-based. */
@@ -129,6 +161,10 @@ export function parseCli(argv: readonly string[]): ParsedCli {
   if (v.help || name === 'help') return done({name: 'help'})
   if (!(COMMANDS as readonly string[]).includes(name)) return fail(`unknown command "${name}"`)
 
+  if (name === 'sync') {
+    const sync = parseSync(rest, v)
+    return typeof sync === 'string' ? fail(sync) : done({name: 'sync', ...sync})
+  }
   const takesUrl = name === 'info' || name === 'get' || name === 'logs'
   if (takesUrl && rest.length !== 1) return fail(`"${name}" expects exactly one ${name === 'logs' ? 'id' : 'url'}`)
   if (!takesUrl && rest.length > 0) return fail(`"${name}" takes no arguments`)
@@ -176,6 +212,57 @@ export function parseCli(argv: readonly string[]): ParsedCli {
   }
 }
 
+/** "mdc sync <list|add|run|remove> …" → what to do, or the problem. */
+function parseSync(rest: readonly string[], v: Record<string, string | boolean | undefined>): SyncCommand | string {
+  const [action = 'list', ...args] = rest
+  switch (action) {
+    case 'list':
+      return args.length ? '"sync list" takes no arguments' : {action: 'list'}
+    case 'add': {
+      if (args.length !== 1) return '"sync add" expects one account: @name or its profile url'
+      if (typeof v['folder'] !== 'string') return '"sync add" needs --folder <dir>: where the posts are (or go)'
+      const profile = parseProfile(v['format'] as string | undefined, v['quality'] as string | undefined)
+      if (typeof profile === 'string') return profile
+      const picked = [v['daily'] !== undefined, v['every'] !== undefined, v['manual'] === true].filter(Boolean).length
+      if (picked > 1) return 'choose one of --daily HH:MM, --every <hours>, --manual'
+      const schedule =
+        v['daily'] !== undefined
+          ? syncSchedule({every: 'day', at: v['daily']})
+          : v['every'] !== undefined
+            ? syncSchedule({every: 'hours', hours: Number(v['every'])})
+            : ({every: 'manual'} as const)
+      if (!schedule) return '--daily takes HH:MM (24 h); --every takes 1–168 hours'
+      const account = args[0]!
+      const url = /^https?:\/\//.test(account)
+        ? account
+        : `https://www.tiktok.com/${account.startsWith('@') ? account : `@${account}`}`
+      // without -f the folder's files decide the format (they all share one)
+      return {
+        action: 'add',
+        account: url,
+        folder: v['folder'],
+        ...(v['format'] !== undefined && {profile}),
+        schedule,
+      }
+    }
+    case 'run':
+      if (args.length > 1) return '"sync run" takes at most one account (id or @name)'
+      if (v['due'] && args.length) return '--due runs every account that is due: give no account with it'
+      return {
+        action: 'run',
+        target: args[0],
+        due: v['due'] === true,
+        deep: v['deep'] === true,
+        dryRun: v['dry-run'] === true,
+      }
+    case 'remove':
+      if (args.length !== 1) return '"sync remove" expects one account (id or @name)'
+      return {action: 'remove', target: args[0]!}
+    default:
+      return `unknown sync action "${action}" (list, add, run, remove)`
+  }
+}
+
 export const HELP = `usage: mdc <command> [options]
 
 commands
@@ -186,6 +273,7 @@ commands
   update           update yt-dlp to the latest release
   verify           re-hash every archived file against its SHA-256
   logs <id>        replay a session / job / attempt / step from the trace logs
+  sync …           keep TikTok accounts in step with folders (see "sync" below)
 
 get options
   -f, --format <f>        mp4 (default) webm mkv | m4a mp3 opus flac wav
@@ -198,6 +286,20 @@ get options
       --cookies <browser> use your browser's cookies (chrome, firefox, safari, edge…)
                           for private, members-only or age-restricted media
       --no-check          skip the preflight check of playlist items
+
+sync
+  sync list                          accounts, their folders, last and next sync
+  sync add @name --folder <dir>      follow an account into a folder (it may hold its posts already)
+      [-f mp4|mp3…] [-q 720]         format, for an empty folder (default mp4); a folder with files
+                                     keeps theirs: one format per folder
+      [--daily HH:MM | --every <h> | --manual]   when it syncs by itself (default manual)
+  sync run [@name|id]                sync now: download what the folder is missing (the first
+                                     sync reads the whole account, later ones only what is newer)
+      --due                          only the accounts whose time has come — for cron, launchd,
+                                     Task Scheduler (e.g. every 15 min: mdc sync run --due -Q)
+      --deep                         list the whole profile: find gaps, report posts TikTok dropped
+      --dry-run                      tell what is new, download nothing
+  sync remove @name|id               stop following (the folder is left as it is)
 
 other options
       --force             setup: reinstall even if everything looks fine

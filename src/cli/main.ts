@@ -5,6 +5,8 @@ import {BinaryError} from '../binaries/sources.js'
 import {searchTrace} from '../core/trace-log.js'
 import {MediaDownloader} from '../downloader.js'
 import {BatchScheduler} from '../scheduler.js'
+import {type SubscriptionView, SyncManager} from '../sync/manager.js'
+import {isDue, type SyncRun} from '../sync/subscriptions.js'
 import type {BatchSnapshot, BinaryPaths, ExecutableSpec} from '../types.js'
 import {formatBytes} from '../util/units.js'
 import {type Command, type GlobalOptions, HELP, parseCli} from './args.js'
@@ -77,7 +79,14 @@ export function binariesFromEnv(env: NodeJS.ProcessEnv): BinaryPaths | string | 
 function engine(ctx: Context, extra: Partial<ConstructorParameters<typeof MediaDownloader>[0]> = {}): MediaDownloader {
   const binaries = binariesFromEnv(ctx.io.env)
   if (typeof binaries === 'string') throw new UsageError(binaries)
-  return new MediaDownloader({dataDir: ctx.dataDir, ...(binaries && {binaries}), ...extra})
+  // test hook, as in the app: TikTok served by a local fake, without pacing delays
+  const tiktokOrigin = ctx.io.env['MDC_TIKTOK_ORIGIN']
+  return new MediaDownloader({
+    dataDir: ctx.dataDir,
+    ...(binaries && {binaries}),
+    ...(tiktokOrigin && {tiktok: {origin: tiktokOrigin, pacing: {spacingMs: 0, jitterMs: 0}}}),
+    ...extra,
+  })
 }
 
 class UsageError extends Error {}
@@ -334,6 +343,141 @@ async function logs(ctx: Context, id: string, limit?: number): Promise<number> {
   return total ? EXIT.ok : EXIT.failures
 }
 
+/** An account by id (or the start of one) or @name. */
+function findSubscription(list: readonly SubscriptionView[], target: string): SubscriptionView | string {
+  const name = target.replace(/^@/, '').toLowerCase()
+  const matches = list.filter(item => item.id.startsWith(target) || item.user.toLowerCase() === name)
+  if (matches.length === 1) return matches[0]!
+  return matches.length === 0
+    ? `no sync matches "${target}" (see mdc sync list)`
+    : `"${target}" matches ${matches.length} syncs: use the id`
+}
+
+const scheduleText = (schedule: SubscriptionView['schedule']): string =>
+  schedule.every === 'day'
+    ? `daily ${schedule.at}`
+    : schedule.every === 'hours'
+      ? `every ${schedule.hours} h`
+      : 'on demand'
+
+function runText(run: SyncRun, style: Style): string {
+  const when = new Date(run.startedAt).toLocaleString()
+  const parts = [
+    `${run.new} new`,
+    run.status === 'running' ? 'downloading' : `${run.downloaded} downloaded`,
+    ...(run.failed ? [style.red(`${run.failed} failed`)] : []),
+    `${run.inFolder} in the folder`,
+    ...(run.gone ? [style.yellow(`${run.gone} gone from TikTok`)] : []),
+  ]
+  const status = run.status === 'done' ? style.lime('✓') : run.status === 'running' ? style.cyan('…') : style.red('✗')
+  return `${status} ${style.dim(when)} ${parts.join(' · ')}${run.error ? ` ${style.red(run.error)}` : ''}`
+}
+
+async function syncCommand(ctx: Context, command: Extract<Command, {name: 'sync'}>): Promise<number> {
+  const dl = engine(ctx)
+  const scheduler = new BatchScheduler(dl)
+  const sync = new SyncManager(dl, scheduler)
+  const {out, err} = ctx.io
+  try {
+    if (command.action === 'list') {
+      const list = await sync.list()
+      if (ctx.global.json) {
+        for (const item of list) json(out, item)
+        return EXIT.ok
+      }
+      if (list.length === 0) line(out, ctx.style.dim('no synced accounts yet — mdc sync add @name --folder <dir>'))
+      for (const item of list) {
+        line(out, `${ctx.style.lime(`@${item.user}`)} ${ctx.style.dark(item.id.slice(0, 8))} → ${item.folder}`)
+        line(
+          out,
+          `  ${ctx.style.dim(`${item.profile.container} · ${scheduleText(item.schedule)}${item.nextRunAt ? ` · next ${new Date(item.nextRunAt).toLocaleString()}` : ''}`)}`,
+        )
+        if (item.runs[0]) line(out, `  ${runText(item.runs[0], ctx.style)}`)
+      }
+      return EXIT.ok
+    }
+    if (command.action === 'add') {
+      const added = await sync.add({
+        url: command.account,
+        folder: path.resolve(command.folder),
+        profile: command.profile,
+        schedule: command.schedule,
+      })
+      if (ctx.global.json) json(out, added)
+      else
+        line(
+          out,
+          `${ctx.style.lime('✓')} following @${added.user} into ${added.folder} ${ctx.style.dim(`(${scheduleText(added.schedule)}; id ${added.id.slice(0, 8)})`)}`,
+        )
+      return EXIT.ok
+    }
+    const list = await sync.list()
+    if (command.action === 'remove') {
+      const found = findSubscription(list, command.target)
+      if (typeof found === 'string') throw new UsageError(found)
+      await sync.remove(found.id)
+      if (!ctx.global.json)
+        line(
+          out,
+          `${ctx.style.lime('✓')} stopped following @${found.user} ${ctx.style.dim('(its folder is left as it is)')}`,
+        )
+      return EXIT.ok
+    }
+
+    // run
+    let targets: SubscriptionView[] = list
+    if (command.target) {
+      const found = findSubscription(list, command.target)
+      if (typeof found === 'string') throw new UsageError(found)
+      targets = [found]
+    } else if (command.due) targets = list.filter(item => isDue(item))
+    if (targets.length === 0) {
+      if (!ctx.global.json && !ctx.global.quiet)
+        line(out, ctx.style.dim(command.due ? 'nothing due' : 'no synced accounts yet'))
+      return EXIT.ok
+    }
+    if (!(await boot(ctx, dl))) return EXIT.notReady
+    let problems = 0
+    for (const item of targets) {
+      if (!ctx.global.json)
+        line(
+          out,
+          `${ctx.style.cyan('»')} @${item.user} ${ctx.style.dim(`→ ${item.folder}${command.deep ? ' · full check' : ''}`)}`,
+        )
+      try {
+        if (command.dryRun) {
+          const plan = await sync.check(item.id, {deep: command.deep})
+          if (ctx.global.json) json(out, {type: 'plan', id: item.id, ...plan})
+          else {
+            line(
+              out,
+              `  ${plan.entries.length} new · ${plan.inFolder} in the folder · ${plan.listed} listed${plan.caughtUp ? ' (incremental)' : ''}${plan.gone.length ? ctx.style.yellow(` · ${plan.gone.length} gone from TikTok`) : ''}`,
+            )
+            for (const entry of plan.entries.slice(0, 20)) line(out, `  ${ctx.style.dark('+')} ${entry.title}`)
+            if (plan.entries.length > 20) line(out, ctx.style.dark(`  … and ${plan.entries.length - 20} more`))
+          }
+          continue
+        }
+        const run = await sync.run(item.id, {deep: command.deep, trigger: command.due ? 'schedule' : 'cli'})
+        const done = (await sync.whenDone(item.id, run.id)) ?? run
+        if (ctx.global.json) json(out, {type: 'run', subscription: item.id, ...done})
+        else line(out, `  ${runText(done, ctx.style)}`)
+        if (done.status !== 'done' || done.failed > 0) problems++
+      } catch (error) {
+        problems++
+        const message = error instanceof Error ? error.message : String(error)
+        if (ctx.global.json) json(out, {type: 'error', id: item.id, message})
+        else line(err, `  ${ctx.style.red('✗')} ${message}`)
+      }
+    }
+    return problems ? EXIT.failures : EXIT.ok
+  } finally {
+    sync.dispose()
+    await scheduler.dispose()
+    await dl.dispose()
+  }
+}
+
 // ─── entry ──────────────────────────────────────────────────────────────────
 
 export async function main(
@@ -377,6 +521,8 @@ export async function main(
         return await verify(ctx)
       case 'logs':
         return await logs(ctx, command.id, command.limit)
+      case 'sync':
+        return await syncCommand(ctx, command)
     }
   } catch (error) {
     if (error instanceof UsageError) {

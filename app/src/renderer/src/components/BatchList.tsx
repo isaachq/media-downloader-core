@@ -106,7 +106,7 @@ const BatchCard = memo(function BatchCard({batch}: {readonly batch: BatchSnapsho
   return (
     <Card size="small" className="batch-card" data-testid="batch-card" data-status={batch.status}>
       <Flex justify="space-between" align="start" gap={12}>
-        <Space direction="vertical" size={2} className="full">
+        <Space orientation="vertical" size={2} className="full">
           <Space wrap>
             <Tag color={STATUS_COLOR[batch.status]} data-testid="batch-status">
               {t(`batch.status.${batch.status}` as MessageKey)}
@@ -172,7 +172,7 @@ const BatchCard = memo(function BatchCard({batch}: {readonly batch: BatchSnapsho
             />
           ) : null}
         </Space>
-        <Space direction="vertical">
+        <Space orientation="vertical">
           {preflight.total ? (
             <Button size="small" icon={<UnorderedListOutlined />} onClick={() => setOpen(!open)} aria-expanded={open}>
               {t('batch.items')}
@@ -249,7 +249,7 @@ export function BatchList() {
     store.clearFinished()
   }
   return (
-    <Space direction="vertical" className="full">
+    <Space orientation="vertical" className="full">
       <Button icon={<ClearOutlined />} disabled={finished === 0} onClick={() => void clear()}>
         {t('batch.clearFinished', {count: finished})}
       </Button>

@@ -122,6 +122,11 @@ if (process.argv.includes('-show_format')) {
   try { silent = require('node:fs').readFileSync(process.argv[process.argv.length - 1]).subarray(0, 1).toString() === 's' } catch {}
   const probe = ${probe}
   if (silent) probe.streams = probe.streams.filter(s => s.codec_type !== 'audio')
+  // a file whose content starts with "comment:" carries that tag (the post link the app writes)
+  try {
+    const text = require('node:fs').readFileSync(process.argv[process.argv.length - 1], 'utf8')
+    if (text.startsWith('comment:')) probe.format.tags = {comment: text.slice('comment:'.length).trim()}
+  } catch {}
   console.log(JSON.stringify(probe))
   process.exit(0)
 }

@@ -105,7 +105,7 @@ export function LogsDrawer({open, onClose}: {readonly open: boolean; readonly on
 
   return (
     // unmounted while closed: a hidden drawer must not re-render on every event
-    <Drawer title={t('logs.title')} open={open} onClose={onClose} width={720} destroyOnHidden>
+    <Drawer title={t('logs.title')} open={open} onClose={onClose} size={720} destroyOnHidden>
       <Tabs
         activeKey={tab}
         onChange={key => setTab(key as 'live' | 'trace')}

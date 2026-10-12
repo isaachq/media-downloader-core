@@ -19,6 +19,7 @@ import {AnalyzeLoader} from './AnalyzeLoader'
 import {ManyLinksModal} from './ManyLinksModal'
 import {type PlaylistPreview, type PreviewChoice, PreviewModal} from './PreviewModal'
 import {SlideshowModal} from './SlideshowChoice'
+import {SyncPanel} from './SyncPanel'
 
 const ACTIVE = new Set(['checking', 'running'])
 
@@ -44,6 +45,7 @@ export function DownloadBar() {
   const store = useAppStore()
   // the form re-renders when the line of batches changes, not on every progress event
   const waiting = useStoreValue(waitingPosition)
+  const [section, setSection] = useState<'download' | 'sync'>('download')
   const [url, setUrl] = useState('')
   const [touched, setTouched] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -167,6 +169,15 @@ export function DownloadBar() {
     if (single) setUrl(single)
   }
 
+  const sections = {
+    tabList: [
+      {key: 'download', label: t('download.title')},
+      {key: 'sync', label: t('sync.title')},
+    ],
+    activeTabKey: section,
+    onTabChange: (key: string) => setSection(key as 'download' | 'sync'),
+  }
+
   const chooseFolder = async () => {
     const folder = await api().chooseFolder(settings.downloadDir)
     if (folder) await updateSettings({downloadDir: folder})
@@ -179,10 +190,20 @@ export function DownloadBar() {
   const qualityOptions = QUALITIES.map(q => ({value: q, label: q === 'best' ? t('quality.best') : `${q}p`}))
   const longAtOnce = Math.max(1, Math.floor(info.maxConcurrency / 1.5))
 
+  // with sync on, the card has two sections: New download and Sync Up
+  const syncing = settings.syncEnabled && section === 'sync'
+  if (syncing) {
+    return (
+      <Card className="download-card" {...sections}>
+        <SyncPanel />
+      </Card>
+    )
+  }
+
   return (
     <Card
       className={dropping ? 'download-card dropping' : 'download-card'}
-      title={t('download.title')}
+      {...(settings.syncEnabled ? sections : {title: t('download.title')})}
       onDragOver={event => {
         event.preventDefault()
         setDropping(true)

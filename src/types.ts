@@ -103,6 +103,8 @@ export type PlaylistAnalysis = {
    * visible only to their author): asking for more brings nothing.
    */
   readonly complete?: boolean | undefined
+  /** An incremental listing stopped where the known entries start: every newer entry is in it. */
+  readonly caughtUp?: boolean | undefined
 }
 
 export type AnalysisResult = VideoAnalysis | PlaylistAnalysis
@@ -337,6 +339,8 @@ export type JobRequest = {
   /** http(s) page url. */
   readonly url: string
   readonly batchId?: BatchId | undefined
+  /** The batch's name, recorded with the finished file (its history groups by it). */
+  readonly batchTitle?: string | undefined
   readonly profile: FormatProfile
   /** Absolute destination folder. Playlist jobs get a sub-folder named after the playlist. */
   readonly outDir: string
@@ -481,6 +485,12 @@ export type BatchRequest = {
   readonly outDir: string
   /** What photo posts become (see SlideshowOptions). Default: an MP4, 3 s per image. */
   readonly slideshow?: SlideshowOptions | undefined
+  /**
+   * A list's files go straight into `outDir`, named without a position
+   * ("title-id"), instead of into a sub-folder named after the list with a
+   * numbered prefix — for adding to an existing folder (a sync).
+   */
+  readonly flat?: boolean | undefined
   /** Playlist items to take (1-based). */
   readonly items?: readonly number[] | undefined
   /**

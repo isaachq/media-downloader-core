@@ -46,10 +46,10 @@ export function UpdateBanner() {
         icon={<CloudDownloadOutlined />}
         closable
         onClose={() => setDismissed(state.version)}
-        message={t('update.available', {version: state.version})}
+        title={t('update.available', {version: state.version})}
         description={t('update.availableHint', {size: bytes(state.size, lang)})}
         action={
-          <Space direction="vertical" align="end">
+          <Space orientation="vertical" align="end">
             <Button type="primary" onClick={() => void api().installUpdate()}>
               {t('update.install')}
             </Button>
@@ -67,7 +67,7 @@ export function UpdateBanner() {
         data-testid="update-banner"
         type="info"
         showIcon
-        message={t('update.downloading', {version: state.version})}
+        title={t('update.downloading', {version: state.version})}
         description={<Progress percent={percent} size="small" status="active" />}
       />
     )
@@ -80,7 +80,7 @@ export function UpdateBanner() {
         data-status={state.status}
         type="success"
         showIcon
-        message={
+        title={
           state.status === 'installing'
             ? t('update.installing', {version: state.version})
             : t('update.ready', {version: state.version})
@@ -96,10 +96,10 @@ export function UpdateBanner() {
         type="error"
         showIcon
         closable
-        message={t('update.failed')}
+        title={t('update.failed')}
         description={state.message}
         action={
-          <Space direction="vertical" align="end">
+          <Space orientation="vertical" align="end">
             <Button icon={<ReloadOutlined />} onClick={() => void api().installUpdate()}>
               {t('update.retry')}
             </Button>

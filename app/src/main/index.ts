@@ -8,6 +8,7 @@ import {
   type BinaryPaths,
   type Diagnosis,
   type FormatProfile,
+  folderFormat,
   isTikTokProfile,
   isYouTubeMix,
   type JobId,
@@ -17,8 +18,11 @@ import {
   MIX_DEFAULT_ITEMS,
   PlayerPageSource,
   parsePlayerPageSites,
+  SyncManager,
   searchTrace,
   slideshowOptions,
+  syncProfile,
+  syncSchedule,
   TIKTOK_PROFILE_DEFAULT_ITEMS,
   type VideoAnalysis,
 } from 'media-downloader-core'
@@ -34,6 +38,9 @@ import {
   RESTART_SETTINGS,
   type ScheduleInput,
   type SetupOutcome,
+  type SyncCheck,
+  type SyncFolder,
+  type SyncInput,
   type VerifySummary,
 } from '../shared/contract'
 import {EventCoalescer} from './events'
@@ -64,6 +71,8 @@ const STARTED_AT = Date.now()
 let window: BrowserWindow | undefined
 let engine: MediaDownloader
 let scheduler: BatchScheduler
+/** TikTok accounts kept in step with folders (the Sync tab); its schedule runs while sync is on. */
+let sync: SyncManager
 let settings: SettingsStore
 /** Settles once the batches pending at last shutdown are back; the renderer's restore phase waits for it. */
 let restoring: Promise<void> = Promise.resolve()
@@ -201,6 +210,9 @@ function createEngine(current: AppSettings): void {
   engine.on('log', entry => coalescer.log(entry))
   scheduler.on('batch', snapshot => coalescer.batch(snapshot))
   scheduler.on('batch', () => showTaskbarProgress())
+  sync = new SyncManager(engine, scheduler)
+  sync.on('subscription', view => send(CHANNEL.syncEvent, {view}))
+  sync.on('removed', removed => send(CHANNEL.syncEvent, {removed}))
   scheduler.on('item', (batchId, item) => coalescer.item(batchId, item))
 }
 
@@ -274,6 +286,10 @@ function registerIpc(): void {
     if (next.concurrency !== before.concurrency) engine.setConcurrency(next.concurrency)
     if (next.validation !== before.validation) engine.setValidation(next.validation)
     if (next.portableNames !== before.portableNames) engine.setFileNames(next.portableNames ? 'portable' : 'original')
+    if (next.syncEnabled !== before.syncEnabled) {
+      if (next.syncEnabled) sync.startSchedule()
+      else sync.stopSchedule()
+    }
     if (next.theme !== before.theme) nativeTheme.themeSource = next.theme
     if (RESTART_SETTINGS.some(key => next[key] !== before[key])) {
       engine.log('info', 'settings changed that apply on the next launch')
@@ -445,6 +461,44 @@ function registerIpc(): void {
     return true
   })
   ipcMain.handle(CHANNEL.finishedGroups, () => engine.archive.groups())
+  ipcMain.handle(CHANNEL.syncList, () => sync.list())
+  ipcMain.handle(CHANNEL.syncFolder, async (_event, folder: unknown): Promise<SyncFolder> => {
+    if (typeof folder !== 'string' || !path.isAbsolute(folder)) return {files: 0, formats: []}
+    const found = await folderFormat(folder)
+    if (found.files === 0) return found
+    const chosen = syncProfile(found, undefined, toProfile({format: 'mp4', quality: 'best'} as ScheduleInput))
+    return 'problem' in chosen ? {...found, problem: chosen.problem} : {...found, format: chosen.profile.container}
+  })
+  ipcMain.handle(CHANNEL.syncAdd, (_event, input: unknown) => {
+    const value = (typeof input === 'object' && input !== null ? input : {}) as Partial<SyncInput>
+    return sync.add({
+      url: String(value.url ?? ''),
+      folder: String(value.folder ?? ''),
+      // a folder with files keeps their format; the core refuses any other
+      ...(value.format && {profile: toProfile({format: value.format, quality: 'best'} as ScheduleInput)}),
+      schedule: syncSchedule(value.schedule) ?? {every: 'manual'},
+      slideshow: {mode: settings.current.slideshowMode, secondsPerImage: settings.current.slideshowSeconds},
+    })
+  })
+  ipcMain.handle(CHANNEL.syncUpdate, (_event, id: unknown, patch: unknown) => {
+    const value = (typeof patch === 'object' && patch !== null ? patch : {}) as {schedule?: unknown}
+    const schedule = value.schedule === undefined ? undefined : syncSchedule(value.schedule)
+    return sync.update(String(id), {...(schedule && {schedule})})
+  })
+  ipcMain.handle(CHANNEL.syncRemove, (_event, id: unknown) => sync.remove(String(id)))
+  ipcMain.handle(CHANNEL.syncRun, (_event, id: unknown, deep: unknown) => sync.run(String(id), {deep: deep === true}))
+  ipcMain.handle(CHANNEL.syncCheck, async (_event, id: unknown, deep: unknown): Promise<SyncCheck> => {
+    const plan = await sync.check(String(id), {deep: deep === true})
+    return {
+      listed: plan.listed,
+      total: plan.total,
+      inFolder: plan.inFolder,
+      new: plan.entries.length,
+      sample: plan.entries.slice(0, 50).map(entry => ({id: entry.id, title: entry.title})),
+      gone: plan.gone.length,
+      caughtUp: plan.caughtUp,
+    }
+  })
   // a click on a system notification brings the app forward
   ipcMain.handle(CHANNEL.focusWindow, () => {
     if (!window || window.isDestroyed()) return
@@ -615,6 +669,12 @@ async function folderOf(target: unknown): Promise<string | undefined> {
     await fs.mkdir(dir, {recursive: true}).catch(() => {})
     return dir
   }
+  const syncId = typeof target === 'object' && target !== null ? (target as {syncId?: unknown}).syncId : undefined
+  if (typeof syncId === 'string') {
+    const folder = (await sync.get(syncId))?.folder
+    if (folder) await fs.mkdir(folder, {recursive: true}).catch(() => {})
+    return folder
+  }
   const batchId = typeof target === 'object' && target !== null ? (target as {batchId?: unknown}).batchId : undefined
   if (typeof batchId !== 'string') return undefined
   // a playlist's files sit in a sub-folder named after it: where its finished jobs went
@@ -660,6 +720,8 @@ else {
     createWindow()
     await createUpdater()
     await restoring
+    // scheduled syncs (and any missed while the app was closed) once pending batches are back
+    if (current.syncEnabled) sync.startSchedule()
     // YouTube breaks old yt-dlp versions: refresh in the background once tools are in place
     void firstDiagnosis
       .then(d => (d.ready && !process.env['MDC_BINARIES'] ? engine.updateYtDlp() : undefined))
@@ -683,6 +745,7 @@ else {
     if (quitting || !engine) return
     event.preventDefault()
     quitting = true
+    sync.dispose()
     tiktokBrowser.close()
     for (const browser of playerBrowsers) browser.close()
     // saves pending batches and jobs, stops processes, keeps partial downloads for next launch

@@ -14,6 +14,9 @@ import type {
   PlaylistEntry,
   PreflightItem,
   SlideshowOptions,
+  SubscriptionView,
+  SyncRun,
+  SyncSchedule,
   ValidationLevel,
   VideoContainer,
 } from 'media-downloader-core'
@@ -69,6 +72,38 @@ export type AppSettings = {
   readonly slideshowSeconds: number
   /** The first-steps guide was finished or closed (it shows once; Header → Guide replays it). */
   readonly tourDone: boolean
+  /** TikTok sync: the Sync tab, and its schedule running while the app is open. Off by default. */
+  readonly syncEnabled: boolean
+}
+
+/** What a sync check found, small enough for the screen (a profile can have thousands of posts). */
+export type SyncCheck = {
+  readonly listed: number
+  readonly total?: number | undefined
+  readonly inFolder: number
+  readonly new: number
+  /** The first new posts, newest first. */
+  readonly sample: ReadonlyArray<{readonly id: string; readonly title: string}>
+  readonly gone: number
+  readonly caughtUp: boolean
+}
+
+export type SyncInput = {
+  readonly url: string
+  readonly folder: string
+  /** Only for an empty folder: one with files keeps their format. */
+  readonly format?: Format | undefined
+  readonly schedule: SyncSchedule
+}
+
+/** A folder before it is synced: its media files and their format (one, when it is consistent). */
+export type SyncFolder = {
+  readonly files: number
+  readonly formats: readonly string[]
+  /** The format a sync into it downloads; undefined when the folder is empty (the user picks). */
+  readonly format?: Format | undefined
+  /** Why it can't be synced (it mixes formats, or holds one sync doesn't download). */
+  readonly problem?: string | undefined
 }
 
 /** Settings the engine reads at construction — changing them asks for a restart. */
@@ -232,7 +267,7 @@ export type FinishedPage = {
   readonly bytes: number
 }
 
-export type OpenTarget = 'downloads' | {readonly batchId: BatchId}
+export type OpenTarget = 'downloads' | {readonly batchId: BatchId} | {readonly syncId: string}
 
 export type SetupOutcome = {
   readonly ready: boolean
@@ -273,6 +308,19 @@ export type MdcApi = {
   openFinished(key: string, target: 'file' | 'folder'): Promise<boolean>
   /** Open the downloads folder, or the folder a batch's files went to; false when there is none yet. */
   openFolder(target: OpenTarget): Promise<boolean>
+  /** TikTok accounts kept in step with folders. */
+  syncList(): Promise<readonly SubscriptionView[]>
+  syncAdd(input: SyncInput): Promise<SubscriptionView>
+  /** What a folder holds, to show its format before adding it (the format is the folder's). */
+  syncFolder(folder: string): Promise<SyncFolder>
+  /** When it syncs. The format never changes: it is the format of the folder's files. */
+  syncUpdate(id: string, patch: {readonly schedule?: SyncSchedule}): Promise<SubscriptionView>
+  syncRemove(id: string): Promise<void>
+  /** Sync now (download what is new); resolves once its batch is scheduled. */
+  syncRun(id: string, deep: boolean): Promise<SyncRun>
+  /** What a sync would download, without downloading. */
+  syncCheck(id: string, deep: boolean): Promise<SyncCheck>
+  onSync(listener: (event: {readonly view?: SubscriptionView; readonly removed?: string}) => void): () => void
   /** Bring the app's window to the front (a click on a system notification). */
   focusWindow(): Promise<void>
   /** The batches finished files came from, newest first. */
@@ -321,6 +369,14 @@ export const CHANNEL = {
   openFolder: 'mdc:open-folder',
   finishedGroups: 'mdc:finished-groups',
   focusWindow: 'mdc:focus-window',
+  syncList: 'mdc:sync:list',
+  syncFolder: 'mdc:sync:folder',
+  syncAdd: 'mdc:sync:add',
+  syncUpdate: 'mdc:sync:update',
+  syncRemove: 'mdc:sync:remove',
+  syncRun: 'mdc:sync:run',
+  syncCheck: 'mdc:sync:check',
+  syncEvent: 'mdc:sync:event',
   verifyFinished: 'mdc:verify-finished',
   verifyProgress: 'mdc:verify-progress',
   removeFinished: 'mdc:remove-finished',

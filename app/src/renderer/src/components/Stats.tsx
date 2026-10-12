@@ -64,7 +64,7 @@ export function Stats({onOpen}: {readonly onOpen?: (tab: MainTab) => void}) {
       </Col>
       <Col xs={12} md={4}>
         <StatCard onOpen={open('finished')} label={t('stats.completed')}>
-          <Statistic title={t('stats.completed')} value={completed} valueStyle={{color: 'var(--ok)'}} />
+          <Statistic title={t('stats.completed')} value={completed} styles={{content: {color: 'var(--ok)'}}} />
         </StatCard>
       </Col>
       <Col xs={12} md={4}>
@@ -72,7 +72,7 @@ export function Stats({onOpen}: {readonly onOpen?: (tab: MainTab) => void}) {
           <Statistic
             title={t('stats.failed')}
             value={counts.failed}
-            valueStyle={counts.failed ? {color: 'var(--bad)'} : {}}
+            styles={counts.failed ? {content: {color: 'var(--bad)'}} : {}}
           />
         </StatCard>
       </Col>

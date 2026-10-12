@@ -35,8 +35,9 @@ import {clampConcurrency, cpuCount, maxConcurrency, TaskPool} from './core/pool.
 import {utf8Env} from './core/process.js'
 import {PendingJournal} from './core/queue-store.js'
 import {TraceLog} from './core/trace-log.js'
-import {ffprobe, summarizeProbe, validateFile} from './core/validate.js'
+import {ffprobe, summarizeProbe, validateBundle, validateFile} from './core/validate.js'
 import {type ListingProgress, type MediaSource, needsFallback} from './sources/source.js'
+import {DEFAULT_SLIDESHOW, slideshowOptions} from './sources/tiktok/slideshow.js'
 import {TikTokSource} from './sources/tiktok/source.js'
 import type {
   AnalysisResult,
@@ -568,19 +569,35 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
   async verifyArchive(
     onProgress?: ((done: number, total: number) => void) | undefined,
     signal?: AbortSignal | undefined,
+    /** Only these records (by key), or only the files of one batch. Default: everything. */
+    only?: {readonly keys?: readonly string[] | undefined; readonly batchId?: string | undefined} | undefined,
   ): Promise<ArchiveCheck[]> {
-    const entries = await this.archive.entries()
-    const results: ArchiveCheck[] = []
-    for (const entry of entries) {
-      if (signal?.aborted) throw cancelledError()
-      const stat = await fs.stat(entry.filepath).catch(() => undefined)
-      if (!stat) results.push({entry, ok: false, problem: 'missing'})
-      else if (stat.size !== entry.sizeBytes) results.push({entry, ok: false, problem: 'size-changed'})
-      else if (entry.sha256 && (await this.#hashes.sha256(entry.filepath, signal)) !== entry.sha256) {
-        results.push({entry, ok: false, problem: 'checksum-mismatch'})
-      } else results.push({entry, ok: true})
-      onProgress?.(results.length, entries.length)
+    let entries = await this.archive.entries()
+    if (only?.keys) {
+      const keys = new Set(only.keys)
+      entries = entries.filter(entry => keys.has(entry.key))
     }
+    if (only?.batchId !== undefined) entries = entries.filter(entry => entry.batchId === only.batchId)
+    const results: ArchiveCheck[] = new Array(entries.length)
+    let done = 0
+    let next = 0
+    // a few files in flight: stats overlap, hashing is bounded by the hash pool's workers
+    const worker = async () => {
+      for (let i = next++; i < entries.length; i = next++) {
+        if (signal?.aborted) throw cancelledError()
+        const entry = entries[i]!
+        const stat = await fs.stat(entry.filepath).catch(() => undefined)
+        if (!stat) results[i] = {entry, ok: false, problem: 'missing'}
+        else if (stat.isDirectory())
+          results[i] = {entry, ok: true} // a slideshow's folder: its files were checked when made
+        else if (stat.size !== entry.sizeBytes) results[i] = {entry, ok: false, problem: 'size-changed'}
+        else if (entry.sha256 && (await this.#hashes.sha256(entry.filepath, signal)) !== entry.sha256) {
+          results[i] = {entry, ok: false, problem: 'checksum-mismatch'}
+        } else results[i] = {entry, ok: true}
+        onProgress?.(++done, entries.length)
+      }
+    }
+    await Promise.all(Array.from({length: Math.min(4, entries.length)}, worker))
     return results
   }
 
@@ -755,6 +772,9 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
           signal,
           fresh: strategy === 'fresh-extraction' || job.attempt > 1,
           hasAudio: file => this.#hasAudio(bins, file, signal),
+          ffmpeg: bins.ffmpeg.exe,
+          threads: this.#cpuShare(job),
+          slideshow: request.slideshow ?? DEFAULT_SLIDESHOW,
           onInfo,
           onProgress: progress => this.#update(job, {status: 'downloading', progress}),
         })
@@ -784,7 +804,11 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     // ── convert (video only, and only when the codecs don't already match)
     const expectAudio = profile.kind === 'audio' || (Boolean(info.acodec) && info.acodec !== 'none')
     let file = downloaded.filepath
-    if (profile.kind === 'video') {
+    const bundle = 'bundle' in downloaded && downloaded.bundle === true
+    if (bundle) {
+      this.#step(job, 'convert')
+      this.#stepDone(job, 'convert', 'skipped') // a folder of images is kept as it is
+    } else if (profile.kind === 'video') {
       this.#step(job, 'convert')
       file = await ensureContainer({
         ffmpeg: bins.ffmpeg.exe,
@@ -822,18 +846,20 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     // ── validate
     this.#step(job, 'validate')
     this.#update(job, {status: 'validating', progress: {fraction: 0}}, true)
-    let report = await validateFile({
-      ffmpeg: bins.ffmpeg.exe,
-      ffprobe: bins.ffprobe.exe,
-      file,
-      rules: rulesFor(profile),
-      level: this.#settings.validation,
-      expectedDuration: info.duration ?? request.duration,
-      expectAudio,
-      threads: this.#cpuShare(job),
-      signal,
-      onProgress: fraction => this.#update(job, {status: 'validating', progress: {fraction}}),
-    })
+    let report = bundle
+      ? await validateBundle({ffprobe: bins.ffprobe.exe, dir: file, level: this.#settings.validation, signal})
+      : await validateFile({
+          ffmpeg: bins.ffmpeg.exe,
+          ffprobe: bins.ffprobe.exe,
+          file,
+          rules: rulesFor(profile),
+          level: this.#settings.validation,
+          expectedDuration: info.duration ?? request.duration,
+          expectAudio,
+          threads: this.#cpuShare(job),
+          signal,
+          onProgress: fraction => this.#update(job, {status: 'validating', progress: {fraction}}),
+        })
     job.validation = report
     if (!report.ok) {
       throw new DownloadError(
@@ -865,7 +891,8 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       )
     }
 
-    if (this.#settings.checksums) report = {...report, sha256: await this.#hashes.sha256(finalPath, signal)}
+    // a folder has no single checksum: its files were each checked above
+    if (this.#settings.checksums && !bundle) report = {...report, sha256: await this.#hashes.sha256(finalPath, signal)}
     job.validation = report
     job.filepath = finalPath
 
@@ -884,6 +911,9 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
         sha256: report.sha256,
         duration: report.duration ?? request.duration,
         validation: this.#settings.validation,
+        batchId: request.batchId,
+        // a playlist's name; a one-video batch is named after its video
+        batchTitle: request.batchId ? (request.playlist?.title ?? mediaTitle) : undefined,
       })
     }
     this.#stepDone(job, 'finalize', 'success')
@@ -992,7 +1022,13 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     // only metadata this engine wrote may be loaded back into yt-dlp
     const infoJsonPath =
       request.infoJsonPath && isInside(this.#cacheDir, request.infoJsonPath) ? request.infoJsonPath : undefined
-    return {...request, url, outDir: path.resolve(request.outDir), infoJsonPath}
+    return {
+      ...request,
+      url,
+      outDir: path.resolve(request.outDir),
+      infoJsonPath,
+      ...(request.slideshow !== undefined && {slideshow: slideshowOptions(request.slideshow)}),
+    }
   }
 
   #assertOpen(): void {

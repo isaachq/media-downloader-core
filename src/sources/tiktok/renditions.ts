@@ -67,3 +67,38 @@ export function tiktokChoices(post: TikTokPost): FormatChoice[] {
   )
   return post.renditions.length ? [...video, ...audio] : []
 }
+
+/** Bits per second of a slideshow video: still frames compress far below a filmed clip. */
+const SLIDESHOW_RATE = 1_500_000
+
+/**
+ * What a photo post (a slideshow) can become: a video in any container —
+ * always encoded here, from its images — and, when it has a soundtrack, any
+ * audio format. Sizes assume the default 3 s per image.
+ */
+export function slideshowChoices(post: TikTokPost, secondsPerImage = 3): FormatChoice[] {
+  if (post.images.length === 0) return []
+  const seconds = post.images.length * secondsPerImage
+  const height = Math.max(...post.images.map(image => Math.min(image.width, image.height) || 1080))
+  const containers: readonly VideoContainer[] = ['mp4', 'webm', 'mkv']
+  const video = containers.map(
+    container =>
+      ({
+        profile: {kind: 'video', container, maxHeight: height},
+        label: `Slideshow · ${container.toUpperCase()}`,
+        estimatedBytes: Math.ceil((SLIDESHOW_RATE * seconds) / 8),
+        requiresConversion: true,
+      }) satisfies FormatChoice,
+  )
+  if (!post.music?.url) return video
+  const audio = (Object.keys(AUDIO_RATE) as AudioContainer[]).map(
+    container =>
+      ({
+        profile: {kind: 'audio', container},
+        label: `Audio · ${container.toUpperCase()}`,
+        estimatedBytes: post.music?.duration ? Math.ceil((AUDIO_RATE[container] * post.music.duration) / 8) : undefined,
+        requiresConversion: false,
+      }) satisfies FormatChoice,
+  )
+  return [...video, ...audio]
+}

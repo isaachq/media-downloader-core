@@ -1,5 +1,56 @@
 # Changelog
 
+## App 0.2.0-beta.7 · library 1.6.0
+
+**Retry what failed, and see why.** A batch counts its failures by cause —
+removed, private, network, rate-limited… — and items the check found
+unavailable, on its card and in the run report. "Retry failed (N)" downloads
+them again in one click: the batch reopens, counts again and closes with true
+totals. Retrying a single download now goes through its batch too (before,
+the batch never heard of it and kept stale counts). The report retries every
+batch at once.
+
+**Downloads and Finished, one batch at a time.** Both tabs filter by batch;
+a batch card opens either one already filtered. The history records each
+file's batch, so Finished filters batches of earlier sessions too (files of
+older versions stay under "All batches"). Finished can also check files again
+(re-hash against the recorded SHA-256, four at a time, with progress), export
+the list as CSV (UTF-8, opens in any spreadsheet) and forget entries (the
+files stay on disk).
+
+**TikTok slideshows.** Photo posts download as an MP4 (each image N seconds,
+default 3, over the soundtrack — cut, or padded with silence), as a folder of
+images with the soundtrack, or as images only; with an audio format, just the
+soundtrack. The choice sits in the preview (and in a small window for a
+single link) and is remembered. Images of different sizes are fitted one by
+one (ffmpeg would otherwise drop the timeline at each size change), in TV
+range 4:2:0 that every player reads. A listed slideshow needs no page
+request: its image links open without a session.
+
+**Several links at once.** Paste, drop or "Paste" a list: each link becomes a
+batch with the chosen format, quality and folder, after a review where any
+can be left out; repeated links are counted out.
+
+**Notifications outside the app.** A batch that ends while the app is in the
+background notifies through the system (a click brings the app back); the
+Dock / taskbar icon shows the progress of the batches at work and, on macOS,
+how many items are left.
+
+**First steps.** On the first launch a three-step guide shows how to download
+(paste a link, choose what you get, download); Header → Guide replays it.
+
+**For users of earlier versions.** Checked against a real data folder from
+beta 4–6: settings, the 935-file history, the logs of earlier runs and a
+pending queue in the old format all open as they were.
+
+**Library.** `scheduler.retryFailed()` / `retryJob()`, `problems` on batch
+snapshots, `archive.list({batchId})` and `archive.groups()`,
+`verifyArchive(…, {keys | batchId})` in parallel, `SourceFile.bundle` (a
+folder of finished files), `slideshowOptions()`. Ready for npm (a
+`lib-v*` tag publishes it with provenance; the package is 282 kB without
+source maps). winget manifests are generated and schema-checked for every
+release.
+
 ## App 0.2.0-beta.6 · library 1.5.0
 
 **Finished tab.** Every finished file of every session, newest first, from the

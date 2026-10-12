@@ -1,0 +1,49 @@
+name: winget manifests
+
+# For every published app release: the winget manifests (urls and SHA-256
+# from the release itself), checked against Microsoft's schemas and kept as
+# an artifact — what a pull request to microsoft/winget-pkgs submits.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag (app-v…)
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  manifests:
+    if: startsWith(github.event.release.tag_name || inputs.tag, 'app-v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Write the manifests
+        run: node scripts/winget-manifests.mjs "${{ github.event.release.tag_name || inputs.tag }}"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - name: Check them against the schemas
+        run: |
+          pip install --quiet pyyaml jsonschema
+          python3 - <<'PY'
+          import glob, json, sys, urllib.request, yaml, jsonschema
+          ok = True
+          for f in sorted(glob.glob('packaging/winget/*/*.yaml')):
+              data = yaml.load(open(f), Loader=yaml.BaseLoader)  # scalars as text, as winget reads them
+              url = f"https://aka.ms/winget-manifest.{data['ManifestType']}.{data['ManifestVersion']}.schema.json"
+              schema = json.load(urllib.request.urlopen(url))
+              errors = [e.message for e in jsonschema.Draft7Validator(schema).iter_errors(data)]
+              print(f, 'valid' if not errors else errors)
+              ok = ok and not errors
+          sys.exit(0 if ok else 1)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: winget-manifests
+          path: packaging/winget/

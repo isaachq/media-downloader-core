@@ -20,7 +20,8 @@ import {postFromPage, readListPage, readPageData, type TikTokPost, type TikTokUs
 import {TikTokError} from './errors.js'
 import {parseTikTokLink, postUrl, profileUrl} from './links.js'
 import {walkProfile} from './profile.js'
-import {rankRenditions, tiktokChoices} from './renditions.js'
+import {rankRenditions, slideshowChoices, tiktokChoices} from './renditions.js'
+import {buildSlideshowVideo, slideshowFrame} from './slideshow.js'
 
 export type TikTokOptions = {
   /** Profiles list at most this many posts unless asked otherwise. Default 500. */
@@ -137,9 +138,15 @@ export class TikTokSource implements MediaSource {
     try {
       const link = await this.#resolve(task.url, task.signal)
       if (link.kind === 'profile') throw new DownloadError('invalid-request', 'A profile is not a single post.')
-      const post = await this.#readPost(link.id, link.user, task.signal, task.fresh)
+      // a slideshow from a listing needs no page: its image links open without a session
+      const listed = this.#posts.get(link.id)?.post
+      const post =
+        !task.fresh && listed?.photoPost && listed.images.length > 0
+          ? listed
+          : await this.#readPost(link.id, link.user, task.signal, task.fresh)
+      if (post.photoPost) return await this.#slideshow(post, task)
       if (post.renditions.length === 0) {
-        throw new TikTokError(post.photoPost ? 'photo-post' : 'format-changed', 'This post has no video to download.')
+        throw new TikTokError('format-changed', 'This post has no video to download.')
       }
       task.onInfo({id: post.id, title: titleOf(post), duration: post.duration ?? null, extractor: this.name})
       const file = await this.#fetchBest(post, task)
@@ -167,6 +174,124 @@ export class TikTokSource implements MediaSource {
       this.#posts.delete(parseTikTokLink(task.url, this.#originHost)?.kind === 'video' ? idOf(task.url) : '')
       throw toDownloadError(error)
     }
+  }
+
+  // ─── slideshows ──────────────────────────────────────────────────────────
+
+  /**
+   * A photo post, as the task asks: its soundtrack alone (audio profiles), an
+   * MP4 of its images over the soundtrack, or a folder of its images (with
+   * the soundtrack in 'images-audio'). Images download 4 at a time, each from
+   * its first mirror that answers.
+   */
+  async #slideshow(post: TikTokPost, task: SourceDownload): Promise<SourceFile> {
+    if (post.images.length === 0) throw new TikTokError('photo-post', 'This slideshow has no images.')
+    const title = titleOf(post)
+    const {mode, secondsPerImage} = task.slideshow
+    const audioOnly = task.profile.kind === 'audio'
+    const seconds = post.images.length * secondsPerImage
+    task.onInfo({
+      id: post.id,
+      title,
+      duration: audioOnly ? (post.music?.duration ?? null) : seconds,
+      extractor: this.name,
+    })
+    const tags = {
+      title,
+      artist: post.authorName ?? post.author,
+      date: post.createdAt ? new Date(post.createdAt * 1000).toISOString().slice(0, 10) : undefined,
+      comment: postUrl('https://www.tiktok.com', post.id, post.author),
+    }
+    const info = {id: post.id, title, extractor: this.name, publishedAt: post.createdAt ?? null}
+    const folder = path.join(task.workDir, `${post.id}-slides`)
+    await fs.mkdir(folder, {recursive: true})
+
+    const wantsSound = audioOnly || mode !== 'images'
+    const sound = wantsSound && post.music?.url ? await this.#fetchSound(post.music.url, folder, task) : undefined
+    if (audioOnly) {
+      if (!sound) throw new TikTokError('photo-post', 'This slideshow has no soundtrack to download.')
+      return {
+        filepath: sound.file,
+        info: {...info, duration: post.music?.duration ?? null, acodec: 'mp4a', filesize: sound.bytes},
+        tags,
+      }
+    }
+
+    const images = await this.#fetchImages(post, folder, task)
+    if (mode === 'video') {
+      const output = path.join(task.workDir, `${post.id}-slideshow.mp4`)
+      task.onProgress({fraction: 0})
+      await buildSlideshowVideo({
+        ffmpeg: task.ffmpeg,
+        images,
+        frame: slideshowFrame(post.images),
+        audio: sound?.file,
+        secondsPerImage,
+        output,
+        threads: task.threads,
+        signal: task.signal,
+        onProgress: fraction => task.onProgress({fraction}),
+      })
+      await fs.rm(folder, {recursive: true, force: true})
+      const bytes = (await fs.stat(output)).size
+      return {
+        filepath: output,
+        info: {...info, duration: seconds, vcodec: 'avc1', acodec: sound ? 'mp4a' : 'none', filesize: bytes},
+        tags,
+      }
+    }
+    // a folder of images (and the soundtrack): kept as it is, each file checked by the engine
+    return {filepath: folder, bundle: true, info: {...info, duration: sound ? (post.music?.duration ?? null) : null}}
+  }
+
+  async #fetchImages(post: TikTokPost, folder: string, task: SourceDownload): Promise<string[]> {
+    const files: string[] = new Array(post.images.length)
+    let done = 0
+    let next = 0
+    const width = String(post.images.length).length < 2 ? 2 : String(post.images.length).length
+    const worker = async () => {
+      for (let i = next++; i < post.images.length; i = next++) {
+        const name = String(i + 1).padStart(width, '0')
+        let last: unknown
+        for (const url of post.images[i]!.urls) {
+          const partial = path.join(folder, `${name}.part`)
+          try {
+            const fetched = await fetchMedia(this.#session, url, partial, {
+              site: 'TikTok',
+              headers: {Referer: `${this.#origin}/`},
+              signal: task.signal,
+              onProgress: () => {},
+            })
+            const file = path.join(folder, `${name}${extensionOf(fetched.contentType, '.jpg')}`)
+            await fs.rename(partial, file)
+            files[i] = file
+            last = undefined
+            break
+          } catch (error) {
+            if (task.signal.aborted) throw error
+            await fs.rm(partial, {force: true})
+            last = error
+          }
+        }
+        if (last !== undefined) throw last
+        task.onProgress({fraction: ++done / post.images.length})
+      }
+    }
+    await Promise.all(Array.from({length: Math.min(4, post.images.length)}, worker))
+    return files
+  }
+
+  async #fetchSound(url: string, folder: string, task: SourceDownload): Promise<{file: string; bytes: number}> {
+    const partial = path.join(folder, 'sound.part')
+    const fetched = await fetchMedia(this.#session, url, partial, {
+      site: 'TikTok',
+      headers: {Referer: `${this.#origin}/`},
+      signal: task.signal,
+      onProgress: () => {},
+    })
+    const file = path.join(folder, `sound${extensionOf(fetched.contentType, '.mp3')}`)
+    await fs.rename(partial, file)
+    return {file, bytes: fetched.bytes}
   }
 
   // ─── links, pages, listing ───────────────────────────────────────────────
@@ -407,8 +532,10 @@ export class TikTokSource implements MediaSource {
       if (link.kind === 'profile') throw new DownloadError('invalid-request', 'A profile is not a single post.')
       const post = this.#posts.get(link.id)?.post ?? (await this.#readPost(link.id, link.user, signal))
       if (post.privateItem) throw new TikTokError('private', 'This post is private.')
-      if (post.renditions.length === 0) {
-        throw new TikTokError(post.photoPost ? 'photo-post' : 'format-changed', 'This post has no video to download.')
+      if (post.photoPost && post.images.length === 0)
+        throw new TikTokError('photo-post', 'This slideshow has no images.')
+      if (!post.photoPost && post.renditions.length === 0) {
+        throw new TikTokError('format-changed', 'This post has no video to download.')
       }
       return {ok: true, analysis: this.#videoAnalysis(post)}
     } catch (error) {
@@ -434,13 +561,18 @@ export class TikTokSource implements MediaSource {
       duration: post.duration,
       thumbnail: post.cover,
       publishedAt: post.createdAt,
+      ...(post.photoPost && {slideshow: {images: post.images.length, audio: Boolean(post.music?.url)}}),
       extractor: this.name,
       isLive: false,
     }
   }
 
   #videoAnalysis(post: TikTokPost): VideoAnalysis {
-    return {kind: 'video', media: this.#summary(post), choices: tiktokChoices(post)}
+    return {
+      kind: 'video',
+      media: this.#summary(post),
+      choices: post.photoPost ? slideshowChoices(post) : tiktokChoices(post),
+    }
   }
 
   // ─── media ───────────────────────────────────────────────────────────────
@@ -493,6 +625,22 @@ export function titleOf(post: TikTokPost): string {
 const newestFirst = (a: TikTokPost, b: TikTokPost): number =>
   Number(b.pinned) - Number(a.pinned) || (b.createdAt ?? 0) - (a.createdAt ?? 0)
 
+/** A file extension for a media type ("image/webp" → ".webp"); `fallback` for anything else. */
+function extensionOf(contentType: string | undefined, fallback: string): string {
+  const known: Readonly<Record<string, string>> = {
+    'image/jpeg': '.jpg',
+    'image/png': '.png',
+    'image/webp': '.webp',
+    'image/heic': '.heic',
+    'audio/mpeg': '.mp3',
+    'audio/mp4': '.m4a',
+    'audio/x-m4a': '.m4a',
+    'audio/aac': '.aac',
+    'audio/ogg': '.ogg',
+  }
+  return (contentType && known[contentType]) || fallback
+}
+
 const idOf = (url: string): string => /\/(\d{6,25})(?:[/?#.]|$)/.exec(url)?.[1] ?? ''
 
 /** A random 19-digit device id, like the web client's. */
@@ -522,13 +670,7 @@ export function toDownloadError(error: unknown): DownloadError {
     case 'removed':
       return new DownloadError('unavailable', error.message, undefined, undefined, HINTS[error.problem])
     case 'photo-post':
-      return new DownloadError(
-        'unavailable',
-        'Photo posts (slideshows) are not supported yet.',
-        undefined,
-        undefined,
-        HINTS[error.problem],
-      )
+      return new DownloadError('unavailable', error.message, undefined, undefined, HINTS[error.problem])
     case 'challenge':
       return new DownloadError('network', error.message, SOURCE_BLOCKED, undefined, 'retry-later')
     case 'refused':

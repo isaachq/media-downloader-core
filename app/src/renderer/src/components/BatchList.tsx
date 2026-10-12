@@ -2,10 +2,11 @@ import {
   ClearOutlined,
   ClockCircleOutlined,
   FolderOpenOutlined,
+  RedoOutlined,
   StopOutlined,
   UnorderedListOutlined,
 } from '@ant-design/icons'
-import {Button, Card, Empty, Flex, Popconfirm, Progress, Space, Table, Tag, Typography} from 'antd'
+import {App as AntApp, Button, Card, Empty, Flex, Popconfirm, Progress, Space, Table, Tag, Typography} from 'antd'
 import type {BatchId, BatchSnapshot, PreflightItem} from 'media-downloader-core'
 import {memo, useCallback, useEffect, useMemo, useState} from 'react'
 import {api} from '../api'
@@ -13,6 +14,8 @@ import {useApp} from '../context'
 import {bytes, clock, finishesAt, timeLeft} from '../format'
 import {type MessageKey, useT} from '../i18n'
 import {BATCH_FINISHED, useAppStore, useStore} from '../store'
+import {useShowBatch} from './BatchFilter'
+import {Problems} from './Problems'
 
 const STATUS_COLOR: Readonly<Record<BatchSnapshot['status'], string>> = {
   scheduled: 'default',
@@ -84,6 +87,8 @@ function BatchItems({batchId}: {readonly batchId: BatchId}) {
 // snapshots are immutable and replaced only when their batch changes: unchanged cards skip rendering
 const BatchCard = memo(function BatchCard({batch}: {readonly batch: BatchSnapshot}) {
   const t = useT()
+  const {message} = AntApp.useApp()
+  const showBatch = useShowBatch()
   const {settings} = useApp()
   const [open, setOpen] = useState(false)
   const lang = settings.language
@@ -158,6 +163,7 @@ const BatchCard = memo(function BatchCard({batch}: {readonly batch: BatchSnapsho
             </Typography.Text>
           ) : null}
           {batch.error ? <Typography.Text type="danger">{batch.error.message}</Typography.Text> : null}
+          <Problems problems={batch.problems} />
           {batch.status !== 'scheduled' ? (
             <Progress
               percent={finished ? 100 : percent}
@@ -170,6 +176,32 @@ const BatchCard = memo(function BatchCard({batch}: {readonly batch: BatchSnapsho
           {preflight.total ? (
             <Button size="small" icon={<UnorderedListOutlined />} onClick={() => setOpen(!open)} aria-expanded={open}>
               {t('batch.items')}
+            </Button>
+          ) : null}
+          {jobs.total > 0 ? (
+            <Space.Compact size="small">
+              <Button size="small" onClick={() => showBatch('jobs', batch.id)} data-testid="batch-show-jobs">
+                {t('tabs.jobs')}
+              </Button>
+              {jobs.succeeded > 0 ? (
+                <Button size="small" onClick={() => showBatch('finished', batch.id)} data-testid="batch-show-finished">
+                  {t('tabs.finished')}
+                </Button>
+              ) : null}
+            </Space.Compact>
+          ) : null}
+          {jobs.failed > 0 && (finished || batch.status === 'running') ? (
+            <Button
+              size="small"
+              icon={<RedoOutlined />}
+              onClick={() =>
+                void api()
+                  .retryBatch(batch.id)
+                  .then(count => message.info(t('batch.retried', {count})))
+              }
+              data-testid="batch-retry-failed"
+            >
+              {t('batch.retryFailed', {count: jobs.failed})}
             </Button>
           ) : null}
           {jobs.succeeded > 0 ? (

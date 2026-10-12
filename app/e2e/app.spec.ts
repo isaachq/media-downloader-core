@@ -38,6 +38,8 @@ async function launch(name: string, settings: Record<string, unknown> = {}, env:
       language: 'en',
       theme: 'light',
       downloadDir: outDir,
+      // past the first-steps guide (its own test turns it back on)
+      tourDone: true,
       ...settings,
     }),
   )
@@ -169,6 +171,33 @@ test('finished files of every session, their folders, and the run report', async
   expect(revealed).toBe(played!.replace(/^open /, 'reveal '))
   expect(downloads).toBe(`open ${outDir}`)
   await close(app)
+})
+
+test('the first launch shows the three first steps once; Guide replays them', async () => {
+  const {app, page, dataDir} = await launch('guide', {tourDone: false})
+  const tour = page.locator('.ant-tour')
+  await expect(tour).toContainText('1 · Paste a link')
+  await page.screenshot({path: path.join(APP_DIR, 'test-results', 'guide.png')})
+  await tour.getByRole('button', {name: 'Next'}).click()
+  await expect(tour).toContainText('2 · Choose what you get')
+  await tour.getByRole('button', {name: 'Next'}).click()
+  await expect(tour).toContainText('3 · Download')
+  await tour.getByRole('button', {name: 'Finish'}).click()
+  await expect(tour).toBeHidden()
+  await expect
+    .poll(async () => JSON.parse(await fs.readFile(path.join(dataDir, 'settings.json'), 'utf8')).tourDone)
+    .toBe(true)
+  await page.getByTestId('open-guide').click()
+  await expect(page.locator('.ant-tour')).toContainText('1 · Paste a link')
+  await close(app)
+
+  // a second launch doesn't show it again
+  const again = await electron.launch({...target, env: {...process.env, MDC_DATA_DIR: dataDir}})
+  const second = await again.firstWindow()
+  await second.waitForSelector('[data-testid="theme-mode"]', {state: 'attached'})
+  await second.waitForTimeout(800)
+  await expect(second.locator('.ant-tour:visible')).toHaveCount(0)
+  await close(again)
 })
 
 test('previews a list and downloads only the picked items', async () => {

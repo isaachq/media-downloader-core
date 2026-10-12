@@ -3,6 +3,7 @@ import {
   FileTextOutlined,
   InfoCircleOutlined,
   MoonOutlined,
+  QuestionCircleOutlined,
   SettingOutlined,
   SunOutlined,
 } from '@ant-design/icons'
@@ -17,9 +18,10 @@ type Props = {
   readonly onSettings: () => void
   readonly onAbout: () => void
   readonly onReport: () => void
+  readonly onGuide: () => void
 }
 
-export function Header({onLogs, onSettings, onAbout, onReport}: Props) {
+export function Header({onLogs, onSettings, onAbout, onReport, onGuide}: Props) {
   const t = useT()
   const {settings, updateSettings, dark} = useApp()
   return (
@@ -75,6 +77,9 @@ export function Header({onLogs, onSettings, onAbout, onReport}: Props) {
           </Button>
           <Button icon={<SettingOutlined />} onClick={onSettings}>
             {t('header.settings')}
+          </Button>
+          <Button icon={<QuestionCircleOutlined />} onClick={onGuide} data-testid="open-guide">
+            {t('header.guide')}
           </Button>
           <Button icon={<InfoCircleOutlined />} onClick={onAbout} aria-label={t('header.about')} />
         </Space>

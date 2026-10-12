@@ -31,6 +31,12 @@ export type FakeTikTokConfig = {
   /** The H.264 encoding of every post has no sound. */
   readonly silentH264?: boolean
   readonly mediaBytes?: number
+  /**
+   * Posts (by index, 0 = newest) that are photo posts — slideshows of 3 images
+   * (1080 × 1440 JPEGs) over a soundtrack; those listed in `silentSlides` have none.
+   */
+  readonly slideshows?: readonly number[]
+  readonly silentSlides?: readonly number[]
   /** Seconds between two posts (newest first). Default 1 hour. */
   readonly spacingSeconds?: number
   /** Posts the account counts but its listing never returns (private, deleted, author-only). */
@@ -68,6 +74,28 @@ export async function startFakeTikTok(config: FakeTikTokConfig = {}): Promise<Fa
     const id = ids[index]!
     const pinned = config.pinned === true && index === count - 1
     const media = (codec: string) => `${origin}/media/${id}/${codec}.mp4`
+    if (config.slideshows?.includes(index)) {
+      const silent = config.silentSlides?.includes(index)
+      return {
+        id,
+        desc: `Carrusel ${index + 1} #photo`,
+        createTime: BASE_TIME - index * (config.spacingSeconds ?? 3600),
+        author: {uniqueId: user, nickname: 'Fake User'},
+        video: {duration: 0, width: 0, height: 0, cover: `${origin}/cover/${id}.jpg`},
+        imagePost: {
+          title: 'Carrusel',
+          images: [1, 2, 3].map(n => ({
+            imageWidth: 1080,
+            imageHeight: 1440,
+            // the first mirror of image 2 is down: the next one must be used
+            imageURL: {
+              urlList: [`${origin}/image/${id}/${n}${n === 2 ? '-down' : ''}.jpg`, `${origin}/image/${id}/${n}.jpg`],
+            },
+          })),
+        },
+        music: silent ? {title: 'none'} : {playUrl: `${origin}/sound/${id}.mp3`, title: 'original sound', duration: 42},
+      }
+    }
     return {
       id,
       desc: `Post número ${index + 1} con acentos 🎵 #fyp #music`,
@@ -164,6 +192,16 @@ export async function startFakeTikTok(config: FakeTikTokConfig = {}): Promise<Fa
       if (listCalls === 1) firstPage = body
       if (config.repeatPage && listCalls === 2) body = firstPage as typeof body
       return send(200, JSON.stringify(body), {'Content-Type': 'application/json'})
+    }
+    // slideshow images and soundtracks: plain files, no session needed (as on the real CDN)
+    if (parts[0] === 'image') {
+      hits.media++
+      if (parts[2]?.includes('-down')) return send(404, 'gone')
+      return send(200, Buffer.from(`JPEG ${parts[1]} ${parts[2]}`), {'Content-Type': 'image/jpeg'})
+    }
+    if (parts[0] === 'sound') {
+      hits.media++
+      return send(200, Buffer.from(`MP3 ${parts[1]}`), {'Content-Type': 'audio/mpeg'})
     }
     if (parts[0] === 'media') {
       hits.media++

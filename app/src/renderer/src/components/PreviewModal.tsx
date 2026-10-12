@@ -1,5 +1,5 @@
 import {CloudDownloadOutlined, CloudSyncOutlined, ReloadOutlined, SearchOutlined} from '@ant-design/icons'
-import {Alert, Button, Flex, Input, InputNumber, Modal, Space, Table, Tag, Typography} from 'antd'
+import {Alert, Button, Card, Flex, Input, InputNumber, Modal, Space, Table, Tag, Typography} from 'antd'
 import type {PlaylistEntry} from 'media-downloader-core'
 import {useMemo, useState} from 'react'
 import type {Preview} from '../../../shared/contract'
@@ -7,6 +7,7 @@ import {useApp} from '../context'
 import {clock, day} from '../format'
 import {useT} from '../i18n'
 import {AnalyzeLoader} from './AnalyzeLoader'
+import {SlideshowChoice} from './SlideshowChoice'
 
 export type PlaylistPreview = Extract<Preview, {kind: 'playlist'}>
 
@@ -57,6 +58,17 @@ export function PreviewModal({
   // it stopped before the end and before the cap (refused, stalled): loading again continues
   const stopped = partial && !unlisted && entries.length < preview.maxItems
   const dated = useMemo(() => entries.some(entry => entry.publishedAt !== undefined), [entries])
+  // TikTok slideshows in the list (and how many have no sound): they get their own choice
+  const slides = useMemo(() => {
+    let count = 0
+    let silent = 0
+    for (const entry of entries) {
+      if (!entry.slideshow) continue
+      count++
+      if (!entry.slideshow.audio) silent++
+    }
+    return {count, silent}
+  }, [entries])
   // selection by playlist index: stable while filtering, O(1) membership
   const [selected, setSelected] = useState<ReadonlySet<number>>(() => new Set(entries.map(entry => entry.index)))
   const [filter, setFilter] = useState('')
@@ -189,6 +201,12 @@ export function PreviewModal({
         ) : null}
 
         {loading ? <AnalyzeLoader onCancel={onStopReload} /> : null}
+
+        {slides.count > 0 ? (
+          <Card size="small" className="slideshow-card">
+            <SlideshowChoice count={slides.count} silent={slides.silent} />
+          </Card>
+        ) : null}
 
         <Flex gap={8} wrap>
           <Input

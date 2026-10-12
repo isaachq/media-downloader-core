@@ -19,7 +19,14 @@ export {
 } from './binaries/manager.js'
 export {BinaryError, ffmpegRelease, type Release, ytDlpBuildFor, ytDlpRelease} from './binaries/sources.js'
 export {assertHttpUrl, isYouTubeMix, MAX_LISTED_ITEMS, MAX_REQUESTED_ITEMS, MIX_DEFAULT_ITEMS} from './core/analyze.js'
-export {type ArchiveEntry, type ArchivePage, type ArchiveQuery, archiveKey, DownloadArchive} from './core/archive.js'
+export {
+  type ArchiveEntry,
+  type ArchiveGroup,
+  type ArchivePage,
+  type ArchiveQuery,
+  archiveKey,
+  DownloadArchive,
+} from './core/archive.js'
 export {ensureContainer} from './core/convert.js'
 export {estimateBytes, jobTier, peakBytes, TIER_WEIGHT} from './core/cost.js'
 export {classifyYtDlpError, DownloadError, isRetryable} from './core/errors.js'
@@ -68,6 +75,7 @@ export {
 export type {ListingProgress, MediaSource, SourceDownload, SourceFile} from './sources/source.js'
 export {TikTokError, type TikTokProblem} from './sources/tiktok/errors.js'
 export {isTikTokProfile, parseTikTokLink, type TikTokLink} from './sources/tiktok/links.js'
+export {DEFAULT_SLIDESHOW, slideshowOptions} from './sources/tiktok/slideshow.js'
 export {TIKTOK_PROFILE_DEFAULT_ITEMS, type TikTokOptions, TikTokSource} from './sources/tiktok/source.js'
 export type * from './types.js'
 export {formatBytes, formatClock, formatRate} from './util/units.js'

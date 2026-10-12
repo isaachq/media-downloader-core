@@ -13,6 +13,7 @@ import type {
   LogEntry,
   PlaylistEntry,
   PreflightItem,
+  SlideshowOptions,
   ValidationLevel,
   VideoContainer,
 } from 'media-downloader-core'
@@ -62,6 +63,12 @@ export type AppSettings = {
   readonly portableNames: boolean
   /** Look for a new version at start-up and every few hours. */
   readonly autoUpdate: boolean
+  /** What TikTok slideshows (photo posts) become with a video format; remembered from the last choice. */
+  readonly slideshowMode: SlideshowOptions['mode']
+  /** Seconds each image shows in a slideshow video (1–30). */
+  readonly slideshowSeconds: number
+  /** The first-steps guide was finished or closed (it shows once; Header → Guide replays it). */
+  readonly tourDone: boolean
 }
 
 /** Settings the engine reads at construction — changing them asks for a restart. */
@@ -103,6 +110,8 @@ export type ScheduleInput = {
   readonly outDir: string
   /** Entries picked in the preview: downloaded as-is, the list is not fetched again. */
   readonly selection?: BatchSelection | undefined
+  /** What photo posts become. */
+  readonly slideshow?: SlideshowOptions | undefined
 }
 
 export type AnalyzeProgress = {readonly listed: number; readonly expected?: number | undefined}
@@ -135,7 +144,13 @@ export type UpdateState =
 
 /** What a link holds, for the preview — without local paths or format lists. */
 export type Preview =
-  | {readonly kind: 'video'; readonly title: string; readonly duration?: number | undefined}
+  | {
+      readonly kind: 'video'
+      readonly title: string
+      readonly duration?: number | undefined
+      /** A TikTok photo post: its images and whether it has sound. */
+      readonly slideshow?: {readonly images: number; readonly audio: boolean} | undefined
+    }
   | {
       readonly kind: 'playlist'
       readonly title: string
@@ -170,9 +185,44 @@ export type FinishedEntry = {
   readonly validation?: 'none' | 'quick' | 'full' | undefined
   /** On disk with its recorded size; gone; or another size than recorded. */
   readonly file: 'ok' | 'missing' | 'changed'
+  /** The batch it came from (absent for files of older versions). */
+  readonly batchId?: string | undefined
+  readonly batchTitle?: string | undefined
 }
 
-export type FinishedQuery = {readonly offset: number; readonly limit: number; readonly search?: string | undefined}
+export type FinishedQuery = {
+  readonly offset: number
+  readonly limit: number
+  readonly search?: string | undefined
+  /** Only the files of this batch. */
+  readonly batchId?: string | undefined
+}
+
+/** A batch finished files came from, every session. */
+export type FinishedGroup = {
+  readonly batchId: string
+  readonly title?: string | undefined
+  readonly count: number
+  readonly bytes: number
+  readonly lastCompletedAt: number
+}
+
+/** What checking finished files again found. */
+export type VerifySummary = {
+  readonly checked: number
+  readonly ok: number
+  readonly missing: number
+  /** Another size than when it finished. */
+  readonly changed: number
+  /** Same size, different content (SHA-256). */
+  readonly corrupted: number
+}
+
+/** Which finished files an action applies to: some, one batch's, or all that match a search. */
+export type FinishedTarget =
+  | {readonly keys: readonly string[]}
+  | {readonly batchId: string}
+  | {readonly search?: string | undefined; readonly batchId?: string | undefined; readonly all: true}
 
 export type FinishedPage = {
   readonly entries: readonly FinishedEntry[]
@@ -210,6 +260,8 @@ export type MdcApi = {
   cancelBatch(batchId: BatchId): Promise<void>
   cancelJob(jobId: JobId): Promise<void>
   retryJob(jobId: JobId): Promise<void>
+  /** Download a batch's failed items again (the batch reopens); how many were retried. */
+  retryBatch(batchId: BatchId): Promise<number>
   pause(): Promise<void>
   resume(): Promise<void>
   clearFinished(): Promise<void>
@@ -221,6 +273,17 @@ export type MdcApi = {
   openFinished(key: string, target: 'file' | 'folder'): Promise<boolean>
   /** Open the downloads folder, or the folder a batch's files went to; false when there is none yet. */
   openFolder(target: OpenTarget): Promise<boolean>
+  /** Bring the app's window to the front (a click on a system notification). */
+  focusWindow(): Promise<void>
+  /** The batches finished files came from, newest first. */
+  finishedGroups(): Promise<readonly FinishedGroup[]>
+  /** Re-hash files and compare with what was recorded (progress through `onVerifyProgress`). */
+  verifyFinished(target: FinishedTarget): Promise<VerifySummary>
+  onVerifyProgress(listener: (progress: {readonly done: number; readonly total: number}) => void): () => void
+  /** Forget files from the history (the files themselves stay where they are). */
+  removeFinished(keys: readonly string[]): Promise<number>
+  /** Save the matching history as a CSV the user picks; its path, or undefined when cancelled. */
+  exportFinished(target: FinishedTarget): Promise<string | undefined>
   updateState(): Promise<UpdateState>
   checkForUpdates(): Promise<UpdateState>
   /** Download, verify and install the available update, then restart. */
@@ -247,6 +310,7 @@ export const CHANNEL = {
   cancelBatch: 'mdc:cancel-batch',
   cancelJob: 'mdc:cancel-job',
   retryJob: 'mdc:retry-job',
+  retryBatch: 'mdc:retry-batch',
   pause: 'mdc:pause',
   resume: 'mdc:resume',
   clearFinished: 'mdc:clear-finished',
@@ -255,6 +319,12 @@ export const CHANNEL = {
   finished: 'mdc:finished',
   openFinished: 'mdc:open-finished',
   openFolder: 'mdc:open-folder',
+  finishedGroups: 'mdc:finished-groups',
+  focusWindow: 'mdc:focus-window',
+  verifyFinished: 'mdc:verify-finished',
+  verifyProgress: 'mdc:verify-progress',
+  removeFinished: 'mdc:remove-finished',
+  exportFinished: 'mdc:export-finished',
   updateState: 'mdc:update:state',
   updateCheck: 'mdc:update:check',
   updateInstall: 'mdc:update:install',

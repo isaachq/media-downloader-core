@@ -15,13 +15,16 @@ import type {
   AppSettings,
   EventBundle,
   FinishedEntry,
+  FinishedGroup,
   FinishedPage,
   FinishedQuery,
+  FinishedTarget,
   MdcApi,
   OpenTarget,
   Preview,
   ScheduleInput,
   UpdateState,
+  VerifySummary,
 } from '../../../shared/contract'
 
 export const INFO: AppInfo = {
@@ -49,6 +52,10 @@ export const SETTINGS: AppSettings = {
   notifications: true,
   portableNames: true,
   autoUpdate: true,
+  slideshowMode: 'video',
+  slideshowSeconds: 3,
+  // tests start past the first-steps guide (its own tests turn it back on)
+  tourDone: true,
 }
 
 export const READY: Diagnosis = {
@@ -171,6 +178,7 @@ export class FakeApi implements MdcApi {
   cancelBatch = vi.fn(async () => {})
   cancelJob = vi.fn(async () => {})
   retryJob = vi.fn(async () => {})
+  retryBatch = vi.fn(async (_batchId: BatchId) => 1)
   pause = vi.fn(async () => {})
   resume = vi.fn(async () => {})
   clearFinished = vi.fn(async () => {})
@@ -185,7 +193,11 @@ export class FakeApi implements MdcApi {
   finishedEntries: FinishedEntry[] = []
   finished = vi.fn(async (query: FinishedQuery): Promise<FinishedPage> => {
     const words = (query.search ?? '').toLowerCase().split(/\s+/).filter(Boolean)
-    const matching = this.finishedEntries.filter(entry => words.every(word => entry.title.toLowerCase().includes(word)))
+    const matching = this.finishedEntries.filter(
+      entry =>
+        (query.batchId === undefined || entry.batchId === query.batchId) &&
+        words.every(word => entry.title.toLowerCase().includes(word)),
+    )
     return {
       entries: matching.slice(query.offset, query.offset + query.limit),
       total: matching.length,
@@ -197,6 +209,40 @@ export class FakeApi implements MdcApi {
       this.finishedEntries.find(entry => entry.key === key)?.file === 'ok',
   )
   openFolder = vi.fn(async (_target: OpenTarget) => true)
+  focusWindow = vi.fn(async () => {})
+  finishedGroups = vi.fn(async (): Promise<FinishedGroup[]> => {
+    const groups = new Map<string, FinishedGroup>()
+    for (const entry of this.finishedEntries) {
+      if (!entry.batchId) continue
+      const group = groups.get(entry.batchId)
+      groups.set(entry.batchId, {
+        batchId: entry.batchId,
+        title: entry.batchTitle,
+        count: (group?.count ?? 0) + 1,
+        bytes: (group?.bytes ?? 0) + entry.sizeBytes,
+        lastCompletedAt: Math.max(group?.lastCompletedAt ?? 0, entry.completedAt),
+      })
+    }
+    return [...groups.values()]
+  })
+  /** What `verifyFinished` answers. */
+  verifySummary: VerifySummary = {checked: 0, ok: 0, missing: 0, changed: 0, corrupted: 0}
+  #verifyListeners = new Set<(progress: {done: number; total: number}) => void>()
+  verifyFinished = vi.fn(async (_target: FinishedTarget) => {
+    for (const listener of this.#verifyListeners) listener({done: 1, total: 2})
+    return this.verifySummary
+  })
+  onVerifyProgress(listener: (progress: {done: number; total: number}) => void): () => void {
+    this.#verifyListeners.add(listener)
+    return () => this.#verifyListeners.delete(listener)
+  }
+  removeFinished = vi.fn(async (keys: readonly string[]) => {
+    this.finishedEntries = this.finishedEntries.filter(entry => !keys.includes(entry.key))
+    return keys.length
+  })
+  exportFinished = vi.fn(
+    async (_target: FinishedTarget): Promise<string | undefined> => '/Users/me/Downloads/finished.csv',
+  )
   update: UpdateState = {status: 'up-to-date', checkedAt: 0}
   #updates = new Set<(state: UpdateState) => void>()
   updateState = vi.fn(async () => this.update)

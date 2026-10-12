@@ -166,6 +166,12 @@ async function main() {
     'helper output:',
     (await fs.readFile(path.join(updates, 'install-helper.log'), 'utf8').catch(() => '(none)')) || '(empty)',
   )
+  const trace = (await readTrace()).split('\n').filter(Boolean)
+  console.log('app trace (update and last lines):')
+  for (const line of [...trace.filter(l => /update|quit|clos/i.test(l)), ...trace.slice(-8)])
+    console.log('  ', line.slice(0, 300))
+  const crashes = await fs.readdir(path.join(dataDir, 'Crashpad', 'reports')).catch(() => [] as string[])
+  console.log('crash reports:', crashes.join(', ') || '(none)')
   console.log(
     'powershell running:',
     ps("(Get-Process -Name powershell -ErrorAction SilentlyContinue | ForEach-Object { $_.Id }) -join ','"),

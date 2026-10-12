@@ -1,6 +1,8 @@
 import type {FileNameStyle} from './core/files.js'
 import type {MediaSource} from './sources/source.js'
 import type {TikTokOptions} from './sources/tiktok/source.js'
+import type {AttestationOptions, AttestationStrategy} from './youtube/attestation.js'
+import type {YouTubeAccess} from './youtube/gate.js'
 // Public types. Everything a host application (CLI, Electron, server) needs to
 // drive the engine and render its state. User-facing text is always English
 // and paired with a stable `code` + `params`, so a UI can localize by code.
@@ -607,9 +609,16 @@ export type DownloaderOptions = {
    * yt-dlp). `false` hands TikTok urls to yt-dlp like any other site.
    */
   readonly tiktok?: false | TikTokOptions | undefined
-  /** YouTube's pace: attempts a second apart, and the pause after a bot check (5 → 60 min). For tests. */
+  /**
+   * YouTube when it asks to confirm this is not a bot. Requests go a second
+   * apart; a bot check climbs a ladder only as far as needed: PO tokens from
+   * `attestation` (educational — see the README, "YouTube: attestation"),
+   * then a hold for the user (`askUser`: sign in with `setYouTubeAccount`, or
+   * `waitOutYouTube`), else pauses that grow 5 → 60 min.
+   */
   readonly youtube?:
     | {
+        /** The pace (for tests). */
         readonly pacing?:
           | {
               readonly spacingMs?: number | undefined
@@ -618,6 +627,23 @@ export type DownloaderOptions = {
               readonly maxBackoffMs?: number | undefined
             }
           | undefined
+        /** Ways to pass YouTube's attestation, best first (the desktop app: its own hidden Chromium). */
+        readonly attestation?: readonly AttestationStrategy[] | undefined
+        readonly attestationOptions?: AttestationOptions | undefined
+        /** Waits before the retries with tokens; their count is the retries. Default 15 s, 90 s, 5 min. */
+        readonly attestedDelaysMs?: readonly number[] | undefined
+        /**
+         * The host can ask the user: after the retries with tokens, YouTube
+         * requests are held (not failed) until it calls `setYouTubeAccount` or
+         * `waitOutYouTube`. Listen to the 'youtube' event.
+         */
+        readonly askUser?: boolean | undefined
+        /**
+         * 'after-refusal' (default): PO tokens only once YouTube has refused
+         * this connection. 'always': from the first request (a health check, or
+         * a connection YouTube is known to refuse).
+         */
+        readonly tokens?: 'after-refusal' | 'always' | undefined
       }
     | undefined
   /**
@@ -699,4 +725,6 @@ export type DownloaderEvents = {
   /** Nothing queued (or the queue is paused) and nothing running. */
   idle: []
   log: [entry: LogEntry]
+  /** How YouTube is reached changed: a bot check paused it, tokens came on, it is held for the user… */
+  youtube: [access: YouTubeAccess]
 }

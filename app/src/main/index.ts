@@ -52,6 +52,8 @@ import type {InstallKind} from './updates/feed'
 import {detectInstallKind} from './updates/install'
 import {Updater} from './updates/updater'
 import {MIN_SIZE, readWindowState, restoreBounds, writeWindowState} from './window-state'
+import {YouTubeController} from './youtube/controller'
+import {runProbe} from './youtube/probe'
 
 // Test hooks: e2e runs point the app at a temp data folder and fake tools.
 if (process.env['MDC_DATA_DIR']) app.setPath('userData', path.resolve(process.env['MDC_DATA_DIR']))
@@ -78,6 +80,8 @@ let settings: SettingsStore
 let restoring: Promise<void> = Promise.resolve()
 /** Hidden Chromium for TikTok pages that only open in a browser. */
 const tiktokBrowser = createTikTokBrowser(process.env['MDC_TIKTOK_ORIGIN'])
+/** YouTube's attestation (after a bot check) and the account the user may choose to sign in with. */
+const youtube = new YouTubeController(state => send(CHANNEL.youtube, state))
 /** Hidden Chromium windows of the player-page sites the user configured, one pool per site. */
 const playerBrowsers: Array<ReturnType<typeof createPlayerBrowser>> = []
 let updater: Updater | undefined
@@ -207,9 +211,12 @@ function createEngine(current: AppSettings): void {
     // the engine's log isn't there yet: messages wait for it
     sources: playerSources((level, message) => queueMicrotask(() => engine.log(level, message))),
     longVideoMinutes: current.longVideoMinutes,
+    // a bot check: PO tokens from the app's own Chromium, then a hold for the user (sign in, or wait)
+    youtube: {attestation: youtube.strategies, askUser: true},
     ...(current.cookiesFromBrowser && {cookiesFromBrowser: current.cookiesFromBrowser}),
     ...(binaries && {binaries}),
   })
+  youtube.attach(engine)
   scheduler = new BatchScheduler(engine)
   coalescer = new EventCoalescer(
     bundle => send(CHANNEL.events, bundle),
@@ -394,8 +401,17 @@ function registerIpc(): void {
   })
   ipcMain.handle(CHANNEL.state, async () => {
     await restoring
-    return {batches: scheduler.batches(), jobs: engine.jobs(), youtubePausedUntil: engine.youtubePausedUntil ?? null}
+    return {
+      batches: scheduler.batches(),
+      jobs: engine.jobs(),
+      youtubePausedUntil: engine.youtubePausedUntil ?? null,
+      youtube: youtube.state,
+    }
   })
+  ipcMain.handle(CHANNEL.youtubeState, () => youtube.state)
+  ipcMain.handle(CHANNEL.youtubeSignIn, () => youtube.signIn(window))
+  ipcMain.handle(CHANNEL.youtubeSignOut, () => youtube.signOut())
+  ipcMain.handle(CHANNEL.youtubeWait, () => youtube.waitItOut())
   ipcMain.handle(CHANNEL.items, (_event, batchId: BatchId, offset: unknown, limit: unknown) =>
     scheduler.items(batchId, {
       offset: Number.isInteger(offset) ? (offset as number) : 0,
@@ -709,6 +725,13 @@ else {
   })
 
   const start = async () => {
+    // the YouTube attestation health check (the watch workflow): a report, no window, then quit
+    const probe = process.env['MDC_YOUTUBE_PROBE']
+    if (probe) {
+      const report = await runProbe(app.getPath('userData'), path.resolve(probe))
+      app.exit(report.verdict === 'broken' ? 2 : 0)
+      return
+    }
     const downloadDir = process.env['MDC_DOWNLOAD_DIR'] ?? app.getPath('downloads')
     const max = MediaDownloader.maxConcurrency()
     settings = new SettingsStore(
@@ -758,6 +781,7 @@ else {
     quitting = true
     sync.dispose()
     tiktokBrowser.close()
+    youtube.close()
     for (const browser of playerBrowsers) browser.close()
     // saves pending batches and jobs, stops processes, keeps partial downloads for next launch
     void scheduler

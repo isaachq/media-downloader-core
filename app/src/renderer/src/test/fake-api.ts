@@ -34,6 +34,7 @@ import {
   type SyncInput,
   type UpdateState,
   type VerifySummary,
+  type YouTubeState,
 } from '../../../shared/contract'
 
 const profileOf = (format: Format): FormatProfile =>
@@ -345,5 +346,28 @@ export class FakeApi implements MdcApi {
   emit(bundle: Partial<EventBundle>): void {
     const full: EventBundle = {jobs: [], batches: [], items: [], logs: [], ...bundle}
     for (const listener of this.#events) listener(full)
+  }
+
+  /** YouTube as the app reports it; `pushYouTube` changes it like the app would. */
+  youtube: YouTubeState = {level: 'open', pausedUntil: null, tokens: false, signedIn: false}
+  /** What signing in answers. */
+  signInResult: {ok: boolean; reason?: 'closed' | 'refused'} = {ok: true}
+  #youtube = new Set<(state: YouTubeState) => void>()
+  youtubeState = vi.fn(async () => this.youtube)
+  youtubeSignIn = vi.fn(async () => {
+    if (this.signInResult.ok) this.pushYouTube({level: 'account', pausedUntil: null, signedIn: true})
+    return this.signInResult
+  })
+  youtubeSignOut = vi.fn(async () => this.pushYouTube({level: 'attested', signedIn: false}))
+  youtubeWait = vi.fn(async () => this.pushYouTube({level: 'attested', pausedUntil: Date.now() + 30 * 60_000}))
+
+  onYouTube(listener: (state: YouTubeState) => void): () => void {
+    this.#youtube.add(listener)
+    return () => this.#youtube.delete(listener)
+  }
+
+  pushYouTube(patch: Partial<YouTubeState>): void {
+    this.youtube = {...this.youtube, ...patch}
+    for (const listener of this.#youtube) listener(this.youtube)
   }
 }

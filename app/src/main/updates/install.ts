@@ -1,4 +1,5 @@
 import {execFile, spawn} from 'node:child_process'
+import {randomUUID} from 'node:crypto'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import {promisify} from 'node:util'
@@ -196,11 +197,22 @@ const normalizeDir = (dir: string): string =>
     .replace(/[\\/]+$/, '')
     .toLowerCase()
 
-const writable = (dir: string): Promise<boolean> =>
-  fs.access(dir, fs.constants.W_OK).then(
-    () => true,
-    () => false,
-  )
+/**
+ * Whether this process may create files in `dir`, by creating one. On
+ * Windows `fs.access(W_OK)` reads only the read-only attribute: it says yes
+ * for Program Files, which only an administrator may write (seen on a real
+ * machine: access OK, write EPERM).
+ */
+export async function writable(dir: string): Promise<boolean> {
+  const probe = path.join(dir, `.mdc-write-test-${process.pid}-${randomUUID()}`)
+  try {
+    await (await fs.open(probe, 'wx')).close()
+  } catch {
+    return false
+  }
+  await fs.rm(probe, {force: true}).catch(() => {})
+  return true
+}
 
 /**
  * The NSIS installer's own update mode, as electron-updater runs it:

@@ -8,7 +8,7 @@ import type {
   PreflightItem,
 } from 'media-downloader-core'
 import {createContext, useContext, useSyncExternalStore} from 'react'
-import type {EventBundle} from '../../shared/contract'
+import type {EventBundle, YouTubeState} from '../../shared/contract'
 
 const MAX_JOBS = 1500
 const MAX_LOGS = 500
@@ -71,6 +71,8 @@ export class AppStore {
   logs: LogEntry[] = []
   /** YouTube requests paused by a bot check until then (ms), as the engine last said. */
   youtubePausedUntil: number | undefined
+  /** How YouTube is reached (tokens after a bot check, a hold for the user, an account), as the app last said. */
+  youtube: YouTubeState | undefined
   // stable React keys for log lines (entries carry no id of their own): O(1), no copies
   readonly #logKeys = new WeakMap<LogEntry, number>()
   #nextLogKey = 0
@@ -113,11 +115,19 @@ export class AppStore {
     readonly batches: readonly BatchSnapshot[]
     readonly jobs: readonly JobSnapshot[]
     readonly youtubePausedUntil?: number | null | undefined
+    readonly youtube?: YouTubeState | undefined
   }): void {
     this.youtubePausedUntil = state.youtubePausedUntil ?? undefined
+    this.youtube = state.youtube
     for (const batch of state.batches) this.batches.set(batch.id, batch)
     for (const job of state.jobs) this.#setJob(job)
     this.#trimJobs()
+    this.#notify()
+  }
+
+  setYouTube(state: YouTubeState): void {
+    this.youtube = state
+    this.youtubePausedUntil = state.pausedUntil ?? undefined
     this.#notify()
   }
 

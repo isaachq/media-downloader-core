@@ -1,14 +1,15 @@
 // @vitest-environment node
+import {spawnSync} from 'node:child_process'
 import {createHash} from 'node:crypto'
 import * as fs from 'node:fs/promises'
 import * as http from 'node:http'
-import type {AddressInfo} from 'node:net'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import {afterAll, beforeAll, describe, expect, it} from 'vitest'
+import {listenLocal} from '../../../../test/helpers/listen'
 import {downloadUpdate, UpdateError} from './download'
 import {pickUpdate, RELEASES_PAGE} from './feed'
-import {bundleOf, INSTALL_LOG, windowsInstallerArgs, windowsScope} from './install'
+import {bundleOf, INSTALL_LOG, windowsInstallerArgs, windowsScope, writable} from './install'
 import {Updater} from './updater'
 import {compareVersions, parseVersion} from './version'
 
@@ -117,6 +118,29 @@ describe('install helpers', () => {
     expect(await windowsScope(exe, registry('HKCU', 'C:\\Other'))).toBe('machine')
   })
 
+  it('knows a folder is writable by writing to it, and leaves nothing behind', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdc-writable-'))
+    try {
+      expect(await writable(dir)).toBe(true)
+      expect(await fs.readdir(dir)).toEqual([])
+      expect(await writable(path.join(dir, 'missing'))).toBe(false)
+      // a folder this user may not write (POSIX permissions; root writes anyway)
+      if (process.platform !== 'win32' && process.getuid?.() !== 0) {
+        const locked = path.join(dir, 'locked')
+        await fs.mkdir(locked, {mode: 0o555})
+        expect(await writable(locked)).toBe(false)
+      }
+      // only an administrator writes Program Files (GitHub's Windows runners are administrators)
+      if (process.platform === 'win32' && process.env['ProgramFiles'] && !process.env['CI']) {
+        const admin = spawnSync('net', ['session'], {stdio: 'ignore'}).status === 0
+        expect(await writable(process.env['ProgramFiles'])).toBe(admin)
+      }
+    } finally {
+      await fs.chmod(path.join(dir, 'locked'), 0o755).catch(() => {})
+      await fs.rm(dir, {recursive: true, force: true})
+    }
+  })
+
   it("the NSIS installer's own update mode, for the same scope", () => {
     expect(windowsInstallerArgs('user')).toEqual(['--updated', '/S', '--force-run', '/currentuser'])
     expect(windowsInstallerArgs('machine')).toEqual(['--updated', '/S', '--force-run', '/allusers'])
@@ -162,8 +186,7 @@ beforeAll(async () => {
     res.writeHead(200, {'Content-Length': String(body.length)})
     res.end(body)
   })
-  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
-  origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+  origin = `http://127.0.0.1:${await listenLocal(server)}`
 })
 afterAll(async () => {
   await new Promise(resolve => server.close(resolve))

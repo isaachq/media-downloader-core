@@ -2,6 +2,7 @@ import {strict as assert} from 'node:assert'
 import {createHash} from 'node:crypto'
 import {rmSync} from 'node:fs'
 import * as fs from 'node:fs/promises'
+import * as http from 'node:http'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import {after, before, describe, it} from 'node:test'
@@ -18,6 +19,7 @@ import {LineSplitter, lastLines, run, TailBuffer} from '../src/core/process.js'
 import {PendingJournal, QueueStore} from '../src/core/queue-store.js'
 
 import {writeFakes} from './helpers/fakes.js'
+import {isFetchBlockedPort, listenLocal} from './helpers/listen.js'
 
 let dir = ''
 before(async () => {
@@ -322,6 +324,26 @@ describe('download archive listing', () => {
   })
 })
 
+describe('test servers', () => {
+  it('never listen on a port fetch refuses (the Fetch standard’s bad ports)', async () => {
+    // the list matches Node's fetch: each of these fails as "bad port" before connecting
+    for (const port of [1719, 2049, 4190, 5060, 6000, 6566, 6665, 6669, 6697, 10080]) {
+      assert.equal(isFetchBlockedPort(port), true)
+      const error = await fetch(`http://127.0.0.1:${port}/`).then(
+        () => undefined,
+        (e: unknown) => e as {cause?: {message?: string}},
+      )
+      assert.match(String(error?.cause?.message), /bad port/, String(port))
+    }
+    assert.equal(isFetchBlockedPort(8080), false)
+    const server = http.createServer((_req, res) => res.end('ok'))
+    const port = await listenLocal(server)
+    assert.equal(isFetchBlockedPort(port), false)
+    assert.equal(await (await fetch(`http://127.0.0.1:${port}/`)).text(), 'ok')
+    await new Promise(resolve => server.close(resolve))
+  })
+})
+
 describe('PendingJournal', () => {
   it('appends O(1) per change, compacts past the slack and never deadlocks', async () => {
     const file = path.join(dir, 'pending.jsonl')
@@ -335,10 +357,11 @@ describe('PendingJournal', () => {
         journal.delete(`j${i - 10}`)
       }
     }
-    // regression: compaction used to wait on the write chain it was part of
+    // regression: compaction used to wait on the write chain it was part of. It takes ~0.3 s; the
+    // limit only tells a deadlock (forever) from a busy machine (a cold run took over 5 s)
     await Promise.race([
       journal.freeze(),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('deadlock')), 5000)),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('deadlock')), 30_000).unref()),
     ])
     const lines = (await fs.readFile(file, 'utf8')).trim().split('\n').length
     assert.ok(lines < 2100, `journal should have been compacted (${lines} lines)`)

@@ -142,6 +142,21 @@ export type EventBundle = {
   readonly youtubePausedUntil?: number | null | undefined
 }
 
+/**
+ * How YouTube is reached (the engine's ladder after a bot check) and whether
+ * an account is signed in inside the app (it is used only once the user agreed).
+ */
+export type YouTubeState = {
+  /** open: plain · attested: with PO tokens · held: waiting for the user · account: signed in, in use. */
+  readonly level: 'open' | 'attested' | 'held' | 'account'
+  /** YouTube requests wait until then (ms); null when they don't. */
+  readonly pausedUntil: number | null
+  /** Requests carry PO tokens. */
+  readonly tokens: boolean
+  /** An account is signed in inside the app (in use only at level 'account'). */
+  readonly signedIn: boolean
+}
+
 export type ScheduleInput = {
   readonly url: string
   readonly format: Format
@@ -298,6 +313,7 @@ export type MdcApi = {
     readonly batches: readonly BatchSnapshot[]
     readonly jobs: readonly JobSnapshot[]
     readonly youtubePausedUntil?: number | null | undefined
+    readonly youtube?: YouTubeState | undefined
   }>
   items(batchId: BatchId, offset: number, limit: number): Promise<PreflightItem[]>
   cancelBatch(batchId: BatchId): Promise<void>
@@ -346,6 +362,14 @@ export type MdcApi = {
   installUpdate(): Promise<void>
   onUpdate(listener: (state: UpdateState) => void): () => void
   onEvents(listener: (bundle: EventBundle) => void): () => void
+  youtubeState(): Promise<YouTubeState>
+  /** Go on with YouTube as the account signed in inside the app — signing in first (a window) when needed. */
+  youtubeSignIn(): Promise<{readonly ok: boolean; readonly reason?: 'closed' | 'refused' | undefined}>
+  /** Forget the account; YouTube goes back to the guest session. */
+  youtubeSignOut(): Promise<void>
+  /** Don't sign in: held YouTube requests try again (with tokens) after a long pause. */
+  youtubeWait(): Promise<void>
+  onYouTube(listener: (state: YouTubeState) => void): () => void
   onSetupProgress(listener: (progress: InstallProgress) => void): () => void
 }
 
@@ -394,4 +418,9 @@ export const CHANNEL = {
   updateInstall: 'mdc:update:install',
   update: 'mdc:update',
   events: 'mdc:events',
+  youtube: 'mdc:youtube',
+  youtubeState: 'mdc:youtube:state',
+  youtubeSignIn: 'mdc:youtube:sign-in',
+  youtubeSignOut: 'mdc:youtube:sign-out',
+  youtubeWait: 'mdc:youtube:wait',
 } as const

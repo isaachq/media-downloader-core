@@ -207,7 +207,9 @@ class StallWatchdog {
     private readonly timeoutMs: number,
     private readonly parent?: AbortSignal | undefined,
   ) {
-    parent?.addEventListener('abort', this.#onParentAbort, {once: true})
+    // a signal aborted already never fires 'abort' again: a cancel that came first must count too
+    if (parent?.aborted) this.#controller.abort()
+    else parent?.addEventListener('abort', this.#onParentAbort, {once: true})
     this.feed()
   }
 

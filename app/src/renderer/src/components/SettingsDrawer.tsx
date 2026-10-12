@@ -21,6 +21,7 @@ import {type AppSettings, BROWSERS, RESTART_SETTINGS, type ThemeMode} from '../.
 import {api} from '../api'
 import {useApp} from '../context'
 import {useT} from '../i18n'
+import {useStoreValue} from '../store'
 
 type Props = {
   readonly open: boolean
@@ -95,6 +96,9 @@ export function SettingsDrawer({open, onClose, onDoctor, onReinstall}: Props) {
             onChange={(value: string) => change({cookiesFromBrowser: value})}
             options={[{value: '', label: t('settings.cookies.none')}, ...BROWSERS.map(b => ({value: b, label: b}))]}
           />
+        </Form.Item>
+        <Form.Item label={t('settings.youtubeAccount')} data-testid="youtube-account">
+          <YouTubeAccountRow />
         </Form.Item>
         <Form.Item>
           <Space orientation="vertical" size="middle">
@@ -199,5 +203,20 @@ function SwitchRow({
       <Switch id={id} checked={checked} onChange={onChange} />
       <label htmlFor={id}>{children}</label>
     </span>
+  )
+}
+
+/** The YouTube account signed in inside the app, if any — signing in happens only when YouTube requires it. */
+function YouTubeAccountRow() {
+  const t = useT()
+  const signedIn = useStoreValue(store => store.youtube?.signedIn ?? false)
+  if (!signedIn) return <Typography.Text type="secondary">{t('settings.youtubeNone')}</Typography.Text>
+  return (
+    <Space wrap>
+      <Typography.Text>{t('settings.youtubeSignedIn')}</Typography.Text>
+      <Button size="small" onClick={() => void api().youtubeSignOut()}>
+        {t('settings.youtubeSignOut')}
+      </Button>
+    </Space>
   )
 }

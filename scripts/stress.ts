@@ -7,35 +7,15 @@ import * as path from 'node:path'
 import {monitorEventLoopDelay} from 'node:perf_hooks'
 import {MediaDownloader} from '../src/downloader.js'
 import type {JobStatus} from '../src/types.js'
+import {writeFakes} from '../test/helpers/fakes.js'
 
 const JOBS = Number(process.argv[2] ?? 300)
 const gc = (globalThis as {gc?: () => void}).gc
 if (!gc) throw new Error('run with --expose-gc')
 
-const FAKE_YTDLP = `#!/bin/sh
-for last; do :; done
-id=$(basename "$last")
-home=""
-prev=""
-for a in "$@"; do
-  case "$prev" in --paths) case "$a" in home:*) home="\${a#home:}";; esac;; esac
-  prev="$a"
-done
-[ "$1" = "--version" ] && { echo 2099.01.01; exit 0; }
-echo "__MDC_INFO__{\\"id\\":\\"$id\\",\\"title\\":\\"T $id\\",\\"duration\\":10,\\"extractor\\":\\"Fake\\",\\"formatId\\":\\"140\\",\\"acodec\\":\\"mp4a\\",\\"filesize\\":1000}"
-for n in 250 500 750; do echo "__MDC_PROGRESS__{\\"status\\":\\"downloading\\",\\"downloaded\\":$n,\\"total\\":1000,\\"file\\":\\"x\\"}"; done
-printf 'fake %s' "$id" > "$home/T $id [$id].m4a"
-echo "__MDC_DONE__{\\"filepath\\":\\"$home/T $id [$id].m4a\\"}"
-`
-const FAKE_FF = '#!/bin/sh\n[ "$1" = "-version" ] && exit 0\nexit 1\n'
-
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'mdc-stress-'))
-const bin = async (name: string, body: string) => {
-  const file = path.join(root, name)
-  await fs.writeFile(file, body, {mode: 0o755})
-  return file
-}
-const binaries = {ytDlp: await bin('yt-dlp', FAKE_YTDLP), ffmpeg: await bin('ffmpeg', FAKE_FF), ffprobe: await bin('ffprobe', FAKE_FF)}
+// the tests' fakes: Node scripts run as `node <script>`, so the stress runs on every OS
+const binaries = await writeFakes(path.join(root, 'fakes'))
 
 const dl = new MediaDownloader({
   dataDir: path.join(root, 'data'),

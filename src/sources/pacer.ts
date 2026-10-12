@@ -76,6 +76,11 @@ export class Pacer {
     return wait
   }
 
+  /** Hold every start for `ms` (at least), outside the doubling of `refused()`. */
+  pause(ms: number): void {
+    this.#nextStart = Math.max(this.#nextStart, this.#now() + Math.max(0, ms))
+  }
+
   /** A request went through: the next refusal starts the back-off from the bottom again. */
   succeeded(): void {
     this.#refusals = 0

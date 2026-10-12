@@ -21,7 +21,7 @@ import {SettingsDrawer} from './components/SettingsDrawer'
 import {SetupModal} from './components/SetupModal'
 import {type MainTab, Stats} from './components/Stats'
 import {UpdateBanner} from './components/UpdateBanner'
-import {YouTubePause} from './components/YouTubePause'
+import {YouTubeAccess} from './components/YouTubeAccess'
 import {AppContext, type AppContextValue, useApp} from './context'
 import {I18nContext, type Translate, translator} from './i18n'
 import {AppStore, BATCH_FINISHED, StoreContext, useStoreValue, WORKING} from './store'
@@ -166,6 +166,7 @@ function Shell({
       }),
     [notify, target],
   )
+  useEffect(() => api().onYouTube(state => target.setYouTube(state)), [target])
 
   const runDoctor = async () => {
     setDiagnosis(await api().doctor())
@@ -184,7 +185,7 @@ function Shell({
         />
         <Layout.Content className="app-content">
           <UpdateBanner />
-          <YouTubePause />
+          <YouTubeAccess />
           {/* Sync Up (in the top card) opens its batches in the tabs below too */}
           <ShowBatchContext.Provider value={showBatch}>
             <DownloadBar />

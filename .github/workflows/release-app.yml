@@ -8,6 +8,8 @@ on:
 
 permissions:
   contents: write
+  # to start the winget manifests once the release exists
+  actions: write
 
 jobs:
   build:
@@ -82,3 +84,9 @@ jobs:
             --repo "$GITHUB_REPOSITORY" --prerelease \
             --title "Media Download Core ${GITHUB_REF_NAME#app-v}" \
             --notes-file notes.md
+      # a release made with the workflow's token fires no "release published" event: start the
+      # winget manifests (checked against Microsoft's schemas) from here instead
+      - name: winget manifests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run winget.yml --repo "$GITHUB_REPOSITORY" -f tag="$GITHUB_REF_NAME"

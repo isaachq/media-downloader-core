@@ -473,6 +473,7 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
       for (const item of pending) this.#settleItem(batch, batch.positions.get(item.url)!, 'ok', {})
       return
     }
+    let deferred = 0
     await this.#engine.preflight(
       pending.map(item => ({url: item.url, id: item.mediaId})),
       {
@@ -482,10 +483,21 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
           const position = batch.positions.get(url)
           if (position === undefined || signal.aborted) return
           if (result.ok) this.#resolveItem(batch, position, result.analysis)
-          else this.#settleItem(batch, position, 'unavailable', {error: result.error})
+          // a bot check blocks for a while, not for good: the item downloads, and is checked then (paced)
+          else if (result.error.code === 'blocked') {
+            deferred++
+            this.#settleItem(batch, position, 'ok', {})
+          } else this.#settleItem(batch, position, 'unavailable', {error: result.error})
         },
       },
     )
+    if (deferred) {
+      this.#engine.log(
+        'warn',
+        `preflight: ${deferred} item(s) not checked — the site asks to confirm this is not a bot; they are checked as they download`,
+        {batchId: batch.id},
+      )
+    }
   }
 
   /** A checked item: downloadable if the source offers the requested kind of stream; sized and classified. */

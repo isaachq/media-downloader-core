@@ -215,6 +215,17 @@ describe('Pacer', () => {
     assert.ok(Date.now() - resumed < 100, 'resume() drops the cool-down')
   })
 
+  it('resume() wakes the callers already waiting out a cool-down', async () => {
+    const pacer = new Pacer({concurrency: 4, spacingMs: 10, jitterMs: 0, backoffMs: 60_000})
+    pacer.refused()
+    const started = Date.now()
+    const waiting = Promise.all([1, 2, 3].map(n => pacer.run(async () => n)))
+    await new Promise(r => setTimeout(r, 30))
+    pacer.resume()
+    assert.deepEqual(await waiting, [1, 2, 3])
+    assert.ok(Date.now() - started < 2000, 'nobody slept the minute through')
+  })
+
   it('a cancelled caller frees its place', async () => {
     const pacer = new Pacer({concurrency: 1, spacingMs: 0, jitterMs: 0})
     let release!: () => void

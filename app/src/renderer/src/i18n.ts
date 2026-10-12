@@ -276,7 +276,6 @@ const en = {
   'settings.validation.none': 'Off — trust the download',
   'settings.longVideo': 'Long video from (minutes)',
   'settings.cookies': 'Cookies from browser',
-  'settings.cookiesHelp': 'For private, members-only or age-restricted videos.',
   'settings.cookies.none': 'None',
   'settings.metadata': 'Write title / artist tags',
   'settings.thumbnail': 'Embed thumbnail as cover',
@@ -392,6 +391,27 @@ const en = {
   'notify.batchDoneBodyUnverified': '{title}: {succeeded}/{total} downloaded (integrity check off)',
   'notify.batchFailed': 'Batch failed',
   'notify.diskFull': 'Not enough disk space',
+  'ytpause.title': "YouTube is asking to confirm you're not a bot",
+  'ytpause.text':
+    'Too many requests from this connection in a short time, so YouTube paused it for a while. YouTube downloads wait and try again by themselves at {at}.',
+  'ytpause.continue': "To continue now, use the session of a browser where you're signed in to YouTube:",
+  'ytpause.use': 'Use and continue',
+  'ytpause.using':
+    "Using {browser}'s session. If YouTube keeps asking, open YouTube in {browser}, check that you're signed in and pass the check if it shows one.",
+  'ytpause.safari':
+    "Safari: Media Download Core needs Full Disk Access to read its cookies (System Settings → Privacy & Security → Full Disk Access). Chrome, Firefox, Edge and Brave don't.",
+  'cause.bot-check': 'bot check',
+  'cause.blocked': 'blocked for a while',
+  'cause.cookies-unreadable': 'cookies unreadable',
+  'hint.bot-check':
+    "YouTube asks to confirm you're not a bot — it tries again by itself, or use your browser's session",
+  'hint.cookies-unreadable':
+    "Couldn't read the browser's cookies — Safari needs Full Disk Access; or choose another browser in Settings",
+  'settings.cookiesHelp':
+    "Your signed-in session, for private, members-only or age-restricted videos — and when YouTube asks to confirm you're not a bot. Applies at once.",
+  'about.star':
+    "If Media Download Core helped you, give it a star on GitHub: it's free, takes a second and helps other people find it.",
+  'about.starButton': 'Star it on GitHub',
   'common.close': 'Close',
   'common.copy': 'Copy',
   'common.copied': 'Copied',
@@ -763,7 +783,6 @@ const es: Record<MessageKey, string> = {
   'settings.validation.none': 'Desactivada — confiar en la descarga',
   'settings.longVideo': 'Video largo desde (minutos)',
   'settings.cookies': 'Cookies del navegador',
-  'settings.cookiesHelp': 'Para videos privados, de miembros o con restricción de edad.',
   'settings.cookies.none': 'Ninguno',
   'settings.metadata': 'Escribir etiquetas de título / artista',
   'settings.thumbnail': 'Incrustar miniatura como portada',
@@ -880,6 +899,26 @@ const es: Record<MessageKey, string> = {
   'notify.batchDoneBodyUnverified': '{title}: {succeeded}/{total} descargados (verificación desactivada)',
   'notify.batchFailed': 'Lote fallido',
   'notify.diskFull': 'No hay espacio suficiente en disco',
+  'ytpause.title': 'YouTube pide confirmar que no eres un bot',
+  'ytpause.text':
+    'Hubo demasiadas solicitudes desde esta conexión en poco tiempo y YouTube la pausó un rato. Las descargas de YouTube esperan y reintentan solas a las {at}.',
+  'ytpause.continue': 'Para continuar ya, usa la sesión de un navegador donde hayas iniciado sesión en YouTube:',
+  'ytpause.use': 'Usar y continuar',
+  'ytpause.using':
+    'Usando la sesión de {browser}. Si YouTube sigue pidiéndolo, abre YouTube en {browser}, revisa que hayas iniciado sesión y pasa la verificación si aparece.',
+  'ytpause.safari':
+    'Safari: Media Download Core necesita Acceso total al disco para leer sus cookies (Ajustes del Sistema → Privacidad y seguridad → Acceso total al disco). Chrome, Firefox, Edge y Brave no.',
+  'cause.bot-check': 'verificación anti-bot',
+  'cause.blocked': 'bloqueo temporal',
+  'cause.cookies-unreadable': 'cookies ilegibles',
+  'hint.bot-check': 'YouTube pide confirmar que no eres un bot — reintenta solo, o usa la sesión de tu navegador',
+  'hint.cookies-unreadable':
+    'No se pudieron leer las cookies del navegador — Safari necesita Acceso total al disco; o elige otro navegador en Configuración',
+  'settings.cookiesHelp':
+    'Tu sesión iniciada, para videos privados, de miembros o con restricción de edad — y cuando YouTube pide confirmar que no eres un bot. Se aplica al instante.',
+  'about.star':
+    'Si Media Download Core te sirvió, regálanos una estrella en GitHub: es gratis, toma un segundo y ayuda a que más gente lo encuentre.',
+  'about.starButton': 'Dar una estrella en GitHub',
   'common.close': 'Cerrar',
   'common.copy': 'Copiar',
   'common.copied': 'Copiado',

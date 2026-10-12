@@ -107,6 +107,15 @@ export const MAX_LISTED_ITEMS = 5000
 /** Most items a caller may ask for explicitly (a whole TikTok profile can hold tens of thousands). */
 export const MAX_REQUESTED_ITEMS = 50_000
 
+/** youtube.com (www, m, music), youtu.be and youtube-nocookie.com urls. */
+export function isYouTubeUrl(url: string): boolean {
+  try {
+    return /(^|\.)(youtube\.com|youtu\.be|youtube-nocookie\.com)$/.test(new URL(url).hostname)
+  } catch {
+    return false
+  }
+}
+
 /**
  * A YouTube Mix ("list=RD…"): a radio YouTube generates on the fly from one
  * video. yt-dlp keeps paginating it into the thousands, so batches cap it.

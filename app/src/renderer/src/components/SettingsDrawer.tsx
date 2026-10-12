@@ -17,12 +17,10 @@ import {
 } from 'antd'
 import type {ValidationLevel} from 'media-downloader-core'
 import {useState} from 'react'
-import {type AppSettings, RESTART_SETTINGS, type ThemeMode} from '../../../shared/contract'
+import {type AppSettings, BROWSERS, RESTART_SETTINGS, type ThemeMode} from '../../../shared/contract'
 import {api} from '../api'
 import {useApp} from '../context'
 import {useT} from '../i18n'
-
-const BROWSERS = ['chrome', 'chromium', 'edge', 'firefox', 'safari', 'brave', 'opera', 'vivaldi']
 
 type Props = {
   readonly open: boolean

@@ -60,7 +60,11 @@ export function DownloadBar() {
   const audio = isAudioFormat(settings.format)
   const valid = isHttpUrl(url)
 
-  const fail = (error: unknown) => void message.error(error instanceof Error ? error.message : String(error))
+  const fail = (error: unknown) => {
+    const text = error instanceof Error ? error.message : String(error)
+    // YouTube's bot check: one line here; the banner above says when it goes on, and how to go on now
+    void message.error(/not a (?:ro)?bot/i.test(text) ? t('hint.bot-check') : text)
+  }
 
   const slideshow = {mode: settings.slideshowMode, secondsPerImage: settings.slideshowSeconds}
   /** A single slideshow link waiting for its choice. */

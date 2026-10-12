@@ -1,5 +1,45 @@
 # Changelog
 
+## App 0.2.0-beta.7.1 · library 1.7.0
+
+Beta 7.1 replaces beta 7, which is withdrawn: everything in beta 7 is here,
+with the fix below. Coming from beta 6, this is the whole beta 7 — Sync Up
+(TikTok accounts kept in step with their folders), retrying failures by
+cause, Downloads and Finished by batch, TikTok slideshows, several links at
+once, notifications, first steps — described under 0.2.0-beta.7 below.
+
+**YouTube's "Sign in to confirm you're not a bot", handled.** Too many
+requests in a short time — pasting a Mix, reloading its list a few times
+and checking its 50 videos at once — makes YouTube block the connection for
+a while. Every video then failed with that message and was marked
+*unavailable*, as if it had been removed. Tried on a real case: once
+blocked, every YouTube client yt-dlp offers is refused; only time or a
+signed-in session gets through. Now:
+
+- It is a *bot check*, not "unavailable". Items the check could not ask
+  about are downloaded anyway, and checked as they download.
+- YouTube is asked politely: checks pause between requests (yt-dlp's own
+  "sleep" pace) and downloads start a second apart.
+- When YouTube blocks, every YouTube request pauses together — 5, then 10,
+  then 20 minutes — and the downloads try again by themselves, instead of
+  each one hammering it and failing.
+- A banner says so, with the time they try again, and offers to go on at
+  once with the session of a browser where you are signed in to YouTube
+  (Safari needs Full Disk Access to read its cookies; Chrome, Firefox, Edge
+  and Brave don't). Browser cookies now apply at once, without restarting.
+- A browser's cookies that can't be read are named as such
+  (*cookies unreadable*).
+
+**About** links the repository, and asks for a star on GitHub if the app
+helped you.
+
+**Library.** Error code `blocked` and hints `bot-check` /
+`cookies-unreadable`; `setCookiesFromBrowser()` (live) and
+`youtubePausedUntil`; `isYouTubeUrl()`. `Pacer.resume()` now wakes the
+callers already waiting out a cool-down (before, they slept it through —
+TikTok's verification-page recovery benefits too). Each release starts its
+winget manifests by itself.
+
 ## Library 1.6.1
 
 **Capped listings of player-page sites stop at the cap, whatever page answers
@@ -13,6 +53,8 @@ workflow builds before publishing, so publishing warns about nothing. The
 library publishes with npm Trusted Publishing: no token is stored anywhere.
 
 ## App 0.2.0-beta.7 · library 1.6.0
+
+*Withdrawn: replaced by 0.2.0-beta.7.1, which includes all of it.*
 
 **Sync Up: TikTok accounts kept in step with their folders.** Turned on in
 Settings, it sits next to New download. Add an account — its folder may

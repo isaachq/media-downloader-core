@@ -1,10 +1,13 @@
-import {HeartFilled} from '@ant-design/icons'
+import {GithubOutlined, HeartFilled, StarFilled} from '@ant-design/icons'
 import {Button, Descriptions, Modal, Space, Typography} from 'antd'
 import {api} from '../api'
 import {useApp} from '../context'
 import {useT} from '../i18n'
 import {Rows} from './Rows'
 import {useUpdateState} from './UpdateBanner'
+
+/** Where the project lives: source, issues, releases — and its stars. */
+const REPO = 'https://github.com/isaachq/media-downloader-core'
 
 const CREDITS: ReadonlyArray<readonly [name: string, license: string, url: string]> = [
   ['Ant Design', 'MIT', 'https://ant.design'],
@@ -38,6 +41,19 @@ export function AboutModal({open, onClose}: {readonly open: boolean; readonly on
           </Typography.Text>
         </Descriptions.Item>
       </Descriptions>
+      <div className="about-star" data-testid="about-star">
+        <Typography.Paragraph>
+          <StarFilled className="star" /> {t('about.star')}
+        </Typography.Paragraph>
+        <Button icon={<GithubOutlined />} href={REPO} target="_blank">
+          {t('about.starButton')}
+        </Button>
+        <Typography.Paragraph type="secondary" className="about-repo">
+          <Typography.Link href={REPO} target="_blank">
+            {REPO.replace('https://', '')}
+          </Typography.Link>
+        </Typography.Paragraph>
+      </div>
       <Typography.Paragraph strong>
         <HeartFilled style={{color: 'var(--bad)'}} /> {t('about.thanks')}
       </Typography.Paragraph>

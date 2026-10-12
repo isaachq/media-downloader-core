@@ -42,8 +42,9 @@ the ⌊CPUs/2⌋ pool and verified file by file.
 
 ![Paste a link, download it as MP4, check its integrity report, find it in Finished, open the run report](docs/demo.gif)
 
-### What's new in beta 7
+### What's new in beta 7 (7.1)
 
+- **YouTube's "confirm you're not a bot", handled** (7.1) — checks and downloads ask YouTube politely; when it blocks the connection anyway, YouTube downloads pause together and try again by themselves, and a banner offers to go on at once with your browser's signed-in session. [How it works](#youtube-when-it-asks-to-confirm-youre-not-a-bot).
 - **Sync Up** — keep TikTok accounts in step with their folders: next to New download, add an account (its folder may already hold its videos), and each sync downloads only what the folder is missing, as a regular batch — now, daily at a time, or every few hours. A folder keeps one format: one with MP4 files gets MP4. Also from the command line (`mdc sync`) and any scheduler. [How it works](#tiktok-sync-sync-up).
 - **Retry what failed, and see why** — each batch tells why items failed (removed, private, network…) and retries them in one click; the run report retries every batch.
 - **One batch at a time** — Downloads and Finished filter by batch (Finished, across sessions); a batch card opens them filtered. Finished also checks files again, exports a CSV and forgets entries.
@@ -280,6 +281,22 @@ if (list.kind === 'playlist') {
 `maxItems` caps a list (listed by yt-dlp itself, so the rest is never fetched).
 A **YouTube Mix** (`list=RD…`, see `isYouTubeMix()`) is an endless radio that
 yt-dlp would paginate into the thousands, so it defaults to 50.
+
+## YouTube: when it asks to confirm you're not a bot
+
+Many requests in a short time — a 50-video Mix checked at once, its list
+reloaded a few times — can make YouTube answer *"Sign in to confirm you're
+not a bot"* to every request from your connection, for a while (minutes to
+hours). It is not the videos: tried on a real case, every YouTube client
+yt-dlp can use was refused just the same. Only time, or a signed-in session,
+gets through.
+
+| | How |
+| --- | --- |
+| Asking politely | Checks of YouTube videos pause between requests (`--sleep-requests 0.75`, yt-dlp's own "sleep" pace); download attempts start a second apart. |
+| When it blocks | The error is `blocked` with hint `bot-check` — not `unavailable`. Items the preflight could not check are downloaded anyway and checked then. Every YouTube request pauses together, 5 → 10 → 20 min (up to 60), and the downloads try again by themselves; other sites keep going. |
+| Going on at once | A browser's signed-in session: `setCookiesFromBrowser('chrome')` (live, no restart) ends the pause and every request carries the session. In the app, the banner offers it; `mdc` takes `--cookies <browser>`. |
+| Safari | Its cookies live in a protected folder: the app (or the terminal running `mdc`) needs Full Disk Access to read them. Chrome, Firefox, Edge and Brave don't (Chrome asks for the Keychain once). Unreadable cookies fail as `cookies-unreadable`. |
 
 ## TikTok (built-in extractor)
 

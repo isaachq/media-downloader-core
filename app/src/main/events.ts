@@ -20,7 +20,11 @@ export class EventCoalescer {
   #logs: LogEntry[] = []
   #timer: NodeJS.Timeout | undefined
 
-  constructor(private readonly send: (bundle: EventBundle) => void) {}
+  constructor(
+    private readonly send: (bundle: EventBundle) => void,
+    /** Engine state every bundle carries (cheap to read): when YouTube requests resume after a bot check. */
+    private readonly youtubePausedUntil: () => number | undefined = () => undefined,
+  ) {}
 
   job(snapshot: JobSnapshot): void {
     this.#jobs.set(snapshot.id, snapshot)
@@ -54,7 +58,13 @@ export class EventCoalescer {
     this.#timer = undefined
     if (!this.#jobs.size && !this.#batches.size && !this.#items.length && !this.#logs.length) return
     const items = this.#items.splice(0, MAX_ITEMS)
-    this.send({jobs: [...this.#jobs.values()], batches: [...this.#batches.values()], items, logs: this.#logs})
+    this.send({
+      jobs: [...this.#jobs.values()],
+      batches: [...this.#batches.values()],
+      items,
+      logs: this.#logs,
+      youtubePausedUntil: this.youtubePausedUntil() ?? null,
+    })
     this.#jobs.clear()
     this.#batches.clear()
     this.#logs = []

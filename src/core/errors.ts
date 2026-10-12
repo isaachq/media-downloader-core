@@ -69,6 +69,17 @@ const NETWORK: readonly RegExp[] = [
   /giving up after \d+ retries/i,
 ]
 
+/** "Sign in to confirm you're not a bot": the site blocked this connection for a while. */
+const BOT_CHECK: readonly RegExp[] = [/confirm (?:that )?you(?:['’]re| are) not a (?:ro)?bot/i]
+
+/** --cookies-from-browser couldn't read the browser (Safari's cookies need Full Disk Access on macOS). */
+const COOKIES_UNREADABLE: readonly RegExp[] = [
+  /Cookies\.binarycookies/i,
+  /could not find \w+ cookies database/i,
+  /failed to (?:decrypt|read) .*cookie/i,
+  /cookie[^\n]*(?:operation not permitted|permission denied)/i,
+]
+
 const DISK_FULL: readonly RegExp[] = [/no space left on device/i, /disk full/i, /errno 28/i, /ENOSPC/]
 
 const ERROR_TAG = 'ERROR:'
@@ -95,6 +106,7 @@ export function ytDlpErrorMessage(stderr: string): string {
 
 /** First matching rule wins: specific causes before generic "unavailable". */
 const HINTS: ReadonlyArray<readonly [RegExp, FailureHint]> = [
+  [/not a (?:ro)?bot/i, 'bot-check'],
   [/private video/i, 'private'],
   [/members.only|join this channel/i, 'members-only'],
   [/sign in to confirm|age.restricted|requires? (?:a )?(?:login|authentication)|cookies/i, 'needs-sign-in'],
@@ -118,6 +130,12 @@ export function classifyYtDlpError(stderr: string, exitCode: number | null): Dow
   // order matters: disk errors trump everything, a 403 page may also say "unavailable"
   const hint = hintFor(message)
   if (DISK_FULL.some(re => re.test(context))) return new DownloadError('disk-full', 'No space left on device.', details)
+  // before "unavailable": a bot check also says "sign in" and "cookies", and blocks for a while, not for good
+  if (BOT_CHECK.some(re => re.test(message)))
+    return new DownloadError('blocked', message, details, undefined, 'bot-check')
+  if (COOKIES_UNREADABLE.some(re => re.test(message))) {
+    return new DownloadError('invalid-request', message, details, undefined, 'cookies-unreadable')
+  }
   if (UNAVAILABLE.some(re => re.test(message)))
     return new DownloadError('unavailable', message, details, undefined, hint)
   if (EXPIRED.some(re => re.test(message))) return new DownloadError('expired', message, details)

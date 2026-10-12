@@ -50,7 +50,8 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 a { color: var(--accent-ink); }
-img { max-width: 100%; display: block; }
+/* width/height attributes only reserve space: the image keeps its own proportions */
+img { max-width: 100%; height: auto; display: block; }
 .wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
 
 /* nav */
@@ -133,6 +134,8 @@ section .intro { color: var(--muted); margin: 0 0 32px; max-width: 46em; font-si
 .gallery { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
 @media (max-width: 800px) { .gallery { grid-template-columns: 1fr; } }
 .gallery figure { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+/* screenshots of different sizes, one frame: 16:10, scaled (never stretched), top of the window kept */
+.gallery img { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; object-position: top center; }
 .gallery figcaption { padding: 12px 16px; color: var(--muted); font-size: 14px; }
 
 .downloads { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
@@ -190,7 +193,7 @@ footer a { color: var(--muted); }
       </div>
     </div>
     <div class="shot">
-      <img src="demo.gif" width="1200" height="760" alt="Pasting a link, downloading it as MP4 and opening its integrity report" data-i18n-alt="hero.alt">
+      <img src="demo.gif" width="960" height="600" alt="Pasting a link, downloading it as MP4 and opening its integrity report" data-i18n-alt="hero.alt">
     </div>
   </div>
 </header>
@@ -276,10 +279,10 @@ footer a { color: var(--muted); }
   <div class="wrap">
     <h2 data-i18n="screens.title">See it</h2>
     <div class="gallery">
-      <figure><img loading="lazy" src="screenshots/preview.png" alt="" width="1600" height="971"><figcaption data-i18n="screens.preview">Preview: choose exactly what to download.</figcaption></figure>
-      <figure><img loading="lazy" src="screenshots/batch.png" alt="" width="1600" height="971"><figcaption data-i18n="screens.batch">A batch with its disk forecast and time left.</figcaption></figure>
-      <figure><img loading="lazy" src="screenshots/finished.png" alt="" width="1600" height="971"><figcaption data-i18n="screens.finished">Finished: play, show in folder, search every file.</figcaption></figure>
-      <figure><img loading="lazy" src="screenshots/report.png" alt="" width="1600" height="971"><figcaption data-i18n="screens.report">The run report, refreshed every 15 seconds.</figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/preview.png" alt="" width="1400" height="905"><figcaption data-i18n="screens.preview">Preview: choose exactly what to download.</figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/batch.png" alt="" width="1400" height="849"><figcaption data-i18n="screens.batch">A batch with its disk forecast and time left.</figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/finished.png" alt="" width="2560" height="1600"><figcaption data-i18n="screens.finished">Finished: play, show in folder, search every file.</figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/report.png" alt="" width="2560" height="1600"><figcaption data-i18n="screens.report">The run report, refreshed every 15 seconds.</figcaption></figure>
     </div>
   </div>
 </section>

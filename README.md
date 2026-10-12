@@ -45,7 +45,12 @@ the ⌊CPUs/2⌋ pool and verified file by file.
 
 ![Paste a link, download it as MP4, check its integrity report, find it in Finished, open the run report](docs/demo.gif)
 
-### What's new in beta 8
+### What's new in beta 9
+
+- **Player-page links on any site** — a search or video page from a site whose videos each have a page with a player now works without adding the site to `sites.json` first: any link yt-dlp doesn't support is tried as a player page, whatever its host. No site is named in the app. [How it works](#player-page-sites-configured-locally).
+- **Lighter integrity checks** — the full check of an H.264 video takes ~17% less CPU, and still finds every error it found before.
+
+### In beta 8
 
 - **YouTube's "confirm you're not a bot", one step at a time** — nothing changes until YouTube refuses. Then the app retries with verification tokens it makes itself (no window, nothing to do); if YouTube still refuses, YouTube downloads stop and wait — not failed — and the app says why and lets you choose: sign in to YouTube inside the app, use a browser's session, or wait. Then everything goes on from where it was. [How it works](#youtube-when-it-asks-to-confirm-youre-not-a-bot).
 - **No more Keychain prompts one after another** (macOS) — a browser's cookies are read once for a whole batch, not by every download.
@@ -481,6 +486,21 @@ names), validated strictly — nothing about them ships with the app:
 {"sites": [{"name": "My site", "hosts": ["example.com"], "videoPath": "^/video/(\\d+)(?:/|$)"}]}
 ```
 
+**Any other host, unconfigured.** With `unsupportedUrlSource`, an http(s) url
+yt-dlp doesn't support ("Unsupported URL") is tried by a source made for its
+host instead of failing — the app makes a `PlayerPageSource` with the default
+`videoPath`, its browser kept on that host. Once it finds videos there, that
+host is read natively from then on; a page that isn't a player page either
+keeps yt-dlp's error. Checks and queued downloads take the same path.
+
+```ts
+new MediaDownloader({
+  dataDir,
+  unsupportedUrlSource: url =>
+    new PlayerPageSource({site: {name: url.hostname, hosts: [url.hostname]}, resolveMedia}),
+})
+```
+
 | | |
 |---|---|
 | Listing | Any page of a search lists **the whole search** from page 1, 500 videos by default (like a TikTok profile; **Load all** in the preview). Pages are read in parallel, ahead of what the pagination shows; the end is a page that comes back empty, missing or repeating an earlier one. The site's menu (featured videos on every page) is left out. |
@@ -686,6 +706,9 @@ npm run typecheck   # strict: exactOptionalPropertyTypes, noUncheckedIndexedAcce
 npm run lint        # biome
 npm run build       # dist/: ESM + CJS + .d.ts
 npm run stress      # orchestrator benchmark with fake binaries
+npm run perf        # every benchmark 3× in fresh processes, medians compared with .perf/baseline.json
+npm run perf -- --save-baseline        # keep this run as the baseline (per machine, not committed)
+npm run perf -- profile stress 1000    # CPU profile + the hottest functions in src/
 npm run demo -- "https://www.youtube.com/watch?v=jNQXAC9IVRw"     # list choices
 npm run demo -- "https://www.youtube.com/watch?v=jNQXAC9IVRw" 0   # download choice 0
 ```

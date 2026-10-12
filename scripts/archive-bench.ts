@@ -1,10 +1,12 @@
-// Memory of the download archive index:  node --expose-gc --import tsx scripts/archive-bench.ts [entries]
+// Memory of the download archive index:  node --expose-gc --import tsx scripts/archive-bench.ts [entries] [--json]
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import {DownloadArchive} from '../src/core/archive.js'
 
-const N = Number(process.argv[2] ?? 50_000)
+const positional = process.argv.slice(2).filter(a => !a.startsWith('--'))
+const JSON_OUT = process.argv.includes('--json')
+const N = Number(positional[0] ?? 50_000)
 const gc = (globalThis as {gc?: () => void}).gc!
 const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdc-archive-bench-'))
 const file = path.join(dir, 'archive.jsonl')
@@ -35,6 +37,10 @@ await archive.open()
 const loadMs = performance.now() - t
 gc()
 const after = process.memoryUsage().heapUsed
-console.log(`entries ${N}: load ${loadMs.toFixed(0)} ms · heap ${((after - before) / 1024 / 1024).toFixed(1)} MiB (${((after - before) / N).toFixed(0)} B/entry)`)
+if (JSON_OUT) {
+  console.log(JSON.stringify({entries: N, loadMs, heapMiB: (after - before) / 1024 / 1024, bytesPerEntry: (after - before) / N}))
+} else {
+  console.log(`entries ${N}: load ${loadMs.toFixed(0)} ms · heap ${((after - before) / 1024 / 1024).toFixed(1)} MiB (${((after - before) / N).toFixed(0)} B/entry)`)
+}
 await archive.close()
 await fs.rm(dir, {recursive: true, force: true})

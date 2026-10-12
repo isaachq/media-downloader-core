@@ -327,3 +327,83 @@ describe('player pages, end to end (local fake)', () => {
     assert.equal(site.hits.media, 0)
   })
 })
+
+describe('player pages on any host yt-dlp doesn’t support (local fake)', () => {
+  /** An engine with no sites configured: a source is made per host only when yt-dlp says "Unsupported URL". */
+  async function open(name: string, config: Parameters<typeof startFakePlayerSite>[0] = {}, fallback = true) {
+    const site = await startFakePlayerSite(config)
+    const made: string[] = []
+    const engine = new MediaDownloader({
+      dataDir: path.join(root, name),
+      binaries: bins,
+      validation: 'none',
+      maxRetries: 1,
+      retryDelayMaxMs: 20,
+      progressIntervalMs: 0,
+      tiktok: false,
+      ...(fallback && {
+        unsupportedUrlSource: (url: URL) => {
+          made.push(url.hostname)
+          return new PlayerPageSource({
+            site: {name: url.hostname, hosts: [url.hostname]},
+            pacing: {concurrency: 6, spacingMs: 0, jitterMs: 0, backoffMs: 20, maxBackoffMs: 50},
+            resolveMedia: site.resolve,
+          })
+        },
+      }),
+    })
+    const scheduler = new BatchScheduler(engine, {progressIntervalMs: 0})
+    cleanups.push(async () => {
+      await scheduler.dispose()
+      await engine.dispose()
+      await site.close()
+    })
+    return {site, engine, scheduler, made, out: path.join(root, name, 'out')}
+  }
+
+  it('reads a search no extractor knows as a player page, then checks and downloads it natively', async () => {
+    const {site, scheduler, made, out} = await open('open-search', {results: 30, perPage: 12})
+    const batch = scheduler.schedule({url: site.searchUrl('nosite'), profile: mp4, outDir: out})
+    await scheduler.whenIdle()
+    const done = scheduler.batch(batch.id)!
+    assert.equal(done.status, 'completed', JSON.stringify(done.error))
+    assert.equal(done.jobs.succeeded, 30)
+    assert.equal((await allFiles(out)).length, 30)
+    assert.equal(site.hits.resolved, 30, 'downloaded through the player, one lookup each')
+    assert.deepEqual(made, ['localhost'], 'one source for the host, made once')
+  })
+
+  it('downloads a queued video page yt-dlp refuses (e.g. queued before a restart) with its host’s source', async () => {
+    const {site, engine, made, out} = await open('open-job', {results: 1, perPage: 1})
+    const job = engine.add({url: `${site.origin}/video/${site.ids[0]}/nosite`, profile: mp4, outDir: out})
+    await engine.whenIdle()
+    const done = engine.job(job.id)!
+    assert.equal(done.status, 'completed', JSON.stringify(done.error))
+    assert.deepEqual(
+      done.attempts.map(a => a.strategy),
+      ['primary', 'source-fallback'],
+    )
+    assert.equal((await allFiles(out)).length, 1)
+    // learned: the next page of the host goes straight to its source
+    await engine.analyze(`${site.origin}/video/${site.ids[0]}/nosite`)
+    assert.deepEqual(made, ['localhost'])
+  })
+
+  it('checks video pages yt-dlp refuses with their host’s source', async () => {
+    const {site, engine} = await open('open-check', {results: 2, perPage: 2, removed: ['10001']})
+    const [kept, gone] = [`${site.origin}/video/10002/nosite`, `${site.origin}/video/10001/nosite`]
+    const results = await engine.preflight([{url: kept}, {url: gone}])
+    assert.equal(results.get(kept)?.ok, true)
+    const failed = results.get(gone)
+    assert.ok(failed && !failed.ok)
+    assert.equal(failed.error.hint, 'removed', 'its own reason, not "Unsupported URL"')
+  })
+
+  it('a page that is no player page either stays "Unsupported URL", and so does any url without the option', async () => {
+    const {site, engine} = await open('open-nothing', {results: 3})
+    await assert.rejects(engine.analyze(`${site.origin}/nosite/about`), {hint: 'unsupported-url'})
+    const plain = await open('open-off', {results: 3}, false)
+    await assert.rejects(plain.engine.analyze(plain.site.searchUrl('nosite')), {hint: 'unsupported-url'})
+    assert.deepEqual(plain.made, [])
+  })
+})

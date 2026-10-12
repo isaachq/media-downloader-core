@@ -285,7 +285,13 @@ export type JobStep = {
 /** One try at running the job's steps. */
 /** How an attempt tried: as requested, with fresh metadata, or with a relaxed format. */
 /** extractor-fallback: a native source (TikTok) could not read the post — yt-dlp tries instead. */
-export type AttemptStrategy = 'primary' | 'fresh-extraction' | 'format-fallback' | 'extractor-fallback'
+/** source-fallback: yt-dlp doesn't support the url — the source made for its host tries instead. */
+export type AttemptStrategy =
+  | 'primary'
+  | 'fresh-extraction'
+  | 'format-fallback'
+  | 'extractor-fallback'
+  | 'source-fallback'
 
 export type AttemptRecord = {
   readonly id: TraceId
@@ -651,6 +657,14 @@ export type DownloaderOptions = {
    * per site the user configured). Asked after the built-in ones.
    */
   readonly sources?: readonly MediaSource[] | undefined
+  /**
+   * For an http(s) url yt-dlp doesn't support ("Unsupported URL"): a native
+   * source made for that url's host (e.g. a `PlayerPageSource` for it), tried
+   * instead of failing. No site is named anywhere — any host may be tried.
+   * Once it reads something there, it reads that host's urls from then on.
+   * Return undefined to leave the url unsupported.
+   */
+  readonly unsupportedUrlSource?: ((url: URL) => MediaSource | undefined) | undefined
   /** Store a SHA-256 of every finished file in the archive. Default true. */
   readonly checksums?: boolean | undefined
   /** Skip media already downloaded with the same profile. Default true. */

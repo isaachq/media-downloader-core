@@ -1,5 +1,6 @@
 // Large-batch benchmark of the scheduler with fake tools (no network):
-//   node --expose-gc --import tsx scripts/batch-bench.ts [items]
+//   node --expose-gc --import tsx scripts/batch-bench.ts [items] [--json]
+// --json prints one machine-readable line instead (used by scripts/perf.ts).
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
@@ -8,7 +9,9 @@ import {MediaDownloader} from '../src/downloader.js'
 import {BatchScheduler} from '../src/scheduler.js'
 import {writeFakes} from '../test/helpers/fakes.js'
 
-const ITEMS = Number(process.argv[2] ?? 500)
+const positional = process.argv.slice(2).filter(a => !a.startsWith('--'))
+const JSON_OUT = process.argv.includes('--json')
+const ITEMS = Number(positional[0] ?? 500)
 const gc = (globalThis as {gc?: () => void}).gc
 if (!gc) throw new Error('run with --expose-gc')
 
@@ -32,6 +35,7 @@ gc()
 const heapBefore = process.memoryUsage().heapUsed
 const loop = monitorEventLoopDelay({resolution: 1})
 loop.enable()
+const cpuBefore = process.cpuUsage()
 const started = performance.now()
 let checkedAt = 0
 scheduler.on('batch', batch => {
@@ -41,6 +45,7 @@ scheduler.on('batch', batch => {
 const batch = scheduler.schedule({url: `https://fake.test/list?n=${ITEMS}`, profile: {kind: 'audio', container: 'm4a'}, outDir: path.join(root, 'out')})
 await scheduler.whenIdle()
 const total = (performance.now() - started) / 1000
+const cpu = process.cpuUsage(cpuBefore)
 loop.disable()
 gc()
 const heapAfter = process.memoryUsage().heapUsed
@@ -51,14 +56,40 @@ const cacheDir = path.join(dataDir, 'cache')
 const ms = (ns: number) => (ns / 1e6).toFixed(1)
 
 const done = scheduler.batch(batch.id)!
-console.log(`items                ${ITEMS} → ${done.status} (${done.jobs.succeeded} ok)${done.error ? ` [${done.error.code}] ${done.error.message}` : ''}`)
-console.log(`time                 preflight ${((checkedAt - started) / 1000).toFixed(1)}s · total ${total.toFixed(1)}s`)
-console.log(`batch events         ${batchEvents} (${(batchEventBytes / 1024 / 1024).toFixed(1)} MiB serialized)`)
-console.log(`job events           ${jobEvents}`)
-console.log(`event loop delay     p50 ${ms(loop.percentile(50))} ms · p99 ${ms(loop.percentile(99))} ms · max ${ms(loop.max)} ms`)
-console.log(`heap after GC        ${((heapAfter - heapBefore) / 1024 / 1024).toFixed(1)} MiB growth`)
-console.log(`state files          ${sizes.map(([f, s]) => `${f}=${(s / 1024).toFixed(0)}KiB`).join(' ')}`)
-console.log(`cache left           ${(await fs.readdir(cacheDir).catch(() => [])).length} files`)
+const cacheLeft = (await fs.readdir(cacheDir).catch(() => [])).length
+const cpuMsPerItem = (cpu.user + cpu.system) / 1000 / ITEMS
+
+if (JSON_OUT) {
+  console.log(
+    JSON.stringify({
+      items: ITEMS,
+      status: done.status,
+      succeeded: done.jobs.succeeded,
+      preflightSec: (checkedAt - started) / 1000,
+      totalSec: total,
+      batchEvents,
+      batchEventKiB: batchEventBytes / 1024,
+      jobEvents,
+      cpuMsPerItem,
+      loopP50Ms: loop.percentile(50) / 1e6,
+      loopP99Ms: loop.percentile(99) / 1e6,
+      loopMaxMs: loop.max / 1e6,
+      heapGrowthMiB: (heapAfter - heapBefore) / 1024 / 1024,
+      stateFilesKiB: Object.fromEntries(sizes.map(([f, s]) => [f, s / 1024])),
+      cacheLeft,
+    }),
+  )
+} else {
+  console.log(`items                ${ITEMS} → ${done.status} (${done.jobs.succeeded} ok)${done.error ? ` [${done.error.code}] ${done.error.message}` : ''}`)
+  console.log(`time                 preflight ${((checkedAt - started) / 1000).toFixed(1)}s · total ${total.toFixed(1)}s`)
+  console.log(`batch events         ${batchEvents} (${(batchEventBytes / 1024 / 1024).toFixed(1)} MiB serialized)`)
+  console.log(`job events           ${jobEvents}`)
+  console.log(`event loop delay     p50 ${ms(loop.percentile(50))} ms · p99 ${ms(loop.percentile(99))} ms · max ${ms(loop.max)} ms`)
+  console.log(`heap after GC        ${((heapAfter - heapBefore) / 1024 / 1024).toFixed(1)} MiB growth`)
+  console.log(`state files          ${sizes.map(([f, s]) => `${f}=${(s / 1024).toFixed(0)}KiB`).join(' ')}`)
+  console.log(`cache left           ${cacheLeft} files`)
+  console.log(`main-thread CPU      ${cpuMsPerItem.toFixed(2)} ms per item`)
+}
 await scheduler.dispose()
 await engine.dispose()
 await fs.rm(root, {recursive: true, force: true})

@@ -82,8 +82,10 @@ let restoring: Promise<void> = Promise.resolve()
 const tiktokBrowser = createTikTokBrowser(process.env['MDC_TIKTOK_ORIGIN'])
 /** YouTube's attestation (after a bot check) and the account the user may choose to sign in with. */
 const youtube = new YouTubeController(state => send(CHANNEL.youtube, state))
-/** Hidden Chromium windows of the player-page sites the user configured, one pool per site. */
+/** Hidden Chromium windows of the player-page sites (configured, or tried by host), one pool per site. */
 const playerBrowsers: Array<ReturnType<typeof createPlayerBrowser>> = []
+/** Player-page sources made for hosts yt-dlp doesn't support, by host: one per host however often asked. */
+const hostSources = new Map<string, PlayerPageSource>()
 let updater: Updater | undefined
 /** The link being read for a preview, if any. */
 let reading: AbortController | undefined
@@ -189,6 +191,22 @@ function playerSources(log: (level: 'info' | 'warn', message: string) => void): 
   }
 }
 
+/**
+ * Any http(s) link yt-dlp doesn't support is tried as a player-page site,
+ * whatever its host — no site is named here or shipped with the app. The
+ * engine keeps it once it finds videos there; its browser stays on that host.
+ */
+function hostSource(url: URL, log: (level: 'info' | 'warn', message: string) => void): PlayerPageSource {
+  const host = url.hostname.toLowerCase().replace(/^www\./, '')
+  const known = hostSources.get(host)
+  if (known) return known
+  const browser = createPlayerBrowser([host])
+  playerBrowsers.push(browser)
+  const source = new PlayerPageSource({site: {name: host, hosts: [host]}, resolveMedia: browser.resolve, log})
+  hostSources.set(host, source)
+  return source
+}
+
 function createEngine(current: AppSettings): void {
   const dataDir = app.getPath('userData')
   const binaries = binariesFromEnv()
@@ -210,6 +228,7 @@ function createEngine(current: AppSettings): void {
     },
     // the engine's log isn't there yet: messages wait for it
     sources: playerSources((level, message) => queueMicrotask(() => engine.log(level, message))),
+    unsupportedUrlSource: url => hostSource(url, (level, message) => engine.log(level, message)),
     longVideoMinutes: current.longVideoMinutes,
     // a bot check: PO tokens from the app's own Chromium, then a hold for the user (sign in, or wait)
     youtube: {attestation: youtube.strategies, askUser: true},

@@ -20,6 +20,7 @@ export type FakeBinaries = {
  *   …slow…         downloads take ~400 ms
  *   …hang…         prints its info, then goes silent forever (a stall)
  *   …unavailable…  fails like a removed video
+ *   …nosite…       a site no extractor reads: "ERROR: Unsupported URL: <url>" (checks and downloads)
  *   …flaky…        fails with a network error on the first attempt only
  *   …bot…          YouTube's bot check ("Sign in to confirm you're not a bot") when checked, and on
  *                  the first download attempt — never with a signed-in session (cookies)
@@ -74,6 +75,7 @@ if (args.includes('--dump-json')) {
     const duration = Number(q.get('dur') || 10)
     const size = q.get('size') ? Number(q.get('size')) : undefined
     if (u.includes('unavailable')) { console.error('ERROR: [youtube] ' + uid + ': Video unavailable. This video has been removed'); continue }
+    if (u.includes('nosite')) { console.error('ERROR: Unsupported URL: ' + u); continue }
     if (refused(u, uid, true)) { console.error('ERROR: [youtube] ' + uid + ': Sign in to confirm you\u2019re not a bot. Use --cookies-from-browser or --cookies for the authentication.'); continue }
     const formats = [
       {format_id: '140', ext: 'm4a', vcodec: 'none', acodec: 'mp4a.40.2', abr: 128, filesize: size ?? 1000},
@@ -82,11 +84,12 @@ if (args.includes('--dump-json')) {
     console.log(JSON.stringify({id: uid, title: 'Title ' + uid, extractor_key: 'Fake', duration, webpage_url: u, original_url: u, formats}))
   }
   // exitCode + return, not process.exit(): exit() truncates large stdout writes on a pipe
-  process.exitCode = urls.some(u => u.includes('unavailable')) ? 1 : 0
+  process.exitCode = urls.some(u => u.includes('unavailable') || u.includes('nosite')) ? 1 : 0
   return
 }
 
 if (args.includes('--dump-single-json')) {
+  if (url.includes('nosite')) { console.error('ERROR: Unsupported URL: ' + url); process.exit(1) }
   if (url.includes('unavailable')) { console.error('ERROR: [youtube] ' + id + ': Video unavailable. This video has been removed'); process.exit(1) }
   if (refused(url, id, true)) { console.error('ERROR: [youtube] ' + id + ': Sign in to confirm you\u2019re not a bot. Use --cookies-from-browser or --cookies for the authentication.'); process.exit(1) }
   const audio = {format_id: '140', ext: 'm4a', vcodec: 'none', acodec: 'mp4a.40.2', abr: 128, filesize: 1000}
@@ -119,6 +122,7 @@ if (url.includes('hang')) {
   return
 }
 if (url.includes('unavailable')) { console.error('ERROR: [youtube] ' + id + ': Video unavailable'); process.exit(1) }
+if (url.includes('nosite')) { console.error('ERROR: Unsupported URL: ' + url); process.exit(1) }
 const counter = path.join(dataDir, 'attempts-' + id)
 const attempts = (fs.existsSync(counter) ? Number(fs.readFileSync(counter, 'utf8')) : 0) + 1
 fs.writeFileSync(counter, String(attempts))

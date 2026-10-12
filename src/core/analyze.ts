@@ -196,6 +196,7 @@ export type ExtractManyOptions = AnalyzeOptions & {
 }
 
 const ERROR_LINE = /^ERROR:\s*\[[^\]]+\]\s*([^\s:]+):\s*(.*)$/
+const UNSUPPORTED_LINE = /^ERROR:\s*Unsupported URL:\s*(\S+)/i
 
 /**
  * Extract many single videos with ONE yt-dlp process (`-j`: one JSON line
@@ -268,6 +269,12 @@ export async function extractMany(
   // failures: "ERROR: [extractor] <id>: <message>" — matched by id, else in order
   const unmatchedErrors: JobError[] = []
   for (const line of run.stderr.split('\n')) {
+    // "ERROR: Unsupported URL: <url>" names the url itself, not an id
+    const unsupported = UNSUPPORTED_LINE.exec(line.trim())?.[1]
+    if (unsupported && byUrl.has(unsupported) && !results.has(unsupported)) {
+      settle(unsupported, {ok: false, error: classifyYtDlpError(line, 1).toJSON()})
+      continue
+    }
     const match = ERROR_LINE.exec(line.trim())
     if (!match) continue
     const error = classifyYtDlpError(line, 1).toJSON()

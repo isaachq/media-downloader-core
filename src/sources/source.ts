@@ -18,6 +18,12 @@ export interface MediaSource {
    */
   readonly available: boolean
   handles(url: string): boolean
+  /**
+   * How many entries a listing at `url` loads unless the caller asks for a
+   * number (a whole profile or search can run into thousands). Undefined:
+   * not a listing, or no default.
+   */
+  defaultListSize?(url: string): number | undefined
   analyze(
     url: string,
     opts: {
@@ -67,6 +73,10 @@ export type SourceDownload = {
 export type SourceFile = {
   readonly filepath: string
   readonly info: DownloadedInfo
-  /** Tags the engine writes into the finished file. */
-  readonly tags: MediaTags
+  /**
+   * Tags the engine writes into the finished file (a stream copy). Left out,
+   * a file already in the requested format is kept exactly as downloaded:
+   * only validated.
+   */
+  readonly tags?: MediaTags | undefined
 }

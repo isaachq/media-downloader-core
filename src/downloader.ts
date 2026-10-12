@@ -23,7 +23,9 @@ import {
   isInside,
   mediaFileStem,
   moveIntoPlace,
+  publishedSeconds,
   shortHash,
+  stampPublished,
 } from './core/files.js'
 import {profileKey, profileProblem, rulesFor} from './core/formats.js'
 import {HashPool} from './core/hash-pool.js'
@@ -152,10 +154,12 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       longVideoMinutes: Math.max(1, options.longVideoMinutes ?? 30),
       extraYtDlpArgs: options.extraYtDlpArgs ?? [],
     }
-    this.#sources =
-      options.tiktok === false
+    this.#sources = [
+      ...(options.tiktok === false
         ? []
-        : [new TikTokSource({log: (level, message) => this.#log(level, message), ...options.tiktok})]
+        : [new TikTokSource({log: (level, message) => this.#log(level, message), ...options.tiktok})]),
+      ...(options.sources ?? []),
+    ]
     this.binaries = new BinaryManager(options.dataDir, options.binaries)
     this.archive = new DownloadArchive(path.join(options.dataDir, 'archive.jsonl'))
     this.#queue = new PendingJournal(path.join(options.dataDir, 'pending.jsonl'), () => this.#pendingEntries())
@@ -394,6 +398,14 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       this.#analyses.delete(analysis)
       opts.signal?.removeEventListener('abort', forward)
     }
+  }
+
+  /**
+   * How many entries a listing at `url` loads by default, when its native
+   * source has a default (500 for TikTok profiles and player-page listings).
+   */
+  defaultListSize(url: string): number | undefined {
+    return this.#sources.find(source => source.handles(url))?.defaultListSize?.(url)
   }
 
   /** The native source for a url, if any. O(sources). */
@@ -766,7 +778,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
           onPostprocess: () => this.#update(job, {status: 'processing', progress: {}}, true),
         })
     info = {...info, ...downloaded.info}
-    if (source && 'tags' in downloaded && this.#settings.embedMetadata) tags = downloaded.tags
+    if (source && 'tags' in downloaded && downloaded.tags && this.#settings.embedMetadata) tags = downloaded.tags
     this.#stepDone(job, 'download', 'success')
 
     // ── convert (video only, and only when the codecs don't already match)
@@ -845,6 +857,13 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     })
     const finalPath = await moveIntoPlace(file, path.join(request.outDir, `${stem}${path.extname(file)}`))
     await fs.rm(workDir, {recursive: true, force: true})
+    const published = publishedSeconds(info)
+    if (published !== undefined) {
+      // a date the volume won't take (some network shares) is not worth failing the job
+      await stampPublished(finalPath, published).catch(error =>
+        this.#log('debug', `could not set the publication date on the file: ${String(error)}`, job),
+      )
+    }
 
     if (this.#settings.checksums) report = {...report, sha256: await this.#hashes.sha256(finalPath, signal)}
     job.validation = report

@@ -144,6 +144,8 @@ export type Preview =
       readonly mix: boolean
       /** The entry cap the listing used. */
       readonly maxItems: number
+      /** Items the list holds in all, when the site tells (a TikTok profile's video count). */
+      readonly total?: number | undefined
     }
 
 export type SetupOutcome = {

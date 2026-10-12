@@ -235,6 +235,10 @@ const en = {
   'preview.mix':
     'YouTube Mix — generated on the fly from this video and practically endless. Showing the first {count}.',
   'preview.capped': 'Long list — showing the first {count}.',
+  'preview.partial': 'Showing {count} of {total}.',
+  'preview.loadAll': 'Load all ({total})',
+  'preview.loadEverything': 'Load all',
+  'preview.col.published': 'Published',
   'preview.load': 'Load',
   'preview.reload': 'Reload',
   'preview.search': 'Filter by title or channel',
@@ -505,6 +509,10 @@ const es: Record<MessageKey, string> = {
   'preview.mix':
     'Mix de YouTube — se genera al momento a partir de este video y prácticamente no tiene fin. Mostrando los primeros {count}.',
   'preview.capped': 'Lista larga — mostrando los primeros {count}.',
+  'preview.partial': 'Mostrando {count} de {total}.',
+  'preview.loadAll': 'Cargar todo ({total})',
+  'preview.loadEverything': 'Cargar todo',
+  'preview.col.published': 'Publicado',
   'preview.load': 'Cargar',
   'preview.reload': 'Recargar',
   'preview.search': 'Filtrar por título o canal',

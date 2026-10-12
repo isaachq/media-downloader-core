@@ -3,6 +3,7 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import {after, before, describe, it} from 'node:test'
+import {MAX_REQUESTED_ITEMS} from '../src/core/analyze.js'
 import {MediaDownloader} from '../src/downloader.js'
 import {BatchScheduler} from '../src/scheduler.js'
 import type {BatchSnapshot, BatchStatus, LogEntry} from '../src/types.js'
@@ -79,7 +80,7 @@ describe('BatchScheduler', () => {
     const done = scheduler.batch(capped.id)!
     assert.equal(done.preflight.total, 30)
     assert.equal(done.jobs.succeeded, 30)
-    for (const bad of [0, -1, 1.5, 5001]) {
+    for (const bad of [0, -1, 1.5, MAX_REQUESTED_ITEMS + 1]) {
       assert.throws(
         () => scheduler.schedule({url: 'https://fake.test/list', profile: audio, outDir: out, maxItems: bad}),
         /maxItems/,

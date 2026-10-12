@@ -29,6 +29,19 @@ export function bytes(value: number | undefined, locale: string): string {
 export const rate = (bytesPerSecond: number | undefined, locale: string): string =>
   bytesPerSecond ? `${bytes(bytesPerSecond, locale)}/s` : ''
 
+const dayFormatters = new Map<string, Intl.DateTimeFormat>()
+
+/** Unix seconds → the locale's short date ("Mar 5, 2024" / "5 mar 2024"); '' when unknown. */
+export function day(seconds: number | undefined, locale: string): string {
+  if (seconds === undefined || !(seconds > 0)) return ''
+  let formatter = dayFormatters.get(locale)
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat(locale, {year: 'numeric', month: 'short', day: 'numeric'})
+    dayFormatters.set(locale, formatter)
+  }
+  return formatter.format(seconds * 1000)
+}
+
 export function clock(seconds: number | undefined): string {
   if (seconds === undefined || !(seconds > 0)) return ''
   const total = Math.round(seconds)

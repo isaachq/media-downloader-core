@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs'
 import * as path from 'node:path'
 import {app, BrowserWindow, dialog, ipcMain, nativeTheme, screen, shell} from 'electron'
 import {
@@ -10,8 +11,11 @@ import {
   isYouTubeMix,
   type JobId,
   MAX_LISTED_ITEMS,
+  MAX_REQUESTED_ITEMS,
   MediaDownloader,
   MIX_DEFAULT_ITEMS,
+  PlayerPageSource,
+  parsePlayerPageSites,
   searchTrace,
   TIKTOK_PROFILE_DEFAULT_ITEMS,
   type VideoAnalysis,
@@ -27,6 +31,7 @@ import {
   type SetupOutcome,
 } from '../shared/contract'
 import {EventCoalescer} from './events'
+import {createPlayerBrowser} from './player-browser'
 import {defaultSettings, SettingsStore} from './settings'
 import {createTikTokBrowser} from './tiktok-browser'
 import type {InstallKind} from './updates/feed'
@@ -55,6 +60,8 @@ let settings: SettingsStore
 let restoring: Promise<void> = Promise.resolve()
 /** Hidden Chromium for TikTok pages that only open in a browser. */
 const tiktokBrowser = createTikTokBrowser(process.env['MDC_TIKTOK_ORIGIN'])
+/** Hidden Chromium windows of the player-page sites the user configured, one pool per site. */
+const playerBrowsers: Array<ReturnType<typeof createPlayerBrowser>> = []
 let updater: Updater | undefined
 /** The link being read for a preview, if any. */
 let reading: AbortController | undefined
@@ -129,6 +136,31 @@ function toProfile(input: ScheduleInput): FormatProfile {
   return {kind: 'video', container: input.format, ...(input.quality !== 'best' && {maxHeight: Number(input.quality)})}
 }
 
+/**
+ * Player-page sites the user configured for themselves in a local file —
+ * `<userData>/sites.json`, or the one MDC_SITES_FILE names. None ship with the
+ * app: no file, no such sites. A broken file is reported in the log.
+ */
+function playerSources(log: (level: 'info' | 'warn', message: string) => void): PlayerPageSource[] {
+  const file = process.env['MDC_SITES_FILE'] || path.join(app.getPath('userData'), 'sites.json')
+  let text: string
+  try {
+    text = readFileSync(file, 'utf8')
+  } catch {
+    return []
+  }
+  try {
+    return parsePlayerPageSites(JSON.parse(text)).map(site => {
+      const browser = createPlayerBrowser(site.hosts)
+      playerBrowsers.push(browser)
+      return new PlayerPageSource({site, resolveMedia: browser.resolve, log})
+    })
+  } catch (error) {
+    log('warn', `${file}: ${error instanceof Error ? error.message : String(error)} — no sites from it were loaded`)
+    return []
+  }
+}
+
 function createEngine(current: AppSettings): void {
   const dataDir = app.getPath('userData')
   const binaries = binariesFromEnv()
@@ -148,6 +180,8 @@ function createEngine(current: AppSettings): void {
         pacing: {spacingMs: 0, jitterMs: 0},
       }),
     },
+    // the engine's log isn't there yet: messages wait for it
+    sources: playerSources((level, message) => queueMicrotask(() => engine.log(level, message))),
     longVideoMinutes: current.longVideoMinutes,
     ...(current.cookiesFromBrowser && {cookiesFromBrowser: current.cookiesFromBrowser}),
     ...(binaries && {binaries}),
@@ -190,7 +224,10 @@ function createWindow(): void {
   })
   // remember size and position for the next launch (normal bounds even when maximized)
   // the hidden TikTok reader must never keep the app alive on its own
-  window.on('closed', () => tiktokBrowser.close())
+  window.on('closed', () => {
+    tiktokBrowser.close()
+    for (const browser of playerBrowsers) browser.close()
+  })
   window.on('close', () => {
     if (!window) return
     writeWindowState(stateFile, {...window.getNormalBounds(), maximized: window.isMaximized()})
@@ -256,14 +293,12 @@ function registerIpc(): void {
   ipcMain.handle(CHANNEL.analyze, async (_event, url: unknown, maxItems: unknown): Promise<Preview> => {
     if (typeof url !== 'string') throw new Error('Invalid request.')
     const mix = isYouTubeMix(url)
-    const valid = Number.isInteger(maxItems) && (maxItems as number) >= 1 && (maxItems as number) <= MAX_LISTED_ITEMS
+    const valid = Number.isInteger(maxItems) && (maxItems as number) >= 1 && (maxItems as number) <= MAX_REQUESTED_ITEMS
     const cap = valid
       ? (maxItems as number)
       : mix
         ? MIX_DEFAULT_ITEMS
-        : isTikTokProfile(url)
-          ? TIKTOK_PROFILE_DEFAULT_ITEMS
-          : MAX_LISTED_ITEMS
+        : (engine.defaultListSize(url) ?? (isTikTokProfile(url) ? TIKTOK_PROFILE_DEFAULT_ITEMS : MAX_LISTED_ITEMS))
     // one link is read at a time; a new one (or Cancel) stops the previous reading
     reading?.abort()
     const current = new AbortController()
@@ -296,6 +331,7 @@ function registerIpc(): void {
       singleVideoUrl: analysis.singleVideoUrl,
       mix,
       maxItems: cap,
+      total: analysis.total,
     }
   })
   ipcMain.handle(CHANNEL.analyzeCancel, () => reading?.abort())
@@ -396,6 +432,7 @@ else {
     event.preventDefault()
     quitting = true
     tiktokBrowser.close()
+    for (const browser of playerBrowsers) browser.close()
     // saves pending batches and jobs, stops processes, keeps partial downloads for next launch
     void scheduler
       .dispose()

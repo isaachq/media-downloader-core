@@ -1,7 +1,7 @@
 import {EventEmitter} from 'node:events'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
-import {assertHttpUrl, isYouTubeMix, MAX_LISTED_ITEMS, MIX_DEFAULT_ITEMS} from './core/analyze.js'
+import {assertHttpUrl, isYouTubeMix, MAX_REQUESTED_ITEMS, MIX_DEFAULT_ITEMS} from './core/analyze.js'
 import {estimateBytes, jobTier, matchingChoice, peakBytes} from './core/cost.js'
 import {cancelledError, DownloadError, toJobError} from './core/errors.js'
 import {WorkMeter} from './core/eta.js'
@@ -164,8 +164,8 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
       throw new DownloadError('invalid-request', 'analysis must be the analysis of a single video.')
     }
     const {maxItems} = request
-    if (maxItems !== undefined && !(Number.isInteger(maxItems) && maxItems >= 1 && maxItems <= MAX_LISTED_ITEMS)) {
-      throw new DownloadError('invalid-request', `maxItems must be an integer from 1 to ${MAX_LISTED_ITEMS}.`)
+    if (maxItems !== undefined && !(Number.isInteger(maxItems) && maxItems >= 1 && maxItems <= MAX_REQUESTED_ITEMS)) {
+      throw new DownloadError('invalid-request', `maxItems must be an integer from 1 to ${MAX_REQUESTED_ITEMS}.`)
     }
 
     const batch: Batch = {
@@ -176,7 +176,9 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
         outDir: path.resolve(request.outDir),
         maxItems:
           maxItems ??
-          (isYouTubeMix(url) ? MIX_DEFAULT_ITEMS : isTikTokProfile(url) ? TIKTOK_PROFILE_DEFAULT_ITEMS : undefined),
+          (isYouTubeMix(url)
+            ? MIX_DEFAULT_ITEMS
+            : (this.#engine.defaultListSize(url) ?? (isTikTokProfile(url) ? TIKTOK_PROFILE_DEFAULT_ITEMS : undefined))),
       },
       status: 'scheduled',
       kind: undefined,
@@ -720,7 +722,7 @@ function publicItem(item: ItemState): PreflightItem {
 function selectionIssue(selection: BatchSelection): string | undefined {
   const {entries} = selection
   if (!Array.isArray(entries) || entries.length === 0) return 'selection.entries must not be empty.'
-  if (entries.length > MAX_LISTED_ITEMS) return `selection.entries holds at most ${MAX_LISTED_ITEMS} items.`
+  if (entries.length > MAX_REQUESTED_ITEMS) return `selection.entries holds at most ${MAX_REQUESTED_ITEMS} items.`
   for (const entry of entries) {
     if (typeof entry?.url !== 'string' || !/^https?:\/\//.test(entry.url))
       return 'Every selected entry needs an http(s) url.'

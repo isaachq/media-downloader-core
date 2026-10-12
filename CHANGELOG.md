@@ -1,5 +1,34 @@
 # Changelog
 
+## App 0.2.0-beta.5 · library 1.4.0
+
+**Whole TikTok profiles.** The preview tells how many posts a profile has and
+offers **Load all (N)**. The listing runs in chunks of 500, each kept as soon as
+it is in: a refusal half-way returns what was listed, a cancel keeps it, and
+loading again continues from there (measured against the local fake: 1,100
+posts, the last 600 in 41 listing pages instead of re-reading the first 500).
+Requests may ask for up to 50,000 items. A **Published** column shows each
+post's date.
+
+**Files dated by publication.** Every finished file gets its publication date
+as modification time — TikTok's post time, yt-dlp's timestamp (or noon UTC of
+its upload day) for other sites — so sorting a folder by date sorts by
+publication.
+
+**Player-page sites, configured locally.** Sites whose videos sit on player
+pages listed by paged searches can be added by the user in a local
+`sites.json` (none ship with the app). A search link lists every page (500 by
+default, Load all), reading pages ahead in parallel; each pick is checked
+over HTTP, its media link is read from the site's own player in a hidden,
+sandboxed window, and the file comes straight from the media server with
+resume. An MP4 is kept byte for byte as served (no conversion, no tag
+rewrite): it is only validated, and dated by the server's Last-Modified. Measured on a 195-result, 9-page search: listed in 3.8 s (6.3 s
+reading only the linked pages), all 195 checked in ~13 s (22.5 s at 6 at a
+time), two ~200 MB videos downloaded and validated in ~14 s.
+
+**Shared media fetch.** TikTok and player-page sites stream through one
+`fetchMedia` (Range resume, stall watchdog, exact-size check).
+
 ## App 0.2.0-beta.4 · library 1.3.0
 
 **TikTok behind its verification page.** When TikTok answers with its "please

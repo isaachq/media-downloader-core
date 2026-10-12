@@ -314,7 +314,7 @@ describe('TikTok, end to end (local fake)', () => {
   it('backs up a whole profile as MP3: listing de-duplicated, pinned post kept, each post read once', async () => {
     const {site, scheduler, out} = await setup('profile', {posts: 34, repeatPage: true, pinned: true})
     const batch = scheduler.schedule({url: `${site.origin}/@${site.user}`, profile: audio, outDir: out})
-    assert.equal(batch.maxItems, undefined, 'the default cap applies to real tiktok.com profiles')
+    assert.equal(batch.maxItems, 500, 'profiles load 500 by default, wherever the source serves them')
     await scheduler.whenIdle()
     const done = scheduler.batch(batch.id)!
     assert.equal(done.status, 'completed', JSON.stringify(done.error))
@@ -461,5 +461,84 @@ describe('TikTok, end to end (local fake)', () => {
     await scheduler.whenIdle()
     assert.equal(scheduler.batch(batch.id)?.status, 'completed', JSON.stringify(scheduler.batch(batch.id)?.error))
     assert.ok(site.hits.short >= 1)
+  })
+})
+
+describe('TikTok whole profiles and publication dates (local fake)', () => {
+  it('lists a whole profile past the 500 default, in chunks, and tells its total', async () => {
+    const {site, engine} = await setup('whole-profile', {posts: 1100})
+    const url = `${site.origin}/@${site.user}`
+    const capped = await engine.analyze(url)
+    assert.ok(capped.kind === 'playlist')
+    assert.equal(capped.entries.length, 500, 'the default cap')
+    assert.equal(capped.total, 1100, 'the account says how many there are')
+
+    const before = site.hits.list
+    const seen: number[] = []
+    const all = await engine.analyze(url, {maxEntries: capped.total!, onProgress: p => seen.push(p.listed)})
+    assert.ok(all.kind === 'playlist')
+    assert.equal(all.entries.length, 1100)
+    assert.equal(new Set(all.entries.map(e => e.id)).size, 1100, 'each post once')
+    assert.deepEqual(
+      all.entries.map(e => e.index),
+      Array.from({length: 1100}, (_, i) => i + 1),
+    )
+    // continued below the 500 already listed: ~600 posts / 15 per page, not the whole profile again
+    assert.ok(site.hits.list - before <= 42, `${site.hits.list - before} listing pages for 600 posts`)
+    assert.ok(
+      seen.every((n, i) => i === 0 || n >= seen[i - 1]!),
+      'progress never goes back',
+    )
+    assert.equal(seen.at(-1), 1100)
+    assert.ok(
+      all.entries.every((e, i) => i === 0 || (e.publishedAt ?? 0) <= (all.entries[i - 1]!.publishedAt ?? 0)),
+      'newest first, each with its publication time',
+    )
+  })
+
+  it('a listing refused half-way keeps what it got, and loading again continues from there', async () => {
+    const {site, engine} = await setup('refused-chunk', {posts: 700, listFailures: {after: 40, count: 6}})
+    const url = `${site.origin}/@${site.user}`
+    const first = await engine.analyze(url, {maxEntries: 700})
+    assert.ok(first.kind === 'playlist')
+    assert.ok(first.entries.length >= 500 && first.entries.length < 700, `partial: ${first.entries.length}`)
+    assert.equal(first.total, 700, 'the preview can tell it is partial')
+
+    const before = site.hits.list
+    const second = await engine.analyze(url, {maxEntries: 700})
+    assert.ok(second.kind === 'playlist')
+    assert.equal(second.entries.length, 700)
+    assert.equal(new Set(second.entries.map(e => e.id)).size, 700)
+    assert.ok(site.hits.list - before < 30, `continued, not restarted (${site.hits.list - before} pages)`)
+  })
+
+  it('a cancelled listing keeps its chunks for the next request', async () => {
+    const {site, engine} = await setup('cancelled-listing', {posts: 600})
+    const url = `${site.origin}/@${site.user}`
+    const stop = new AbortController()
+    await assert.rejects(
+      engine.analyze(url, {
+        maxEntries: 600,
+        signal: stop.signal,
+        onProgress: p => {
+          if (p.listed >= 510) stop.abort()
+        },
+      }),
+    )
+    const before = site.hits.list
+    const again = await engine.analyze(url, {maxEntries: 600})
+    assert.ok(again.kind === 'playlist')
+    assert.equal(again.entries.length, 600)
+    assert.ok(site.hits.list - before <= 10, `the first 500 came from memory (${site.hits.list - before} pages)`)
+  })
+
+  it('dates the downloaded file by the post’s publication', async () => {
+    const {site, engine, out} = await setup('published-date', {posts: 3})
+    engine.add({url: videoUrl(site, 1), profile: mp4, outDir: out})
+    await engine.whenIdle()
+    const [file] = await fs.readdir(out)
+    const stat = await fs.stat(path.join(out, file!))
+    // the fake's posts are an hour apart, newest at 1 790 000 000
+    assert.equal(Math.round(stat.mtimeMs / 1000), 1_790_000_000 - 3600)
   })
 })

@@ -88,11 +88,12 @@ export function DownloadBar() {
   const reload = async (maxItems: number) => {
     if (!preview) return
     setReloading(true)
+    cancelled.current = false
     try {
       const result = await api().analyze(preview.url, maxItems)
       if (result.kind === 'playlist') setPreview({url: preview.url, data: result})
     } catch (error) {
-      fail(error)
+      if (!cancelled.current) fail(error)
     } finally {
       setReloading(false)
     }
@@ -223,6 +224,10 @@ export function DownloadBar() {
           preview={preview.data}
           loading={reloading}
           onReload={maxItems => void reload(maxItems)}
+          onStopReload={() => {
+            cancelled.current = true
+            void api().cancelAnalyze()
+          }}
           onConfirm={choice => void confirm(choice)}
           onCancel={() => setPreview(undefined)}
         />

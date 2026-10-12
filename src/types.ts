@@ -1,4 +1,5 @@
 import type {FileNameStyle} from './core/files.js'
+import type {MediaSource} from './sources/source.js'
 import type {TikTokOptions} from './sources/tiktok/source.js'
 // Public types. Everything a host application (CLI, Electron, server) needs to
 // drive the engine and render its state. User-facing text is always English
@@ -56,6 +57,8 @@ export type MediaSummary = {
   /** Seconds. */
   readonly duration?: number | undefined
   readonly thumbnail?: string | undefined
+  /** When it was published, unix seconds (when the listing tells). */
+  readonly publishedAt?: number | undefined
   /** yt-dlp extractor key, e.g. "Youtube". */
   readonly extractor: string
   readonly isLive: boolean
@@ -86,6 +89,12 @@ export type PlaylistAnalysis = {
   readonly choices: readonly FormatChoice[]
   /** Set when the url points at one video inside a playlist (youtube watch?v=…&list=…). */
   readonly singleVideoUrl?: string | undefined
+  /**
+   * How many items the list holds in all, when the site tells (a TikTok
+   * profile's video count). More than `entries.length` means the listing was
+   * capped and can be continued.
+   */
+  readonly total?: number | undefined
 }
 
 export type AnalysisResult = VideoAnalysis | PlaylistAnalysis
@@ -542,6 +551,11 @@ export type DownloaderOptions = {
    * yt-dlp). `false` hands TikTok urls to yt-dlp like any other site.
    */
   readonly tiktok?: false | TikTokOptions | undefined
+  /**
+   * More sites read natively, supplied by the host (e.g. a `PlayerPageSource`
+   * per site the user configured). Asked after the built-in ones.
+   */
+  readonly sources?: readonly MediaSource[] | undefined
   /** Store a SHA-256 of every finished file in the archive. Default true. */
   readonly checksums?: boolean | undefined
   /** Skip media already downloaded with the same profile. Default true. */

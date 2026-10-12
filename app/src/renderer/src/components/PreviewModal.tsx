@@ -1,10 +1,12 @@
-import {CloudDownloadOutlined, ReloadOutlined, SearchOutlined} from '@ant-design/icons'
+import {CloudDownloadOutlined, CloudSyncOutlined, ReloadOutlined, SearchOutlined} from '@ant-design/icons'
 import {Alert, Button, Flex, Input, InputNumber, Modal, Space, Table, Tag, Typography} from 'antd'
 import type {PlaylistEntry} from 'media-downloader-core'
 import {useMemo, useState} from 'react'
 import type {Preview} from '../../../shared/contract'
-import {clock} from '../format'
+import {useApp} from '../context'
+import {clock, day} from '../format'
 import {useT} from '../i18n'
+import {AnalyzeLoader} from './AnalyzeLoader'
 
 export type PlaylistPreview = Extract<Preview, {kind: 'playlist'}>
 
@@ -13,7 +15,8 @@ export type PreviewChoice =
   | {readonly kind: 'selection'; readonly title: string; readonly entries: readonly PlaylistEntry[]}
   | {readonly kind: 'video'; readonly url: string}
 
-const MAX_ITEMS = 5000
+/** The engine's MAX_REQUESTED_ITEMS (the renderer doesn't load the engine). */
+const MAX_ITEMS = 50_000
 
 /** Seconds of the given entries, O(n). */
 function totalSeconds(entries: Iterable<PlaylistEntry>): number {
@@ -25,23 +28,31 @@ function totalSeconds(entries: Iterable<PlaylistEntry>): number {
 /**
  * Everything a list holds, before anything is downloaded: pick all, some or
  * one; filter by title or channel; for a YouTube Mix choose how much of the
- * endless radio to load. Confirming schedules exactly the picked entries.
+ * endless radio to load; for a profile that tells its size, load all of it
+ * (listed chunk by chunk, with progress — a stopped load continues where it
+ * was). Confirming schedules exactly the picked entries.
  */
 export function PreviewModal({
   preview,
   loading,
   onReload,
+  onStopReload,
   onConfirm,
   onCancel,
 }: {
   readonly preview: PlaylistPreview
   readonly loading: boolean
   readonly onReload: (maxItems: number) => void
+  readonly onStopReload: () => void
   readonly onConfirm: (choice: PreviewChoice) => void
   readonly onCancel: () => void
 }) {
   const t = useT()
+  const {settings} = useApp()
   const {entries} = preview
+  const total = preview.total !== undefined ? Math.min(preview.total, MAX_ITEMS) : undefined
+  const partial = total !== undefined && entries.length < total
+  const dated = useMemo(() => entries.some(entry => entry.publishedAt !== undefined), [entries])
   // selection by playlist index: stable while filtering, O(1) membership
   const [selected, setSelected] = useState<ReadonlySet<number>>(() => new Set(entries.map(entry => entry.index)))
   const [filter, setFilter] = useState('')
@@ -57,7 +68,7 @@ export function PreviewModal({
   }, [entries, filter])
 
   const picked = useMemo(() => entries.filter(entry => selected.has(entry.index)), [entries, selected])
-  const capped = preview.mix || entries.length >= preview.maxItems
+  const capped = preview.mix || partial || (total === undefined && entries.length >= preview.maxItems)
 
   const setVisible = (on: boolean) => {
     const next = new Set(selected)
@@ -121,26 +132,46 @@ export function PreviewModal({
             type={preview.mix ? 'info' : 'warning'}
             showIcon
             message={
-              preview.mix ? t('preview.mix', {count: entries.length}) : t('preview.capped', {count: entries.length})
+              preview.mix
+                ? t('preview.mix', {count: entries.length})
+                : partial
+                  ? t('preview.partial', {count: entries.length, total: total!})
+                  : t('preview.capped', {count: entries.length})
             }
             action={
-              <Space.Compact>
-                <InputNumber
-                  aria-label={t('preview.load')}
-                  min={1}
-                  max={MAX_ITEMS}
-                  value={cap}
-                  onChange={value => setCap(value ?? preview.maxItems)}
-                  addonBefore={t('preview.load')}
-                  style={{width: 190}}
-                />
-                <Button icon={<ReloadOutlined />} loading={loading} onClick={() => onReload(cap)}>
-                  {t('preview.reload')}
-                </Button>
-              </Space.Compact>
+              <Space wrap>
+                {preview.mix ? null : (
+                  // a known size loads exactly that; otherwise the listing runs to its end
+                  <Button
+                    type="primary"
+                    icon={<CloudSyncOutlined />}
+                    disabled={loading}
+                    onClick={() => onReload(total ?? MAX_ITEMS)}
+                    data-testid="preview-load-all"
+                  >
+                    {total !== undefined ? t('preview.loadAll', {total}) : t('preview.loadEverything')}
+                  </Button>
+                )}
+                <Space.Compact>
+                  <InputNumber
+                    aria-label={t('preview.load')}
+                    min={1}
+                    max={MAX_ITEMS}
+                    value={cap}
+                    onChange={value => setCap(value ?? preview.maxItems)}
+                    addonBefore={t('preview.load')}
+                    style={{width: 190}}
+                  />
+                  <Button icon={<ReloadOutlined />} loading={loading} onClick={() => onReload(cap)}>
+                    {t('preview.reload')}
+                  </Button>
+                </Space.Compact>
+              </Space>
             }
           />
         ) : null}
+
+        {loading ? <AnalyzeLoader onCancel={onStopReload} /> : null}
 
         <Flex gap={8} wrap>
           <Input
@@ -190,6 +221,16 @@ export function PreviewModal({
             {title: '#', dataIndex: 'index', width: 64},
             {title: t('preview.col.title'), dataIndex: 'title', ellipsis: true},
             {title: t('preview.col.channel'), dataIndex: 'uploader', width: 200, ellipsis: true},
+            ...(dated
+              ? [
+                  {
+                    title: t('preview.col.published'),
+                    dataIndex: 'publishedAt',
+                    width: 120,
+                    render: (seconds: number | undefined) => day(seconds, settings.language),
+                  },
+                ]
+              : []),
             {
               title: t('preview.col.duration'),
               dataIndex: 'duration',

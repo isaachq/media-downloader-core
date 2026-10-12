@@ -5,6 +5,7 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import {after, before, describe, it} from 'node:test'
+import {publishedSeconds} from '../src/core/files.js'
 import {ID_PATTERN} from '../src/core/ids.js'
 import {MediaDownloader, retryDelay} from '../src/downloader.js'
 import type {JobSnapshot, JobStatus, LogEntry, StepName} from '../src/types.js'
@@ -258,6 +259,34 @@ describe('MediaDownloader orchestration', () => {
     assert.equal(done.outcome, 'failed')
     assert.equal(done.attempts.length, 2)
     assert.ok(done.attempts.every(a => a.error?.code === 'network' && /stalled/.test(a.error.message)))
+  })
+})
+
+describe('publication dates', () => {
+  it('dates each finished file by its publication: the exact time, else noon UTC of the day', async () => {
+    const dl = await makeDownloader('dated')
+    const outDir = path.join(root, 'out-dated')
+    dl.add({url: 'https://fake/dated-time', profile: audio, outDir: path.join(outDir, 'time')})
+    dl.add({url: 'https://fake/dated-day', profile: audio, outDir: path.join(outDir, 'day')})
+    dl.add({url: 'https://fake/undated', profile: audio, outDir: path.join(outDir, 'none')})
+    const started = Date.now()
+    await dl.whenIdle()
+    const mtime = async (dir: string) => {
+      const [file] = await fs.readdir(path.join(outDir, dir))
+      return (await fs.stat(path.join(outDir, dir, file!))).mtimeMs
+    }
+    assert.equal(await mtime('time'), 1_700_000_000_000)
+    assert.equal(await mtime('day'), Date.UTC(2024, 2, 5, 12))
+    assert.ok((await mtime('none')) >= started - 1000, 'undated files keep the time they were written')
+  })
+
+  it('ignores placeholder and future dates', () => {
+    assert.equal(publishedSeconds({publishedAt: 0}), undefined)
+    assert.equal(publishedSeconds({publishedAt: Date.now() / 1000 + 10 * 86_400}), undefined)
+    assert.equal(publishedSeconds({publishedAt: Number.NaN, uploadDate: '20200101'}), Date.UTC(2020, 0, 1, 12) / 1000)
+    assert.equal(publishedSeconds({uploadDate: '2020-01-01'}), undefined)
+    assert.equal(publishedSeconds({uploadDate: '19000101'}), undefined)
+    assert.equal(publishedSeconds({publishedAt: 1_600_000_000.7}), 1_600_000_000)
   })
 })
 

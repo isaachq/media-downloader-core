@@ -204,6 +204,45 @@ describe('preview before downloading a list', () => {
     await waitFor(() => expect(api.analyze).toHaveBeenLastCalledWith(LINK, 20))
   })
 
+  it('offers to load a whole profile when it holds more than was listed, with progress, and shows dates', async () => {
+    const dated = (index: number) => ({...entry(index, `Post ${index}`), publishedAt: Date.UTC(2024, 2, index) / 1000})
+    const {api, user, dialog} = await open(list({entries: [dated(1), dated(2)], maxItems: 500, total: 1234}))
+    expect(within(dialog).getByText('Showing 2 of 1234.')).toBeInTheDocument()
+    expect(within(dialog).getByRole('columnheader', {name: 'Published'})).toBeInTheDocument()
+    expect(within(dialog).getByText('Mar 1, 2024')).toBeInTheDocument()
+
+    let finish!: (preview: Preview) => void
+    api.analyze.mockImplementation(() => new Promise(resolve => (finish = resolve)))
+    await user.click(within(dialog).getByTestId('preview-load-all'))
+    expect(api.analyze).toHaveBeenLastCalledWith(LINK, 1234)
+    const loader = await within(dialog).findByTestId('analyze-loader')
+    act(() => api.pushAnalyzeProgress({listed: 617, expected: 1234}))
+    expect(loader).toHaveTextContent('617 of 1234')
+    await act(async () => finish(list({entries: [dated(1), dated(2), dated(3)], maxItems: 1234, total: 3})))
+    await waitFor(() => expect(screen.queryByTestId('preview-load-all')).not.toBeInTheDocument())
+    expect(screen.getByTestId('preview-summary')).toHaveTextContent('3 of 3 selected')
+  })
+
+  it('a capped list of unknown size can be loaded to its end', async () => {
+    const {api, user, dialog} = await open(list({maxItems: 4}))
+    expect(within(dialog).getByText('Long list — showing the first 4.')).toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', {name: /Load all/}))
+    expect(api.analyze).toHaveBeenLastCalledWith(LINK, 50_000)
+  })
+
+  it('stopping a long load keeps the list there is, without an error', async () => {
+    const {api, user, dialog} = await open(list({maxItems: 500, total: 900}))
+    let reject!: (error: Error) => void
+    api.analyze.mockImplementation(() => new Promise((_resolve, fail) => (reject = fail)))
+    api.cancelAnalyze.mockImplementation(async () => reject(new Error('This operation was aborted')))
+    await user.click(within(dialog).getByTestId('preview-load-all'))
+    const loader = await within(dialog).findByTestId('analyze-loader')
+    await user.click(within(loader).getByRole('button', {name: /Cancel/}))
+    await waitFor(() => expect(within(dialog).queryByTestId('analyze-loader')).not.toBeInTheDocument())
+    expect(within(dialog).getByText('Delta song')).toBeInTheDocument()
+    expect(screen.queryByText('This operation was aborted')).not.toBeInTheDocument()
+  })
+
   it('cannot confirm an empty selection', async () => {
     const {user, dialog} = await open(list())
     await user.click(within(dialog).getByRole('button', {name: 'Select none'}))

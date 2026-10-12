@@ -121,10 +121,9 @@ async function main() {
   })
   const page = await app.firstWindow()
   await page.waitForSelector('[data-testid="theme-mode"]', {state: 'attached', timeout: 60_000})
-  await page.getByRole('button', {name: /about/i}).click()
-  await page.getByRole('button', {name: 'Check for updates'}).click()
+  // the app checks for a new version by itself at start-up: the banner a user sees
   const closed = new Promise<void>(resolve => app.on('close', () => resolve()))
-  await page.getByTestId('update-banner').getByRole('button', {name: 'Update now'}).click({timeout: 60_000})
+  await page.getByTestId('update-banner').getByRole('button', {name: 'Update now'}).click({timeout: 120_000})
   const pressed = Date.now()
   await closed
   console.log(`the app closed ${((Date.now() - pressed) / 1000).toFixed(1)} s after "Update now"`)

@@ -19,7 +19,7 @@ export {
 } from './binaries/manager.js'
 export {BinaryError, ffmpegRelease, type Release, ytDlpBuildFor, ytDlpRelease} from './binaries/sources.js'
 export {assertHttpUrl, isYouTubeMix, MAX_LISTED_ITEMS, MAX_REQUESTED_ITEMS, MIX_DEFAULT_ITEMS} from './core/analyze.js'
-export {type ArchiveEntry, archiveKey, DownloadArchive} from './core/archive.js'
+export {type ArchiveEntry, type ArchivePage, type ArchiveQuery, archiveKey, DownloadArchive} from './core/archive.js'
 export {ensureContainer} from './core/convert.js'
 export {estimateBytes, jobTier, peakBytes, TIER_WEIGHT} from './core/cost.js'
 export {classifyYtDlpError, DownloadError, isRetryable} from './core/errors.js'

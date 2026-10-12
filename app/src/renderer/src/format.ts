@@ -29,6 +29,19 @@ export function bytes(value: number | undefined, locale: string): string {
 export const rate = (bytesPerSecond: number | undefined, locale: string): string =>
   bytesPerSecond ? `${bytes(bytesPerSecond, locale)}/s` : ''
 
+const momentFormatters = new Map<string, Intl.DateTimeFormat>()
+
+/** Ms → the locale's short date and time ("Oct 11, 2026, 18:24"); '' when unknown. */
+export function moment(ms: number | undefined, locale: string): string {
+  if (ms === undefined || !(ms > 0)) return ''
+  let formatter = momentFormatters.get(locale)
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat(locale, {dateStyle: 'medium', timeStyle: 'short'})
+    momentFormatters.set(locale, formatter)
+  }
+  return formatter.format(ms)
+}
+
 const dayFormatters = new Map<string, Intl.DateTimeFormat>()
 
 /** Unix seconds → the locale's short date ("Mar 5, 2024" / "5 mar 2024"); '' when unknown. */

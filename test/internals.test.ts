@@ -221,6 +221,83 @@ describe('DownloadArchive (append-only log)', () => {
   })
 })
 
+describe('download archive listing', () => {
+  const record = (i: number, title: string, filepath = `/media/file-${i}.mp4`) => ({
+    key: `fake:${i}:video:mp4:0`,
+    extractor: 'Fake',
+    mediaId: String(i),
+    profile: 'video:mp4:0',
+    url: `https://fake.test/${i}`,
+    filepath,
+    sizeBytes: 100 + i,
+    title,
+  })
+
+  it('pages newest first, searches title and file name without case or accents, and follows writes', async () => {
+    const file = path.join(dir, 'archive-list.jsonl')
+    const archive = new DownloadArchive(file)
+    for (let i = 0; i < 120; i++) await archive.add(record(i, i === 7 ? 'Canción del Año' : `Clip ${i}`))
+    await archive.close()
+
+    const reopened = new DownloadArchive(file)
+    const first = await reopened.list({limit: 50})
+    assert.equal(first.total, 120)
+    assert.equal(first.entries.length, 50)
+    assert.deepEqual(
+      first.entries.slice(0, 3).map(e => e.mediaId),
+      ['119', '118', '117'],
+      'newest first',
+    )
+    assert.equal(
+      first.bytes,
+      Array.from({length: 120}, (_, i) => 100 + i).reduce((a, b) => a + b),
+    )
+    const last = await reopened.list({offset: 100, limit: 50})
+    assert.deepEqual(last.entries.map(e => e.mediaId).at(-1), '0')
+    assert.equal(last.entries.length, 20)
+
+    // accents and case ignored; every word must match; the file name counts too
+    assert.deepEqual(
+      (await reopened.list({search: 'CANCION año'})).entries.map(e => e.mediaId),
+      ['7'],
+    )
+    assert.equal((await reopened.list({search: 'file-11'})).total, 11, 'file-11, file-110…119')
+    assert.equal((await reopened.list({search: 'nothing like this'})).total, 0)
+
+    // later writes are followed without re-reading the log
+    await reopened.add(record(500, 'Brand new'))
+    const fresh = await reopened.list({limit: 1})
+    assert.equal(fresh.entries[0]?.mediaId, '500')
+    assert.equal(fresh.total, 121)
+    // a re-download of the same key moves to the top, once
+    await reopened.add(record(3, 'Clip 3 again'))
+    const again = await reopened.list({limit: 2})
+    assert.deepEqual(
+      again.entries.map(e => e.title),
+      ['Clip 3 again', 'Brand new'],
+    )
+    assert.equal(again.total, 121)
+    await reopened.remove(record(500, '').key)
+    assert.equal((await reopened.list()).total, 120)
+    assert.equal((await reopened.list({search: 'brand'})).total, 0)
+    await reopened.close()
+  })
+
+  it('a record written while the list loads is in it exactly once', async () => {
+    const file = path.join(dir, 'archive-race.jsonl')
+    const archive = new DownloadArchive(file)
+    for (let i = 0; i < 300; i++) await archive.add(record(i, `Clip ${i}`))
+    await archive.close()
+    const reopened = new DownloadArchive(file)
+    const [page] = await Promise.all([reopened.list({limit: 500}), reopened.add(record(999, 'During load'))])
+    const after = await reopened.list({limit: 500})
+    assert.equal(after.total, 301)
+    assert.equal(after.entries.filter(e => e.mediaId === '999').length, 1)
+    assert.ok(page.total === 300 || page.total === 301)
+    await reopened.close()
+  })
+})
+
 describe('PendingJournal', () => {
   it('appends O(1) per change, compacts past the slack and never deadlocks', async () => {
     const file = path.join(dir, 'pending.jsonl')

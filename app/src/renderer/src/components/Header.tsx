@@ -1,4 +1,11 @@
-import {FileTextOutlined, InfoCircleOutlined, MoonOutlined, SettingOutlined, SunOutlined} from '@ant-design/icons'
+import {
+  DashboardOutlined,
+  FileTextOutlined,
+  InfoCircleOutlined,
+  MoonOutlined,
+  SettingOutlined,
+  SunOutlined,
+} from '@ant-design/icons'
 import {Button, Segmented, Space, Tooltip, Typography} from 'antd'
 import type {ThemeMode} from '../../../shared/contract'
 import {useApp} from '../context'
@@ -9,9 +16,10 @@ type Props = {
   readonly onLogs: () => void
   readonly onSettings: () => void
   readonly onAbout: () => void
+  readonly onReport: () => void
 }
 
-export function Header({onLogs, onSettings, onAbout}: Props) {
+export function Header({onLogs, onSettings, onAbout, onReport}: Props) {
   const t = useT()
   const {settings, updateSettings, dark} = useApp()
   return (
@@ -59,6 +67,9 @@ export function Header({onLogs, onSettings, onAbout}: Props) {
             ]}
             onChange={value => void updateSettings({theme: value as ThemeMode})}
           />
+          <Button icon={<DashboardOutlined />} onClick={onReport} data-testid="open-report">
+            {t('header.report')}
+          </Button>
           <Button icon={<FileTextOutlined />} onClick={onLogs}>
             {t('header.logs')}
           </Button>

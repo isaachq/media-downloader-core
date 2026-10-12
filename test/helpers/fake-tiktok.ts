@@ -31,6 +31,10 @@ export type FakeTikTokConfig = {
   /** The H.264 encoding of every post has no sound. */
   readonly silentH264?: boolean
   readonly mediaBytes?: number
+  /** Seconds between two posts (newest first). Default 1 hour. */
+  readonly spacingSeconds?: number
+  /** Posts the account counts but its listing never returns (private, deleted, author-only). */
+  readonly unlisted?: number
   /** After this many listing answers, the next `count` listing requests are refused (403, no data). */
   readonly listFailures?: {readonly after: number; readonly count: number}
 }
@@ -67,7 +71,7 @@ export async function startFakeTikTok(config: FakeTikTokConfig = {}): Promise<Fa
     return {
       id,
       desc: `Post número ${index + 1} con acentos 🎵 #fyp #music`,
-      createTime: BASE_TIME - index * 3600,
+      createTime: BASE_TIME - index * (config.spacingSeconds ?? 3600),
       isPinnedItem: pinned || undefined,
       author: {uniqueId: user, nickname: 'Fake User'},
       video: {
@@ -199,7 +203,7 @@ export async function startFakeTikTok(config: FakeTikTokConfig = {}): Promise<Fa
                 secUid: `SEC-${handle}`,
                 privateAccount: config.private === true,
               },
-              stats: {videoCount: count},
+              stats: {videoCount: count + (config.unlisted ?? 0)},
             },
           },
         }),

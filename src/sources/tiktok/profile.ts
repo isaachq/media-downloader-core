@@ -8,8 +8,11 @@ export type ListPage = (
 ) => Promise<{readonly posts: readonly unknown[]; readonly more: boolean}>
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000
-/** TikTok (musical.ly → TikTok) has no posts before this. */
-const EARLIEST_MS = Date.UTC(2016, 8, 1)
+/**
+ * No post is older than this: musical.ly's launch. Its videos moved into
+ * TikTok (2018) keeping their dates, so veteran profiles reach back to 2014.
+ */
+export const EARLIEST_MS = Date.UTC(2014, 3, 1)
 /** Fresh identities to try when the listing starts repeating itself. */
 const IDENTITY_RESETS = 2
 /** Week-steps over empty / repeated pages before concluding the listing is over. */

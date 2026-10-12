@@ -10,16 +10,18 @@ import {AboutModal} from './components/AboutModal'
 import {BatchList} from './components/BatchList'
 import {BootScreen} from './components/BootScreen'
 import {DownloadBar} from './components/DownloadBar'
+import {FinishedList} from './components/FinishedList'
 import {Header} from './components/Header'
 import {JobTable} from './components/JobTable'
 import {LogsDrawer} from './components/LogsDrawer'
+import {ReportModal} from './components/ReportModal'
 import {SettingsDrawer} from './components/SettingsDrawer'
 import {SetupModal} from './components/SetupModal'
-import {Stats} from './components/Stats'
+import {type MainTab, Stats} from './components/Stats'
 import {UpdateBanner} from './components/UpdateBanner'
 import {AppContext, type AppContextValue} from './context'
 import {I18nContext, type Translate, translator} from './i18n'
-import {AppStore, StoreContext} from './store'
+import {AppStore, BATCH_FINISHED, StoreContext, useStoreValue, WORKING} from './store'
 
 const CYAN = '#13a8e0'
 const FINISHED = new Set(['completed', 'completed-with-errors', 'failed', 'cancelled'])
@@ -70,6 +72,30 @@ function useBatchNotifications(t: Translate, settings: AppSettings) {
   )
 }
 
+/** A tab label with its live count; the count only re-renders this label, and only when it changes. */
+function CountLabel({label, count}: {readonly label: string; readonly count: (store: AppStore) => number}) {
+  const value = useStoreValue(count)
+  return (
+    <span>
+      {label}
+      {value > 0 ? <span className="tab-count">{value}</span> : null}
+    </span>
+  )
+}
+
+const activeBatches = (store: AppStore): number => {
+  let active = 0
+  for (const batch of store.batches.values()) if (!BATCH_FINISHED.has(batch.status)) active++
+  return active
+}
+const activeJobs = (store: AppStore): number => {
+  const counts = store.counts
+  let working = counts.queued
+  for (const status of WORKING) working += counts[status as keyof typeof counts]
+  return working
+}
+const finishedJobs = (store: AppStore): number => store.counts.completed + store.counts.skipped
+
 function Shell({
   info,
   settings,
@@ -85,7 +111,8 @@ function Shell({
 }) {
   const t = useMemo(() => translator(settings.language), [settings.language])
   const notify = useBatchNotifications(t, settings)
-  const [panel, setPanel] = useState<'logs' | 'settings' | 'about' | undefined>()
+  const [panel, setPanel] = useState<'logs' | 'settings' | 'about' | 'report' | undefined>()
+  const [tab, setTab] = useState<MainTab>('batches')
   const [diagnosis, setDiagnosis] = useState(initialDiagnosis)
   const [setup, setSetup] = useState<{open: boolean; force: boolean}>({open: !initialDiagnosis.ready, force: false})
 
@@ -110,18 +137,30 @@ function Shell({
           onLogs={() => setPanel('logs')}
           onSettings={() => setPanel('settings')}
           onAbout={() => setPanel('about')}
+          onReport={() => setPanel('report')}
         />
         <Layout.Content className="app-content">
           <UpdateBanner />
           <DownloadBar />
-          <Stats />
+          <Stats onOpen={setTab} />
           <Tabs
             className="main-tabs"
+            activeKey={tab}
+            onChange={key => setTab(key as MainTab)}
             // only the visible tab renders: a hidden 1,500-row table must not follow every event
             destroyOnHidden
             items={[
-              {key: 'batches', label: t('tabs.batches'), children: <BatchList />},
-              {key: 'jobs', label: t('tabs.jobs'), children: <JobTable />},
+              {
+                key: 'batches',
+                label: <CountLabel label={t('tabs.batches')} count={activeBatches} />,
+                children: <BatchList />,
+              },
+              {key: 'jobs', label: <CountLabel label={t('tabs.jobs')} count={activeJobs} />, children: <JobTable />},
+              {
+                key: 'finished',
+                label: <CountLabel label={t('tabs.finished')} count={finishedJobs} />,
+                children: <FinishedList />,
+              },
             ]}
           />
         </Layout.Content>
@@ -139,6 +178,7 @@ function Shell({
       />
       <LogsDrawer open={panel === 'logs'} onClose={() => setPanel(undefined)} />
       <AboutModal open={panel === 'about'} onClose={() => setPanel(undefined)} />
+      <ReportModal open={panel === 'report'} onClose={() => setPanel(undefined)} />
       <SetupModal
         open={setup.open}
         force={setup.force}

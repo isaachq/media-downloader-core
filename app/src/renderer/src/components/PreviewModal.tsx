@@ -52,6 +52,10 @@ export function PreviewModal({
   const {entries} = preview
   const total = preview.total !== undefined ? Math.min(preview.total, MAX_ITEMS) : undefined
   const partial = total !== undefined && entries.length < total
+  // the listing reached the end: the rest are posts the site counts but doesn't list — nothing to load
+  const unlisted = partial && preview.complete === true
+  // it stopped before the end and before the cap (refused, stalled): loading again continues
+  const stopped = partial && !unlisted && entries.length < preview.maxItems
   const dated = useMemo(() => entries.some(entry => entry.publishedAt !== undefined), [entries])
   // selection by playlist index: stable while filtering, O(1) membership
   const [selected, setSelected] = useState<ReadonlySet<number>>(() => new Set(entries.map(entry => entry.index)))
@@ -127,16 +131,29 @@ export function PreviewModal({
           </Typography.Text>
         </div>
 
-        {capped ? (
+        {unlisted ? (
+          <Alert
+            type="info"
+            showIcon
+            data-testid="preview-unlisted"
+            message={t('preview.hidden', {
+              count: entries.length,
+              total: preview.total!,
+              missing: preview.total! - entries.length,
+            })}
+          />
+        ) : capped ? (
           <Alert
             type={preview.mix ? 'info' : 'warning'}
             showIcon
             message={
               preview.mix
                 ? t('preview.mix', {count: entries.length})
-                : partial
-                  ? t('preview.partial', {count: entries.length, total: total!})
-                  : t('preview.capped', {count: entries.length})
+                : stopped
+                  ? t('preview.stopped', {count: entries.length, total: total!})
+                  : partial
+                    ? t('preview.partial', {count: entries.length, total: total!})
+                    : t('preview.capped', {count: entries.length})
             }
             action={
               <Space wrap>

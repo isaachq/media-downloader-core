@@ -542,3 +542,41 @@ describe('TikTok whole profiles and publication dates (local fake)', () => {
     assert.equal(Math.round(stat.mtimeMs / 1000), 1_790_000_000 - 3600)
   })
 })
+
+describe('TikTok veteran profiles (local fake)', () => {
+  it('lists a 10-year, 1,300-post profile to its very first post, from before TikTok existed (musical.ly)', async () => {
+    // a post every 3 days back from 2026: the oldest from December 2015
+    const {site, engine} = await setup('veteran', {posts: 1300, spacingSeconds: 3 * 86_400})
+    const listing = await engine.analyze(`${site.origin}/@${site.user}`, {maxEntries: 1300})
+    assert.ok(listing.kind === 'playlist')
+    assert.equal(listing.entries.length, 1300)
+    assert.equal(new Set(listing.entries.map(e => e.id)).size, 1300)
+    assert.equal(listing.complete, true, 'the listing reached the end')
+    const oldest = Math.min(...listing.entries.map(e => e.publishedAt!))
+    assert.ok(oldest * 1000 < Date.UTC(2016, 8, 1), `oldest post ${new Date(oldest * 1000).toISOString()}`)
+  })
+
+  it('posts the account counts but never lists: the listing ends complete, and asking again costs nothing', async () => {
+    const {site, engine} = await setup('unlisted', {posts: 40, unlisted: 4})
+    const url = `${site.origin}/@${site.user}`
+    const first = await engine.analyze(url, {maxEntries: 44})
+    assert.ok(first.kind === 'playlist')
+    assert.equal(first.entries.length, 40)
+    assert.equal(first.total, 44)
+    assert.equal(first.complete, true, 'the 4 missing are not listable: no use loading again')
+    const before = site.hits.list
+    const again = await engine.analyze(url, {maxEntries: 44})
+    assert.ok(again.kind === 'playlist')
+    assert.equal(again.entries.length, 40)
+    assert.equal(again.complete, true)
+    assert.equal(site.hits.list, before, 'answered from the kept listing')
+  })
+
+  it('a listing cut short is not complete', async () => {
+    const {site, engine} = await setup('incomplete', {posts: 700, listFailures: {after: 40, count: 6}})
+    const listing = await engine.analyze(`${site.origin}/@${site.user}`, {maxEntries: 700})
+    assert.ok(listing.kind === 'playlist')
+    assert.ok(listing.entries.length < 700)
+    assert.equal(listing.complete, false, 'loading again continues')
+  })
+})

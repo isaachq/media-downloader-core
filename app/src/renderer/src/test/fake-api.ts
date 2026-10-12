@@ -14,7 +14,11 @@ import type {
   AppInfo,
   AppSettings,
   EventBundle,
+  FinishedEntry,
+  FinishedPage,
+  FinishedQuery,
   MdcApi,
+  OpenTarget,
   Preview,
   ScheduleInput,
   UpdateState,
@@ -27,6 +31,7 @@ export const INFO: AppInfo = {
   maxConcurrency: 6,
   dataDir: '/data',
   sessionId: 'S'.repeat(32),
+  startedAt: Date.UTC(2026, 9, 11, 15, 0),
 }
 
 export const SETTINGS: AppSettings = {
@@ -176,6 +181,22 @@ export class FakeApi implements MdcApi {
     }),
   )
   reveal = vi.fn(async () => {})
+  /** The archive `finished` pages through, newest first. */
+  finishedEntries: FinishedEntry[] = []
+  finished = vi.fn(async (query: FinishedQuery): Promise<FinishedPage> => {
+    const words = (query.search ?? '').toLowerCase().split(/\s+/).filter(Boolean)
+    const matching = this.finishedEntries.filter(entry => words.every(word => entry.title.toLowerCase().includes(word)))
+    return {
+      entries: matching.slice(query.offset, query.offset + query.limit),
+      total: matching.length,
+      bytes: matching.reduce((sum, entry) => sum + entry.sizeBytes, 0),
+    }
+  })
+  openFinished = vi.fn(
+    async (key: string, _target: 'file' | 'folder') =>
+      this.finishedEntries.find(entry => entry.key === key)?.file === 'ok',
+  )
+  openFolder = vi.fn(async (_target: OpenTarget) => true)
   update: UpdateState = {status: 'up-to-date', checkedAt: 0}
   #updates = new Set<(state: UpdateState) => void>()
   updateState = vi.fn(async () => this.update)

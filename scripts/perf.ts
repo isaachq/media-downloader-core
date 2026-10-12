@@ -5,6 +5,7 @@
 //   npm run perf -- --quick               # smaller sizes, for a fast loop while changing code
 //   npm run perf -- --runs 5 --only stress,archive
 //   npm run perf -- --save-baseline       # run and keep the result as the new baseline
+//   (scenarios: stress, batch, archive, validate — the last needs ffmpeg on PATH)
 //   npm run perf -- --baseline .perf/results/<file>.json   # compare against any earlier result
 //   npm run perf -- --fail-on-regression  # exit 1 when a metric is worse than the threshold (default 10%)
 //   npm run perf -- profile stress 1000   # CPU profile of one scenario + the hottest functions in src/
@@ -29,6 +30,8 @@ type Scenario = {
   readonly size: number
   readonly quickSize: number
   readonly metrics: Readonly<Record<string, Direction>>
+  /** A tool the scenario needs on PATH; without it the scenario is skipped. */
+  readonly requires?: string
 }
 
 const SCENARIOS: readonly Scenario[] = [
@@ -59,6 +62,14 @@ const SCENARIOS: readonly Scenario[] = [
     size: 50_000,
     quickSize: 20_000,
     metrics: {loadMs: 'lower', bytesPerEntry: 'lower'},
+  },
+  {
+    name: 'validate',
+    script: 'validate-bench.ts',
+    size: 60,
+    quickSize: 20,
+    metrics: {fullSec: 'lower', quickSec: 'lower'},
+    requires: 'ffmpeg',
   },
 ]
 
@@ -187,6 +198,10 @@ async function runSuite(): Promise<void> {
   const result: Result = {env, scenarios: {}}
   for (const scenario of SCENARIOS) {
     if (only && !only.includes(scenario.name)) continue
+    if (scenario.requires && !sh(scenario.requires, ['-version'])) {
+      console.log(`${scenario.name}: skipped (${scenario.requires} not found)`)
+      continue
+    }
     const size = Number(option(`--${scenario.name}-size`) ?? (quick ? scenario.quickSize : scenario.size))
     const samples: Sample[] = []
     for (let i = 1; i <= runs; i++) {

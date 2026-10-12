@@ -28,19 +28,23 @@ const failing = mode === 'fail'
 const KEY = 'Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall'
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+// a query that finds nothing still answers (exit 0), with nothing
 const ps = (script: string) =>
-  execFileSync('powershell.exe', ['-NoProfile', '-Command', script], {encoding: 'utf8'}).trim()
+  execFileSync('powershell.exe', ['-NoProfile', '-Command', `${script}; exit 0`], {encoding: 'utf8'}).trim()
 
-/** Our uninstall entries, per hive: where it is installed and which version. */
-function installs(): Array<{hive: string; location: string; version: string}> {
-  const found: Array<{hive: string; location: string; version: string}> = []
+/**
+ * Our uninstall entries, per hive: the app's exe and its version. The NSIS
+ * installer leaves InstallLocation empty: DisplayIcon names the exe ("…\\Media Download Core.exe,0").
+ */
+function installs(): Array<{hive: string; exe: string; version: string}> {
+  const found: Array<{hive: string; exe: string; version: string}> = []
   for (const hive of ['HKCU', 'HKLM']) {
     const out = ps(
-      `Get-ItemProperty '${hive}:\\${KEY}\\*' -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like 'Media Download Core*' } | ForEach-Object { $_.InstallLocation + '|' + $_.DisplayVersion }`,
+      `Get-ItemProperty '${hive}:\\${KEY}\\*' -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like 'Media Download Core*' } | ForEach-Object { $_.DisplayIcon + '|' + $_.DisplayVersion }`,
     )
     for (const line of out.split(/\r?\n/).filter(Boolean)) {
-      const [location = '', version = ''] = line.split('|')
-      found.push({hive, location, version})
+      const [icon = '', version = ''] = line.split('|')
+      found.push({hive, exe: icon.replace(/,\d+$/, '').replace(/^"|"$/g, ''), version})
     }
   }
   return found
@@ -61,7 +65,7 @@ async function main() {
   console.log('installed:', JSON.stringify(before))
   const mine = before.find(entry => entry.hive === (scope === 'machine' ? 'HKLM' : 'HKCU'))
   if (!mine) throw new Error(`A is not registered for ${scope}`)
-  const exe = path.join(mine.location, 'Media Download Core.exe')
+  const exe = mine.exe
 
   // 2. a feed offering B (a failing "installer" in the failure run), verified by its SHA-256
   const payload = await fs.readFile(

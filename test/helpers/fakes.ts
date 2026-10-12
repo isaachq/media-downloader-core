@@ -88,7 +88,8 @@ const counter = path.join(dataDir, 'attempts-' + id)
 const attempts = (fs.existsSync(counter) ? Number(fs.readFileSync(counter, 'utf8')) : 0) + 1
 fs.writeFileSync(counter, String(attempts))
 if (url.includes('flaky') && attempts === 1) { console.error('ERROR: Unable to download webpage: timed out'); process.exit(1) }
-console.log('__MDC_INFO__' + JSON.stringify({id, title: 'Title ' + id, duration: 10, extractor: 'Fake', formatId: '140', acodec: 'mp4a.40.2', filesize: 1000}))
+const dated = url.includes('dated-day') ? {uploadDate: '20240305'} : url.includes('dated-time') ? {publishedAt: 1_700_000_000, uploadDate: '20231114'} : {}
+console.log('__MDC_INFO__' + JSON.stringify({id, title: 'Title ' + id, duration: 10, extractor: 'Fake', formatId: '140', acodec: 'mp4a.40.2', filesize: 1000, ...dated}))
 let sent = 0
 const timer = setInterval(() => {
   sent += 250

@@ -25,6 +25,7 @@ const INFO_TEMPLATE =
   `video:${INFO}{"id":%(id|null)j,"title":%(title|null)j,"duration":%(duration|null)j,` +
   `"extractor":%(extractor_key|null)j,"formatId":%(format_id|null)j,"vcodec":%(vcodec|null)j,` +
   `"acodec":%(acodec|null)j,"filesize":%(filesize,filesize_approx|null)j,` +
+  `"publishedAt":%(timestamp,release_timestamp|null)j,"uploadDate":%(upload_date,release_date|null)j,` +
   `"partSizes":%(requested_formats.:.filesize|null)j,"partSizesApprox":%(requested_formats.:.filesize_approx|null)j}`
 
 const DONE_TEMPLATE = `after_move:${DONE}{"filepath":%(filepath|null)j}`
@@ -43,6 +44,10 @@ export type DownloadedInfo = {
   readonly filesize?: number | null
   readonly partSizes?: ReadonlyArray<number | null> | null
   readonly partSizesApprox?: ReadonlyArray<number | null> | null
+  /** When the media was published, unix seconds (the finished file gets it as its date). */
+  readonly publishedAt?: number | null
+  /** yt-dlp's YYYYMMDD, for sites that give a day but no time. */
+  readonly uploadDate?: string | null
 }
 
 type RawProgress = {

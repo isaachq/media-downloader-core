@@ -31,6 +31,8 @@ export type FakeTikTokConfig = {
   /** The H.264 encoding of every post has no sound. */
   readonly silentH264?: boolean
   readonly mediaBytes?: number
+  /** After this many listing answers, the next `count` listing requests are refused (403, no data). */
+  readonly listFailures?: {readonly after: number; readonly count: number}
 }
 
 export type FakeTikTok = {
@@ -53,6 +55,7 @@ export async function startFakeTikTok(config: FakeTikTokConfig = {}): Promise<Fa
   let challengesLeft = config.challenges ?? 0
   let refusalsLeft = config.refusals ?? 0
   let listCalls = 0
+  let refusedLists = 0
   let firstPage: unknown
   let session = 0
   let origin = ''
@@ -141,6 +144,11 @@ export async function startFakeTikTok(config: FakeTikTokConfig = {}): Promise<Fa
     }
     if (parts[0] === 'api' && parts[2] === 'item_list') {
       hits.list++
+      const failures = config.listFailures
+      if (failures && listCalls >= failures.after && refusedLists < failures.count) {
+        refusedLists++
+        return send(403, '')
+      }
       listCalls++
       const cursor = Number(url.searchParams.get('cursor'))
       const pageSize = Number(url.searchParams.get('count')) || 15

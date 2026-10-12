@@ -183,6 +183,36 @@ export async function moveIntoPlace(source: string, destination: string): Promis
   return target
 }
 
+/** Earliest believable publication date (before it, a timestamp is a placeholder). */
+const EARLIEST_PUBLISHED_S = Date.UTC(1990, 0, 1) / 1000
+
+/**
+ * When a media item was published, in unix seconds: its exact timestamp, else
+ * noon UTC of its YYYYMMDD day (the same calendar day in nearly every time
+ * zone). Undefined when unknown or implausible (zero, far future).
+ */
+export function publishedSeconds(info: {
+  readonly publishedAt?: number | null | undefined
+  readonly uploadDate?: string | null | undefined
+}): number | undefined {
+  const latest = Date.now() / 1000 + 86_400
+  const at = info.publishedAt
+  if (typeof at === 'number' && Number.isFinite(at) && at >= EARLIEST_PUBLISHED_S && at <= latest) return Math.floor(at)
+  const day = /^(\d{4})(\d{2})(\d{2})$/.exec(info.uploadDate ?? '')
+  if (!day) return undefined
+  const noon = Date.UTC(Number(day[1]), Number(day[2]) - 1, Number(day[3]), 12) / 1000
+  return noon >= EARLIEST_PUBLISHED_S && noon <= latest ? noon : undefined
+}
+
+/**
+ * Date a finished file by its publication: its modification time becomes the
+ * day it was published, so sorting a folder by date sorts by publication.
+ * (Creation time can't be set portably; the date tag inside carries it too.)
+ */
+export async function stampPublished(file: string, seconds: number): Promise<void> {
+  await fs.utimes(file, seconds, seconds)
+}
+
 /** Short stable hash — names a job's work folder so a retry resumes its .part files. */
 export function shortHash(text: string): string {
   return createHash('sha1').update(text).digest('hex').slice(0, 16)

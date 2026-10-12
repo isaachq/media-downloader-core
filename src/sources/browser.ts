@@ -13,3 +13,17 @@ export type BrowserPage = {
 }
 
 export type BrowserAssist = (url: string, signal?: AbortSignal) => Promise<BrowserPage>
+
+/**
+ * The media link a page's own player ends up with, read by a real browser:
+ * for sites that only reveal it to their player's script. The library never
+ * runs or reimplements that script; it asks the browser what the <video>
+ * element was given, and continues with the browser's session over HTTP.
+ */
+export type PlayerMedia = {
+  readonly url: string
+  readonly cookies: BrowserPage['cookies']
+  readonly userAgent: string
+}
+
+export type MediaResolver = (pageUrl: string, signal?: AbortSignal) => Promise<PlayerMedia>

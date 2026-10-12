@@ -18,7 +18,7 @@ export {
   type UpdateResult,
 } from './binaries/manager.js'
 export {BinaryError, ffmpegRelease, type Release, ytDlpBuildFor, ytDlpRelease} from './binaries/sources.js'
-export {assertHttpUrl, isYouTubeMix, MAX_LISTED_ITEMS, MIX_DEFAULT_ITEMS} from './core/analyze.js'
+export {assertHttpUrl, isYouTubeMix, MAX_LISTED_ITEMS, MAX_REQUESTED_ITEMS, MIX_DEFAULT_ITEMS} from './core/analyze.js'
 export {type ArchiveEntry, archiveKey, DownloadArchive} from './core/archive.js'
 export {ensureContainer} from './core/convert.js'
 export {estimateBytes, jobTier, peakBytes, TIER_WEIGHT} from './core/cost.js'
@@ -54,9 +54,17 @@ export {searchTrace} from './core/trace-log.js'
 export {ffprobe, summarizeProbe, validateFile} from './core/validate.js'
 export {type ArchiveCheck, MediaDownloader, relaxProfile, retryDelay} from './downloader.js'
 export {BatchScheduler} from './scheduler.js'
-export type {BrowserAssist, BrowserPage} from './sources/browser.js'
+export type {BrowserAssist, BrowserPage, MediaResolver, PlayerMedia} from './sources/browser.js'
 export {HttpSession} from './sources/http.js'
+export {type FetchedMedia, fetchMedia, type MediaFetch} from './sources/media-fetch.js'
 export {Pacer, type PacerOptions} from './sources/pacer.js'
+export {parsePlayerPageSites} from './sources/player-page/config.js'
+export {
+  PLAYER_PAGE_DEFAULT_ITEMS,
+  type PlayerPageOptions,
+  type PlayerPageSite,
+  PlayerPageSource,
+} from './sources/player-page/source.js'
 export type {ListingProgress, MediaSource, SourceDownload, SourceFile} from './sources/source.js'
 export {TikTokError, type TikTokProblem} from './sources/tiktok/errors.js'
 export {isTikTokProfile, parseTikTokLink, type TikTokLink} from './sources/tiktok/links.js'

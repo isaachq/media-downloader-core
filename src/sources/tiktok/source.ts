@@ -1,14 +1,12 @@
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
-import {Readable, Transform} from 'node:stream'
-import * as streams from 'node:stream/promises'
-import type {ReadableStream as WebReadableStream} from 'node:stream/web'
 import type {ExtractResult} from '../../core/analyze.js'
 import {DownloadError} from '../../core/errors.js'
 import {genericChoices} from '../../core/formats.js'
 import type {AnalysisResult, FailureHint, MediaSummary, PlaylistAnalysis, VideoAnalysis} from '../../types.js'
 import type {BrowserAssist} from '../browser.js'
 import {type Fetch, HttpSession} from '../http.js'
+import {fetchMedia} from '../media-fetch.js'
 import {Pacer, type PacerOptions} from '../pacer.js'
 import {
   type ListingProgress,
@@ -48,10 +46,10 @@ const CACHE_LIMIT = 5000
 const LIST_PAGE_SIZE = 15
 /** A profile listing is reused (or continued) for this long. */
 const LISTING_FRESH_MS = 15 * 60_000
+/** Profiles are listed this many posts at a time, each chunk kept as soon as it is in. */
+export const PROFILE_CHUNK = 500
 /** A profile listing below this share of the expected count gets a second pass. */
 const COMPLETE_SHARE = 0.95
-/** No byte for this long: the transfer is stuck. */
-const STALL_MS = 60_000
 /** Reads of a page / listing page that TikTok refused, retried after the shared cool-down. */
 const READ_ATTEMPTS = 3
 /** After a verification page, TikTok urls go to yt-dlp for this long (a circuit breaker). */
@@ -99,6 +97,10 @@ export class TikTokSource implements MediaSource {
 
   handles(url: string): boolean {
     return parseTikTokLink(url, this.#originHost) !== undefined
+  }
+
+  defaultListSize(url: string): number | undefined {
+    return parseTikTokLink(url, this.#originHost)?.kind === 'profile' ? this.#maxProfileItems : undefined
   }
 
   async analyze(
@@ -151,6 +153,7 @@ export class TikTokSource implements MediaSource {
           vcodec: file.codec === 'h264' ? 'avc1' : 'hvc1',
           acodec: 'mp4a',
           filesize: file.bytes,
+          publishedAt: post.createdAt ?? null,
         },
         tags: {
           title: titleOf(post),
@@ -295,9 +298,9 @@ export class TikTokSource implements MediaSource {
     const known = this.#listings.get(account.secUid)
     const fresh = known && Date.now() - known.at < LISTING_FRESH_MS ? known : undefined
     let complete = fresh?.complete ?? false
-    const walk = (resume?: readonly TikTokPost[]) =>
+    const walk = (target: number, resume?: readonly TikTokPost[]) =>
       walkProfile((cursor, deviceId) => this.#listPage(account.secUid, cursor, deviceId, abort), {
-        max,
+        max: target,
         newDeviceId,
         resume,
         onProgress: listed => onProgress?.({listed, expected: max}),
@@ -305,22 +308,45 @@ export class TikTokSource implements MediaSource {
           complete = whole
         },
       })
-    let posts: TikTokPost[]
+    // every chunk is kept as soon as it is listed: a refusal, a cancel or a
+    // closed preview never loses it, and the next request continues from there
+    const keep = (list: TikTokPost[]) => {
+      const longest = this.#listings.get(account.secUid)
+      if (!longest || list.length >= longest.posts.length || Date.now() - longest.at >= LISTING_FRESH_MS) {
+        this.#listings.set(account.secUid, {posts: list, complete, at: Date.now()})
+      }
+    }
+    let posts: TikTokPost[] = fresh?.posts.slice(0, max) ?? []
     const cached = fresh !== undefined && (fresh.posts.length >= max || fresh.complete)
     if (account.videoCount === 0) posts = []
-    else if (cached) posts = fresh.posts.slice(0, max)
-    else posts = await walk(fresh?.posts)
-    // the listing is known to come back short between runs: one more pass with a
-    // fresh identity when more than 5% is missing, merged by id
-    if (!cached && posts.length < max * COMPLETE_SHARE) {
-      const merged = new Map(posts.map(post => [post.id, post]))
-      this.#log('info', `TikTok: @${account.user || user} listed ${posts.length} of ${max} — second pass`)
-      for (const post of await walk().catch(() => [])) if (merged.size < max) merged.set(post.id, post)
-      posts = [...merged.values()].sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+    else if (!cached) {
+      try {
+        while (posts.length < max && !complete) {
+          const target = Math.min(max, posts.length + PROFILE_CHUNK)
+          posts = await walk(target, posts)
+          keep(posts)
+          if (posts.length < target) break // the listing ended or stalled: the second pass below decides
+        }
+      } catch (error) {
+        // a cancel cancels; a refusal half-way returns what was listed (the preview offers to continue)
+        if (abort?.aborted || posts.length === 0) throw error
+        this.#log(
+          'warn',
+          `TikTok: @${account.user || user} listing stopped at ${posts.length} of ${max} (${String(error)}) — load again to continue`,
+        )
+      }
     }
-    // the longest listing seen is kept (a smaller request never shrinks it)
-    if (!fresh || posts.length >= fresh.posts.length) {
-      this.#listings.set(account.secUid, {posts, complete, at: fresh?.at ?? Date.now()})
+    // the listing is known to come back short between runs: one more pass with a
+    // fresh identity when more than 5% is missing, merged by id. Up to one chunk
+    // it walks again from the top (gaps can be anywhere); beyond that it
+    // continues below the oldest post (a full re-walk would cost as much again)
+    if (!cached && !abort?.aborted && posts.length > 0 && posts.length < max * COMPLETE_SHARE) {
+      this.#log('info', `TikTok: @${account.user || user} listed ${posts.length} of ${max} — second pass`)
+      const again = await walk(max, max <= PROFILE_CHUNK ? undefined : posts).catch(() => [])
+      const merged = new Map(posts.map(post => [post.id, post]))
+      for (const post of again) if (merged.size < max) merged.set(post.id, post)
+      posts = [...merged.values()].sort(newestFirst)
+      keep(posts)
     }
     onProgress?.({listed: posts.length, expected: max})
     for (const post of posts) this.#remember(post, false)
@@ -334,6 +360,7 @@ export class TikTokSource implements MediaSource {
       extractor: this.name,
       entries: posts.map((post, i) => ({...this.#summary(post), index: i + 1})),
       choices: genericChoices(),
+      total: account.videoCount,
     }
   }
 
@@ -404,6 +431,7 @@ export class TikTokSource implements MediaSource {
       uploader: post.authorName ?? post.author,
       duration: post.duration,
       thumbnail: post.cover,
+      publishedAt: post.createdAt,
       extractor: this.name,
       isLive: false,
     }
@@ -423,7 +451,13 @@ export class TikTokSource implements MediaSource {
       for (const url of rendition.urls) {
         const file = path.join(task.workDir, `${post.id}-${rendition.codec}-${rendition.resolution}.mp4`)
         try {
-          const bytes = await this.#fetchMedia(url, file, rendition.bytes, task)
+          const {bytes} = await fetchMedia(this.#session, url, file, {
+            site: 'TikTok',
+            headers: {Referer: `${this.#origin}/`},
+            expected: rendition.bytes,
+            signal: task.signal,
+            onProgress: task.onProgress,
+          })
           if (await task.hasAudio(file)) return {path: file, bytes, codec: rendition.codec}
           await fs.rm(file, {force: true})
           last = new TikTokError(
@@ -439,70 +473,6 @@ export class TikTokSource implements MediaSource {
     }
     throw last ?? new TikTokError('format-changed', 'No downloadable encoding.')
   }
-
-  /**
-   * Stream one media url to disk, resuming a partial file with a Range request.
-   * Sent with this session's cookies and a TikTok Referer — the CDN refuses
-   * anything else. A transfer with no new bytes for STALL_MS is aborted.
-   */
-  async #fetchMedia(url: string, file: string, expected: number | undefined, task: SourceDownload): Promise<number> {
-    const have = (await fs.stat(file).catch(() => undefined))?.size ?? 0
-    const stall = new AbortController()
-    let stallTimer = setTimeout(() => stall.abort(), STALL_MS)
-    const signal = AbortSignal.any([task.signal, stall.signal])
-    try {
-      const response = await this.#session.get(url, {
-        headers: {Referer: `${this.#origin}/`, ...(have > 0 && {Range: `bytes=${have}-`})},
-        signal,
-        timeoutMs: 24 * 60 * 60_000, // the stall watchdog guards the transfer instead
-      })
-      if (response.status === 403 || response.status === 401) {
-        throw new DownloadError('expired', 'The TikTok media link was refused (expired or another session).')
-      }
-      if (response.status === 404 || response.status === 410) throw new TikTokError('removed', 'Media not found.')
-      if (!response.ok || !response.body)
-        throw new DownloadError('network', `TikTok media answered HTTP ${response.status}.`)
-      const resumed = response.status === 206 && have > 0
-      const length = Number(response.headers.get('content-length')) || undefined
-      const total = length !== undefined ? length + (resumed ? have : 0) : expected
-      let done = resumed ? have : 0
-      const started = Date.now()
-      const meter = new Transform({
-        transform(chunk: Buffer, _encoding, callback) {
-          done += chunk.length
-          clearTimeout(stallTimer)
-          stallTimer = setTimeout(() => stall.abort(), STALL_MS)
-          const seconds = (Date.now() - started) / 1000
-          const speed = seconds > 0 ? (done - (resumed ? have : 0)) / seconds : undefined
-          task.onProgress({
-            fraction: total ? Math.min(1, done / total) : undefined,
-            downloadedBytes: done,
-            totalBytes: total,
-            speed,
-            eta: speed && total ? Math.max(0, (total - done) / speed) : undefined,
-          })
-          callback(null, chunk)
-        },
-      })
-      await streams.pipeline(
-        Readable.fromWeb(response.body as WebReadableStream<Uint8Array>),
-        meter,
-        (await fs.open(file, resumed ? 'a' : 'w')).createWriteStream(),
-        {signal},
-      )
-      if (total !== undefined && done !== total) {
-        throw new DownloadError('network', `Incomplete TikTok download: ${done} of ${total} bytes.`)
-      }
-      return done
-    } catch (error) {
-      if (stall.signal.aborted && !task.signal.aborted) {
-        throw new DownloadError('network', `No data from TikTok for ${STALL_MS / 1000} s.`)
-      }
-      throw error
-    } finally {
-      clearTimeout(stallTimer)
-    }
-  }
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -516,6 +486,10 @@ export function titleOf(post: TikTokPost): string {
   const short = caption.length > 90 ? `${caption.slice(0, 90).replace(/\s+\S*$/, '')}…` : caption
   return short || `TikTok ${post.id}`
 }
+
+/** Pinned posts keep their place on top; the rest newest first. */
+const newestFirst = (a: TikTokPost, b: TikTokPost): number =>
+  Number(b.pinned) - Number(a.pinned) || (b.createdAt ?? 0) - (a.createdAt ?? 0)
 
 const idOf = (url: string): string => /\/(\d{6,25})(?:[/?#.]|$)/.exec(url)?.[1] ?? ''
 

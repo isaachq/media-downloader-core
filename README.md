@@ -35,12 +35,17 @@ the ⌊CPUs/2⌋ pool and verified file by file.
 
 ![Paste a link, download it as MP4, check its integrity report](docs/demo.gif)
 
-### What's new in beta 4
+### What's new in beta 5
 
-- **TikTok behind its verification page** — when TikTok answers with its "please wait" check (yt-dlp can't get past it either), the app opens the page in its own hidden, sandboxed browser, where the check passes by itself, and carries on over plain HTTP with that session. Nothing is solved by our code; a captcha still hands TikTok to yt-dlp.
-- **Progress while a link is read** — a long profile or playlist shows how far the listing has got ("150 of 500 items") and can be cancelled.
-- **Faster second looks** — a profile listed in the last 15 minutes reopens instantly, and asking for more continues where the listing stopped; a listing that comes back short gets a second pass.
-- **The first update you don't install by hand** — beta 3 shows a banner for beta 4: one button and the app updates itself.
+- **Whole TikTok profiles** — the preview tells how many posts a profile has and offers **Load all (N)**; the listing runs in chunks of 500, each kept as it arrives, so a refusal or a cancel never loses what was listed and loading again continues from there.
+- **Files dated by publication** — every download gets its publication date as the file's date (TikTok's post time, the upload date for other sites): sort a folder by date and it sorts by publication. A **Published** column in the preview, too.
+- **Sites you configure yourself** — paged video sites can be added in a local `sites.json` ([details](#player-page-sites-configured-locally)): a search link lists every page (500 by default, Load all), checks each pick and downloads it straight from the media server; an MP4 is kept byte for byte and only validated.
+- **Faster listings** — pages are read in parallel, ahead of the pagination.
+
+### In beta 4
+
+- **TikTok behind its verification page** — the app opens the page in its own hidden, sandboxed browser, where TikTok's check passes by itself, and carries on over plain HTTP.
+- **Progress while a link is read** — "150 of 500 items", with Cancel; a profile listed in the last 15 minutes reopens instantly.
 
 ### In beta 3
 
@@ -255,12 +260,34 @@ scheduler.schedule({url: 'https://vm.tiktok.com/ZM…/', profile: {kind: 'video'
 | Verification pages | TikTok sometimes answers with a "please wait" check that only a browser passes. The library never solves it; a host that has a browser passes one in (`tiktok.browser`) — the desktop app uses a hidden, sandboxed Chromium window that loads no images or video — and the library adopts that session (cookies + user agent) so the listing and downloads continue over plain HTTP. Measured: a blocked profile opened in under a second against the local fake, and a real 1,022-post profile listed 500 posts in ~70 s. |
 | Fallbacks | Without a browser, or when even the browser gets a captcha, the source steps aside for 10 minutes (a circuit breaker) and yt-dlp handles TikTok meanwhile. A page whose layout changed falls back to yt-dlp for that post (`extractor-fallback` in its attempts). |
 | Listing | Progress is reported page by page (`analyze(url, {onProgress})`). A listing is kept for 15 minutes: a reopened profile answers from memory, and asking for more continues below the posts already known. A listing that comes back more than 5% short of the profile's post count gets a second, merged pass. |
+| Whole profiles | The analysis carries the profile's post count (`total`); the app's preview offers **Load all (N)**. The listing runs in chunks of 500, each kept as soon as it is listed: a refusal half-way returns what was listed, a cancel keeps it, and loading again continues from there. Explicit requests go up to `MAX_REQUESTED_ITEMS` (50,000). |
+| Dates | Every finished file — TikTok or any yt-dlp site — gets its **publication date as modification time** (TikTok's post time; yt-dlp's `timestamp`, else noon UTC of `upload_date`), so sorting a folder by date sorts by publication. The date tag inside the file carries it too. |
 
 No request signatures are generated and no anti-bot challenge is solved.
 Photo posts (slideshows) aren't supported yet and are reported as such.
 TikTok's terms restrict automated access: use this to back up content you
 are allowed to keep, at the default pace. `tiktok: false` sends TikTok to
 yt-dlp like any other site.
+
+## Player-page sites (configured locally)
+
+Some sites give each video a page with a player, list them in paged
+searches, and reveal the media link only to their player's script. None is
+built in: a host describes the sites its user wants as `PlayerPageSite`s and
+passes `new PlayerPageSource({site, resolveMedia})` in `sources`. The desktop
+app reads them from `<userData>/sites.json` (or the file `MDC_SITES_FILE`
+names), validated strictly — nothing about them ships with the app:
+
+```json
+{"sites": [{"name": "My site", "hosts": ["example.com"], "videoPath": "^/video/(\\d+)(?:/|$)"}]}
+```
+
+| | |
+|---|---|
+| Listing | Any page of a search lists **the whole search** from page 1, 500 videos by default (like a TikTok profile; **Load all** in the preview). Pages are read in parallel, ahead of what the pagination shows; the end is a page that comes back empty, missing or repeating an earlier one. The site's menu (featured videos on every page) is left out. |
+| Checking | Each picked video's page over plain HTTP, 10 at a time: a page that redirects away or has no player is *unavailable*. |
+| Media link | Read from the site's own player by a real browser (`resolveMedia`): the app opens the page in a hidden, sandboxed window that loads no images, video, fonts, styles or frames and nothing from other sites but scripts, and reads what the `<video>` element was given. Nothing is decoded by our code. One page load per download, two at a time. |
+| Download | Straight from the media server with resume (Range) and a stall watchdog. A quality cap or an audio format takes the sibling rendition (`…_720p.mp4`) when the page offers it. An MP4 is **kept byte for byte** as the server sent it (no conversion, no tag rewrite) and only validated; it is dated by the server's `Last-Modified`. |
 
 ## Retries, sub-tasks and tracing
 

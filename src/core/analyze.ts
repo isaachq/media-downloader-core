@@ -102,8 +102,10 @@ function singleVideoUrl(url: string): string | undefined {
 
 /** Entries taken from a YouTube Mix unless the caller says otherwise. */
 export const MIX_DEFAULT_ITEMS = 50
-/** Upper bound for any listing: channels and mixes can be practically endless. */
+/** Default bound of a listing: channels and mixes can be practically endless. */
 export const MAX_LISTED_ITEMS = 5000
+/** Most items a caller may ask for explicitly (a whole TikTok profile can hold tens of thousands). */
+export const MAX_REQUESTED_ITEMS = 50_000
 
 /**
  * A YouTube Mix ("list=RD…"): a radio YouTube generates on the fly from one

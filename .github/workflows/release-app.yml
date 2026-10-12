@@ -77,7 +77,7 @@ jobs:
           # mention (and notify) a GitHub user of that name: such words become code
           awk '/^## /{n++} n==1' source/CHANGELOG.md \
             | sed -E 's/(^|[^A-Za-z0-9/`._-])@([A-Za-z0-9][A-Za-z0-9-]*)/\1`@\2`/g' > notes.md
-          printf '\n---\nmacOS (arm64, x64), Windows (x64, arm64) and Linux (.deb, .rpm and AppImage, x64 and arm64). Not signed with an Apple / Microsoft certificate yet: on macOS use System Settings → Privacy & Security → Open Anyway (once); on Windows, More info → Run anyway. Details in the README.\n' >> notes.md
+          printf '\n---\nmacOS (arm64, x64), Windows (x64, arm64) and Linux (.deb, .rpm and AppImage, x64 and arm64). Not signed with an Apple / Microsoft certificate yet: on macOS use System Settings → Privacy & Security → Open Anyway (once) — or, when that button does not appear, run once in Terminal: `xattr -dr com.apple.quarantine "/Applications/Media Download Core.app"`; on Windows, More info → Run anyway. Details in the README.\n' >> notes.md
           gh release create "$GITHUB_REF_NAME" installers/* \
             --repo "$GITHUB_REPOSITORY" --prerelease \
             --title "Media Download Core ${GITHUB_REF_NAME#app-v}" \

@@ -205,7 +205,10 @@ function createEngine(current: AppSettings): void {
     ...(binaries && {binaries}),
   })
   scheduler = new BatchScheduler(engine)
-  coalescer = new EventCoalescer(bundle => send(CHANNEL.events, bundle))
+  coalescer = new EventCoalescer(
+    bundle => send(CHANNEL.events, bundle),
+    () => engine.youtubePausedUntil,
+  )
   engine.on('job', snapshot => coalescer.job(snapshot))
   engine.on('log', entry => coalescer.log(entry))
   scheduler.on('batch', snapshot => coalescer.batch(snapshot))
@@ -286,6 +289,8 @@ function registerIpc(): void {
     if (next.concurrency !== before.concurrency) engine.setConcurrency(next.concurrency)
     if (next.validation !== before.validation) engine.setValidation(next.validation)
     if (next.portableNames !== before.portableNames) engine.setFileNames(next.portableNames ? 'portable' : 'original')
+    // a browser's session at once: YouTube requests paused by a bot check go on with it
+    if (next.cookiesFromBrowser !== before.cookiesFromBrowser) engine.setCookiesFromBrowser(next.cookiesFromBrowser)
     if (next.syncEnabled !== before.syncEnabled) {
       if (next.syncEnabled) sync.startSchedule()
       else sync.stopSchedule()
@@ -383,7 +388,7 @@ function registerIpc(): void {
   })
   ipcMain.handle(CHANNEL.state, async () => {
     await restoring
-    return {batches: scheduler.batches(), jobs: engine.jobs()}
+    return {batches: scheduler.batches(), jobs: engine.jobs(), youtubePausedUntil: engine.youtubePausedUntil ?? null}
   })
   ipcMain.handle(CHANNEL.items, (_event, batchId: BatchId, offset: unknown, limit: unknown) =>
     scheduler.items(batchId, {

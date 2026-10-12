@@ -119,6 +119,13 @@ export type ErrorCode =
   | 'expired'
   /** Private, removed, geo-blocked, members-only, age-restricted… Not retried. */
   | 'unavailable'
+  /**
+   * The site asks to prove the requester is human ("Sign in to confirm you're
+   * not a bot"): it blocked this connection for a while. YouTube jobs wait it
+   * out (every YouTube request pauses, 5 → 10 → 20 min) or continue at once
+   * with a browser's signed-in session (`setCookiesFromBrowser`).
+   */
+  | 'blocked'
   | 'disk-full'
   /** The file failed integrity validation. Retried from scratch. */
   | 'validation'
@@ -143,6 +150,10 @@ export type FailureHint =
   | 'unsupported-url'
   | 'format-unavailable'
   | 'retry-later'
+  /** The site asked to confirm this is not a bot (code `blocked`). */
+  | 'bot-check'
+  /** The browser's cookies couldn't be read (on macOS, Safari's need Full Disk Access). */
+  | 'cookies-unreadable'
 
 export type JobError = {
   readonly code: ErrorCode
@@ -596,6 +607,19 @@ export type DownloaderOptions = {
    * yt-dlp). `false` hands TikTok urls to yt-dlp like any other site.
    */
   readonly tiktok?: false | TikTokOptions | undefined
+  /** YouTube's pace: attempts a second apart, and the pause after a bot check (5 → 60 min). For tests. */
+  readonly youtube?:
+    | {
+        readonly pacing?:
+          | {
+              readonly spacingMs?: number | undefined
+              readonly jitterMs?: number | undefined
+              readonly backoffMs?: number | undefined
+              readonly maxBackoffMs?: number | undefined
+            }
+          | undefined
+      }
+    | undefined
   /**
    * More sites read natively, supplied by the host (e.g. a `PlayerPageSource`
    * per site the user configured). Asked after the built-in ones.

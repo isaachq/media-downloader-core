@@ -106,9 +106,11 @@ export type SyncFolder = {
   readonly problem?: string | undefined
 }
 
+/** Browsers whose cookies (signed-in session) yt-dlp can read. */
+export const BROWSERS = ['chrome', 'chromium', 'edge', 'firefox', 'safari', 'brave', 'opera', 'vivaldi'] as const
+
 /** Settings the engine reads at construction — changing them asks for a restart. */
 export const RESTART_SETTINGS: ReadonlyArray<keyof AppSettings> = [
-  'cookiesFromBrowser',
   'embedMetadata',
   'embedThumbnail',
   'longVideoMinutes',
@@ -136,6 +138,8 @@ export type EventBundle = {
   readonly batches: readonly BatchSnapshot[]
   readonly items: ReadonlyArray<{readonly batchId: BatchId; readonly item: PreflightItem}>
   readonly logs: readonly LogEntry[]
+  /** YouTube requests are paused by a bot check until then (ms); null when they aren't. */
+  readonly youtubePausedUntil?: number | null | undefined
 }
 
 export type ScheduleInput = {
@@ -290,7 +294,11 @@ export type MdcApi = {
   /** Progress of a long listing (TikTok profiles): posts read so far, of how many. */
   onAnalyzeProgress(listener: (progress: AnalyzeProgress) => void): () => void
   schedule(input: ScheduleInput): Promise<BatchSnapshot>
-  state(): Promise<{readonly batches: readonly BatchSnapshot[]; readonly jobs: readonly JobSnapshot[]}>
+  state(): Promise<{
+    readonly batches: readonly BatchSnapshot[]
+    readonly jobs: readonly JobSnapshot[]
+    readonly youtubePausedUntil?: number | null | undefined
+  }>
   items(batchId: BatchId, offset: number, limit: number): Promise<PreflightItem[]>
   cancelBatch(batchId: BatchId): Promise<void>
   cancelJob(jobId: JobId): Promise<void>

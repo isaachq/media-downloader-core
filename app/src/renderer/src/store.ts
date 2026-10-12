@@ -69,6 +69,8 @@ export class AppStore {
   readonly jobs = new Map<JobId, JobSnapshot>()
   readonly batches = new Map<BatchId, BatchSnapshot>()
   logs: LogEntry[] = []
+  /** YouTube requests paused by a bot check until then (ms), as the engine last said. */
+  youtubePausedUntil: number | undefined
   // stable React keys for log lines (entries carry no id of their own): O(1), no copies
   readonly #logKeys = new WeakMap<LogEntry, number>()
   #nextLogKey = 0
@@ -107,7 +109,12 @@ export class AppStore {
     return this.#counts
   }
 
-  load(state: {readonly batches: readonly BatchSnapshot[]; readonly jobs: readonly JobSnapshot[]}): void {
+  load(state: {
+    readonly batches: readonly BatchSnapshot[]
+    readonly jobs: readonly JobSnapshot[]
+    readonly youtubePausedUntil?: number | null | undefined
+  }): void {
+    this.youtubePausedUntil = state.youtubePausedUntil ?? undefined
     for (const batch of state.batches) this.batches.set(batch.id, batch)
     for (const job of state.jobs) this.#setJob(job)
     this.#trimJobs()
@@ -115,6 +122,7 @@ export class AppStore {
   }
 
   apply(bundle: EventBundle): void {
+    if (bundle.youtubePausedUntil !== undefined) this.youtubePausedUntil = bundle.youtubePausedUntil ?? undefined
     for (const batch of bundle.batches) this.batches.set(batch.id, batch)
     for (const job of bundle.jobs) this.#setJob(job)
     for (const {batchId, item} of bundle.items) {

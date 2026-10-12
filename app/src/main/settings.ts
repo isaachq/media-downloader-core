@@ -3,6 +3,7 @@ import * as path from 'node:path'
 import {
   type AppSettings,
   AUDIO_FORMATS,
+  BROWSERS,
   type Format,
   type Language,
   pickLanguage,
@@ -41,7 +42,6 @@ export function defaultSettings(
 }
 
 const FORMATS: readonly string[] = [...VIDEO_FORMATS, ...AUDIO_FORMATS]
-const BROWSERS = ['', 'chrome', 'chromium', 'edge', 'firefox', 'safari', 'brave', 'opera', 'vivaldi']
 
 /**
  * Merge an untrusted patch (it comes from the renderer) into settings: every
@@ -61,7 +61,10 @@ export function mergeSettings(current: AppSettings, patch: unknown, maxConcurren
     next.concurrency = Math.min(maxConcurrency, Math.max(1, p['concurrency'] as number))
   if (p['validation'] === 'full' || p['validation'] === 'quick' || p['validation'] === 'none')
     next.validation = p['validation']
-  if (typeof p['cookiesFromBrowser'] === 'string' && BROWSERS.includes(p['cookiesFromBrowser']))
+  if (
+    typeof p['cookiesFromBrowser'] === 'string' &&
+    (p['cookiesFromBrowser'] === '' || (BROWSERS as readonly string[]).includes(p['cookiesFromBrowser']))
+  )
     next.cookiesFromBrowser = p['cookiesFromBrowser']
   if (typeof p['embedMetadata'] === 'boolean') next.embedMetadata = p['embedMetadata']
   if (typeof p['embedThumbnail'] === 'boolean') next.embedThumbnail = p['embedThumbnail']

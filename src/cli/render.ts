@@ -226,6 +226,10 @@ export const HINT_TEXT: Readonly<Record<FailureHint, string>> = {
   'unsupported-url': 'site or url not supported',
   'format-unavailable': 'the requested format is not offered',
   'retry-later': 'rate-limited by the site — try again later',
+  'bot-check':
+    "the site asks to confirm you're not a bot — it waits and retries; or retry with --cookies <your browser>",
+  'cookies-unreadable':
+    "couldn't read the browser's cookies (Safari: give the terminal Full Disk Access) — or try another browser",
 }
 
 /** "checking ▰▰▰▱▱ 12/50 · 10 ok · 2 unavailable" — the live preflight row. */

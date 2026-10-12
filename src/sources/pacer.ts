@@ -39,6 +39,8 @@ export class Pacer {
   /** Earliest time the next request may start. */
   #nextStart = 0
   #refusals = 0
+  /** Aborted by resume(): wakes the callers sleeping through a cool-down. */
+  #wake = new AbortController()
 
   constructor(options: PacerOptions = {}) {
     this.#concurrency = Math.max(1, Math.floor(options.concurrency ?? 2))
@@ -85,7 +87,10 @@ export class Pacer {
    */
   resume(): void {
     this.#refusals = 0
-    this.#nextStart = Math.min(this.#nextStart, this.#now() + this.#spacingMs)
+    this.#nextStart = Math.min(this.#nextStart, this.#now())
+    // callers already sleeping through the cool-down take their turns now, spaced as usual
+    this.#wake.abort()
+    this.#wake = new AbortController()
   }
 
   #acquire(signal?: AbortSignal): Promise<void> {
@@ -126,11 +131,21 @@ export class Pacer {
   }
 
   async #waitTurn(signal?: AbortSignal): Promise<void> {
-    const now = this.#now()
-    const start = Math.max(now, this.#nextStart)
-    // reserve this start before awaiting, so concurrent callers queue up behind it
-    this.#nextStart = start + this.#spacingMs + this.#random() * this.#jitterMs
-    const wait = start - now
-    if (wait > 0) await sleep(wait, undefined, {signal})
+    for (;;) {
+      const now = this.#now()
+      const start = Math.max(now, this.#nextStart)
+      // reserve this start before awaiting, so concurrent callers queue up behind it
+      this.#nextStart = start + this.#spacingMs + this.#random() * this.#jitterMs
+      const wait = start - now
+      if (wait <= 0) return
+      const wake = this.#wake.signal
+      try {
+        await sleep(wait, undefined, {signal: signal ? AbortSignal.any([signal, wake]) : wake})
+        return
+      } catch (error) {
+        if (signal?.aborted || !wake.aborted) throw error
+        // resume(): the cool-down is over — take a turn again
+      }
+    }
   }
 }

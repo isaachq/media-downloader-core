@@ -74,6 +74,8 @@ describe('download bar', () => {
         format: 'mp4',
         quality: 'best',
         outDir: '/Users/me/Downloads',
+        // what a TikTok slideshow would become (the remembered choice)
+        slideshow: {mode: 'video', secondsPerImage: 3},
       }),
     )
   })

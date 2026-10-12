@@ -33,6 +33,9 @@ export function defaultSettings(
     notifications: true,
     portableNames: true,
     autoUpdate: true,
+    slideshowMode: 'video',
+    slideshowSeconds: 3,
+    tourDone: false,
   }
 }
 
@@ -66,6 +69,13 @@ export function mergeSettings(current: AppSettings, patch: unknown, maxConcurren
   if (typeof p['notifications'] === 'boolean') next.notifications = p['notifications']
   if (typeof p['portableNames'] === 'boolean') next.portableNames = p['portableNames']
   if (typeof p['autoUpdate'] === 'boolean') next.autoUpdate = p['autoUpdate']
+  if (p['slideshowMode'] === 'video' || p['slideshowMode'] === 'images-audio' || p['slideshowMode'] === 'images') {
+    next.slideshowMode = p['slideshowMode']
+  }
+  if (typeof p['tourDone'] === 'boolean') next.tourDone = p['tourDone']
+  if (typeof p['slideshowSeconds'] === 'number' && Number.isFinite(p['slideshowSeconds'])) {
+    next.slideshowSeconds = Math.min(30, Math.max(1, Math.round(p['slideshowSeconds'])))
+  }
   return next
 }
 

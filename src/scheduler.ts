@@ -12,6 +12,7 @@ import {isTerminal} from './core/job.js'
 import {QueueStore} from './core/queue-store.js'
 import type {MediaDownloader} from './downloader.js'
 import {isTikTokProfile} from './sources/tiktok/links.js'
+import {slideshowOptions} from './sources/tiktok/slideshow.js'
 import {TIKTOK_PROFILE_DEFAULT_ITEMS} from './sources/tiktok/source.js'
 import type {
   BatchCounts,
@@ -78,6 +79,11 @@ type Batch = {
   readonly running: Set<JobId>
   succeeded: number
   failed: number
+  /** Why each failed job failed (its hint, else its code) — kept per job so a retry can take it back. */
+  readonly failedCause: Map<JobId, string>
+  /** Failed jobs and unavailable items by cause: running totals, O(1) per change. */
+  readonly failedBy: Map<string, number>
+  readonly unavailableBy: Map<string, number>
   /** Metadata files kept so far (bounded by maxCachedMetadata). */
   cached: number
   /** Jobs are still being created: the batch can't close yet. */
@@ -174,6 +180,7 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
         ...request,
         url,
         outDir: path.resolve(request.outDir),
+        ...(request.slideshow !== undefined && {slideshow: slideshowOptions(request.slideshow)}),
         maxItems:
           maxItems ??
           (isYouTubeMix(url)
@@ -193,6 +200,9 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
       running: new Set(),
       succeeded: 0,
       failed: 0,
+      failedCause: new Map(),
+      failedBy: new Map(),
+      unavailableBy: new Map(),
       cached: 0,
       enqueuing: false,
       estimate: undefined,
@@ -249,6 +259,71 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
     const offset = Math.max(0, opts.offset ?? 0)
     const end = opts.limit === undefined ? undefined : offset + Math.max(0, opts.limit)
     return batch.items.slice(offset, end).map(publicItem)
+  }
+
+  /**
+   * Download a batch's failed (and cancelled) jobs again. A closed batch
+   * reopens: it runs, counts and closes like the first time, so its status,
+   * totals, causes and time left stay true. Returns how many were retried.
+   */
+  retryFailed(id: BatchId): number {
+    const batch = this.#batches.get(id)
+    if (!batch || batch.failed === 0 || batch.status === 'scheduled' || batch.status === 'checking') return 0
+    const failed = [...batch.jobs].filter(([, outcome]) => outcome === 'failed').map(([jobId]) => jobId)
+    return this.#retry(batch, failed).length
+  }
+
+  /** Retry one job; a job of a batch is retried through its batch, so the batch follows it. */
+  retryJob(jobId: JobId): JobSnapshot | undefined {
+    const batchId = this.#byJob.get(jobId)
+    const batch = batchId ? this.#batches.get(batchId) : undefined
+    if (batch?.jobs.get(jobId) !== 'failed') return this.#engine.retry(jobId)
+    return this.#retry(batch!, [jobId])[0]
+  }
+
+  /** The new jobs, one per job that could be retried. */
+  #retry(batch: Batch, jobIds: readonly JobId[]): JobSnapshot[] {
+    const reopen = TERMINAL.has(batch.status)
+    const retried: JobSnapshot[] = []
+    // item of each job, found once: O(items) per call, not per job
+    const itemOf = new Map<JobId, number>()
+    batch.items.forEach((item, position) => {
+      if (item.jobId) itemOf.set(item.jobId, position)
+    })
+    for (const oldId of jobIds) {
+      const job = this.#engine.retry(oldId)
+      if (!job) continue
+      retried.push(job)
+      batch.jobs.delete(oldId)
+      this.#byJob.delete(oldId)
+      batch.failed--
+      const cause = batch.failedCause.get(oldId)
+      batch.failedCause.delete(oldId)
+      if (cause) bump(batch.failedBy, cause, -1)
+      batch.jobs.set(job.id, job.outcome)
+      this.#byJob.set(job.id, batch.id)
+      const position = itemOf.get(oldId)
+      if (position !== undefined) {
+        const item = batch.items[position]!
+        batch.items[position] = {...item, jobId: job.id}
+        batch.meter?.add(job.id, item.estimatedBytes)
+        this.emit('item', batch.id, publicItem(batch.items[position]!))
+      }
+    }
+    if (retried.length === 0) return retried
+    if (reopen) {
+      this.#engine.log('info', `batch reopened: retrying ${retried.length} failed item(s)`, {batchId: batch.id})
+      batch.status = 'running'
+      batch.error = undefined
+      batch.finishedAt = undefined
+      batch.controller = new AbortController()
+      batch.meter ??= new WorkMeter()
+      this.#open++
+      this.#active++
+      this.#store.touch()
+    }
+    this.#emitBatch(batch, true)
+    return retried
   }
 
   /** Cancel a batch: scheduled → dropped, checking → stopped, running → its jobs cancelled. */
@@ -539,6 +614,7 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
             ? {id: batch.playlistId ?? batch.id, title: batch.title ?? 'Playlist', index: item.index}
             : undefined,
         infoJsonPath: item.infoJsonPath,
+        slideshow: batch.request.slideshow,
       }
       const job = this.#engine.add(request)
       batch.meter.add(job.id, item.estimatedBytes)
@@ -574,7 +650,12 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
     if (before !== job.outcome) {
       batch.jobs.set(job.id, job.outcome)
       if (job.outcome === 'success') batch.succeeded++
-      else if (job.outcome === 'failed') batch.failed++
+      else if (job.outcome === 'failed') {
+        batch.failed++
+        const cause = job.status === 'cancelled' ? 'cancelled' : (job.error?.hint ?? job.error?.code ?? 'unknown')
+        batch.failedCause.set(job.id, cause)
+        bump(batch.failedBy, cause, 1)
+      }
       // already-downloaded and cancelled jobs took no real time: keep them out of the throughput
       if (job.outcome !== 'in-progress')
         batch.meter?.finish(job.id, job.status !== 'skipped' && job.status !== 'cancelled')
@@ -635,7 +716,10 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
     batch.items[position] = {...item, ...patch, state}
     batch.checked++
     if (state === 'ok') batch.ok++
-    else batch.unavailable++
+    else {
+      batch.unavailable++
+      bump(batch.unavailableBy, patch.error?.hint ?? patch.error?.code ?? 'unknown', 1)
+    }
     this.emit('item', batch.id, publicItem(batch.items[position]!))
     this.#emitBatch(batch, false)
   }
@@ -678,6 +762,10 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
       title: batch.title,
       position,
       preflight: {total: batch.items.length, checked: batch.checked, ok: batch.ok, unavailable: batch.unavailable},
+      problems:
+        batch.failedBy.size || batch.unavailableBy.size
+          ? {failed: Object.fromEntries(batch.failedBy), unavailable: Object.fromEntries(batch.unavailableBy)}
+          : undefined,
       estimate: batch.estimate,
       jobs: this.#counts(batch),
       error: batch.error,
@@ -713,6 +801,13 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
 }
 
 /** Strip internal fields before an item leaves the scheduler. */
+/** Add `delta` to a counter, dropping it at zero. */
+function bump(counts: Map<string, number>, key: string, delta: number): void {
+  const next = (counts.get(key) ?? 0) + delta
+  if (next > 0) counts.set(key, next)
+  else counts.delete(key)
+}
+
 function publicItem(item: ItemState): PreflightItem {
   const {extractor: _extractor, infoJsonPath: _infoJsonPath, ...rest} = item
   return rest

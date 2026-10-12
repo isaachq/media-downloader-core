@@ -1,4 +1,4 @@
-import {CopyOutlined, FolderOpenOutlined, ReloadOutlined} from '@ant-design/icons'
+import {CopyOutlined, FolderOpenOutlined, RedoOutlined, ReloadOutlined} from '@ant-design/icons'
 import {
   App as AntApp,
   Button,
@@ -24,6 +24,7 @@ import {bytes, moment, rate, timeLeft} from '../format'
 import {type MessageKey, useT} from '../i18n'
 import {buildReport, type Report, type ReportBatch, reportText, STAGES} from '../report'
 import {useAppStore} from '../store'
+import {causeLabel, Problems} from './Problems'
 
 /** The report is read again this often (and on demand). */
 export const REPORT_REFRESH_MS = 15_000
@@ -98,9 +99,23 @@ export function ReportModal({open, onClose}: {readonly open: boolean; readonly o
       rate: value => rate(value, lang) || '0',
       time: ms => moment(ms, lang),
       left: timeLeft,
+      cause: cause => causeLabel(t, cause),
     })
     await navigator.clipboard?.writeText(text)
     void message.success(t('report.copied'))
+  }
+
+  // every batch with failures retries them (each reopens); then the report reads again
+  const retryAll = async () => {
+    if (!report) return
+    let count = 0
+    for (const batch of report.batches) {
+      if (batch.failed > 0 && batch.status !== 'scheduled' && batch.status !== 'checking') {
+        count += await api().retryBatch(batch.id)
+      }
+    }
+    void message.info(t('batch.retried', {count}))
+    take()
   }
 
   const nothing = report && report.batches.length === 0 && report.inProgress + report.pending + report.finished === 0
@@ -141,6 +156,11 @@ export function ReportModal({open, onClose}: {readonly open: boolean; readonly o
               <Button icon={<CopyOutlined />} onClick={() => void copy()}>
                 {t('report.copy')}
               </Button>
+              {report.retryable > 0 ? (
+                <Button icon={<RedoOutlined />} onClick={() => void retryAll()} data-testid="report-retry-all">
+                  {t('report.retryAll', {count: report.retryable})}
+                </Button>
+              ) : null}
             </Space>
           </Flex>
 
@@ -205,6 +225,7 @@ export function ReportModal({open, onClose}: {readonly open: boolean; readonly o
                     </span>
                   ) : null}
                 </Space>
+                <Problems problems={report.problems} />
                 <div className="report-stages">
                   <Typography.Text type="secondary">{t('report.stages')}: </Typography.Text>
                   {STAGES.map(stage => (
@@ -313,17 +334,29 @@ export function ReportModal({open, onClose}: {readonly open: boolean; readonly o
                     {
                       title: '',
                       key: 'open',
-                      width: 56,
-                      render: (_, batch) =>
-                        batch.succeeded > 0 ? (
-                          <Button
-                            size="small"
-                            icon={<FolderOpenOutlined />}
-                            aria-label={t('report.openFolder')}
-                            title={t('report.openFolder')}
-                            onClick={() => void api().openFolder({batchId: batch.id})}
-                          />
-                        ) : null,
+                      width: 90,
+                      render: (_, batch) => (
+                        <Space size={4}>
+                          {batch.failed > 0 && batch.status !== 'scheduled' && batch.status !== 'checking' ? (
+                            <Button
+                              size="small"
+                              icon={<RedoOutlined />}
+                              aria-label={t('batch.retryFailed', {count: batch.failed})}
+                              title={t('batch.retryFailed', {count: batch.failed})}
+                              onClick={() => void api().retryBatch(batch.id).then(take)}
+                            />
+                          ) : null}
+                          {batch.succeeded > 0 ? (
+                            <Button
+                              size="small"
+                              icon={<FolderOpenOutlined />}
+                              aria-label={t('report.openFolder')}
+                              title={t('report.openFolder')}
+                              onClick={() => void api().openFolder({batchId: batch.id})}
+                            />
+                          ) : null}
+                        </Space>
+                      ),
                     },
                   ]}
                 />

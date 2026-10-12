@@ -37,15 +37,21 @@ the ⌊CPUs/2⌋ pool and verified file by file.
 
 ![Paste a link, download it as MP4, check its integrity report, find it in Finished, open the run report](docs/demo.gif)
 
-### What's new in beta 6
+### What's new in beta 7
 
-- **Finished tab** — every finished file of every session, newest first: search by title or file name (accents and case ignored), **play it**, **show it in its folder**, copy its path, or open the downloads folder. It says whether each file was verified, is still there or changed since. Batches get an **Open folder** button too.
-- **Run report** — one window that sums up the three tabs: the **run ID**, pending / in progress / finished / failed, every pipeline stage with what is in it right now, each batch with its progress and time left, recent results. It refreshes **every 15 seconds** (or on demand) and copies as text.
-- **Live counts** on the tabs, and the stat cards open the tab they count.
-- **TikTok profiles that count posts they don't list** — the preview now says so ("all 1,018 public posts are here; the other 4 are private, deleted or visible only to their author") instead of offering a load that brings nothing; a listing that really stopped short says that, and continues.
-- **Veteran TikTok profiles** list back to their musical.ly-era posts (2014–2016), which were cut off before.
-- **Lighter UI** — the stats and the download form no longer re-render on every progress event; finished counts stay right past 1,500 jobs.
-- **A website** — [isaachq.github.io/media-downloader-core](https://isaachq.github.io/media-downloader-core/), in English and Spanish, offers the installer that fits your computer.
+- **Retry what failed, and see why** — each batch tells why items failed (removed, private, network…) and retries them in one click; the run report retries every batch.
+- **One batch at a time** — Downloads and Finished filter by batch (Finished, across sessions); a batch card opens them filtered. Finished also checks files again, exports a CSV and forgets entries.
+- **TikTok slideshows** — as an MP4 (N seconds per image, over the soundtrack), as images with their sound, or images only; with an audio format, just the soundtrack.
+- **Several links at once** — paste or drop a list; each link becomes a batch.
+- **Notifications outside the app** — a system notification when a batch ends in the background; progress on the Dock / taskbar icon.
+- **First steps** — a three-step guide on the first launch (Header → Guide replays it).
+
+### In beta 6
+
+- **Finished tab** — every finished file of every session: search, play, show in its folder; verified, missing or changed at a glance.
+- **Run report** — the run ID and everything in flight, refreshed every 15 seconds, copyable as text.
+- **TikTok** — profiles that count posts they don't list say so; veteran profiles list back to their musical.ly-era posts.
+- **A website** — [isaachq.github.io/media-downloader-core](https://isaachq.github.io/media-downloader-core/), in English and Spanish.
 
 | Finished tab | Run report |
 | --- | --- |

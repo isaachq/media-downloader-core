@@ -14,6 +14,7 @@ import {useApp} from '../context'
 import {clock, rate} from '../format'
 import {type MessageKey, useT} from '../i18n'
 import {useStore} from '../store'
+import {BatchFilter} from './BatchFilter'
 import {IntegrityTag, StatusTag, StepTrack} from './JobParts'
 
 const TIER_COLOR = {normal: 'default', long: 'gold', heavy: 'volcano'} as const
@@ -28,7 +29,13 @@ function rank(job: JobSnapshot): number {
  * One row per download thread. Virtualized: thousands of rows render only
  * what's on screen; rows come from the store, updated ≤ 10×/s.
  */
-export function JobTable() {
+export function JobTable({
+  batchId,
+  onBatch,
+}: {
+  readonly batchId?: string | undefined
+  readonly onBatch?: ((batchId: string | undefined) => void) | undefined
+} = {}) {
   const t = useT()
   const {settings} = useApp()
   const store = useStore()
@@ -36,13 +43,26 @@ export function JobTable() {
   const [paused, setPaused] = useState(false)
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: recompute when the store changes
+  const options = useMemo(
+    () =>
+      [...store.batches.values()]
+        .filter(batch => batch.jobs.total > 0)
+        .sort((a, b) => b.createdAt - a.createdAt)
+        .map(batch => ({
+          value: batch.id,
+          label: `${batch.title ?? batch.url} · ${t(`batch.status.${batch.status}` as MessageKey)}`,
+        })),
+    [version, t],
+  )
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: recompute when the store changes
   const rows = useMemo(() => {
-    const list = [...store.jobs.values()]
+    const list = batchId ? [...store.jobs.values()].filter(job => job.batchId === batchId) : [...store.jobs.values()]
     return list
       .map((job, order) => ({job, order}))
       .sort((a, b) => rank(a.job) - rank(b.job) || (rank(a.job) === 2 ? b.order - a.order : a.order - b.order))
       .map(({job}) => job)
-  }, [version])
+  }, [version, batchId])
 
   const columns: ColumnsType<JobSnapshot> = [
     {
@@ -150,7 +170,8 @@ export function JobTable() {
 
   return (
     <Space direction="vertical" className="full">
-      <Space>
+      <Space wrap>
+        {onBatch ? <BatchFilter value={batchId} options={options} onChange={onBatch} /> : null}
         <Button icon={paused ? <PlayCircleOutlined /> : <PauseCircleOutlined />} onClick={() => void togglePause()}>
           {paused ? t('job.resume') : t('job.pause')}
         </Button>

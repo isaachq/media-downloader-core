@@ -158,7 +158,7 @@ describe('run report', () => {
       batches: target.batches.values(),
       jobs: target.jobs.values(),
     })
-    const format = {bytes: String, rate: String, time: String, left: String}
+    const format = {bytes: String, rate: String, time: String, left: String, cause: String}
     const en = reportText(report, {...format, label: translator('en') as never})
     expect(en).toContain('Run ID: RUN1')
     expect(en).toContain('Pending: 1 · In progress: 13 · Finished: 2 · Failed: 1')

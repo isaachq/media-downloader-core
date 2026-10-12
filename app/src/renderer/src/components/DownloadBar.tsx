@@ -1,6 +1,6 @@
 import {CloudDownloadOutlined, FolderOpenOutlined, ScheduleOutlined, SnippetsOutlined} from '@ant-design/icons'
 import {App as AntApp, Button, Card, Col, Form, Input, Row, Select, Space, Typography} from 'antd'
-import {useRef, useState} from 'react'
+import {type DragEvent, useRef, useState} from 'react'
 import {
   AUDIO_FORMATS,
   type Format,
@@ -12,11 +12,13 @@ import {
 } from '../../../shared/contract'
 import {api} from '../api'
 import {useApp} from '../context'
-import {isHttpUrl} from '../format'
+import {extractUrls, isHttpUrl} from '../format'
 import {type MessageKey, useT} from '../i18n'
 import {type AppStore, useAppStore, useStoreValue} from '../store'
 import {AnalyzeLoader} from './AnalyzeLoader'
+import {ManyLinksModal} from './ManyLinksModal'
 import {type PlaylistPreview, type PreviewChoice, PreviewModal} from './PreviewModal'
+import {SlideshowModal} from './SlideshowChoice'
 
 const ACTIVE = new Set(['checking', 'running'])
 
@@ -47,6 +49,9 @@ export function DownloadBar() {
   const [busy, setBusy] = useState(false)
   const [preview, setPreview] = useState<{url: string; data: PlaylistPreview} | undefined>()
   const [reloading, setReloading] = useState(false)
+  /** Several links pasted or dropped at once, under review. */
+  const [many, setMany] = useState<{urls: string[]; repeated: number} | undefined>()
+  const [dropping, setDropping] = useState(false)
   // set when the user stops the reading: its rejection is not an error to show
   const cancelled = useRef(false)
 
@@ -55,12 +60,17 @@ export function DownloadBar() {
 
   const fail = (error: unknown) => void message.error(error instanceof Error ? error.message : String(error))
 
+  const slideshow = {mode: settings.slideshowMode, secondsPerImage: settings.slideshowSeconds}
+  /** A single slideshow link waiting for its choice. */
+  const [slide, setSlide] = useState<{url: string; title: string} | undefined>()
+
   const schedule = async (target: string, extra: Pick<ScheduleInput, 'selection'> = {}) => {
     const batch = await api().schedule({
       url: target,
       format: settings.format,
       quality: settings.quality,
       outDir: settings.downloadDir,
+      slideshow,
       ...extra,
     })
     store.apply({batches: [batch], jobs: [], items: [], logs: []})
@@ -79,6 +89,8 @@ export function DownloadBar() {
     try {
       const result = await api().analyze(target)
       if (result.kind === 'playlist') setPreview({url: target, data: result})
+      // a slideshow with a video format: first, what it should become
+      else if (result.slideshow && !audio) setSlide({url: target, title: result.title})
       else await schedule(target)
     } catch (error) {
       if (!cancelled.current) fail(error)
@@ -113,9 +125,46 @@ export function DownloadBar() {
     }
   }
 
+  /** One link fills the field; several open the review of many links. True when it took the text. */
+  const take = (text: string): boolean => {
+    const found = extractUrls(text)
+    if (found.urls.length < 2) return false
+    setMany(found)
+    return true
+  }
+
   const paste = async () => {
     const text = await navigator.clipboard?.readText().catch(() => '')
-    if (text) setUrl(text.trim())
+    if (text && !take(text)) setUrl(text.trim())
+  }
+
+  const scheduleMany = async (urls: readonly string[]) => {
+    let scheduled = 0
+    for (const target of urls) {
+      try {
+        const batch = await api().schedule({
+          url: target,
+          format: settings.format,
+          quality: settings.quality,
+          outDir: settings.downloadDir,
+        })
+        store.apply({batches: [batch], jobs: [], items: [], logs: []})
+        scheduled++
+      } catch (error) {
+        fail(error)
+      }
+    }
+    setMany(undefined)
+    void message.success(t('many.scheduled', {count: scheduled}))
+  }
+
+  const drop = (event: DragEvent<HTMLElement>) => {
+    event.preventDefault()
+    setDropping(false)
+    const text = event.dataTransfer.getData('text/uri-list') || event.dataTransfer.getData('text/plain')
+    if (!text || take(text)) return
+    const [single] = extractUrls(text).urls
+    if (single) setUrl(single)
   }
 
   const chooseFolder = async () => {
@@ -131,14 +180,24 @@ export function DownloadBar() {
   const longAtOnce = Math.max(1, Math.floor(info.maxConcurrency / 1.5))
 
   return (
-    <Card className="download-card" title={t('download.title')}>
+    <Card
+      className={dropping ? 'download-card dropping' : 'download-card'}
+      title={t('download.title')}
+      onDragOver={event => {
+        event.preventDefault()
+        setDropping(true)
+      }}
+      onDragLeave={() => setDropping(false)}
+      onDrop={drop}
+      data-drop-hint={t('many.drop')}
+    >
       <Form layout="vertical" onFinish={() => void submit()} requiredMark={false}>
         <Form.Item
           label={t('download.url')}
           validateStatus={touched && !valid ? 'error' : ''}
           help={touched && !valid ? t('download.invalidUrl') : undefined}
         >
-          <Space.Compact block>
+          <Space.Compact block data-tour="url">
             <Input
               size="large"
               allowClear
@@ -146,6 +205,9 @@ export function DownloadBar() {
               placeholder={t('download.urlPlaceholder')}
               value={url}
               onChange={event => setUrl(event.target.value)}
+              onPaste={event => {
+                if (take(event.clipboardData.getData('text'))) event.preventDefault()
+              }}
               onBlur={() => setTouched(url.length > 0)}
             />
             <Button size="large" icon={<SnippetsOutlined />} onClick={() => void paste()}>
@@ -153,7 +215,7 @@ export function DownloadBar() {
             </Button>
           </Space.Compact>
         </Form.Item>
-        <Row gutter={12} align="bottom">
+        <Row gutter={12} align="bottom" data-tour="options">
           <Col xs={24} md={8}>
             <Form.Item label={t('download.format')}>
               <Select
@@ -197,6 +259,7 @@ export function DownloadBar() {
                 htmlType="submit"
                 size="large"
                 block
+                data-tour="download"
                 loading={busy}
                 icon={waiting ? <ScheduleOutlined /> : <CloudDownloadOutlined />}
               >
@@ -219,6 +282,25 @@ export function DownloadBar() {
           ? t('download.scheduledHint', {position: waiting})
           : t('download.capacity', {normal: info.maxConcurrency, cpus: info.cpus, long: longAtOnce})}
       </Typography.Text>
+      {slide ? (
+        <SlideshowModal
+          title={slide.title}
+          onConfirm={() => {
+            const target = slide.url
+            setSlide(undefined)
+            void schedule(target).catch(fail)
+          }}
+          onCancel={() => setSlide(undefined)}
+        />
+      ) : null}
+      {many ? (
+        <ManyLinksModal
+          urls={many.urls}
+          repeated={many.repeated}
+          onSchedule={scheduleMany}
+          onCancel={() => setMany(undefined)}
+        />
+      ) : null}
       {preview ? (
         <PreviewModal
           // a reload brings a new list: start its selection afresh

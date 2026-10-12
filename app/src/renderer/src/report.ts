@@ -35,7 +35,10 @@ export type ReportBatch = {
   readonly unavailable: number
   readonly fraction: number
   readonly etaSeconds?: number | undefined
+  readonly problems?: BatchSnapshot['problems']
 }
+
+type Causes = Record<string, number>
 
 /** One reading of the whole run: what the three tabs show, summed up. */
 export type Report = {
@@ -62,6 +65,10 @@ export type Report = {
   readonly now: Readonly<Record<Stage, readonly ReportJob[]>>
   readonly recentDone: readonly ReportJob[]
   readonly recentFailed: readonly ReportJob[]
+  /** Why things didn't make it, summed over every batch of the run. */
+  readonly problems: {readonly failed: Readonly<Causes>; readonly unavailable: Readonly<Causes>}
+  /** Failed jobs batches can retry (the per-job counts above may include trimmed ones). */
+  readonly retryable: number
 }
 
 const title = (job: JobSnapshot): string => job.title ?? job.url
@@ -136,7 +143,15 @@ export function buildReport(input: {
   let items = 0
   let batchesWaiting = 0
   let etaSeconds: number | undefined
+  let retryable = 0
+  const failedBy: Causes = {}
+  const unavailableBy: Causes = {}
   for (const batch of snapshots) {
+    for (const [cause, count] of Object.entries(batch.problems?.failed ?? {}))
+      failedBy[cause] = (failedBy[cause] ?? 0) + count
+    for (const [cause, count] of Object.entries(batch.problems?.unavailable ?? {}))
+      unavailableBy[cause] = (unavailableBy[cause] ?? 0) + count
+    if (BATCH_FINISHED.has(batch.status) || batch.status === 'running') retryable += batch.jobs.failed
     if (batch.status === 'scheduled') batchesWaiting++
     const total = batch.jobs.total || batch.preflight.ok
     const settled = batch.jobs.succeeded + batch.jobs.failed
@@ -163,6 +178,7 @@ export function buildReport(input: {
       unavailable: batch.preflight.unavailable,
       fraction,
       etaSeconds: batch.status === 'running' ? batch.progress?.etaSeconds : undefined,
+      problems: batch.problems,
     })
   }
   const now = Object.fromEntries(
@@ -189,6 +205,8 @@ export function buildReport(input: {
     now,
     recentDone: topBy(done, RECENT, job => job.finishedAt ?? 0).map(toReportJob),
     recentFailed: topBy(failed, RECENT, job => job.finishedAt ?? 0).map(toReportJob),
+    problems: {failed: failedBy, unavailable: unavailableBy},
+    retryable,
   }
 }
 
@@ -201,6 +219,8 @@ export function reportText(
     readonly rate: (value: number) => string
     readonly time: (ms: number) => string
     readonly left: (seconds: number) => string
+    /** A cause's label ("removed", "network"). */
+    readonly cause: (cause: string) => string
   },
 ): string {
   const {label} = format
@@ -216,6 +236,15 @@ export function reportText(
     `${label('report.speed')}: ${format.rate(report.speed)} · ${label('report.downloaded')}: ${format.bytes(report.finishedBytes)}`,
   ]
   if (report.skipped) lines.push(label('report.skipped', {count: report.skipped}))
+  const causes = (counts: Readonly<Causes>) =>
+    Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([cause, count]) => `${format.cause(cause)} ${count}`)
+      .join(' · ')
+  if (Object.keys(report.problems.failed).length)
+    lines.push(`${label('batch.failedBy')}: ${causes(report.problems.failed)}`)
+  if (Object.keys(report.problems.unavailable).length)
+    lines.push(`${label('batch.unavailableBy')}: ${causes(report.problems.unavailable)}`)
   if (report.batches.length) {
     lines.push('', `${label('report.batches')}:`)
     for (const batch of report.batches) {

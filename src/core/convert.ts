@@ -206,13 +206,19 @@ export async function writeTags(opts: {
   return output
 }
 
-async function runFfmpeg(
+/**
+ * One ffmpeg run into `output`, with progress against `duration`; a failed or
+ * cancelled run leaves no partial output behind. `inputOptions` go before the
+ * first input (e.g. its format); more inputs can follow in `options`.
+ */
+export async function runFfmpeg(
   opts: {
     readonly ffmpeg: Executable
     readonly input: string
     readonly threads: number
     readonly signal?: AbortSignal | undefined
     readonly onProgress?: ((fraction: number) => void) | undefined
+    readonly inputOptions?: readonly Option[] | undefined
   },
   output: string,
   options: readonly Option[],
@@ -224,6 +230,7 @@ async function runFfmpeg(
     ['-y'],
     ['-v', 'error'],
     ['-threads', String(Math.max(1, opts.threads))],
+    ...(opts.inputOptions ?? []),
     ['-i', opts.input],
     ...options,
     ['-progress', 'pipe:1'],

@@ -25,6 +25,8 @@ export type FetchedMedia = {
   readonly bytes: number
   /** The server's Last-Modified, unix seconds — when the file was put online. */
   readonly lastModified?: number | undefined
+  /** Its media type ("audio/mpeg", "image/jpeg"…), without parameters. */
+  readonly contentType?: string | undefined
 }
 
 /**
@@ -96,7 +98,11 @@ export async function fetchMedia(
     if (total !== undefined && done !== total) {
       throw new DownloadError('network', `Incomplete ${opts.site} download: ${done} of ${total} bytes.`)
     }
-    return {bytes: done, lastModified: Number.isFinite(modified) ? Math.floor(modified / 1000) : undefined}
+    return {
+      bytes: done,
+      lastModified: Number.isFinite(modified) ? Math.floor(modified / 1000) : undefined,
+      contentType: response.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase() || undefined,
+    }
   } catch (error) {
     if (stall.signal.aborted && !opts.signal.aborted) {
       throw new DownloadError('network', `No data from ${opts.site} for ${stallMs / 1000} s.`)

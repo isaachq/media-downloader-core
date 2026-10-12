@@ -13,6 +13,7 @@ import type {TikTokError} from '../src/sources/tiktok/errors.js'
 import {isTikTokProfile, parseTikTokLink} from '../src/sources/tiktok/links.js'
 import {walkProfile} from '../src/sources/tiktok/profile.js'
 import {rankRenditions} from '../src/sources/tiktok/renditions.js'
+import {slideshowArgs, slideshowFrame, slideshowOptions} from '../src/sources/tiktok/slideshow.js'
 import {titleOf} from '../src/sources/tiktok/source.js'
 import {type FakeTikTok, startFakeTikTok} from './helpers/fake-tiktok.js'
 import {type FakeBinaries, writeFakes} from './helpers/fakes.js'
@@ -578,5 +579,126 @@ describe('TikTok veteran profiles (local fake)', () => {
     assert.ok(listing.kind === 'playlist')
     assert.ok(listing.entries.length < 700)
     assert.equal(listing.complete, false, 'loading again continues')
+  })
+})
+
+describe('TikTok slideshows (local fake)', () => {
+  const slideshow = (mode: 'video' | 'images-audio' | 'images', secondsPerImage = 2) =>
+    ({mode, secondsPerImage}) as const
+
+  it("frames and options: the first image's shape, even sides, ≤ 1920; seconds kept within 1–30", () => {
+    assert.deepEqual(
+      slideshowFrame([
+        {width: 1080, height: 1440},
+        {width: 1080, height: 1920},
+      ]),
+      {width: 1080, height: 1440},
+    )
+    assert.deepEqual(slideshowFrame([{width: 3001, height: 4001}]), {width: 1440, height: 1920})
+    assert.deepEqual(slideshowFrame([]), {width: 1080, height: 1920})
+    assert.deepEqual(slideshowOptions({mode: 'images', secondsPerImage: 99}), {mode: 'images', secondsPerImage: 30})
+    assert.deepEqual(slideshowOptions({mode: 'nope', secondsPerImage: 'x'}), {mode: 'video', secondsPerImage: 3})
+  })
+
+  it('a listing tells which posts are slideshows, and whether they have sound', async () => {
+    const {site, engine} = await setup('slides-listing', {posts: 4, slideshows: [1, 2], silentSlides: [2]})
+    const listing = await engine.analyze(`${site.origin}/@${site.user}`)
+    assert.ok(listing.kind === 'playlist')
+    assert.deepEqual(
+      listing.entries.map(e => e.slideshow),
+      [undefined, {images: 3, audio: true}, {images: 3, audio: false}, undefined],
+    )
+  })
+
+  it('as a video: an MP4 of the images, each shown the chosen seconds, over the soundtrack', async () => {
+    const {site, engine, out} = await setup('slides-video', {posts: 2, slideshows: [0]})
+    const job = engine.add({url: videoUrl(site, 0), profile: mp4, outDir: out, slideshow: slideshow('video', 2)})
+    await engine.whenIdle()
+    const done = engine.job(job.id)!
+    assert.equal(done.status, 'completed', JSON.stringify(done.error))
+    const [file] = await fs.readdir(out)
+    assert.match(file!, /\.mp4$/)
+    // the fake ffmpeg copies its first input — the first image — as the "video"
+    assert.equal(await fs.readFile(path.join(out, file!), 'utf8'), `JPEG ${site.ids[0]} 1.jpg`)
+    assert.equal(done.validation?.expectedDuration, 6, '3 images × 2 s')
+  })
+
+  it('builds the video from one input per image, each fitted on its own, the sound cut or padded', () => {
+    const args = slideshowArgs({
+      images: ['/w/01.jpg', '/w/02.jpg', "/w/03 it's.jpg"],
+      frame: {width: 1080, height: 1440},
+      audio: '/w/sound.mp3',
+      secondsPerImage: 2,
+    })
+    assert.deepEqual(args.first, [
+      ['-loop', '1'],
+      ['-framerate', '30'],
+      ['-t', '2'],
+    ])
+    const flat = args.rest.map(option => option.join(' '))
+    assert.deepEqual(
+      flat.filter(o => o.startsWith('-i ')),
+      ['-i /w/02.jpg', "-i /w/03 it's.jpg", '-i /w/sound.mp3'],
+      'images 2 and 3, then the sound',
+    )
+    const graph = args.rest.find(option => option[0] === '-filter_complex')![1]!
+    assert.equal(graph.match(/scale=1080:1440:force_original_aspect_ratio=decrease:out_range=tv/g)?.length, 3)
+    assert.match(graph, /\[v0\]\[v1\]\[v2\]concat=n=3:v=1:a=0\[v\]/)
+    assert.match(graph, /\[3:a\]apad\[a\]$/)
+    assert.ok(flat.includes('-t 6') && flat.includes('-pix_fmt yuv420p') && flat.includes('-map [a]'))
+
+    const silent = slideshowArgs({images: ['/w/01.jpg'], frame: {width: 1080, height: 1920}, secondsPerImage: 3})
+    const silentFlat = silent.rest.map(option => option.join(' '))
+    assert.ok(!silentFlat.some(o => o.includes('[a]') || o.startsWith('-c:a')), 'no sound, no audio track')
+    assert.ok(silentFlat.includes('-t 3'))
+  })
+
+  it('as images with their sound: a folder, archived, found again, listed in Finished', async () => {
+    const {site, engine, out} = await setup('slides-folder', {posts: 2, slideshows: [0]})
+    const job = engine.add({url: videoUrl(site, 0), profile: mp4, outDir: out, slideshow: slideshow('images-audio')})
+    await engine.whenIdle()
+    assert.equal(engine.job(job.id)?.status, 'completed', JSON.stringify(engine.job(job.id)?.error))
+    const [folder] = await fs.readdir(out)
+    assert.deepEqual((await fs.readdir(path.join(out, folder!))).sort(), ['01.jpg', '02.jpg', '03.jpg', 'sound.mp3'])
+    assert.equal(
+      await fs.readFile(path.join(out, folder!, '02.jpg'), 'utf8'),
+      `JPEG ${site.ids[0]} 2.jpg`,
+      'image 2 came from its second mirror',
+    )
+    const [entry] = (await engine.archive.list()).entries
+    assert.equal(entry?.filepath, path.join(out, folder!))
+    // the same request again finds the folder in the archive: nothing is downloaded twice
+    const again = engine.add({
+      url: videoUrl(site, 0),
+      profile: mp4,
+      outDir: out,
+      slideshow: slideshow('images-audio'),
+      // as the scheduler sends it: what the archive is looked up by
+      mediaId: site.ids[0],
+      extractor: 'TikTok',
+    })
+    await engine.whenIdle()
+    assert.equal(engine.job(again.id)?.status, 'skipped')
+  })
+
+  it('as images only: no soundtrack in the folder', async () => {
+    const {site, engine, out} = await setup('slides-images', {posts: 1, slideshows: [0]})
+    engine.add({url: videoUrl(site, 0), profile: mp4, outDir: out, slideshow: slideshow('images')})
+    await engine.whenIdle()
+    const [folder] = await fs.readdir(out)
+    assert.deepEqual((await fs.readdir(path.join(out, folder!))).sort(), ['01.jpg', '02.jpg', '03.jpg'])
+  })
+
+  it('with an audio format: just the soundtrack; a silent slideshow says why it has none', async () => {
+    const {site, engine, out} = await setup('slides-audio', {posts: 2, slideshows: [0, 1], silentSlides: [1]})
+    const withSound = engine.add({url: videoUrl(site, 0), profile: audio, outDir: path.join(out, 'a')})
+    const silent = engine.add({url: videoUrl(site, 1), profile: audio, outDir: path.join(out, 'b')})
+    await engine.whenIdle()
+    assert.equal(engine.job(withSound.id)?.status, 'completed')
+    assert.match((await fs.readdir(path.join(out, 'a')))[0]!, /\.mp3$/)
+    const failed = engine.job(silent.id)!
+    assert.equal(failed.status, 'failed')
+    assert.equal(failed.error?.code, 'unavailable')
+    assert.match(failed.error?.message ?? '', /no soundtrack/)
   })
 })

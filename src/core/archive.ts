@@ -20,6 +20,9 @@ export type ArchiveEntry = {
   readonly duration?: number | undefined
   /** The integrity check the file passed ('none': only its checksum was taken). Absent in older records. */
   readonly validation?: ValidationLevel | undefined
+  /** The batch it was downloaded in, and that batch's name (absent in older records). */
+  readonly batchId?: string | undefined
+  readonly batchTitle?: string | undefined
   readonly completedAt: number
 }
 
@@ -31,6 +34,18 @@ export type ArchiveQuery = {
   readonly limit?: number | undefined
   /** Words that must all appear in the title or file name; case and accents are ignored. */
   readonly search?: string | undefined
+  /** Only the files of this batch. */
+  readonly batchId?: string | undefined
+}
+
+/** The batches finished files came from, for grouping a history (see `DownloadArchive.groups`). */
+export type ArchiveGroup = {
+  readonly batchId: string
+  readonly title?: string | undefined
+  readonly count: number
+  readonly bytes: number
+  /** When its newest file finished. */
+  readonly lastCompletedAt: number
 }
 
 export type ArchivePage = {
@@ -167,9 +182,9 @@ export class DownloadArchive {
     const hit = this.#index.get(key)
     if (!hit) return undefined
     const stat = await fs.stat(hit.filepath).catch(() => undefined)
-    return stat?.isFile() && stat.size === hit.sizeBytes
-      ? {filepath: hit.filepath, sizeBytes: hit.sizeBytes}
-      : undefined
+    // a folder (a slideshow's images) counts while it is there; a file must keep its size
+    const present = stat?.isDirectory() || (stat?.isFile() && stat.size === hit.sizeBytes)
+    return present ? {filepath: hit.filepath, sizeBytes: hit.sizeBytes} : undefined
   }
 
   async add(entry: Omit<ArchiveEntry, 'completedAt'>): Promise<ArchiveEntry> {
@@ -210,8 +225,11 @@ export class DownloadArchive {
       .filter(Boolean)
     let matching = newest
     let bytes = this.#fullBytes
-    if (words.length > 0) {
+    const batchId = query.batchId
+    if (words.length > 0 || batchId !== undefined) {
       matching = newest.filter(entry => {
+        if (batchId !== undefined && entry.batchId !== batchId) return false
+        if (words.length === 0) return true
         const haystack = this.#haystack(entry)
         return words.every(word => haystack.includes(word))
       })
@@ -220,6 +238,30 @@ export class DownloadArchive {
     const offset = Math.max(0, Math.floor(query.offset ?? 0))
     const limit = Math.min(500, Math.max(1, Math.floor(query.limit ?? 50)))
     return {entries: matching.slice(offset, offset + limit), total: matching.length, bytes}
+  }
+
+  /** The batches the finished files came from, newest first — O(n) over the loaded records. */
+  async groups(): Promise<ArchiveGroup[]> {
+    const groups = new Map<
+      string,
+      {batchId: string; title?: string | undefined; count: number; bytes: number; lastCompletedAt: number}
+    >()
+    for (const entry of (await this.#loadFull()).values()) {
+      if (!entry.batchId) continue
+      const group = groups.get(entry.batchId) ?? {
+        batchId: entry.batchId,
+        title: entry.batchTitle,
+        count: 0,
+        bytes: 0,
+        lastCompletedAt: 0,
+      }
+      group.count++
+      group.bytes += entry.sizeBytes
+      group.lastCompletedAt = Math.max(group.lastCompletedAt, entry.completedAt)
+      group.title ??= entry.batchTitle
+      groups.set(entry.batchId, group)
+    }
+    return [...groups.values()].sort((a, b) => b.lastCompletedAt - a.lastCompletedAt)
   }
 
   /** Every live entry with its full record, streamed from disk (used by verification). */

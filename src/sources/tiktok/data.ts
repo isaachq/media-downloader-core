@@ -82,11 +82,31 @@ export type TikTokPost = {
   readonly duration?: number | undefined
   readonly cover?: string | undefined
   readonly renditions: readonly Rendition[]
-  readonly music?: {readonly url?: string | undefined; readonly title?: string | undefined} | undefined
+  readonly music?:
+    | {readonly url?: string | undefined; readonly title?: string | undefined; readonly duration?: number | undefined}
+    | undefined
   readonly photoPost: boolean
+  /** A photo post's images, in order (empty for a video). */
+  readonly images: readonly SlideImage[]
   readonly privateItem: boolean
   /** Pinned to the top of the profile: listed first whatever its date. */
   readonly pinned: boolean
+}
+
+/** One image of a photo post: mirrors of the same file, best first. */
+export type SlideImage = {readonly urls: readonly string[]; readonly width: number; readonly height: number}
+
+function imagesOf(post: Json | undefined): SlideImage[] {
+  const list = post && Array.isArray(post['images']) ? post['images'] : []
+  const images: SlideImage[] = []
+  for (const image of list) {
+    if (!isObject(image)) continue
+    const address = isObject(image['imageURL']) ? image['imageURL'] : {}
+    const urls = usableUrls(address['urlList'])
+    if (urls.length === 0) continue
+    images.push({urls, width: num(image['imageWidth']) ?? 0, height: num(image['imageHeight']) ?? 0})
+  }
+  return images
 }
 
 export type TikTokUser = {
@@ -166,8 +186,9 @@ export function readPost(raw: unknown): TikTokPost {
     duration: num(video['duration']) || undefined,
     cover: text(video['cover']) ?? text(video['originCover']),
     renditions: renditionsOf(video),
-    music: music && {url: text(music['playUrl']), title: text(music['title'])},
+    music: music && {url: text(music['playUrl']), title: text(music['title']), duration: num(music['duration'])},
     photoPost: isObject(raw['imagePost']),
+    images: imagesOf(isObject(raw['imagePost']) ? raw['imagePost'] : undefined),
     privateItem: raw['privateItem'] === true || raw['secret'] === true,
     pinned: raw['isPinnedItem'] === true,
   }

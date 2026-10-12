@@ -59,6 +59,8 @@ export type MediaSummary = {
   readonly thumbnail?: string | undefined
   /** When it was published, unix seconds (when the listing tells). */
   readonly publishedAt?: number | undefined
+  /** A photo post (TikTok slideshow): its images and whether it has a soundtrack. */
+  readonly slideshow?: {readonly images: number; readonly audio: boolean} | undefined
   /** yt-dlp extractor key, e.g. "Youtube". */
   readonly extractor: string
   readonly isLive: boolean
@@ -348,6 +350,8 @@ export type JobRequest = {
   /** The profile's codecs aren't offered: the file will be converted locally (heavier). */
   readonly requiresConversion?: boolean | undefined
   readonly playlist?: PlaylistRef | undefined
+  /** What a photo post becomes (see SlideshowOptions). */
+  readonly slideshow?: SlideshowOptions | undefined
   /** From analyze(); ignored unless it lives in the engine's cache folder. */
   readonly infoJsonPath?: string | undefined
 }
@@ -420,6 +424,17 @@ export type BatchSnapshot = {
     readonly ok: number
     readonly unavailable: number
   }
+  /**
+   * Why items didn't make it, by cause (a FailureHint such as 'removed' or
+   * 'private', else an ErrorCode such as 'network'): jobs that failed (or were
+   * cancelled), and items the check found unavailable. Absent while nothing failed.
+   */
+  readonly problems?:
+    | {
+        readonly failed: Readonly<Record<string, number>>
+        readonly unavailable: Readonly<Record<string, number>>
+      }
+    | undefined
   /** Disk and load forecast, set when the preflight ends. */
   readonly estimate?: BatchEstimate | undefined
   /**
@@ -448,10 +463,24 @@ export type BatchEstimate = {
   readonly heavy: number
 }
 
+/**
+ * What a photo post (a TikTok slideshow) becomes with a video profile:
+ * 'video' — an MP4 showing each image `secondsPerImage`, over its soundtrack;
+ * 'images-audio' — a folder with the images and the soundtrack;
+ * 'images' — a folder with the images. With an audio profile, only the soundtrack.
+ */
+export type SlideshowOptions = {
+  readonly mode: 'video' | 'images-audio' | 'images'
+  /** 1–30. Default 3. */
+  readonly secondsPerImage: number
+}
+
 export type BatchRequest = {
   readonly url: string
   readonly profile: FormatProfile
   readonly outDir: string
+  /** What photo posts become (see SlideshowOptions). Default: an MP4, 3 s per image. */
+  readonly slideshow?: SlideshowOptions | undefined
   /** Playlist items to take (1-based). */
   readonly items?: readonly number[] | undefined
   /**

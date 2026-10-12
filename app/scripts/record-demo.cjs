@@ -36,7 +36,7 @@ async function main() {
   fs.mkdirSync(outDir)
   fs.writeFileSync(
     path.join(dataDir, 'settings.json'),
-    JSON.stringify({language: 'en', theme: 'light', format: 'mp4', quality: 'best', validation: 'full', downloadDir: outDir}),
+    JSON.stringify({language: 'en', theme: 'light', format: 'mp4', quality: 'best', validation: 'full', downloadDir: outDir, tourDone: true}),
   )
 
   // frames come from Chromium's screencast (Playwright's recordVideo stalls Electron's first window)

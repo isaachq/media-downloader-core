@@ -23,7 +23,11 @@ after(async () => {
   await fs.rm(root, {recursive: true, force: true})
 })
 
-function setup(name: string, options: ConstructorParameters<typeof BatchScheduler>[1] = {}) {
+function setup(
+  name: string,
+  options: ConstructorParameters<typeof BatchScheduler>[1] = {},
+  engineOptions: Partial<ConstructorParameters<typeof MediaDownloader>[0]> = {},
+) {
   const dataDir = path.join(root, name)
   const engine = new MediaDownloader({
     dataDir,
@@ -32,6 +36,7 @@ function setup(name: string, options: ConstructorParameters<typeof BatchSchedule
     maxRetries: 2,
     retryDelayMaxMs: 20,
     progressIntervalMs: 0,
+    ...engineOptions,
   })
   const scheduler = new BatchScheduler(engine, options)
   const statuses = new Map<string, BatchStatus[]>()
@@ -324,5 +329,94 @@ describe('BatchScheduler', () => {
       engine.jobs().every(job => job.status === 'skipped'),
       'already archived items are skipped',
     )
+  })
+
+  it("retries a closed batch's failures: it reopens, counts them back and closes complete; causes are kept", async () => {
+    // no automatic retries: the "flaky" items fail once (network), then download
+    const {engine, scheduler, statuses, out} = setup('retry-failed', {}, {maxRetries: 0})
+    const entry = (index: number, name: string) => ({
+      id: name,
+      index,
+      url: `https://fake.test/${name}`,
+      title: name,
+      extractor: 'Fake',
+      isLive: false,
+    })
+    const batch = scheduler.schedule({
+      url: 'https://fake.test/list',
+      profile: audio,
+      outDir: out,
+      selection: {
+        title: 'Retry list',
+        entries: [entry(1, 'flaky-a'), entry(2, 'ok-b'), entry(3, 'flaky-c'), entry(4, 'unavailable-d')],
+      },
+    })
+    await scheduler.whenIdle()
+    const first = scheduler.batch(batch.id)!
+    assert.equal(first.status, 'completed-with-errors')
+    assert.deepEqual(first.jobs, {total: 3, queued: 0, running: 0, succeeded: 1, failed: 2})
+    assert.deepEqual(first.problems, {failed: {network: 2}, unavailable: {removed: 1}})
+
+    assert.equal(scheduler.retryFailed(batch.id), 2)
+    assert.equal(scheduler.batch(batch.id)?.status, 'running')
+    await scheduler.whenIdle()
+    const after = scheduler.batch(batch.id)!
+    assert.equal(after.status, 'completed-with-errors', 'the unavailable item still keeps it from "completed"')
+    assert.deepEqual(after.jobs, {total: 3, queued: 0, running: 0, succeeded: 3, failed: 0})
+    assert.deepEqual(after.problems, {failed: {}, unavailable: {removed: 1}})
+    assert.deepEqual(statuses.get(batch.id)?.slice(-3), ['completed-with-errors', 'running', 'completed-with-errors'])
+    const items = scheduler.items(batch.id)
+    assert.equal(new Set(items.map(item => item.jobId).filter(Boolean)).size, 3, 'items point at their new jobs')
+    assert.equal(scheduler.retryFailed(batch.id), 0, 'nothing left to retry')
+
+    // the history knows each file's batch: filter by it, group by it
+    const history = await engine.archive.list({batchId: batch.id})
+    assert.equal(history.total, 3)
+    assert.ok(history.entries.every(entry => entry.batchTitle === 'Retry list'))
+    assert.equal((await engine.archive.list({batchId: 'another'})).total, 0)
+    const [group] = await engine.archive.groups()
+    assert.deepEqual(
+      {id: group?.batchId, title: group?.title, count: group?.count},
+      {id: batch.id, title: 'Retry list', count: 3},
+    )
+
+    // checking one batch's files again finds the one that changed since
+    const [changed] = history.entries
+    await fs.appendFile(changed!.filepath, 'x')
+    const checks = await engine.verifyArchive(undefined, undefined, {batchId: batch.id})
+    assert.equal(checks.length, 3)
+    assert.deepEqual(
+      checks.filter(check => !check.ok).map(check => [check.entry.key, check.problem]),
+      [[changed!.key, 'size-changed']],
+    )
+    const one = await engine.verifyArchive(undefined, undefined, {keys: [history.entries[1]!.key]})
+    assert.deepEqual(
+      one.map(check => check.ok),
+      [true],
+    )
+  })
+
+  it('retrying one failed download of a batch goes through the batch, which follows it', async () => {
+    const {engine, scheduler, out} = setup('retry-one', {}, {maxRetries: 0})
+    const batch = scheduler.schedule({
+      url: 'https://fake.test/list',
+      profile: audio,
+      outDir: out,
+      selection: {
+        title: 'One',
+        entries: [
+          {id: 'flaky-x', index: 1, url: 'https://fake.test/flaky-x', title: 'x', extractor: 'Fake', isLive: false},
+        ],
+      },
+    })
+    await scheduler.whenIdle()
+    assert.equal(scheduler.batch(batch.id)?.status, 'failed')
+    const failed = engine.jobs().find(job => job.batchId === batch.id && job.status === 'failed')!
+    const retried = scheduler.retryJob(failed.id)
+    assert.ok(retried && retried.id !== failed.id)
+    await scheduler.whenIdle()
+    const after = scheduler.batch(batch.id)!
+    assert.equal(after.status, 'completed')
+    assert.deepEqual(after.jobs, {total: 1, queued: 0, running: 0, succeeded: 1, failed: 0})
   })
 })

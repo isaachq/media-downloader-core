@@ -18,6 +18,7 @@ import {
   PlayerPageSource,
   parsePlayerPageSites,
   searchTrace,
+  slideshowOptions,
   TIKTOK_PROFILE_DEFAULT_ITEMS,
   type VideoAnalysis,
 } from 'media-downloader-core'
@@ -33,10 +34,12 @@ import {
   RESTART_SETTINGS,
   type ScheduleInput,
   type SetupOutcome,
+  type VerifySummary,
 } from '../shared/contract'
 import {EventCoalescer} from './events'
 import {createPlayerBrowser} from './player-browser'
 import {defaultSettings, SettingsStore} from './settings'
+import {taskbarState} from './taskbar'
 import {createTikTokBrowser} from './tiktok-browser'
 import type {InstallKind} from './updates/feed'
 import {detectInstallKind} from './updates/install'
@@ -197,6 +200,7 @@ function createEngine(current: AppSettings): void {
   engine.on('job', snapshot => coalescer.job(snapshot))
   engine.on('log', entry => coalescer.log(entry))
   scheduler.on('batch', snapshot => coalescer.batch(snapshot))
+  scheduler.on('batch', () => showTaskbarProgress())
   scheduler.on('item', (batchId, item) => coalescer.item(batchId, item))
 }
 
@@ -328,7 +332,12 @@ function registerIpc(): void {
       })
     if (analysis.kind === 'video') {
       rememberPreview(url, analysis)
-      return {kind: 'video', title: analysis.media.title, duration: analysis.media.duration}
+      return {
+        kind: 'video',
+        title: analysis.media.title,
+        duration: analysis.media.duration,
+        slideshow: analysis.media.slideshow,
+      }
     }
     return {
       kind: 'playlist',
@@ -349,6 +358,9 @@ function registerIpc(): void {
       url: input.url,
       profile: toProfile(input),
       outDir: input.outDir,
+      slideshow: slideshowOptions(
+        input.slideshow ?? {mode: settings.current.slideshowMode, secondsPerImage: settings.current.slideshowSeconds},
+      ),
       ...(input.selection && {selection: input.selection}),
       ...(!input.selection && {analysis: takePreview(input.url)}),
     })
@@ -365,7 +377,9 @@ function registerIpc(): void {
   )
   ipcMain.handle(CHANNEL.cancelBatch, (_event, id: BatchId) => scheduler.cancel(id))
   ipcMain.handle(CHANNEL.cancelJob, (_event, id: JobId) => engine.cancel(id))
-  ipcMain.handle(CHANNEL.retryJob, (_event, id: JobId) => void engine.retry(id))
+  // through the scheduler: a job of a batch is retried with its batch, which reopens and follows it
+  ipcMain.handle(CHANNEL.retryJob, (_event, id: JobId) => void scheduler.retryJob(id))
+  ipcMain.handle(CHANNEL.retryBatch, (_event, id: BatchId) => scheduler.retryFailed(id))
   ipcMain.handle(CHANNEL.pause, () => engine.pause())
   ipcMain.handle(CHANNEL.resume, () => engine.resume())
   ipcMain.handle(CHANNEL.clearFinished, () => {
@@ -390,6 +404,7 @@ function registerIpc(): void {
       offset: Number.isInteger(q.offset) ? q.offset : 0,
       limit: Number.isInteger(q.limit) ? q.limit : 50,
       search: typeof q.search === 'string' ? q.search.slice(0, 200) : undefined,
+      batchId: typeof q.batchId === 'string' ? q.batchId : undefined,
     })
     // only the page shown is checked on disk: ≤ 500 stats, in parallel
     const entries = await Promise.all(
@@ -406,7 +421,15 @@ function registerIpc(): void {
           completedAt: entry.completedAt,
           sha256: entry.sha256,
           validation: entry.validation,
-          file: !stat?.isFile() ? 'missing' : stat.size === entry.sizeBytes ? 'ok' : 'changed',
+          batchId: entry.batchId,
+          batchTitle: entry.batchTitle,
+          file: stat?.isDirectory()
+            ? 'ok' // a slideshow's folder of images
+            : !stat?.isFile()
+              ? 'missing'
+              : stat.size === entry.sizeBytes
+                ? 'ok'
+                : 'changed',
         }
       }),
     )
@@ -421,12 +444,93 @@ function registerIpc(): void {
     else await opener.open(hit.filepath)
     return true
   })
+  ipcMain.handle(CHANNEL.finishedGroups, () => engine.archive.groups())
+  // a click on a system notification brings the app forward
+  ipcMain.handle(CHANNEL.focusWindow, () => {
+    if (!window || window.isDestroyed()) return
+    if (window.isMinimized()) window.restore()
+    window.show()
+    window.focus()
+  })
+  ipcMain.handle(CHANNEL.verifyFinished, async (_event, target: unknown): Promise<VerifySummary> => {
+    const only = await selectionOf(target)
+    if (!only) return {checked: 0, ok: 0, missing: 0, changed: 0, corrupted: 0}
+    let lastSent = 0
+    const checks = await engine.verifyArchive(
+      (done, total) => {
+        const now = Date.now()
+        if (now - lastSent < 200 && done !== total) return
+        lastSent = now
+        send(CHANNEL.verifyProgress, {done, total})
+      },
+      undefined,
+      only,
+    )
+    const summary = {checked: checks.length, ok: 0, missing: 0, changed: 0, corrupted: 0}
+    for (const check of checks) {
+      if (check.ok) summary.ok++
+      else if (check.problem === 'missing') summary.missing++
+      else if (check.problem === 'size-changed') summary.changed++
+      else summary.corrupted++
+    }
+    engine.log(
+      'info',
+      `checked ${summary.checked} finished file(s): ${summary.ok} ok, ${summary.missing} missing, ${summary.changed} changed, ${summary.corrupted} corrupted`,
+    )
+    return summary
+  })
+  ipcMain.handle(CHANNEL.removeFinished, async (_event, keys: unknown) => {
+    if (!Array.isArray(keys)) return 0
+    let removed = 0
+    for (const key of keys.slice(0, MAX_REQUESTED_ITEMS)) {
+      if (typeof key !== 'string') continue
+      await engine.archive.remove(key)
+      removed++
+    }
+    return removed
+  })
+  ipcMain.handle(CHANNEL.exportFinished, async (_event, target: unknown) => {
+    const filter = filterOf(target)
+    if (!filter) return undefined
+    const stamp = new Date().toISOString().slice(0, 10)
+    const suggested = path.join(settings.current.downloadDir, `media-download-core-finished-${stamp}.csv`)
+    // e2e runs name the file instead of answering a dialog
+    let file = process.env['MDC_EXPORT_FILE']
+    if (!file) {
+      if (!window) return undefined
+      const choice = await dialog.showSaveDialog(window, {
+        defaultPath: suggested,
+        filters: [{name: 'CSV', extensions: ['csv']}],
+      })
+      if (choice.canceled || !choice.filePath) return undefined
+      file = choice.filePath
+    }
+    await fs.writeFile(file, await finishedCsv(filter))
+    return file
+  })
   ipcMain.handle(CHANNEL.openFolder, async (_event, target: unknown) => {
     const folder = await folderOf(target)
     if (!folder) return false
     await opener.open(folder)
     return true
   })
+}
+
+/**
+ * Progress of the batches at work on the Dock / taskbar icon, and on macOS
+ * a badge with the items left — at most once a second, whatever the events.
+ */
+let taskbarTimer: NodeJS.Timeout | undefined
+function showTaskbarProgress(): void {
+  if (taskbarTimer) return
+  taskbarTimer = setTimeout(() => {
+    taskbarTimer = undefined
+    if (!window || window.isDestroyed()) return
+    const {progress, left} = taskbarState(scheduler.batches())
+    window.setProgressBar(progress)
+    app.dock?.setBadge(left > 0 ? String(left) : '')
+  }, 1000)
+  taskbarTimer.unref()
 }
 
 /**
@@ -446,6 +550,63 @@ const opener = process.env['MDC_OPEN_LOG']
         if (problem) engine.log('warn', `could not open ${target}: ${problem}`)
       },
     }
+
+/** A search / batch filter of the history from the renderer, validated. */
+function filterOf(target: unknown): {search?: string | undefined; batchId?: string | undefined} | undefined {
+  if (typeof target !== 'object' || target === null) return undefined
+  const t = target as {search?: unknown; batchId?: unknown}
+  return {
+    search: typeof t.search === 'string' ? t.search.slice(0, 200) : undefined,
+    batchId: typeof t.batchId === 'string' ? t.batchId : undefined,
+  }
+}
+
+/** Which records a verification covers: given keys, one batch, or every match of a search. */
+async function selectionOf(target: unknown): Promise<{keys?: readonly string[]; batchId?: string} | undefined> {
+  if (typeof target !== 'object' || target === null) return undefined
+  const t = target as {keys?: unknown; batchId?: unknown; all?: unknown; search?: unknown}
+  if (Array.isArray(t.keys)) return {keys: t.keys.filter((key): key is string => typeof key === 'string')}
+  if (t.all !== true) return typeof t.batchId === 'string' ? {batchId: t.batchId} : undefined
+  const filter = filterOf(target)!
+  if (!filter.search) return filter.batchId ? {batchId: filter.batchId} : {}
+  return {keys: (await allFinished(filter)).map(entry => entry.key)}
+}
+
+/** Every record matching a filter, read a page (500) at a time. */
+async function allFinished(filter: {search?: string | undefined; batchId?: string | undefined}) {
+  const entries: Awaited<ReturnType<typeof engine.archive.list>>['entries'][number][] = []
+  for (let offset = 0; ; offset += 500) {
+    const page = await engine.archive.list({...filter, offset, limit: 500})
+    entries.push(...page.entries)
+    if (entries.length >= page.total || page.entries.length === 0) return entries
+  }
+}
+
+/** The history as CSV (UTF-8 with a BOM, so spreadsheets keep accents), one row per file. */
+async function finishedCsv(filter: {search?: string | undefined; batchId?: string | undefined}): Promise<string> {
+  const cell = (value: unknown) => {
+    const text = value === undefined || value === null ? '' : String(value)
+    return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
+  }
+  const header = ['title', 'file', 'size_bytes', 'duration_s', 'finished', 'site', 'url', 'check', 'sha256', 'batch']
+  const rows = (await allFinished(filter)).map(entry =>
+    [
+      entry.title,
+      entry.filepath,
+      entry.sizeBytes,
+      entry.duration === undefined ? '' : Math.round(entry.duration),
+      new Date(entry.completedAt).toISOString(),
+      entry.extractor,
+      entry.url,
+      entry.validation ?? '',
+      entry.sha256 ?? '',
+      entry.batchTitle ?? '',
+    ]
+      .map(cell)
+      .join(','),
+  )
+  return `\uFEFF${[header.join(','), ...rows].join('\r\n')}\r\n`
+}
 
 /** The downloads folder (created if needed), or the folder holding a batch's files. */
 async function folderOf(target: unknown): Promise<string | undefined> {

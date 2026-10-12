@@ -1,7 +1,8 @@
+import type {Executable} from '../binaries/executable.js'
 import type {ExtractResult} from '../core/analyze.js'
 import type {MediaTags} from '../core/convert.js'
 import type {DownloadedInfo} from '../core/download.js'
-import type {AnalysisResult, FormatProfile, JobProgress} from '../types.js'
+import type {AnalysisResult, FormatProfile, JobProgress, SlideshowOptions} from '../types.js'
 
 /**
  * A site the engine talks to natively, instead of through yt-dlp. A source
@@ -66,12 +67,21 @@ export type SourceDownload = {
   readonly fresh: boolean
   /** Whether a downloaded file carries sound (ffprobe), to skip silent encodings. */
   readonly hasAudio: (file: string) => Promise<boolean>
+  /** For sources that assemble media themselves (a slideshow video). */
+  readonly ffmpeg: Executable
+  /** Encoder threads: this job's share of the CPU budget. */
+  readonly threads: number
+  /** What a photo post becomes. */
+  readonly slideshow: SlideshowOptions
   readonly onInfo: (info: DownloadedInfo) => void
   readonly onProgress: (progress: JobProgress) => void
 }
 
 export type SourceFile = {
+  /** The finished media — or, with `bundle`, a folder of finished files (a slideshow's images). */
   readonly filepath: string
+  /** A folder of files ready as they are: no conversion; each file is checked, the folder moved into place. */
+  readonly bundle?: boolean | undefined
   readonly info: DownloadedInfo
   /**
    * Tags the engine writes into the finished file (a stream copy). Left out,

@@ -1,4 +1,5 @@
 import * as fs from 'node:fs/promises'
+import * as path from 'node:path'
 import {type Executable, invoke} from '../binaries/executable.js'
 import type {
   MessageParams,
@@ -286,4 +287,50 @@ async function readThrough(opts: ValidateOptions, total: number) {
     issues.push(issue('decode-errors', `Decoder reported errors: ${errors}`, {details: errors}))
   }
   return {reached, issues}
+}
+
+/**
+ * A folder of finished files (a slideshow's images and soundtrack): each
+ * file present and non-empty, and — unless the check is off — readable by
+ * ffprobe with a picture or a sound in it. A few files are probed at once.
+ */
+export async function validateBundle(opts: {
+  readonly ffprobe: Executable
+  readonly dir: string
+  readonly level: ValidationLevel
+  readonly signal?: AbortSignal | undefined
+}): Promise<ValidationReport> {
+  const names = (await fs.readdir(opts.dir).catch(() => [] as string[])).sort()
+  const issues: ValidationIssue[] = []
+  let sizeBytes = 0
+  if (names.length === 0) issues.push(issue('file-missing', 'The folder holds no file.'))
+  let next = 0
+  const worker = async () => {
+    for (let i = next++; i < names.length; i = next++) {
+      if (opts.signal?.aborted) throw cancelledError()
+      const file = path.join(opts.dir, names[i]!)
+      const size = (await fs.stat(file).catch(() => undefined))?.size ?? 0
+      sizeBytes += size
+      if (size === 0) {
+        issues.push(issue('file-empty', `${names[i]} is empty.`))
+        continue
+      }
+      if (opts.level === 'none') continue
+      try {
+        const summary = summarizeProbe(await ffprobe(opts.ffprobe, file, opts.signal))
+        if (!summary.video && !summary.audio)
+          issues.push(issue('probe-failed', `${names[i]} holds no picture or sound.`))
+      } catch (error) {
+        if (opts.signal?.aborted) throw cancelledError()
+        issues.push(
+          issue(
+            'probe-failed',
+            `${names[i]} could not be read: ${error instanceof Error ? error.message : String(error)}`,
+          ),
+        )
+      }
+    }
+  }
+  await Promise.all(Array.from({length: Math.min(4, names.length)}, worker))
+  return {level: opts.level, ok: issues.length === 0, container: 'folder', sizeBytes, issues}
 }

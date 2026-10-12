@@ -1,18 +1,21 @@
 import {
   CopyOutlined,
+  DeleteOutlined,
+  ExportOutlined,
   FolderOpenOutlined,
   PlayCircleOutlined,
   SafetyCertificateOutlined,
   SearchOutlined,
 } from '@ant-design/icons'
-import {App as AntApp, Button, Empty, Flex, Input, Space, Table, Tag, Tooltip, Typography} from 'antd'
+import {App as AntApp, Button, Empty, Flex, Input, Popconfirm, Space, Table, Tag, Tooltip, Typography} from 'antd'
 import {useCallback, useEffect, useRef, useState} from 'react'
-import type {FinishedEntry, FinishedPage} from '../../../shared/contract'
+import type {FinishedEntry, FinishedGroup, FinishedPage, FinishedTarget} from '../../../shared/contract'
 import {api} from '../api'
 import {useApp} from '../context'
 import {bytes, clock, moment} from '../format'
 import {type MessageKey, useT} from '../i18n'
 import {useStoreValue} from '../store'
+import {BatchFilter} from './BatchFilter'
 
 const PAGE = 50
 /** A finished download refreshes the page shown at most this often. */
@@ -55,10 +58,16 @@ function FileTag({entry}: {readonly entry: FinishedEntry}) {
  * main process 50 at a time; the page shown follows new completions (at most
  * every 2 s) without re-rendering on every progress event.
  */
-export function FinishedList() {
+export function FinishedList({
+  batchId,
+  onBatch,
+}: {
+  readonly batchId?: string | undefined
+  readonly onBatch?: ((batchId: string | undefined) => void) | undefined
+} = {}) {
   const t = useT()
   const {settings} = useApp()
-  const {message} = AntApp.useApp()
+  const {message, modal} = AntApp.useApp()
   const lang = settings.language
   // only the number of finished jobs: one re-render per completion, not per event
   const finishedNow = useStoreValue(store => store.counts.completed + store.counts.skipped)
@@ -67,6 +76,9 @@ export function FinishedList() {
   const [search, setSearch] = useState('')
   const [data, setData] = useState<FinishedPage | undefined>()
   const [loading, setLoading] = useState(true)
+  const [groups, setGroups] = useState<readonly FinishedGroup[]>([])
+  const [selected, setSelected] = useState<readonly string[]>([])
+  const [checking, setChecking] = useState<{done: number; total: number} | undefined>()
   const latest = useRef(0)
 
   const load = useCallback(
@@ -74,14 +86,20 @@ export function FinishedList() {
       const request = ++latest.current
       if (!quiet) setLoading(true)
       try {
-        const result = await api().finished({offset: (page - 1) * PAGE, limit: PAGE, search: search || undefined})
+        const [result, batches] = await Promise.all([
+          api().finished({offset: (page - 1) * PAGE, limit: PAGE, search: search || undefined, batchId}),
+          api().finishedGroups(),
+        ])
         // an answer to an older request (another page, another search) is dropped
-        if (request === latest.current) setData(result)
+        if (request === latest.current) {
+          setData(result)
+          setGroups(batches)
+        }
       } finally {
         if (request === latest.current) setLoading(false)
       }
     },
-    [page, search],
+    [page, search, batchId],
   )
   const loadRef = useRef(load)
   loadRef.current = load
@@ -114,6 +132,41 @@ export function FinishedList() {
     }, LIVE_MS)
   }, [finishedNow])
   useEffect(() => () => clearTimeout(pending.current), [])
+  // a new filter starts from its first page, nothing selected
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset when the batch changes
+  useEffect(() => {
+    setPage(1)
+    setSelected([])
+  }, [batchId])
+  useEffect(() => api().onVerifyProgress(setChecking), [])
+
+  /** The rows picked, else everything the filter shows. */
+  const scope = (): FinishedTarget =>
+    selected.length > 0 ? {keys: selected} : {all: true, search: search || undefined, batchId}
+
+  const verify = async () => {
+    setChecking({done: 0, total: selected.length || data?.total || 0})
+    try {
+      const summary = await api().verifyFinished(scope())
+      const text = t('finished.verifyResult', {...summary})
+      if (summary.missing + summary.changed + summary.corrupted > 0)
+        modal.warning({title: t('finished.verify'), content: text})
+      else void message.success(text)
+      void load(true)
+    } finally {
+      setChecking(undefined)
+    }
+  }
+  const remove = async () => {
+    const count = await api().removeFinished(selected)
+    setSelected([])
+    void message.success(t('finished.removed', {count}))
+    void load(true)
+  }
+  const exportCsv = async () => {
+    const file = await api().exportFinished({all: true, search: search || undefined, batchId})
+    if (file) void message.success(t('finished.exported', {file}))
+  }
 
   const open = async (entry: FinishedEntry, target: 'file' | 'folder') => {
     if (!(await api().openFinished(entry.key, target))) {
@@ -139,9 +192,45 @@ export function FinishedList() {
           onChange={event => setTyped(event.target.value)}
           style={{flex: 1, minWidth: 240}}
         />
+        {onBatch ? (
+          <BatchFilter
+            value={batchId}
+            onChange={onBatch}
+            options={groups.map(group => ({
+              value: group.batchId,
+              label: `${group.title ?? group.batchId} · ${group.count}`,
+            }))}
+          />
+        ) : null}
         <Button icon={<FolderOpenOutlined />} onClick={() => void api().openFolder('downloads')}>
           {t('finished.openDownloads')}
         </Button>
+      </Flex>
+      <Flex gap={8} wrap align="center">
+        <Button
+          icon={<SafetyCertificateOutlined />}
+          loading={checking !== undefined}
+          disabled={!data?.total}
+          onClick={() => void verify()}
+          data-testid="finished-verify"
+        >
+          {selected.length ? t('finished.verifySelected', {count: selected.length}) : t('finished.verify')}
+        </Button>
+        <Button icon={<ExportOutlined />} disabled={!data?.total} onClick={() => void exportCsv()}>
+          {t('finished.export')}
+        </Button>
+        {selected.length ? (
+          <Popconfirm title={t('finished.removeConfirm')} onConfirm={() => void remove()}>
+            <Button danger icon={<DeleteOutlined />} data-testid="finished-remove">
+              {t('finished.remove', {count: selected.length})}
+            </Button>
+          </Popconfirm>
+        ) : null}
+        {checking ? (
+          <Typography.Text type="secondary" data-testid="finished-checking">
+            {t('finished.verifying', {done: checking.done, total: checking.total})}
+          </Typography.Text>
+        ) : null}
       </Flex>
       {data && data.total > 0 ? (
         <Typography.Text type="secondary" data-testid="finished-summary">
@@ -167,6 +256,11 @@ export function FinishedList() {
           emptyText: <Empty description={empty && search ? t('finished.noMatch') : t('finished.empty')} />,
         }}
         rowClassName={entry => (entry.file === 'ok' ? 'finished-row' : 'finished-row finished-gone')}
+        rowSelection={{
+          selectedRowKeys: [...selected],
+          preserveSelectedRowKeys: true,
+          onChange: keys => setSelected(keys.map(String)),
+        }}
         columns={[
           {
             title: t('job.title'),
@@ -178,7 +272,9 @@ export function FinishedList() {
                   {entry.title}
                 </Typography.Text>
                 <Typography.Text type="secondary" className="one-line mono" title={entry.filepath}>
-                  {entry.extractor} · {entry.filepath.split(/[\\/]/).at(-1)}
+                  {[entry.extractor, entry.filepath.split(/[\\/]/).at(-1), batchId ? undefined : entry.batchTitle]
+                    .filter(Boolean)
+                    .join(' · ')}
                 </Typography.Text>
               </Space>
             ),

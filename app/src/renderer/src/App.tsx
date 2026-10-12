@@ -7,10 +7,12 @@ import {type AppInfo, type AppSettings, pickLanguage} from '../../shared/contrac
 import {api} from './api'
 import {BOOT_PHASES, type BootPhase, type BootProgress, bootErrorMessage, retrying} from './boot'
 import {AboutModal} from './components/AboutModal'
+import {ShowBatchContext} from './components/BatchFilter'
 import {BatchList} from './components/BatchList'
 import {BootScreen} from './components/BootScreen'
 import {DownloadBar} from './components/DownloadBar'
 import {FinishedList} from './components/FinishedList'
+import {FirstSteps} from './components/FirstSteps'
 import {Header} from './components/Header'
 import {JobTable} from './components/JobTable'
 import {LogsDrawer} from './components/LogsDrawer'
@@ -19,7 +21,7 @@ import {SettingsDrawer} from './components/SettingsDrawer'
 import {SetupModal} from './components/SetupModal'
 import {type MainTab, Stats} from './components/Stats'
 import {UpdateBanner} from './components/UpdateBanner'
-import {AppContext, type AppContextValue} from './context'
+import {AppContext, type AppContextValue, useApp} from './context'
 import {I18nContext, type Translate, translator} from './i18n'
 import {AppStore, BATCH_FINISHED, StoreContext, useStoreValue, WORKING} from './store'
 
@@ -38,9 +40,29 @@ function useSystemDark(): boolean {
   return dark
 }
 
+/**
+ * A message on screen, from the system when the app isn't in front (minimized,
+ * behind other windows) — Electron shows web notifications natively; a click
+ * on one brings the app forward.
+ */
+function useNotify() {
+  const {notification} = AntApp.useApp()
+  return useCallback(
+    (kind: 'success' | 'warning' | 'error', message: string, description: string) => {
+      if (!document.hasFocus() && typeof window.Notification === 'function') {
+        const shown = new window.Notification(message, {body: description})
+        shown.onclick = () => void api().focusWindow()
+        return
+      }
+      notification[kind]({message, description})
+    },
+    [notification],
+  )
+}
+
 /** Batch-finished notifications: fired once, on the transition into a final status. */
 function useBatchNotifications(t: Translate, settings: AppSettings) {
-  const {notification} = AntApp.useApp()
+  const notify = useNotify()
   const seen = useRef(new Map<string, BatchSnapshot['status']>())
   return useCallback(
     (batches: readonly BatchSnapshot[]) => {
@@ -51,24 +73,26 @@ function useBatchNotifications(t: Translate, settings: AppSettings) {
           continue
         const title = batch.title ?? batch.url
         if (batch.status === 'failed') {
-          notification.error({
-            message: batch.error?.code === 'disk-full' ? t('notify.diskFull') : t('notify.batchFailed'),
-            description: batch.error?.message ?? title,
-          })
+          notify(
+            'error',
+            batch.error?.code === 'disk-full' ? t('notify.diskFull') : t('notify.batchFailed'),
+            batch.error?.message ?? title,
+          )
         } else if (batch.status !== 'cancelled') {
           const total = batch.preflight.total || batch.jobs.total
-          notification[batch.status === 'completed' ? 'success' : 'warning']({
-            message: t('notify.batchDone'),
-            description: t(settings.validation === 'none' ? 'notify.batchDoneBodyUnverified' : 'notify.batchDoneBody', {
+          notify(
+            batch.status === 'completed' ? 'success' : 'warning',
+            t('notify.batchDone'),
+            t(settings.validation === 'none' ? 'notify.batchDoneBodyUnverified' : 'notify.batchDoneBody', {
               title,
               succeeded: batch.jobs.succeeded,
               total,
             }),
-          })
+          )
         }
       }
     },
-    [settings.notifications, settings.validation, notification, t],
+    [settings.notifications, settings.validation, notify, t],
   )
 }
 
@@ -113,6 +137,21 @@ function Shell({
   const notify = useBatchNotifications(t, settings)
   const [panel, setPanel] = useState<'logs' | 'settings' | 'about' | 'report' | undefined>()
   const [tab, setTab] = useState<MainTab>('batches')
+  // the first-steps guide: once on the first launch, then from Header → Guide
+  const {updateSettings} = useApp()
+  const [guide, setGuide] = useState(!settings.tourDone)
+  const closeGuide = useCallback(() => {
+    setGuide(false)
+    if (!settings.tourDone) void updateSettings({tourDone: true})
+  }, [settings.tourDone, updateSettings])
+  // each tab's batch filter; a batch card can open a tab already filtered to it
+  const [jobsBatch, setJobsBatch] = useState<string | undefined>()
+  const [finishedBatch, setFinishedBatch] = useState<string | undefined>()
+  const showBatch = useCallback((target: 'jobs' | 'finished', batchId: string) => {
+    if (target === 'jobs') setJobsBatch(batchId)
+    else setFinishedBatch(batchId)
+    setTab(target)
+  }, [])
   const [diagnosis, setDiagnosis] = useState(initialDiagnosis)
   const [setup, setSetup] = useState<{open: boolean; force: boolean}>({open: !initialDiagnosis.ready, force: false})
 
@@ -138,31 +177,38 @@ function Shell({
           onSettings={() => setPanel('settings')}
           onAbout={() => setPanel('about')}
           onReport={() => setPanel('report')}
+          onGuide={() => setGuide(true)}
         />
         <Layout.Content className="app-content">
           <UpdateBanner />
           <DownloadBar />
           <Stats onOpen={setTab} />
-          <Tabs
-            className="main-tabs"
-            activeKey={tab}
-            onChange={key => setTab(key as MainTab)}
-            // only the visible tab renders: a hidden 1,500-row table must not follow every event
-            destroyOnHidden
-            items={[
-              {
-                key: 'batches',
-                label: <CountLabel label={t('tabs.batches')} count={activeBatches} />,
-                children: <BatchList />,
-              },
-              {key: 'jobs', label: <CountLabel label={t('tabs.jobs')} count={activeJobs} />, children: <JobTable />},
-              {
-                key: 'finished',
-                label: <CountLabel label={t('tabs.finished')} count={finishedJobs} />,
-                children: <FinishedList />,
-              },
-            ]}
-          />
+          <ShowBatchContext.Provider value={showBatch}>
+            <Tabs
+              className="main-tabs"
+              activeKey={tab}
+              onChange={key => setTab(key as MainTab)}
+              // only the visible tab renders: a hidden 1,500-row table must not follow every event
+              destroyOnHidden
+              items={[
+                {
+                  key: 'batches',
+                  label: <CountLabel label={t('tabs.batches')} count={activeBatches} />,
+                  children: <BatchList />,
+                },
+                {
+                  key: 'jobs',
+                  label: <CountLabel label={t('tabs.jobs')} count={activeJobs} />,
+                  children: <JobTable batchId={jobsBatch} onBatch={setJobsBatch} />,
+                },
+                {
+                  key: 'finished',
+                  label: <CountLabel label={t('tabs.finished')} count={finishedJobs} />,
+                  children: <FinishedList batchId={finishedBatch} onBatch={setFinishedBatch} />,
+                },
+              ]}
+            />
+          </ShowBatchContext.Provider>
         </Layout.Content>
         <Layout.Footer className="app-footer">
           <Typography.Text type="secondary">
@@ -179,6 +225,7 @@ function Shell({
       <LogsDrawer open={panel === 'logs'} onClose={() => setPanel(undefined)} />
       <AboutModal open={panel === 'about'} onClose={() => setPanel(undefined)} />
       <ReportModal open={panel === 'report'} onClose={() => setPanel(undefined)} />
+      <FirstSteps open={guide} onClose={closeGuide} />
       <SetupModal
         open={setup.open}
         force={setup.force}

@@ -170,6 +170,18 @@ export async function moveIntoPlace(source: string, destination: string): Promis
   }
 
   const partial = `${target}.partial`
+  if ((await fs.stat(source)).isDirectory()) {
+    // a folder of files (a slideshow's images) on another volume: copy it whole, then swap it in
+    try {
+      await fs.cp(source, partial, {recursive: true, errorOnExist: true})
+      await renameRetrying(partial, target)
+    } catch (error) {
+      await fs.rm(partial, {recursive: true, force: true})
+      throw error
+    }
+    await fs.rm(source, {recursive: true, force: true})
+    return target
+  }
   try {
     await fs.copyFile(source, partial)
     const [a, b] = await Promise.all([fs.stat(source), fs.stat(partial)])

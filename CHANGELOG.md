@@ -1,6 +1,32 @@
 # Changelog
 
+## App 0.2.0-beta.7.2 · library 1.7.0
+
+Beta 7.2 replaces beta 7.1, which is withdrawn: everything in beta 7 and
+7.1 is here — Sync Up, retrying failures by cause, Downloads and Finished by
+batch, TikTok slideshows, several links, notifications, first steps, and
+YouTube's bot check handled — with the fix below.
+
+**The update on Windows, fixed.** "Update now" downloaded the new version,
+the app closed — and nothing was installed; the app had to be reinstalled
+by hand. Now:
+
+- The installer runs for the scope the app was installed for (this user, or
+  everyone), read from Windows' own record of the install — and asks for an
+  administrator's permission, with the usual Windows prompt, only when an
+  install for everyone needs it.
+- The helper that installs after the app closes writes down every step. If
+  the update doesn't go in — permission declined, the installer failing,
+  the app not closing — it opens the version you had, and the app says why.
+  Never again a closed app and nothing else.
+- The app closes for the update even if something hangs while it shuts
+  down (after 20 s), so the installer can always run.
+- A test installs the app on a real Windows machine and updates it, for one
+  user and for everyone, and with an installer that fails.
+
 ## App 0.2.0-beta.7.1 · library 1.7.0
+
+*Withdrawn: replaced by 0.2.0-beta.7.2, which includes all of it.*
 
 Beta 7.1 replaces beta 7, which is withdrawn: everything in beta 7 is here,
 with the fix below. Coming from beta 6, this is the whole beta 7 — Sync Up

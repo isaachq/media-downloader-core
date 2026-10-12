@@ -1,4 +1,5 @@
-import type {BrowserWindow} from 'electron'
+import * as path from 'node:path'
+import {app, type BrowserWindow} from 'electron'
 import type {MediaDownloader} from 'media-downloader-core'
 import type {YouTubeState} from '../../shared/contract'
 import {ACCOUNT_PARTITION, YouTubeAccount} from './account'
@@ -16,8 +17,10 @@ const REFRESH_JAR_MS = 20 * 60_000
  * never by itself.
  */
 export class YouTubeController {
-  readonly #attestation = createYouTubeAttestation(() =>
-    this.#engine?.youtube.level === 'account' ? ACCOUNT_PARTITION : GUEST_PARTITION,
+  readonly #attestation = createYouTubeAttestation(
+    () => (this.#engine?.youtube.level === 'account' ? ACCOUNT_PARTITION : GUEST_PARTITION),
+    // the attestation key learned from YouTube, kept for the next launch
+    path.join(app.getPath('userData'), 'youtube', 'attestation-key'),
   )
   #engine: MediaDownloader | undefined
   #account: YouTubeAccount | undefined

@@ -1,5 +1,6 @@
 import type {AttestationStrategy, MintSession} from 'media-downloader-core'
 import {HiddenPage} from './hidden-page'
+import {findAttestationKey, KeyStore, scriptOrder} from './page-key'
 
 /**
  * YouTube's attestation in the app's own Chromium — for learning how a site
@@ -23,8 +24,7 @@ import {HiddenPage} from './hidden-page'
 
 /** The attestation request key YouTube's web client sends (public, part of its page). */
 const REQUEST_KEY = 'O43z0dpjhgX20SCx4KAo'
-/** The browser API key YouTube's web client sends with it (public, part of its page). */
-const WAA_API_KEY = 'AIzaSyDyT5W0Jh49F30Pqqtyfdf7pDLFKLJoAnw'
+// The API key that goes with it is not in this code: it is learned from YouTube (see page-key.ts).
 const GENERATE_IT = {
   youtube: 'https://www.youtube.com/api/jnn/v1/GenerateIT',
   waa: 'https://jnn-pa.googleapis.com/$rpc/google.internal.waa.v1.Waa/GenerateIT',
@@ -110,6 +110,8 @@ const PAGE_SCRIPT = `(() => {
   }
 })()`
 
+export type KeySource = 'page' | 'kept' | 'scripts'
+
 type Challenge = {
   readonly globalName: string
   readonly program: string
@@ -119,6 +121,8 @@ type Challenge = {
 
 export type YouTubeAttestation = {
   readonly strategies: readonly AttestationStrategy[]
+  /** Where the attestation key came from the last time (for a report): the page's own calls, memory or disk, its scripts. */
+  readonly keySource: () => KeySource | undefined
   close(): void
 }
 
@@ -127,7 +131,13 @@ export type YouTubeAttestation = {
  * identity: the guest's (in memory) or the signed-in account's — tokens are
  * made in the session they will be used with.
  */
-export function createYouTubeAttestation(partition: () => string): YouTubeAttestation {
+export function createYouTubeAttestation(
+  partition: () => string,
+  /** Where the attestation key learned last is kept between launches. */
+  keyFile?: string,
+): YouTubeAttestation {
+  const keys = new KeyStore(keyFile)
+  let keySource: KeySource | undefined
   /** The page `youtube` keeps loaded, per partition (one at a time in practice). */
   let kept: {page: HiddenPage; partition: string; loadedAt: number} | undefined
   let loading: Promise<HiddenPage> | undefined
@@ -135,6 +145,31 @@ export function createYouTubeAttestation(partition: () => string): YouTubeAttest
   const fresh = new Set<HiddenPage>()
   /** interpreterHash → source, oldest first. */
   const interpreters = new Map<string, string>()
+
+  /** The key, cheapest way first (page-key.ts): memory, the page's own calls, disk, YouTube's scripts. */
+  const attestationKey = async (page: HiddenPage, signal: AbortSignal): Promise<string> => {
+    const seen = page.seenKey
+    if (seen) {
+      await keys.set(seen)
+      keySource = 'page'
+      return seen
+    }
+    const known = await keys.get()
+    if (known) {
+      keySource = 'kept'
+      return known
+    }
+    for (const url of scriptOrder(page.scripts)) {
+      const response = await page.session.fetch(url, {signal}).catch(() => undefined)
+      const found = response?.ok ? findAttestationKey(await response.text()) : undefined
+      if (found) {
+        await keys.set(found)
+        keySource = 'scripts'
+        return found
+      }
+    }
+    throw new Error('the page names no attestation key (YouTube changed how it sends it)')
+  }
 
   const keptPage = (signal: AbortSignal): Promise<HiddenPage> => {
     const wanted = partition()
@@ -184,10 +219,21 @@ export function createYouTubeAttestation(partition: () => string): YouTubeAttest
     await page.run(PAGE_SCRIPT, signal)
     const {challenge} = await page.run<{challenge: Challenge}>('globalThis.__mdcAttest.challenge()', signal)
     await page.run(`${await interpreter(page, challenge, signal)}\n;0`, signal)
-    const opened = await page.run<{id: string; ttlSeconds: number; mintLimit: number}>(
-      `globalThis.__mdcAttest.open(${JSON.stringify(challenge)}, ${JSON.stringify(REQUEST_KEY)}, ${JSON.stringify(generateIt)}, ${JSON.stringify(WAA_API_KEY)})`,
-      signal,
-    )
+    const key = await attestationKey(page, signal)
+    let opened: {id: string; ttlSeconds: number; mintLimit: number}
+    try {
+      // our own call: the key it carries must not be "learned" back from it
+      opened = await page.asOurs(() =>
+        page.run(
+          `globalThis.__mdcAttest.open(${JSON.stringify(challenge)}, ${JSON.stringify(REQUEST_KEY)}, ${JSON.stringify(generateIt)}, ${JSON.stringify(key)})`,
+          signal,
+        ),
+      )
+    } catch (error) {
+      // the key refused (YouTube changed it): learned again next time
+      if (/GenerateIT answered HTTP 4\d\d/.test(String(error))) await keys.forget()
+      throw error
+    }
     const expiresAt = Date.now() + Math.max(60, opened.ttlSeconds || 6 * 3600) * 1000
     return {
       expiresAt,
@@ -230,6 +276,7 @@ export function createYouTubeAttestation(partition: () => string): YouTubeAttest
 
   return {
     strategies,
+    keySource: () => keySource,
     close: () => {
       kept?.page.close()
       kept = undefined

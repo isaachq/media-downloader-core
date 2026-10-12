@@ -73,7 +73,9 @@ export async function runProbe(dataDir: string, report: string): Promise<ProbeRe
       service.close()
     }
     const last = strategies.at(-1)!
-    log(`${last.name}: ${last.ok ? `token (${last.tokenLength} chars)` : `failed — ${last.error}`} in ${last.ms} ms`)
+    log(
+      `${last.name}: ${last.ok ? `token (${last.tokenLength} chars), key from ${attestation.keySource() ?? '?'}` : `failed — ${last.error}`} in ${last.ms} ms`,
+    )
     await save()
   }
 

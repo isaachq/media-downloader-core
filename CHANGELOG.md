@@ -1,6 +1,6 @@
 # Changelog
 
-## App 0.2.0-beta.7.2 · library 1.7.0
+## App 0.2.0-beta.7.2 · library 1.7.1
 
 Beta 7.2 replaces beta 7.1, which is withdrawn: everything in beta 7 and
 7.1 is here — Sync Up, retrying failures by cause, Downloads and Finished by
@@ -23,6 +23,9 @@ by hand. Now:
   down (after 20 s), so the installer can always run.
 - A test installs the app on a real Windows machine and updates it, for one
   user and for everyone, and with an installer that fails.
+
+**Library 1.7.1.** `isYouTubeUrl()` is exported (1.7.0 listed it but kept it
+inside), and it publishes without npm's `always-auth` warning.
 
 ## App 0.2.0-beta.7.1 · library 1.7.0
 

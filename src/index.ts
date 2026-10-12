@@ -18,7 +18,14 @@ export {
   type UpdateResult,
 } from './binaries/manager.js'
 export {BinaryError, ffmpegRelease, type Release, ytDlpBuildFor, ytDlpRelease} from './binaries/sources.js'
-export {assertHttpUrl, isYouTubeMix, MAX_LISTED_ITEMS, MAX_REQUESTED_ITEMS, MIX_DEFAULT_ITEMS} from './core/analyze.js'
+export {
+  assertHttpUrl,
+  isYouTubeMix,
+  isYouTubeUrl,
+  MAX_LISTED_ITEMS,
+  MAX_REQUESTED_ITEMS,
+  MIX_DEFAULT_ITEMS,
+} from './core/analyze.js'
 export {
   type ArchiveEntry,
   type ArchiveGroup,

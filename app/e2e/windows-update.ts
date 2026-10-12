@@ -15,11 +15,15 @@ import * as path from 'node:path'
 import {_electron as electron} from '@playwright/test'
 import {writeFakes} from '../../test/helpers/fakes'
 
-const [installerA, installerB, versionB, scope, mode] = process.argv.slice(2)
-if (!installerA || !installerB || !versionB || (scope !== 'user' && scope !== 'machine')) {
+const [argA, argB, argVersion, argScope, mode] = process.argv.slice(2)
+if (!argA || !argB || !argVersion || (argScope !== 'user' && argScope !== 'machine')) {
   console.error('usage: windows-update.ts <A.exe> <B.exe> <B version> <user|machine> [fail]')
   process.exit(2)
 }
+const installerA: string = argA
+const installerB: string = argB
+const versionB: string = argVersion
+const scope: 'user' | 'machine' = argScope
 const failing = mode === 'fail'
 const KEY = 'Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall'
 

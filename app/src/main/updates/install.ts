@@ -138,22 +138,118 @@ async function installMac(ctx: InstallContext): Promise<'quit'> {
 
 // ─── Windows ─────────────────────────────────────────────────────────────────
 
-/** The NSIS installer, silently, once this process has exited; it starts the new version itself. */
-async function installWindows(ctx: InstallContext): Promise<'quit'> {
-  const script = path.join(ctx.workDir, 'install.ps1')
-  await fs.writeFile(
-    script,
-    [
-      'param([int]$AppPid, [string]$Installer)',
-      '# Media Download Core: run the installer once the running copy has quit',
-      'Wait-Process -Id $AppPid -Timeout 300 -ErrorAction SilentlyContinue',
-      'if (Get-Process -Id $AppPid -ErrorAction SilentlyContinue) { exit 1 }',
-      "Start-Process -FilePath $Installer -ArgumentList '/S', '--force-run'",
-      '',
-    ].join('\r\n'),
+/** What the Windows script writes, step by step: read back on the next start (`lastInstall`). */
+export const INSTALL_LOG = 'install.log'
+/** The line that marks an update that did not go in. */
+export const NOT_INSTALLED = 'NOT INSTALLED:'
+
+/**
+ * Where this copy is installed, as the NSIS installer sees it: for everyone
+ * (registered under HKLM, usually Program Files) or for this user (HKCU).
+ * A silent update has to say the same (`/allusers` / `/currentuser`), and
+ * an install for everyone needs an administrator's permission.
+ */
+export async function windowsScope(
+  execPath: string,
+  query: (args: string[]) => Promise<string> = async args => (await run('reg', args, {timeout: 10_000})).stdout,
+): Promise<'machine' | 'user'> {
+  const dir = normalizeDir(path.win32.dirname(execPath))
+  const KEY = 'Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall'
+  for (const [hive, scope, views] of [
+    ['HKCU', 'user', [[]]],
+    ['HKLM', 'machine', [[], ['/reg:32']]],
+  ] as const) {
+    for (const view of views) {
+      const out = await query(['query', `${hive}\\${KEY}`, '/s', ...view]).catch(() => '')
+      for (const line of out.split(/\r?\n/)) {
+        const where = folderIn(line)
+        if (where !== undefined && where === dir) return scope
+      }
+    }
+  }
+  // not registered (a copied folder, an older installer): a folder only an administrator may write is "everyone"
+  return (await writable(path.win32.dirname(execPath))) ? 'user' : 'machine'
+}
+
+/**
+ * The folder an uninstall entry's line names: InstallLocation (often left
+ * empty by NSIS), DisplayIcon ("…\\App.exe,0") or UninstallString
+ * ("\"…\\Uninstall App.exe\" /currentuser").
+ */
+function folderIn(line: string): string | undefined {
+  const match = /^\s+(InstallLocation|DisplayIcon|UninstallString)\s+REG_(?:EXPAND_)?SZ\s+(.+?)\s*$/i.exec(line)
+  if (!match) return undefined
+  const value = match[2]!
+  if (match[1]!.toLowerCase() === 'installlocation') return normalizeDir(value)
+  const file = value.startsWith('"')
+    ? value.slice(1, value.indexOf('"', 1))
+    : value.replace(/,\d+$/, '').split(' /')[0]!
+  return normalizeDir(path.win32.dirname(file))
+}
+
+const normalizeDir = (dir: string): string =>
+  dir
+    .trim()
+    .replace(/^"|"$/g, '')
+    .replace(/[\\/]+$/, '')
+    .toLowerCase()
+
+const writable = (dir: string): Promise<boolean> =>
+  fs.access(dir, fs.constants.W_OK).then(
+    () => true,
+    () => false,
   )
-  const args = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', script]
-  detached('powershell.exe', [...args, '-AppPid', String(ctx.pid), '-Installer', ctx.file])
+
+/**
+ * The PowerShell helper: waits for this process to exit, runs the NSIS
+ * installer silently for the same scope — asking for an administrator's
+ * permission (the usual Windows prompt) when the install is for everyone and
+ * the folder needs it — and writes each step to install.log. When the
+ * update does not go in (permission declined, installer failed, the app did
+ * not close), it starts the old version again: never a silent dead end.
+ */
+export function windowsInstallScript(): string {
+  return [
+    'param([int]$AppPid, [string]$Installer, [string]$AppExe, [string]$Log, [string]$Scope, [int]$Elevate)',
+    '# Media Download Core: run the installer once the running copy has quit',
+    'function Note([string]$Text) { Add-Content -LiteralPath $Log -Value ((Get-Date).ToString("o") + " " + $Text) }',
+    'function Fail([string]$Why) {',
+    `  Note "${NOT_INSTALLED} $Why"`,
+    '  if (Test-Path -LiteralPath $AppExe) { Start-Process -FilePath $AppExe }',
+    '  exit 1',
+    '}',
+    'Note "waiting for the app (pid $AppPid) to close"',
+    'Wait-Process -Id $AppPid -Timeout 120 -ErrorAction SilentlyContinue',
+    "if (Get-Process -Id $AppPid -ErrorAction SilentlyContinue) { Fail 'the app did not close' }",
+    "$flags = @('/S', '--force-run', $(if ($Scope -eq 'machine') { '/allusers' } else { '/currentuser' }))",
+    'Note "installing for $Scope (administrator: $Elevate)"',
+    'try {',
+    '  if ($Elevate -eq 1) { $p = Start-Process -FilePath $Installer -ArgumentList $flags -Verb RunAs -PassThru }',
+    '  else { $p = Start-Process -FilePath $Installer -ArgumentList $flags -PassThru }',
+    '  # the process alone, not the app it starts at the end',
+    '  $p.WaitForExit()',
+    '  if ($p.ExitCode -ne 0) { Fail "the installer ended with code $($p.ExitCode)" }',
+    '} catch {',
+    '  Fail "the installer did not run: $($_.Exception.Message)"',
+    '}',
+    "Note 'installed'",
+    '',
+  ].join('\r\n')
+}
+
+/** The NSIS installer, silently and for the same scope, once this process has exited; it starts the new version. */
+async function installWindows(ctx: InstallContext): Promise<'quit'> {
+  const scope = await windowsScope(ctx.execPath)
+  const elevate = scope === 'machine' && !(await writable(path.win32.dirname(ctx.execPath)))
+  const script = path.join(ctx.workDir, 'install.ps1')
+  await fs.writeFile(script, windowsInstallScript())
+  const log = path.join(ctx.workDir, INSTALL_LOG)
+  await fs.writeFile(log, `${new Date().toISOString()} update to ${ctx.version}: ${path.basename(ctx.file)}\r\n`)
+  detached('powershell.exe', [
+    ...['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', script],
+    ...['-AppPid', String(ctx.pid), '-Installer', ctx.file, '-AppExe', ctx.execPath],
+    ...['-Log', log, '-Scope', scope, '-Elevate', elevate ? '1' : '0'],
+  ])
   return 'quit'
 }
 

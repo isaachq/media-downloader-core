@@ -42,8 +42,9 @@ the ⌊CPUs/2⌋ pool and verified file by file.
 
 ![Paste a link, download it as MP4, check its integrity report, find it in Finished, open the run report](docs/demo.gif)
 
-### What's new in beta 7 (7.1)
+### What's new in beta 7 (7.2)
 
+- **The Windows update, fixed** (7.2) — the installer runs for the scope the app was installed for, asks for permission only when it must, and if an update can't go in, the version you had opens again and says why. Tested by installing and updating the app on a real Windows machine.
 - **YouTube's "confirm you're not a bot", handled** (7.1) — checks and downloads ask YouTube politely; when it blocks the connection anyway, YouTube downloads pause together and try again by themselves, and a banner offers to go on at once with your browser's signed-in session. [How it works](#youtube-when-it-asks-to-confirm-youre-not-a-bot).
 - **Sync Up** — keep TikTok accounts in step with their folders: next to New download, add an account (its folder may already hold its videos), and each sync downloads only what the folder is missing, as a regular batch — now, daily at a time, or every few hours. A folder keeps one format: one with MP4 files gets MP4. Also from the command line (`mdc sync`) and any scheduler. [How it works](#tiktok-sync-sync-up).
 - **Retry what failed, and see why** — each batch tells why items failed (removed, private, network…) and retries them in one click; the run report retries every batch.

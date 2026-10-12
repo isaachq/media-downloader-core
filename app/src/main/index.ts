@@ -49,7 +49,7 @@ import {defaultSettings, SettingsStore} from './settings'
 import {taskbarState} from './taskbar'
 import {createTikTokBrowser} from './tiktok-browser'
 import type {InstallKind} from './updates/feed'
-import {detectInstallKind} from './updates/install'
+import {detectInstallKind, NOT_INSTALLED} from './updates/install'
 import {Updater} from './updates/updater'
 import {MIN_SIZE, readWindowState, restoreBounds, writeWindowState} from './window-state'
 
@@ -109,10 +109,18 @@ async function createUpdater(): Promise<void> {
       engine.log('info', `update installed — ${how === 'relaunch' ? 'restarting' : 'closing for the swap'}`)
       if (how === 'relaunch') app.relaunch()
       app.quit()
+      // the installer waits for this process to end: a shutdown step that hangs must not keep the update out
+      setTimeout(() => app.exit(0), 20_000).unref()
     },
   })
   updater.onChange(state => send(CHANNEL.update, state))
-  await updater.cleanUp()
+  const previous = await updater.cleanUp()
+  if (previous) {
+    engine.log(
+      previous.includes(NOT_INSTALLED) ? 'warn' : 'info',
+      `last update: ${previous.trim().split(/\r?\n/).join(' | ')}`,
+    )
+  }
   const background = () => {
     if (settings.current.autoUpdate) void updater?.check({quiet: true})
   }

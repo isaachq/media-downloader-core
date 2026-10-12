@@ -18,10 +18,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # no registry-url: Trusted Publishing needs no .npmrc (setup-node's would add a
+      # setting npm 11 warns about), and npm's default registry is the public one
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          registry-url: https://registry.npmjs.org
           cache: npm
       # the integrity suite runs with a real ffmpeg
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg

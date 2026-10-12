@@ -8,7 +8,7 @@ import * as path from 'node:path'
 import {afterAll, beforeAll, describe, expect, it} from 'vitest'
 import {downloadUpdate, UpdateError} from './download'
 import {pickUpdate, RELEASES_PAGE} from './feed'
-import {bundleOf} from './install'
+import {bundleOf, INSTALL_LOG, windowsInstallScript, windowsScope} from './install'
 import {Updater} from './updater'
 import {compareVersions, parseVersion} from './version'
 
@@ -92,6 +92,41 @@ describe('install helpers', () => {
       '/Applications/Media Download Core.app',
     )
     expect(bundleOf('/usr/local/bin/electron')).toBeUndefined()
+  })
+
+  it('updates a Windows install for the scope it was installed for (the registry says which)', async () => {
+    const exe = 'C:\\Program Files\\Media Download Core\\Media Download Core.exe'
+    // as the NSIS installer leaves it: InstallLocation empty, the exe in DisplayIcon / UninstallString
+    const entry = (folder: string) =>
+      [
+        '    DisplayName    REG_SZ    Media Download Core 0.2.0-beta.7.1',
+        '    InstallLocation    REG_SZ    ',
+        `    DisplayIcon    REG_SZ    "${folder}\\Media Download Core.exe",0`,
+        `    UninstallString    REG_SZ    "${folder}\\Uninstall Media Download Core.exe" /currentuser`,
+      ].join('\r\n')
+    const registry = (hive: string, folder: string) => (args: string[]) =>
+      Promise.resolve(args[1]?.startsWith(hive) ? `\r\n${args[1]}\\{guid}\r\n${entry(folder)}\r\n` : '')
+    expect(await windowsScope(exe, registry('HKLM', 'C:\\Program Files\\Media Download Core'))).toBe('machine')
+    // case doesn't matter
+    expect(await windowsScope(exe, registry('HKCU', 'c:\\program files\\media download core'))).toBe('user')
+    const user = 'C:\\Users\\me\\AppData\\Local\\Programs\\media-download-core-app\\Media Download Core.exe'
+    expect(
+      await windowsScope(user, registry('HKCU', 'C:\\Users\\me\\AppData\\Local\\Programs\\media-download-core-app')),
+    ).toBe('user')
+    // another app's entry is not ours; not registered and not writable → for everyone
+    expect(await windowsScope(exe, registry('HKCU', 'C:\\Other'))).toBe('machine')
+  })
+
+  it("the Windows helper: same scope, the administrator's prompt when needed, a log, never a dead end", () => {
+    const script = windowsInstallScript()
+    expect(script).toContain("'/allusers'")
+    expect(script).toContain("'/currentuser'")
+    expect(script).toContain('-Verb RunAs')
+    expect(script).toContain('$p.WaitForExit()')
+    // a failed update starts the old version again and says why
+    expect(script).toMatch(/function Fail[\s\S]*NOT INSTALLED:[\s\S]*Start-Process -FilePath \$AppExe/)
+    expect(script).toContain('Wait-Process -Id $AppPid -Timeout 120')
+    expect(script.split('\r\n').length).toBeGreaterThan(10)
   })
 })
 
@@ -206,6 +241,33 @@ describe('Updater', () => {
       exit: () => {},
     })
     await updater.cleanUp()
+    await expect(fs.access(leftovers)).rejects.toThrow()
+  })
+
+  it('an update that did not go in says why on the next start', async () => {
+    const leftovers = path.join(dir, 'failed-install')
+    await fs.mkdir(leftovers, {recursive: true})
+    await fs.writeFile(
+      path.join(leftovers, INSTALL_LOG),
+      '2026-10-12T07:00:00Z update to 0.2.0-beta.7.2: setup.exe\r\n2026-10-12T07:00:05Z NOT INSTALLED: the installer did not run: The operation was canceled by the user\r\n',
+    )
+    const updater = new Updater({
+      current: '0.2.0-beta.7.1',
+      kind: 'windows-nsis',
+      arch: 'x64',
+      dir: leftovers,
+      bundleId: 'x',
+      execPath: 'C:\\x.exe',
+      env: {},
+      exit: () => {},
+    })
+    const log = await updater.cleanUp()
+    expect(log).toContain('update to 0.2.0-beta.7.2')
+    expect(updater.state).toEqual({
+      status: 'error',
+      message: 'The last update was not installed: the installer did not run: The operation was canceled by the user.',
+      page: RELEASES_PAGE,
+    })
     await expect(fs.access(leftovers)).rejects.toThrow()
   })
 

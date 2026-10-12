@@ -160,6 +160,16 @@ async function main() {
   console.log('installed after:', JSON.stringify(after))
   console.log('processes running:', running())
   console.log('helper log:', (await helperLog()) || '(none)')
+  const updates = path.join(dataDir, 'updates')
+  console.log('updates folder:', (await fs.readdir(updates).catch(() => [] as string[])).join(', ') || '(empty)')
+  console.log(
+    'helper output:',
+    (await fs.readFile(path.join(updates, 'install-helper.log'), 'utf8').catch(() => '(none)')) || '(empty)',
+  )
+  console.log(
+    'powershell running:',
+    ps("(Get-Process -Name powershell -ErrorAction SilentlyContinue | ForEach-Object { $_.Id }) -join ','"),
+  )
   if (!done)
     throw new Error(
       `no ${failing ? 'reported failure with the old version running' : `${versionB} running for ${scope}`} within 4 minutes`,

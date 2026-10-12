@@ -245,11 +245,28 @@ async function installWindows(ctx: InstallContext): Promise<'quit'> {
   await fs.writeFile(script, windowsInstallScript())
   const log = path.join(ctx.workDir, INSTALL_LOG)
   await fs.writeFile(log, `${new Date().toISOString()} update to ${ctx.version}: ${path.basename(ctx.file)}\r\n`)
-  detached('powershell.exe', [
-    ...['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', script],
-    ...['-AppPid', String(ctx.pid), '-Installer', ctx.file, '-AppExe', ctx.execPath],
-    ...['-Log', log, '-Scope', scope, '-Elevate', elevate ? '1' : '0'],
-  ])
+  // PowerShell's own output (a script it can't run, a parameter it can't bind) goes to a file too
+  const output = await fs.open(path.join(ctx.workDir, 'install-helper.log'), 'w')
+  try {
+    const child = spawn(
+      'powershell.exe',
+      [
+        ...['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', script],
+        ...['-AppPid', String(ctx.pid), '-Installer', ctx.file, '-AppExe', ctx.execPath],
+        ...['-Log', log, '-Scope', scope, '-Elevate', elevate ? '1' : '0'],
+      ],
+      {detached: true, stdio: ['ignore', output.fd, output.fd], windowsHide: true},
+    )
+    const started = await new Promise<string>(resolve => {
+      child.once('spawn', () => resolve(`helper started (pid ${child.pid})`))
+      child.once('error', error => resolve(`${NOT_INSTALLED} the helper could not start: ${error.message}`))
+    })
+    await fs.appendFile(log, `${new Date().toISOString()} ${started}\r\n`)
+    if (started.startsWith(NOT_INSTALLED)) throw new UpdateError(started.slice(NOT_INSTALLED.length).trim())
+    child.unref()
+  } finally {
+    await output.close()
+  }
   return 'quit'
 }
 

@@ -1,6 +1,22 @@
 # Changelog
 
-## Unreleased
+## App 0.2.0-beta.8 · library 1.8.0
+
+Beta 8: YouTube's bot check handled one step at a time — tokens the app
+makes, then the user's choice (sign in, a browser, or wait) — and the fixes
+found on the way. Library 1.8.0 adds `PoTokenService`, `PoTokenBroker`,
+`YouTubeGate`, the cookie helpers, `setYouTubeAccount` / `clearYouTubeAccount` /
+`waitOutYouTube`, the `youtube` event and the `youtube.*` options; nothing
+existing changes.
+
+**YouTube's attestation key is learned, not kept in the code.** GitHub's
+secret scanning flagged the API key the attestation sends. It was YouTube's
+public browser key — served to every visitor in youtube.com's own scripts,
+not a credential of this project — but it belongs to YouTube and changes when
+YouTube wants. The app now learns it from YouTube, cheapest way first: memory;
+the header the page's own attestation call sends (nothing fetched); the last
+key that worked, on disk; YouTube's scripts. A key YouTube refuses is learned
+again. A test fails if a Google API key ever appears in the repository.
 
 **YouTube's "confirm you're not a bot": a ladder, and no more Keychain prompts.**
 On a Mac, choosing Chrome's session raised the Keychain prompt again and again:

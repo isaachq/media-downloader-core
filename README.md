@@ -45,7 +45,15 @@ the ⌊CPUs/2⌋ pool and verified file by file.
 
 ![Paste a link, download it as MP4, check its integrity report, find it in Finished, open the run report](docs/demo.gif)
 
-### What's new in beta 7 (7.2)
+### What's new in beta 8
+
+- **YouTube's "confirm you're not a bot", one step at a time** — nothing changes until YouTube refuses. Then the app retries with verification tokens it makes itself (no window, nothing to do); if YouTube still refuses, YouTube downloads stop and wait — not failed — and the app says why and lets you choose: sign in to YouTube inside the app, use a browser's session, or wait. Then everything goes on from where it was. [How it works](#youtube-when-it-asks-to-confirm-youre-not-a-bot).
+- **No more Keychain prompts one after another** (macOS) — a browser's cookies are read once for a whole batch, not by every download.
+- **A YouTube account inside the app** — only when YouTube requires it and you agree; the sign-in stays in the app, used for YouTube only. Settings shows it and signs it out.
+- **For learning: YouTube's attestation** — how a site proves the client streaming from it is its own page, and how the app takes part (PO tokens). Checked every day by a workflow that opens a pull request, in English and Spanish, when YouTube changes it. [Read more](#youtube-attestation).
+- **Fixes** — a download cancelled just before it started now really stops; on Windows, updating an install for everyone asks for an administrator's permission through the app's own prompt.
+
+### In beta 7 (7.2)
 
 - **The Windows update, fixed** (7.2) — the app hands the update to the installer's own update mode, for the scope the app was installed for (asking for permission only when it must); if an update doesn't go in, the next start says so. Tested by installing and updating the app on a real Windows machine.
 - **YouTube's "confirm you're not a bot", handled** (7.1) — checks and downloads ask YouTube politely; when it blocks the connection anyway, YouTube downloads pause together and try again by themselves, and a banner offers to go on at once with your browser's signed-in session. [How it works](#youtube-when-it-asks-to-confirm-youre-not-a-bot).

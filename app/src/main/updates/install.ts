@@ -239,12 +239,15 @@ export function windowsInstallScript(): string {
 
 /** The NSIS installer, silently and for the same scope, once this process has exited; it starts the new version. */
 async function installWindows(ctx: InstallContext): Promise<'quit'> {
+  const log = path.join(ctx.workDir, INSTALL_LOG)
+  const step = (text: string) => fs.appendFile(log, `${new Date().toISOString()} ${text}\r\n`)
+  await step(`update to ${ctx.version}: ${path.basename(ctx.file)}`)
   const scope = await windowsScope(ctx.execPath)
   const elevate = scope === 'machine' && !(await writable(path.win32.dirname(ctx.execPath)))
+  await step(`installed for ${scope}${elevate ? ', needs an administrator' : ''}`)
   const script = path.join(ctx.workDir, 'install.ps1')
   await fs.writeFile(script, windowsInstallScript())
-  const log = path.join(ctx.workDir, INSTALL_LOG)
-  await fs.writeFile(log, `${new Date().toISOString()} update to ${ctx.version}: ${path.basename(ctx.file)}\r\n`)
+  await step('starting the helper')
   // PowerShell's own output (a script it can't run, a parameter it can't bind) goes to a file too
   const output = await fs.open(path.join(ctx.workDir, 'install-helper.log'), 'w')
   try {
@@ -261,7 +264,7 @@ async function installWindows(ctx: InstallContext): Promise<'quit'> {
       child.once('spawn', () => resolve(`helper started (pid ${child.pid})`))
       child.once('error', error => resolve(`${NOT_INSTALLED} the helper could not start: ${error.message}`))
     })
-    await fs.appendFile(log, `${new Date().toISOString()} ${started}\r\n`)
+    await step(started)
     if (started.startsWith(NOT_INSTALLED)) throw new UpdateError(started.slice(NOT_INSTALLED.length).trim())
     child.unref()
   } finally {

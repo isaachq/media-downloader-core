@@ -18,6 +18,7 @@ import {LineSplitter, lastLines, run, TailBuffer} from '../src/core/process.js'
 import {PendingJournal, QueueStore} from '../src/core/queue-store.js'
 
 import {writeFakes} from './helpers/fakes.js'
+
 let dir = ''
 before(async () => {
   dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdc-internals-'))

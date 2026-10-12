@@ -42,10 +42,28 @@ export type ProbeReport = {
 export async function runProbe(dataDir: string, report: string): Promise<ProbeReport> {
   const attestation = createYouTubeAttestation(() => 'youtube-probe')
   const strategies: Array<ProbeReport['strategies'][number]> = []
+  let ytDlp: ProbeReport['ytDlp']
+  let engineResult: ProbeReport['engine']
+  let ytDlpVersion: string | undefined
+  /** Written after every step: a run cut short still says how far it got. */
+  const save = async (): Promise<ProbeReport> => {
+    const result: ProbeReport = {
+      at: new Date().toISOString(),
+      strategies,
+      ...(ytDlp && {ytDlp}),
+      ...(engineResult && {engine: engineResult}),
+      verdict: verdictOf(strategies, ytDlp, engineResult),
+      ...(ytDlpVersion && {ytDlpVersion}),
+    }
+    await fs.writeFile(report, `${JSON.stringify(result, null, 2)}\n`)
+    return result
+  }
+  const log = (message: string) => console.log(`[youtube probe] ${message}`)
+
   // 1. each way on its own
   for (const strategy of attestation.strategies) {
     const started = Date.now()
-    const service = new PoTokenService([strategy], {cooldownMs: 0})
+    const service = new PoTokenService([strategy], {cooldownMs: 0, openTimeoutMs: STEP_MS.attest})
     try {
       const {token} = await service.token(PROBE_VIDEO)
       strategies.push({name: strategy.name, ok: true, ms: Date.now() - started, tokenLength: token.length})
@@ -54,16 +72,19 @@ export async function runProbe(dataDir: string, report: string): Promise<ProbeRe
     } finally {
       service.close()
     }
+    const last = strategies.at(-1)!
+    log(`${last.name}: ${last.ok ? `token (${last.tokenLength} chars)` : `failed — ${last.error}`} in ${last.ms} ms`)
+    await save()
   }
+
+  // a probe answers in minutes: no retries, no growing pauses — a refusal is the answer
   const engine = new MediaDownloader({
     dataDir,
     validation: 'quick',
     traceLog: false,
-    youtube: {attestation: attestation.strategies, tokens: 'always'},
+    maxRetries: 0,
+    youtube: {attestation: attestation.strategies, tokens: 'always', attestedDelaysMs: [1000]},
   })
-  let ytDlp: ProbeReport['ytDlp']
-  let engineResult: ProbeReport['engine']
-  let ytDlpVersion: string | undefined
   try {
     const bins = await engine.resolveBinaries()
     ytDlpVersion = bins.ytDlp.version
@@ -98,65 +119,78 @@ export async function runProbe(dataDir: string, report: string): Promise<ProbeRe
             '--',
             `https://www.youtube.com/watch?v=${PROBE_VIDEO}`,
           ],
-          {env: {...process.env, ...js.env, ...(await broker.env())}, timeoutMs: 180_000},
+          {env: {...process.env, ...js.env, ...(await broker.env())}, timeoutMs: STEP_MS.ytDlp},
         )
-        const log = `${result.stdout}\n${result.stderr}`
+        const output = `${result.stdout}\n${result.stderr}`
         const files = await fs.readdir(out).catch(() => [] as string[])
         // asked for and accepted: a token yt-dlp refuses is logged, and it goes on without one
-        const tokenUsed = /\[pot:mdc\]/.test(log) && !/Invalid PO Token/i.test(log)
+        const tokenUsed = /\[pot:mdc\]/.test(output) && !/Invalid PO Token/i.test(output)
         ytDlp = {
           ok: result.code === 0 && files.length > 0 && tokenUsed,
           ms: Date.now() - started,
           tokenUsed,
-          detail: lastErrors(log) || `${files.length} file(s)`,
+          detail: result.timedOut
+            ? `no answer within ${STEP_MS.ytDlp / 1000} s`
+            : lastErrors(output) || `${files.length} file(s)`,
         }
       } finally {
         await broker.close()
         service.close()
       }
-      // 3. the engine, tokens on, end to end
+      log(
+        `yt-dlp (mweb only): ${ytDlp.ok ? 'ok' : 'failed'}, token ${ytDlp.tokenUsed ? 'accepted' : 'not used'} — ${ytDlp.detail}`,
+      )
+      await save()
+
+      // 3. the engine, tokens on, end to end — within its own deadline
       const t0 = Date.now()
       const job = engine.add({
         url: `https://www.youtube.com/watch?v=${PROBE_VIDEO}`,
         profile: {kind: 'audio', container: 'm4a'},
         outDir: path.join(dataDir, 'probe-engine'),
       })
+      const deadline = setTimeout(() => engine.cancel(job.id), STEP_MS.engine)
       await engine.whenIdle()
+      clearTimeout(deadline)
       const done = engine.job(job.id)
       engineResult = {
         ok: done?.status === 'completed',
         ms: Date.now() - t0,
-        detail: done?.error
-          ? `${done.error.code}${done.error.hint ? `/${done.error.hint}` : ''}: ${done.error.message}`
-          : `${done?.status}`,
+        detail:
+          done?.status === 'cancelled'
+            ? `no download within ${STEP_MS.engine / 1000} s${done.attempts.at(-1)?.error ? ` (last: ${done.attempts.at(-1)?.error?.message})` : ''}`
+            : done?.error
+              ? `${done.error.code}${done.error.hint ? `/${done.error.hint}` : ''}: ${done.error.message}`
+              : `${done?.status}`,
       }
+      log(`engine: ${engineResult.ok ? 'downloaded' : 'failed'} — ${engineResult.detail}`)
     }
   } catch (error) {
     ytDlp ??= {ok: false, ms: 0, tokenUsed: false, detail: messageOf(error)}
+    log(`stopped: ${messageOf(error)}`)
   } finally {
     await engine.dispose()
     attestation.close()
   }
-  const botChecked = /confirm you.?re not a bot|bot-check/i.test(`${ytDlp?.detail ?? ''} ${engineResult?.detail ?? ''}`)
-  const verdict: ProbeReport['verdict'] = !strategies.some(s => s.ok)
-    ? 'broken'
-    : ytDlp?.ok && engineResult?.ok
-      ? 'healthy'
-      : botChecked
-        ? 'inconclusive'
-        : /HTTP Error 403/i.test(ytDlp?.detail ?? '')
-          ? 'broken'
-          : 'inconclusive'
-  const result: ProbeReport = {
-    at: new Date().toISOString(),
-    strategies,
-    ...(ytDlp && {ytDlp}),
-    ...(engineResult && {engine: engineResult}),
-    verdict,
-    ...(ytDlpVersion && {ytDlpVersion}),
-  }
-  await fs.writeFile(report, `${JSON.stringify(result, null, 2)}\n`)
+  const result = await save()
+  log(`verdict: ${result.verdict}`)
   return result
+}
+
+/** Each step's time limit: the whole probe ends well inside the workflow's 10 minutes. */
+const STEP_MS = {attest: 60_000, ytDlp: 150_000, engine: 150_000} as const
+
+function verdictOf(
+  strategies: ProbeReport['strategies'],
+  ytDlp: ProbeReport['ytDlp'],
+  engine: ProbeReport['engine'],
+): ProbeReport['verdict'] {
+  if (strategies.length && !strategies.some(s => s.ok)) return 'broken'
+  if (ytDlp?.ok && engine?.ok) return 'healthy'
+  const said = `${ytDlp?.detail ?? ''} ${engine?.detail ?? ''}`
+  // YouTube refusing the token itself; a connection it bot-checks (datacenter IPs) says nothing about tokens
+  if (/HTTP Error 403/i.test(ytDlp?.detail ?? '') && !/confirm you.?re not a bot|bot-check/i.test(said)) return 'broken'
+  return 'inconclusive'
 }
 
 /** The last ERROR / WARNING lines of a yt-dlp run: what the report needs, not the whole log. */

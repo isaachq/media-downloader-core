@@ -1,5 +1,32 @@
 # Changelog
 
+## App 0.2.0-beta.9 · library 1.9.0
+
+Beta 9: a player-page link works again without being configured first.
+Library 1.9.0 adds the `unsupportedUrlSource` option and the
+`source-fallback` attempt strategy; nothing existing changes.
+
+**Player-page links on any site, none named.** A search or video page of a
+player-page site that wasn't in the user's `sites.json` failed with
+"Unsupported URL" (yt-dlp has no extractor for it), though the app reads such
+sites natively. Now any http(s) link yt-dlp doesn't support is tried as a
+player page, whatever its host — no site is named in the code or shipped with
+the app:
+
+- `unsupportedUrlSource(url)` (new option): the engine asks the host for a
+  source made for that url's host — the app makes a `PlayerPageSource`, its
+  browser kept on that host — and uses it instead of failing. When it finds
+  videos there, the host is read that way from then on.
+- In all three places a url meets yt-dlp: the preview (analyze), the checks
+  (preflight) and the downloads — a job queued before a restart, refused by
+  yt-dlp, retries with the host's source at once (`source-fallback`, not one
+  of its retries).
+- A page that is no player page either (no video page, no videos listed)
+  still fails with yt-dlp's "Unsupported URL". YouTube links and hosts a
+  configured site claims never take this path.
+- Chunked checks match yt-dlp's `ERROR: Unsupported URL: <url>` to its own
+  url; it names no id, so it used to be assigned in order.
+
 ## App 0.2.0-beta.8 · library 1.8.0
 
 Beta 8: YouTube's bot check handled one step at a time — tokens the app

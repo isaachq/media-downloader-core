@@ -128,6 +128,10 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
   readonly #hashes = new HashPool()
   /** Sites handled natively instead of by yt-dlp. */
   readonly #sources: readonly MediaSource[]
+  /** Makes a source for the host of a url yt-dlp doesn't support (options.unsupportedUrlSource). */
+  readonly #unsupportedUrlSource: ((url: URL) => MediaSource | undefined) | undefined
+  /** Sources made that way which read something: by host (no `www.`), asked after #sources. */
+  readonly #learned = new Map<string, MediaSource>()
   readonly #queue: PendingJournal<JobRequest>
   readonly #jobs = new Map<JobId, Job>()
   /** Terminal jobs in finishing order, for releasing the oldest ones. */
@@ -199,6 +203,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
         : [new TikTokSource({log: (level, message) => this.#log(level, message), ...options.tiktok})]),
       ...(options.sources ?? []),
     ]
+    this.#unsupportedUrlSource = options.unsupportedUrlSource
     this.binaries = new BinaryManager(options.dataDir, options.binaries)
     this.archive = new DownloadArchive(path.join(options.dataDir, 'archive.jsonl'))
     this.#queue = new PendingJournal(path.join(options.dataDir, 'pending.jsonl'), () => this.#pendingEntries())
@@ -502,7 +507,29 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       } catch (error) {
         // a link pasted while YouTube bot-checks this connection: the pause starts here too
         if (error instanceof DownloadError && error.code === 'blocked' && isYouTubeUrl(url)) this.#youtubeRefused()
-        throw error
+        // a site yt-dlp doesn't know: the source made for its host may read it
+        const fallback = isUnsupported(error) ? this.#fallbackFor(url) : undefined
+        if (!fallback) throw error
+        let result: AnalysisResult
+        try {
+          result = await fallback.source.analyze(url, {
+            signal: analysis.signal,
+            ...(opts.maxEntries !== undefined && {maxEntries: opts.maxEntries}),
+            ...(opts.onProgress && {onProgress: opts.onProgress}),
+            ...(opts.known && {known: opts.known}),
+          })
+        } catch (fallbackError) {
+          if (analysis.signal.aborted) throw cancelledError()
+          this.#log(
+            'info',
+            `${url}: unsupported by yt-dlp and by ${fallback.source.name} (${toJobError(fallbackError).message})`,
+          )
+          throw error
+        }
+        // nothing there (no video page, no videos listed): still the site yt-dlp doesn't know
+        if (result.kind === 'playlist' && result.entries.length === 0) throw error
+        this.#learn(fallback)
+        return result
       }
     } finally {
       this.#analyses.delete(analysis)
@@ -570,6 +597,8 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
         hint: 'bot-check',
         message: 'YouTube asks to confirm this is not a bot: not checked now, checked when it downloads.',
       }
+      // items yt-dlp doesn't support, for the source made for their host: by source
+      const elsewhere = new Map<MediaSource, {readonly host: string; readonly items: Array<(typeof items)[number]>}>()
       const runChunk = async (chunk: ReadonlyArray<(typeof items)[number]>) => {
         if (analysis.signal.aborted) return
         // chunks are all YouTube or none (see below): one url tells
@@ -583,6 +612,9 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
           return
         }
         if (youtube) await this.#youtube.turn(analysis.signal)
+        const byUrl = new Map(chunk.map(item => [item.url, item]))
+        /** Urls yt-dlp doesn't support whose host has a source to try: not reported yet. */
+        const unsupported = new Set<string>()
         const chunkResults = await this.#withRun(chunk[0]!.url, bins, analysis.signal, run =>
           extractMany(chunk, {
             ytDlp: bins.ytDlp.exe,
@@ -590,12 +622,24 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
             cacheDir: this.#cacheDir,
             commonArgs: youtube ? [...run.args, ...YOUTUBE_POLITE_ARGS] : run.args,
             signal: analysis.signal,
-            onResult: opts.onResult,
+            onResult: (url, result) => {
+              const fallback =
+                !result.ok && result.error.hint === 'unsupported-url' ? this.#fallbackFor(url) : undefined
+              if (fallback) {
+                unsupported.add(url)
+                const list = elsewhere.get(fallback.source)
+                if (list) list.items.push(byUrl.get(url)!)
+                else elsewhere.set(fallback.source, {host: fallback.host, items: [byUrl.get(url)!]})
+                return
+              }
+              opts.onResult?.(url, result)
+            },
             keepMetadata: opts.keepMetadata,
           }),
         )
         let blocked = false
         for (const [url, result] of chunkResults) {
+          if (unsupported.has(url)) continue
           results.set(url, result)
           if (!result.ok && result.error.code === 'blocked') blocked = true
         }
@@ -627,6 +671,21 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
         enqueue(handBack)
         await pool.whenIdle()
       }
+      // checked by the source made for their host instead; what it can't read fails with its reason
+      await Promise.all(
+        [...elsewhere].map(async ([source, {host, items: own}]) => {
+          let read = false
+          await source.preflight(own, {
+            signal: analysis.signal,
+            onResult: (url, result) => {
+              read ||= result.ok
+              results.set(url, result)
+              opts.onResult?.(url, result)
+            },
+          })
+          if (read) this.#learn({host, source})
+        }),
+      )
       return results
     } finally {
       this.#analyses.delete(analysis)
@@ -639,12 +698,42 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
    * source has a default (500 for TikTok profiles and player-page listings).
    */
   defaultListSize(url: string): number | undefined {
-    return this.#sources.find(source => source.handles(url))?.defaultListSize?.(url)
+    const source = this.#sources.find(source => source.handles(url)) ?? this.#learnedFor(url)
+    return source?.defaultListSize?.(url)
   }
 
-  /** The native source for a url, if any. O(sources). */
+  /** The native source for a url, if any: a configured one, else one learned for its host. O(sources). */
   #sourceFor(url: string): MediaSource | undefined {
-    return this.#sources.find(source => source.available && source.handles(url))
+    const source = this.#sources.find(source => source.available && source.handles(url)) ?? this.#learnedFor(url)
+    return source?.available ? source : undefined
+  }
+
+  #learnedFor(url: string): MediaSource | undefined {
+    if (this.#learned.size === 0) return undefined
+    const host = hostOf(url)
+    return host === undefined ? undefined : this.#learned.get(host)
+  }
+
+  /**
+   * The source to try for a url yt-dlp doesn't support: the one already made for its host, or
+   * a new one from options.unsupportedUrlSource. None for YouTube, for hosts a configured source
+   * claims, or without that option.
+   */
+  #fallbackFor(url: string): {readonly host: string; readonly source: MediaSource} | undefined {
+    if (!this.#unsupportedUrlSource || isYouTubeUrl(url)) return undefined
+    const host = hostOf(url)
+    if (host === undefined || this.#sources.some(source => source.handles(url))) return undefined
+    const known = this.#learned.get(host)
+    if (known) return {host, source: known}
+    const source = this.#unsupportedUrlSource(new URL(url))
+    return source?.handles(url) ? {host, source} : undefined
+  }
+
+  /** From now on the source reads its host's urls (it read one yt-dlp doesn't support). */
+  #learn({host, source}: {readonly host: string; readonly source: MediaSource}): void {
+    if (this.#learned.get(host) === source) return
+    this.#learned.set(host, source)
+    this.#log('info', `${host}: not a site yt-dlp supports — read as ${source.name} from now on`)
   }
 
   /** Whether a file has an audio stream. */
@@ -880,6 +969,8 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     let infoJsonPath = await this.#freshMetadata(job)
     let profile = request.profile
     let strategy: AttemptStrategy = 'primary'
+    /** The source made for the url's host, once yt-dlp said it doesn't support the url. */
+    let sourceFallback: {readonly host: string; readonly source: MediaSource} | undefined
     const youtube = isYouTubeUrl(request.url)
     /** YouTube refusals while its ladder still climbs: they don't use up this job's retries. */
     let free = 0
@@ -895,8 +986,9 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
         this.#emit(job, true)
         try {
           await this.#ensureDiskSpace(request)
-          await this.#attempt(job, bins, profile, workDir, infoJsonPath, strategy, signal)
+          await this.#attempt(job, bins, profile, workDir, infoJsonPath, strategy, signal, sourceFallback?.source)
           job.endAttempt(undefined)
+          if (sourceFallback) this.#learn(sourceFallback)
           if (youtube) this.#youtube.succeeded()
           if (attempt > 1) this.#log('info', `succeeded on attempt ${attempt}/${job.maxAttempts}`, job)
           this.#finish(job, 'completed', {})
@@ -925,6 +1017,26 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
               {code: failure.code},
             )
             strategy = 'extractor-fallback'
+            continue
+          }
+
+          // a site yt-dlp doesn't know (e.g. queued before a restart): the source made for its host
+          const fallback =
+            isUnsupported(failure) && !sourceFallback && strategy !== 'extractor-fallback'
+              ? this.#fallbackFor(request.url)
+              : undefined
+          if (fallback && counted < job.maxAttempts) {
+            job.endAttempt(jobError, 0)
+            this.#log(
+              'warn',
+              `attempt ${attempt}/${job.maxAttempts}: ${failure.message} — trying ${fallback.source.name}`,
+              job,
+              {
+                code: failure.code,
+              },
+            )
+            sourceFallback = fallback
+            strategy = 'source-fallback'
             continue
           }
 
@@ -1011,11 +1123,13 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     infoJsonPath: string | undefined,
     strategy: AttemptStrategy,
     signal: AbortSignal,
+    /** The source made for the url's host, yt-dlp having said it doesn't support the url. */
+    fallback?: MediaSource,
   ): Promise<void> {
     const {request} = job
     await fs.mkdir(workDir, {recursive: true})
     // native source unless an earlier attempt already fell back to yt-dlp
-    const source = strategy === 'extractor-fallback' ? undefined : this.#sourceFor(request.url)
+    const source = fallback ?? (strategy === 'extractor-fallback' ? undefined : this.#sourceFor(request.url))
     let tags: MediaTags | undefined
 
     // ── download (+ yt-dlp post-processing: merge / extract audio / metadata)
@@ -1379,4 +1493,20 @@ export function relaxProfile(profile: FormatProfile): FormatProfile | undefined 
 export function retryDelay(attempt: number, max: number): number {
   const base = Math.min(max, 2000 * 2 ** (attempt - 1))
   return Math.round(base * (0.8 + Math.random() * 0.2))
+}
+
+/** yt-dlp's "Unsupported URL" (no extractor, not even its generic one, reads the page). */
+function isUnsupported(error: unknown): boolean {
+  return error instanceof DownloadError && error.hint === 'unsupported-url'
+}
+
+/** An http(s) url's host without `www.`; undefined for anything else. */
+function hostOf(url: string): string | undefined {
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return undefined
+    return parsed.hostname.toLowerCase().replace(/^www\./, '') || undefined
+  } catch {
+    return undefined
+  }
 }

@@ -365,8 +365,11 @@ export class PlayerPageSource implements MediaSource {
         await Promise.race(running)
         if (failure !== undefined) throw failure
         if (contiguous() >= max) break
-        // a capped listing reads ahead only as far as the cap reaches (page 1 tells the page size)
-        const perPage = read.get(1)?.length ?? 0
+        // a capped listing reads ahead only as far as the cap reaches. The page size is the largest
+        // page read so far — whichever page answers first: only the last page is shorter, so this
+        // never undercounts what the cap needs (waiting for page 1 let a slow page 1 open the horizon)
+        let perPage = 0
+        for (const videos of read.values()) perPage = Math.max(perPage, videos.length)
         const enough = perPage > 0 ? Math.ceil(max / perPage) : Number.POSITIVE_INFINITY
         const horizon = Math.min(lastPage, furthestLinked + LOOKAHEAD_PAGES, enough, MAX_LISTING_PAGES)
         for (let page = 2; page <= horizon; page++) if (!launched.has(page)) launch(page)

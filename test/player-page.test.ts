@@ -246,6 +246,17 @@ describe('player pages, end to end (local fake)', () => {
     assert.ok(site.hits.listing <= 7, `${site.hits.listing} of 20 pages read`)
   })
 
+  it('stops at the cap even when page 1 answers last', async () => {
+    const {site, engine} = await setup('listing-cap-slow-first', {results: 480, firstPageDelayMs: 300})
+    const listing = await engine.analyze(site.searchUrl('term'), {maxEntries: 30})
+    assert.ok(listing.kind === 'playlist')
+    assert.deepEqual(
+      listing.entries.map(e => e.id),
+      site.ids.slice(0, 30),
+    )
+    assert.ok(site.hits.listing <= 7, `${site.hits.listing} of 20 pages read`)
+  })
+
   it('downloads a whole search: checked page by page, one player lookup each, dated by the server', async () => {
     const {site, scheduler, out} = await setup('batch', {results: 30, perPage: 12, removed: ['10025']})
     const batch = scheduler.schedule({url: site.searchUrl('term'), profile: mp4, outDir: out})

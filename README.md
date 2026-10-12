@@ -13,7 +13,10 @@ itself (`mdc setup`).
 
 > **Educational project.** It is meant for learning and for backing up content
 > you own or are allowed to download. Respect each site's terms of service and
-> copyright law; you are responsible for how you use it.
+> copyright law; you are responsible for how you use it. Some parts exist to
+> study how sites tell their own pages from scripts — notably
+> [YouTube's attestation](#youtube-attestation), which YouTube's terms don't allow
+> outside its page.
 
 ```bash
 npm install media-downloader-core     # the library (Node 20+), ESM and CommonJS, types included
@@ -289,15 +292,66 @@ Many requests in a short time — a 50-video Mix checked at once, its list
 reloaded a few times — can make YouTube answer *"Sign in to confirm you're
 not a bot"* to every request from your connection, for a while (minutes to
 hours). It is not the videos: tried on a real case, every YouTube client
-yt-dlp can use was refused just the same. Only time, or a signed-in session,
-gets through.
+yt-dlp can use was refused just the same. The engine climbs a ladder, one rung
+at a time and only as far as needed — nothing changes until YouTube refuses:
 
-| | How |
+| Rung | What happens |
 | --- | --- |
-| Asking politely | Checks of YouTube videos pause between requests (`--sleep-requests 0.75`, yt-dlp's own "sleep" pace); download attempts start a second apart. |
-| When it blocks | The error is `blocked` with hint `bot-check` — not `unavailable`. Items the preflight could not check are downloaded anyway and checked then. Every YouTube request pauses together, 5 → 10 → 20 min (up to 60), and the downloads try again by themselves; other sites keep going. |
-| Going on at once | A browser's signed-in session: `setCookiesFromBrowser('chrome')` (live, no restart) ends the pause and every request carries the session. In the app, the banner offers it; `mdc` takes `--cookies <browser>`. |
-| Safari | Its cookies live in a protected folder: the app (or the terminal running `mdc`) needs Full Disk Access to read them. Chrome, Firefox, Edge and Brave don't (Chrome asks for the Keychain once). Unreadable cookies fail as `cookies-unreadable`. |
+| Asking politely (always) | Checks of YouTube videos pause between requests (`--sleep-requests 0.75`, yt-dlp's own "sleep" pace); download attempts start a second apart; a check never mixes YouTube and other sites in one yt-dlp run. |
+| 1. Refused once | The error is `blocked` with hint `bot-check` — not `unavailable`. With a host that can mint them (the app), YouTube requests carry **PO tokens** ([below](#youtube-attestation)) and try again after 15 s, 1.5 min and 5 min. Those retries don't count against a download's own retries. |
+| 2. Still refused | With a host that can ask the user (`askUser`), YouTube requests **stop and wait** — not failed — and the `youtube` event says so: the app explains why and offers to sign in, to use a browser's session, or to wait 30 min. Once the user chooses, everything goes on from where it was. Without one, the pauses grow 5 → 10 → 20 min (up to 60). |
+| 3. Signed in | `setYouTubeAccount(cookiesTxt)`: YouTube runs only use that session. In the app it lives in its own partition — never a browser's store, never the Keychain — and the engine gets a private cookies.txt of YouTube's and Google's cookies only. |
+
+A browser's session (`setCookiesFromBrowser('chrome')`, `mdc --cookies <browser>`)
+also goes on at once. Its cookies are **read once** into a private jar (again
+after 6 h, or another browser) and every yt-dlp run gets its own copy: on macOS,
+one Keychain prompt — not one per process, which a batch of 50 used to raise
+one after another. Safari's cookies live in a protected folder: the app (or the
+terminal running `mdc`) needs Full Disk Access. Unreadable cookies fail as
+`cookies-unreadable`.
+
+## YouTube: attestation
+
+> **For learning.** This part exists to study how a site tells its own web
+> page from a script — attestation, PO tokens — and how a download tool can take
+> part in it. Running YouTube's attestation outside its page is against
+> YouTube's terms of service. Use it for content you own or may download, and
+> mind the account you sign in with: YouTube may limit one that downloads a lot.
+
+**What it is.** YouTube's web page runs *BotGuard*, an obfuscated program that
+examines the browser and signs what it saw. Google exchanges that answer for an
+*integrity token* (valid ~12 h), which unlocks a *minter*: it turns a **content
+binding** — the session's visitor data, or a video id — into a **PO (Proof of
+Origin) token**. Streams fetched without a valid token answer 403 after a few
+seconds. A token helps against 403s; it does not lift an IP-wide bot check —
+which is why the ladder above ends with the user, not with more tokens.
+
+**How the app does it** (all original code, no third-party generator):
+
+| Part | Where | What |
+| --- | --- | --- |
+| Generator | `app/src/main/youtube/attestation.ts` | In a real youtube.com page loaded in an offscreen view attached to no window — nothing on screen, in the Dock or the taskbar, ever; sandboxed, muted, no pop-ups, no pictures. The page's own challenge (or InnerTube's `att/get`), the program, the integrity token, the minter. Two ways that share little: `youtube` (the kept page, youtube.com's endpoint) and `waa` (a fresh page, Google's WAA endpoint). |
+| Service | `src/youtube/attestation.ts` (`PoTokenService`) | Picks the way that worked last; a failing one cools down (1 min doubling to 30) and the next is tried; the status says which broke. One session is opened at a time whatever the number of callers (single flight); it is replaced before it expires or after 90 % of the mints YouTube allows (it says 100). |
+| Broker | `src/youtube/broker.ts` | Loopback only (`127.0.0.1`), one random key per run compared in constant time, one path, 16 KiB at most. |
+| yt-dlp plugin | `src/youtube/plugin.ts` | A PO token provider (yt-dlp ≥ 2025.05.22, loaded with `--no-plugin-dirs --plugin-dirs`): yt-dlp hands it the exact binding it uses; where to ask comes from that process's environment, never its command line. Tokens on add `mweb`, the client they are made for, to yt-dlp's default clients. |
+
+**Costs.** Opening a session: ~0.4 s of attestation on a page that takes ~2 s
+to load, once per session (hours). A token: one hash-map lookup, or one mint
+(**~0.5 ms**). Per video: **O(1)** amortized — 50 videos are one session and 50
+mints. Tokens are kept in an LRU of 512 (O(1) per operation); the attestation
+program is fetched once per version.
+
+**Maintenance, and the watch.** YouTube changes this protocol every few months
+— usually as an experiment that reaches some sessions first — and a broken
+token fails quietly (a 403 seconds into a download). The **YouTube watch**
+workflow runs every day: the app's own probe (`MDC_YOUTUBE_PROBE=report.json
+electron out/main/index.js`) tries each way, has the real yt-dlp fetch a video
+with only the `mweb` client (which needs a token), and downloads one through the
+engine. When YouTube changed something, it opens one pull request — in English
+and Spanish — with the report and what to do; it closes itself once the probe
+is healthy again. A runner YouTube bot-checks is inconclusive, not an alert.
+(For the pull request, the repository must allow Actions to open them —
+Settings → Actions → General; otherwise the same alert comes as an issue.)
 
 ## TikTok (built-in extractor)
 

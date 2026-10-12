@@ -2,7 +2,13 @@
 
 export {FFMPEG_REQUIREMENTS, type FfmpegCapabilities, inspectFfmpeg} from './binaries/capabilities.js'
 export {type CheckState, type Diagnosis, diagnose, type SetupResult, setup, type ToolReport} from './binaries/doctor.js'
-export {binaryPath, describeExecutable, type Executable, toExecutable} from './binaries/executable.js'
+export {
+  binaryPath,
+  describeExecutable,
+  type Executable,
+  invoke as invokeExecutable,
+  toExecutable,
+} from './binaries/executable.js'
 export type {ManagedInstall, ManagedTool} from './binaries/managed.js'
 export {
   BinaryManager,
@@ -35,6 +41,15 @@ export {
   DownloadArchive,
 } from './core/archive.js'
 export {ensureContainer} from './core/convert.js'
+export {
+  BrowserCookies,
+  type CookieRecord,
+  exportBrowserCookies,
+  keepDomains,
+  toNetscape,
+  writeJar,
+  YOUTUBE_COOKIE_DOMAINS,
+} from './core/cookies.js'
 export {estimateBytes, jobTier, peakBytes, TIER_WEIGHT} from './core/cost.js'
 export {classifyYtDlpError, DownloadError, isRetryable} from './core/errors.js'
 export {type WorkEstimate, WorkMeter} from './core/eta.js'
@@ -104,3 +119,17 @@ export {
 } from './sync/subscriptions.js'
 export type * from './types.js'
 export {formatBytes, formatClock, formatRate} from './util/units.js'
+export {
+  AttestationError,
+  type AttestationOptions,
+  type AttestationStatus,
+  type AttestationStrategy,
+  type MintedToken,
+  type MintSession,
+  type PoTokenContext,
+  PoTokenService,
+  type StrategyStatus,
+} from './youtube/attestation.js'
+export {PoTokenBroker} from './youtube/broker.js'
+export {type Refusal, type YouTubeAccess, YouTubeGate, type YouTubeLevel} from './youtube/gate.js'
+export {installPlugin, PLUGIN_SOURCE} from './youtube/plugin.js'

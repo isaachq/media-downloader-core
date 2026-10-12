@@ -22,13 +22,44 @@ export type FakeBinaries = {
  *   …unavailable…  fails like a removed video
  *   …flaky…        fails with a network error on the first attempt only
  *   …bot…          YouTube's bot check ("Sign in to confirm you're not a bot") when checked, and on
- *                  the first download attempt — never with --cookies-from-browser (a signed-in session)
+ *                  the first download attempt — never with a signed-in session (cookies)
+ *   …wall…         the bot check every time, unless signed in
+ *   …pot…          the bot check unless the run carries a PO token: like yt-dlp's plugin, it asks the
+ *                  broker in MDC_POT_URL (with MDC_POT_KEY) for one bound to the video id
+ * Cookies: '--cookies-from-browser B --cookies F … mdc:cookies' exports a jar (B starting "unreadable"
+ * fails like a browser yt-dlp can't read); every export is counted in F's folder (exports.log).
+ * A run is signed in with --cookies-from-browser, or --cookies naming a jar with a SID cookie.
  */
 const FAKE_YTDLP = `
 const fs = require('node:fs')
 const path = require('node:path')
 const args = process.argv.slice(2)
 if (args[0] === '--version') { console.log('2099.01.01'); process.exit(0) }
+
+if (args.includes('--cookies-from-browser') && args[args.length - 1] === 'mdc:cookies') {
+  const out = args[args.indexOf('--cookies') + 1]
+  const browser = args[args.indexOf('--cookies-from-browser') + 1]
+  fs.appendFileSync(path.join(path.dirname(out), 'exports.log'), browser + '\\n')
+  if (browser.startsWith('unreadable')) { console.error('ERROR: could not find ' + browser + ' cookies database'); process.exit(1) }
+  fs.writeFileSync(out, '# Netscape HTTP Cookie File\\n.youtube.com\\tTRUE\\t/\\tTRUE\\t0\\tSID\\tfake-' + browser + '\\n.example.org\\tTRUE\\t/\\tFALSE\\t0\\tother\\t1\\n')
+  console.error("ERROR: 'mdc:cookies' is not a valid URL")
+  process.exit(1)
+}
+const jarArg = args.includes('--cookies') ? args[args.indexOf('--cookies') + 1] : undefined
+const signedIn = args.includes('--cookies-from-browser') || (jarArg !== undefined && fs.existsSync(jarArg) && /\\tSID\\t/.test(fs.readFileSync(jarArg, 'utf8')))
+/** A PO token for this video from the broker, as the plugin would get it ('' without one). */
+const poToken = binding => {
+  if (!args.includes('--plugin-dirs') || !process.env.MDC_POT_URL) return ''
+  try {
+    return require('node:child_process').execFileSync(process.execPath, ['-e', \`
+      fetch(process.env.MDC_POT_URL, {method: 'POST', headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + process.env.MDC_POT_KEY},
+        body: JSON.stringify({binding: process.argv[1], context: 'gvs'})}).then(r => r.json()).then(a => process.stdout.write(a.po_token || ''), () => {})
+    \`, binding], {encoding: 'utf8', env: process.env})
+  } catch { return '' }
+}
+/** YouTube refuses this url now. */
+const refused = (u, uid, firstAttempt) =>
+  !signedIn && ((u.includes('bot') && firstAttempt) || u.includes('wall') || (u.includes('pot') && poToken(uid).replace(/=+$/, '') !== 'pot-' + uid))
 
 const infoJson = args.includes('--load-info-json') ? args[args.indexOf('--load-info-json') + 1] : undefined
 const url = infoJson ? JSON.parse(fs.readFileSync(infoJson, 'utf8')).webpage_url : args[args.length - 1]
@@ -43,7 +74,7 @@ if (args.includes('--dump-json')) {
     const duration = Number(q.get('dur') || 10)
     const size = q.get('size') ? Number(q.get('size')) : undefined
     if (u.includes('unavailable')) { console.error('ERROR: [youtube] ' + uid + ': Video unavailable. This video has been removed'); continue }
-    if (u.includes('bot') && !args.includes('--cookies-from-browser')) { console.error('ERROR: [youtube] ' + uid + ': Sign in to confirm you\u2019re not a bot. Use --cookies-from-browser or --cookies for the authentication.'); continue }
+    if (refused(u, uid, true)) { console.error('ERROR: [youtube] ' + uid + ': Sign in to confirm you\u2019re not a bot. Use --cookies-from-browser or --cookies for the authentication.'); continue }
     const formats = [
       {format_id: '140', ext: 'm4a', vcodec: 'none', acodec: 'mp4a.40.2', abr: 128, filesize: size ?? 1000},
       {format_id: '137', ext: 'mp4', vcodec: 'avc1.640028', acodec: 'none', height: 1080, tbr: 4000, filesize: size ?? 5000},
@@ -57,7 +88,7 @@ if (args.includes('--dump-json')) {
 
 if (args.includes('--dump-single-json')) {
   if (url.includes('unavailable')) { console.error('ERROR: [youtube] ' + id + ': Video unavailable. This video has been removed'); process.exit(1) }
-  if (url.includes('bot') && !args.includes('--cookies-from-browser')) { console.error('ERROR: [youtube] ' + id + ': Sign in to confirm you\u2019re not a bot. Use --cookies-from-browser or --cookies for the authentication.'); process.exit(1) }
+  if (refused(url, id, true)) { console.error('ERROR: [youtube] ' + id + ': Sign in to confirm you\u2019re not a bot. Use --cookies-from-browser or --cookies for the authentication.'); process.exit(1) }
   const audio = {format_id: '140', ext: 'm4a', vcodec: 'none', acodec: 'mp4a.40.2', abr: 128, filesize: 1000}
   if (url.includes('list')) {
     const big = /[?&]n=([0-9]+)/.exec(url)
@@ -92,7 +123,7 @@ const counter = path.join(dataDir, 'attempts-' + id)
 const attempts = (fs.existsSync(counter) ? Number(fs.readFileSync(counter, 'utf8')) : 0) + 1
 fs.writeFileSync(counter, String(attempts))
 if (url.includes('flaky') && attempts === 1) { console.error('ERROR: Unable to download webpage: timed out'); process.exit(1) }
-if (url.includes('bot') && attempts === 1 && !args.includes('--cookies-from-browser')) { console.error('ERROR: [youtube] ' + id + ': Sign in to confirm you\u2019re not a bot. Use --cookies-from-browser or --cookies for the authentication.'); process.exit(1) }
+if (refused(url, id, attempts === 1)) { console.error('ERROR: [youtube] ' + id + ': Sign in to confirm you\u2019re not a bot. Use --cookies-from-browser or --cookies for the authentication.'); process.exit(1) }
 const dated = url.includes('dated-day') ? {uploadDate: '20240305'} : url.includes('dated-time') ? {publishedAt: 1_700_000_000, uploadDate: '20231114'} : {}
 console.log('__MDC_INFO__' + JSON.stringify({id, title: 'Title ' + id, duration: 10, extractor: 'Fake', formatId: '140', acodec: 'mp4a.40.2', filesize: 1000, ...dated}))
 let sent = 0

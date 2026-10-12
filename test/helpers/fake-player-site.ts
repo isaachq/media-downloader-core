@@ -4,8 +4,8 @@
 // rendition, removed videos that redirect home, and a media server with Range
 // and Last-Modified.
 import * as http from 'node:http'
-import type {AddressInfo} from 'node:net'
 import type {MediaResolver} from '../../src/sources/browser.js'
+import {listenLocal} from './listen.js'
 
 export type FakePlayerSiteConfig = {
   /** Search results in all. */
@@ -20,6 +20,12 @@ export type FakePlayerSiteConfig = {
   readonly pastEnd?: 'repeat' | 'empty' | 'missing'
   /** Page 1 of a listing answers this late (the other pages answer first). */
   readonly firstPageDelayMs?: number
+  /**
+   * Listing pages answer only once this many are asked for at the same time
+   * (or after 5 s): proves the pages go out together whatever the machine's
+   * speed, where a stopwatch would only measure the machine.
+   */
+  readonly openingRound?: number
 }
 
 export type FakePlayerSite = {
@@ -28,6 +34,8 @@ export type FakePlayerSite = {
   /** Result ids in listing order. */
   readonly ids: readonly string[]
   readonly hits: {listing: number; video: number; media: number; resolved: number}
+  /** With `openingRound`: whether that many pages were asked for at once (false: the 5 s ran out first). */
+  readonly openedTogether: boolean | undefined
   /** Media paths requested, in order. */
   readonly mediaPaths: string[]
   /** Last-Modified of every media file, unix seconds. */
@@ -52,6 +60,15 @@ export async function startFakePlayerSite(config: FakePlayerSiteConfig = {}): Pr
   const hits = {listing: 0, video: 0, media: 0, resolved: 0}
   const mediaPaths: string[] = []
   let origin = ''
+  // the opening-round gate: listing answers held until enough are open together
+  const held: Array<() => void> = []
+  let openedTogether: boolean | undefined
+  let holdTimer: NodeJS.Timeout | undefined
+  const release = (together: boolean) => {
+    clearTimeout(holdTimer)
+    openedTogether = together
+    for (const answer of held.splice(0)) answer()
+  }
 
   const card = (id: string) =>
     `<div class="item"><a href="/video/${id}/clip-${id}"> <div class="thumb-overlay"> <img src="/thumbs/${id}.jpg" title="Clip ${id} &amp; more" alt="Clip ${id}"/> <div class="duration"> <span class="hd-text-icon">HD</span> 12:${String(Number(id) % 60).padStart(2, '0')} </div></div></a>` +
@@ -91,13 +108,20 @@ export async function startFakePlayerSite(config: FakePlayerSiteConfig = {}): Pr
     if (parts[0] === 'search') {
       hits.listing++
       const page = Number(url.searchParams.get('page') ?? 1)
-      if (page > pages && config.pastEnd === 'missing') return send(404, 'no such page')
-      if (page > pages) return send(200, listing(parts[2] ?? '', config.pastEnd === 'empty' ? pages + 1 : pages))
-      if (page === 1 && config.firstPageDelayMs) {
-        setTimeout(() => send(200, listing(parts[2] ?? '', page)), config.firstPageDelayMs)
-        return
+      const answer = () => {
+        if (page > pages && config.pastEnd === 'missing') return send(404, 'no such page')
+        if (page > pages) return send(200, listing(parts[2] ?? '', config.pastEnd === 'empty' ? pages + 1 : pages))
+        if (page === 1 && config.firstPageDelayMs) {
+          setTimeout(() => send(200, listing(parts[2] ?? '', page)), config.firstPageDelayMs)
+          return
+        }
+        return send(200, listing(parts[2] ?? '', page))
       }
-      return send(200, listing(parts[2] ?? '', page))
+      if (openedTogether !== undefined || !config.openingRound) return answer()
+      held.push(answer)
+      if (held.length >= config.openingRound) release(true)
+      else if (held.length === 1) holdTimer = setTimeout(() => release(false), 5000)
+      return
     }
     if (parts[0] === 'video') {
       hits.video++
@@ -127,8 +151,7 @@ export async function startFakePlayerSite(config: FakePlayerSiteConfig = {}): Pr
     }
     return send(200, '<html><h1>Home</h1></html>')
   })
-  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
-  const {port} = server.address() as AddressInfo
+  const port = await listenLocal(server)
   const host = 'localhost'
   origin = `http://${host}:${port}`
 
@@ -137,6 +160,9 @@ export async function startFakePlayerSite(config: FakePlayerSiteConfig = {}): Pr
     host,
     ids,
     hits,
+    get openedTogether() {
+      return openedTogether
+    },
     mediaPaths,
     published: PUBLISHED,
     resolve: async pageUrl => {
@@ -146,6 +172,9 @@ export async function startFakePlayerSite(config: FakePlayerSiteConfig = {}): Pr
       return {url: `${origin}/media/videos/h264/${id}_${heights[0]}p.mp4`, cookies: [], userAgent: 'test-browser'}
     },
     searchUrl: (term, page) => `${origin}/search/videos/${term}?type=public${page ? `&page=${page}` : ''}`,
-    close: () => new Promise(resolve => server.close(() => resolve())),
+    close: () => {
+      clearTimeout(holdTimer)
+      return new Promise(resolve => server.close(() => resolve()))
+    },
   }
 }

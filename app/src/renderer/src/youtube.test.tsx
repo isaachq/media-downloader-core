@@ -35,6 +35,54 @@ describe("YouTube's bot check", () => {
     await waitFor(() => expect(screen.queryByTestId('youtube-pause')).not.toBeInTheDocument())
   })
 
+  it('with the app’s verification tokens, only says it goes on by itself: nothing to choose', async () => {
+    const {api} = await mount()
+    act(() => api.pushYouTube({level: 'attested', tokens: true, pausedUntil: Date.now() + 90_000}))
+    const note = await screen.findByTestId('youtube-pause')
+    expect(note).toHaveTextContent('with verification tokens the app makes. Nothing to do.')
+    expect(within(note).queryByRole('button')).not.toBeInTheDocument()
+    expect(within(note).queryByRole('combobox')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('youtube-held')).not.toBeInTheDocument()
+  })
+
+  it('held: says why, keeps the downloads, and goes on once the user signs in', async () => {
+    const {api, user} = await mount()
+    act(() => api.pushYouTube({level: 'held', tokens: true, pausedUntil: null}))
+    const body = await screen.findByTestId('youtube-held-body')
+    expect(body).toHaveTextContent("YouTube keeps asking to confirm you're not a bot")
+    expect(body).toHaveTextContent('paused, not lost')
+    expect(body).toHaveTextContent('a second account is safer')
+    await user.click(screen.getByRole('button', {name: 'Sign in and continue'}))
+    expect(api.youtubeSignIn).toHaveBeenCalledOnce()
+    await waitFor(() => expect(screen.queryByTestId('youtube-held-body')).not.toBeInTheDocument())
+  })
+
+  it('held: a refused sign-in says so and stays; waiting closes it; a signed-in account is one click', async () => {
+    const api = new FakeApi()
+    api.signInResult = {ok: false, reason: 'refused'}
+    const {user} = await mount(api)
+    act(() => api.pushYouTube({level: 'held', tokens: true}))
+    await user.click(await screen.findByRole('button', {name: 'Sign in and continue'}))
+    expect(await screen.findByText(/Google didn't allow signing in inside the app/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', {name: 'Wait and try again in 30 min'}))
+    expect(api.youtubeWait).toHaveBeenCalledOnce()
+    await waitFor(() => expect(screen.queryByTestId('youtube-held-body')).not.toBeInTheDocument())
+    // later, held again with an account already signed in: no window, one click
+    act(() => api.pushYouTube({level: 'held', signedIn: true}))
+    expect(await screen.findByRole('button', {name: 'Continue with my YouTube account'})).toBeInTheDocument()
+  })
+
+  it('settings show the account signed in inside the app, and sign it out', async () => {
+    const {api, user} = await mount()
+    act(() => api.pushYouTube({level: 'account', signedIn: true}))
+    await user.click(screen.getByRole('button', {name: /settings/i}))
+    const row = await screen.findByTestId('youtube-account')
+    expect(row).toHaveTextContent('Signed in inside the app')
+    await user.click(within(row).getByRole('button', {name: 'Sign out'}))
+    expect(api.youtubeSignOut).toHaveBeenCalledOnce()
+    await waitFor(() => expect(row).toHaveTextContent('Not signed in'))
+  })
+
   it('names the cause on a batch: a bot check, not "unavailable"', async () => {
     const closed = batch({
       title: 'Mix - Song',

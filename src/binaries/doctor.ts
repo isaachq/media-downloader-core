@@ -1,5 +1,6 @@
-import {constants} from 'node:fs'
+import {randomUUID} from 'node:crypto'
 import * as fs from 'node:fs/promises'
+import * as path from 'node:path'
 import {freeSpace} from '../core/files.js'
 import {cpuCount, maxConcurrency} from '../core/pool.js'
 import {type CapabilityKind, inspectFfmpeg} from './capabilities.js'
@@ -55,14 +56,20 @@ function toolReport(name: ToolName, tool: ResolvedTool | undefined, notes: strin
   }
 }
 
+/**
+ * By creating a file: on Windows `fs.access(W_OK)` reads only the read-only
+ * attribute, and says yes for folders only an administrator may write.
+ */
 async function writable(dir: string): Promise<boolean> {
+  const probe = path.join(dir, `.mdc-write-test-${process.pid}-${randomUUID()}`)
   try {
     await fs.mkdir(dir, {recursive: true})
-    await fs.access(dir, constants.W_OK)
-    return true
+    await (await fs.open(probe, 'wx')).close()
   } catch {
     return false
   }
+  await fs.rm(probe, {force: true}).catch(() => {})
+  return true
 }
 
 /** Check everything a download needs, without changing anything. */

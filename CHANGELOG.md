@@ -1,5 +1,70 @@
 # Changelog
 
+## Unreleased
+
+**YouTube's "confirm you're not a bot": a ladder, and no more Keychain prompts.**
+On a Mac, choosing Chrome's session raised the Keychain prompt again and again:
+every yt-dlp process — each check, each download — read the browser's cookies
+itself. And the session didn't help when the browser wasn't signed in: the
+downloads went on only because choosing a browser ended the pause.
+
+- **Cookies read once.** A browser's cookies are read into a private jar once
+  (again after 6 h, or another browser) and every run gets its own copy: one
+  Keychain prompt for a whole batch. Runs no longer share one cookies.txt that
+  yt-dlp writes back to as it exits.
+- **A ladder, climbed only when YouTube refuses** (`src/youtube/gate.ts`):
+  1. PO tokens and retries after 15 s, 1.5 min and 5 min (they don't use up a
+     download's retries);
+  2. still refused: YouTube requests **stop and wait** — not failed — and the app
+     says why and offers to sign in, use a browser's session, or wait 30 min;
+  3. the user's choice: everything goes on from where it was.
+- **PO tokens, made by the app — for learning** (README, "YouTube: attestation").
+  YouTube's attestation runs in a youtube.com page the user never sees (an
+  offscreen view attached to no window), in two ways that share little; the
+  library's `PoTokenService` picks the one that works, cools a broken one down
+  and reports it; a yt-dlp plugin asks a loopback broker for each token. Checked
+  on a real connection: tokens in ~2 s, then ~0.5 ms each, accepted by yt-dlp
+  with only the `mweb` client (which needs one).
+- **Signing in inside the app**, only when YouTube requires it and the user
+  agrees: Google's own page in a window, the session kept in the app's
+  partition, YouTube's and Google's cookies only — for YouTube runs only.
+  Settings shows the account and signs it out.
+- **The YouTube watch** (daily workflow): the app's probe on a real Electron and
+  yt-dlp. When YouTube changed something, one pull request in English and
+  Spanish says so and what to do; it closes itself once healthy again.
+- yt-dlp gets only the app's JavaScript runtime (`--no-js-runtimes` first): an
+  installed Deno no longer takes over.
+
+**Fixes found on the way.**
+
+- A cancel that came just before yt-dlp started was lost: the download ran to
+  the end and its file was kept. Checks and previews had the same hole. A
+  signal aborted already never fires `abort` again; it is checked first now.
+- A test of player-page listings failed about once in thirty runs on some
+  Windows machines: the test servers took any free port, and when Hyper-V, WSL
+  or Docker move the free range down (here 1024–15000) one of the ports Node's
+  fetch refuses ("bad port") comes up now and then. The test servers never take
+  one now; a timing assertion became a check that the pages go out together.
+
+**The Windows update asks for an administrator when it must.** To know
+whether it could write the app's folder, the update asked Windows with
+`fs.access`, which only reads the read-only attribute: it answered yes for
+Program Files, which only an administrator may write (seen on a real
+machine: access OK, writing EPERM). An install for everyone was updated
+anyway — the installer asks for permission itself — but the app never went
+through its own administrator prompt (`elevate.exe`), and a copy in Program
+Files that Windows has no record of was updated as one for this user only,
+putting a second copy in the user's folder. The app now checks by writing a
+file and deleting it.
+
+- `mdc doctor` checks the data folder the same way: on Windows it said a
+  folder only an administrator may write was fine.
+- The Windows update test checks that an install for everyone, updated by
+  a user who is not an administrator, goes through the administrator's
+  prompt.
+- `scripts/stress.ts` runs on Windows: it uses the tests' fake tools (Node
+  scripts) instead of shell scripts.
+
 ## App 0.2.0-beta.7.2 · library 1.7.1
 
 Beta 7.2 replaces beta 7.1, which is withdrawn: everything in beta 7 and

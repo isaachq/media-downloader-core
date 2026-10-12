@@ -1,12 +1,12 @@
 import {createHash} from 'node:crypto'
 import * as fs from 'node:fs/promises'
 import * as http from 'node:http'
-import type {AddressInfo} from 'node:net'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import {type ElectronApplication, _electron as electron, expect, type Page, test} from '@playwright/test'
 import {startFakeTikTok} from '../../test/helpers/fake-tiktok'
 import {writeFakes} from '../../test/helpers/fakes'
+import {listenLocal} from '../../test/helpers/listen'
 
 // The real Electron app (built by `electron-vite build`), driven end to end.
 // yt-dlp / ffmpeg are the engine's test fakes, injected through MDC_BINARIES,
@@ -361,8 +361,7 @@ test('finds a new version, downloads it and verifies its checksum (dry run)', as
     res.writeHead(200, {'Content-Length': String(payload.length)})
     res.end(payload)
   })
-  await new Promise<void>(resolve => feed.listen(0, '127.0.0.1', resolve))
-  origin = `http://127.0.0.1:${(feed.address() as AddressInfo).port}`
+  origin = `http://127.0.0.1:${await listenLocal(feed)}`
   try {
     const {app, page, dataDir} = await launch(
       'update',

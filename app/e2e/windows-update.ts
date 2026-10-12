@@ -9,11 +9,11 @@ import {execFileSync, spawn} from 'node:child_process'
 import {createHash} from 'node:crypto'
 import * as fs from 'node:fs/promises'
 import * as http from 'node:http'
-import type {AddressInfo} from 'node:net'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import {_electron as electron} from '@playwright/test'
 import {writeFakes} from '../../test/helpers/fakes'
+import {listenLocal} from '../../test/helpers/listen'
 
 const [argA, argB, argVersion, argScope, mode] = process.argv.slice(2)
 if (!argA || !argB || !argVersion || (argScope !== 'user' && argScope !== 'machine')) {
@@ -99,8 +99,7 @@ async function main() {
     res.writeHead(200, {'Content-Length': String(payload.length)})
     res.end(payload)
   })
-  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
-  origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+  origin = `http://127.0.0.1:${await listenLocal(server)}`
 
   // 3. the installed app, as a user starts it, with fake tools (no network) and this feed
   await fs.writeFile(
@@ -194,6 +193,21 @@ async function main() {
       `no ${failing ? 'reported failure with the old version running' : `${versionB} running for ${scope}`} within 4 minutes`,
     )
   if (!failing && after.length !== 1) throw new Error('installed twice (both scopes)')
+  // for everyone, from a process that isn't elevated: the update goes through the administrator's prompt
+  // (GitHub's runners are elevated administrators; a user's machine usually isn't)
+  if (scope === 'machine' && !failing) {
+    const elevated =
+      ps(
+        '([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)',
+      ) === 'True'
+    const asked = /needs an administrator/.test(
+      await fs.readFile(path.join(updates, 'install.log'), 'utf8').catch(() => ''),
+    )
+    if (asked === elevated)
+      throw new Error(
+        elevated ? 'an administrator was asked for permission' : 'not elevated, and no administrator was asked',
+      )
+  }
   console.log(
     `OK: ${failing ? 'failed update reported, old version running' : `${versionB} installed for ${scope} and running`}`,
   )

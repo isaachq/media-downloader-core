@@ -187,11 +187,10 @@ const allFiles = async (dir: string): Promise<string[]> =>
 
 describe('player pages, end to end (local fake)', () => {
   it('lists every page of a search from any of its pages: 195 results, 9 pages, each read once', async () => {
-    const {site, engine} = await setup('listing')
+    // listing answers are held until 6 pages (the pacer's limit here) are asked for at once
+    const {site, engine} = await setup('listing', {openingRound: 6})
     const progress: number[] = []
-    const started = performance.now()
     const listing = await engine.analyze(site.searchUrl('term', 9), {onProgress: p => progress.push(p.listed)})
-    const ms = performance.now() - started
     assert.ok(listing.kind === 'playlist')
     assert.equal(listing.entries.length, 195)
     assert.deepEqual(
@@ -205,7 +204,7 @@ describe('player pages, end to end (local fake)', () => {
     assert.equal(listing.entries[0]!.title, `Clip ${site.ids[0]} & more`)
     assert.ok(listing.entries.every(e => e.duration! > 0 && e.extractor === 'Local Site'))
     assert.equal(progress.at(-1), 195)
-    assert.ok(ms < 2000, `listed in ${ms.toFixed(0)} ms`)
+    assert.equal(site.openedTogether, true, 'the first pages went out together, not one after another')
   })
 
   it('like a TikTok profile, a listing loads 500 by default, and a batch of it is capped there too', async () => {

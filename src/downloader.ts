@@ -13,6 +13,7 @@ import {
 import {analyze, assertHttpUrl, type ExtractResult, extractMany, isYouTubeUrl} from './core/analyze.js'
 import {type ArchiveEntry, archiveKey, DownloadArchive} from './core/archive.js'
 import {ensureContainer, extractAudio, type MediaTags, writeTags} from './core/convert.js'
+import {BrowserCookies, exportBrowserCookies, jarCopy} from './core/cookies.js'
 import {jobTier, peakBytes, TIER_WEIGHT} from './core/cost.js'
 import {type DownloadedInfo, runYtDlp} from './core/download.js'
 import {cancelledError, DownloadError, isRetryable, toJobError} from './core/errors.js'
@@ -36,7 +37,6 @@ import {utf8Env} from './core/process.js'
 import {PendingJournal} from './core/queue-store.js'
 import {TraceLog} from './core/trace-log.js'
 import {ffprobe, summarizeProbe, validateBundle, validateFile} from './core/validate.js'
-import {Pacer} from './sources/pacer.js'
 import {type ListingProgress, type MediaSource, needsFallback} from './sources/source.js'
 import {DEFAULT_SLIDESHOW, slideshowOptions} from './sources/tiktok/slideshow.js'
 import {TikTokSource} from './sources/tiktok/source.js'
@@ -59,9 +59,23 @@ import type {
   ValidationLevel,
   VideoAnalysis,
 } from './types.js'
+import {type AttestationStatus, PoTokenService} from './youtube/attestation.js'
+import {PoTokenBroker} from './youtube/broker.js'
+import {type Refusal, type YouTubeAccess, YouTubeGate} from './youtube/gate.js'
+import {installPlugin} from './youtube/plugin.js'
 
 /** yt-dlp's own polite pace for YouTube checks (its "sleep" preset): a pause between requests. */
 const YOUTUBE_POLITE_ARGS = ['--sleep-requests', '0.75'] as const
+
+/** YouTube requests wait (a bot-check pause, or a hold for the user): what a check says instead of asking now. */
+const youtubeWaiting = (): DownloadError =>
+  new DownloadError(
+    'blocked',
+    'YouTube asks to confirm this is not a bot: YouTube requests are waiting, try again later.',
+    undefined,
+    undefined,
+    'bot-check',
+  )
 
 type Settings = {
   validation: ValidationLevel
@@ -124,19 +138,26 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
   readonly #workRoot: string
   readonly #cacheDir: string
   readonly #env: NodeJS.ProcessEnv
-  /** Arguments every yt-dlp run gets; rebuilt when the browser for cookies changes. */
-  #commonArgs: readonly string[]
-  readonly #runtimeArgs: readonly string[]
+  /** Arguments every yt-dlp run gets (JS runtime, rate limit); cookies and YouTube's own are added per run. */
+  readonly #baseArgs: readonly string[]
+  /** A cookies.txt the host passed: every site. */
   readonly #cookiesFile: string | undefined
-  readonly #rateLimit: string | undefined
-  #cookiesFromBrowser: string | undefined
+  /** A browser's cookies, read once into a jar — not by every run (one Keychain prompt, not one per process). */
+  readonly #browserCookies: BrowserCookies
+  /** The signed-in YouTube session the user agreed to: YouTube runs only. */
+  #accountJar: string | undefined
+  /** PO tokens, when the host supplied attestation strategies, and the broker the yt-dlp plugin asks. */
+  readonly #attestation: PoTokenService | undefined
+  #broker: PoTokenBroker | undefined
+  #plugins: Promise<string> | undefined
   /**
    * YouTube's gate: attempts start a second apart, and a bot check ("Sign in
    * to confirm you're not a bot" — YouTube blocked this connection for a
-   * while) pauses every YouTube request, 5 → 10 → 20 … 60 min, instead of
-   * each job hammering it on its own.
+   * while) climbs one ladder for every YouTube request at once — PO tokens
+   * (when the host can mint them), a hold for the user (sign in or wait),
+   * growing pauses — instead of each job hammering it on its own.
    */
-  readonly #youtube: Pacer
+  readonly #youtube: YouTubeGate
   readonly #trace: TraceLog | undefined
   /** Identifies this engine instance (one app launch / CLI run) in every log entry. */
   readonly sessionId: TraceId = newId()
@@ -193,62 +214,163 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     const auto = options.jsRuntime === undefined ? defaultJsRuntime() : undefined
     const jsRuntime = options.jsRuntime === false ? undefined : (options.jsRuntime ?? auto?.runtime)
     this.#env = utf8Env(auto?.env)
-    this.#runtimeArgs = jsRuntime ? ['--js-runtimes', `${jsRuntime.name}:${jsRuntime.path}`] : []
-    this.#cookiesFromBrowser = options.cookiesFromBrowser || undefined
-    this.#cookiesFile = options.cookiesFile
-    this.#rateLimit = options.rateLimit
-    this.#commonArgs = this.#buildCommonArgs()
-    this.#youtube = new Pacer({
-      concurrency: Number.MAX_SAFE_INTEGER, // a gate for when attempts start, not a limit on how many run
-      spacingMs: 1000,
-      jitterMs: 500,
-      backoffMs: 5 * 60_000,
-      maxBackoffMs: 60 * 60_000,
-      ...options.youtube?.pacing,
-    })
-  }
-
-  #buildCommonArgs(): string[] {
-    return [
-      ...this.#runtimeArgs,
-      ...(this.#cookiesFromBrowser ? ['--cookies-from-browser', this.#cookiesFromBrowser] : []),
-      ...(this.#cookiesFile ? ['--cookies', this.#cookiesFile] : []),
-      ...(this.#rateLimit ? ['--limit-rate', this.#rateLimit] : []),
+    this.#baseArgs = [
+      // only this runtime: yt-dlp prefers deno when it finds one installed, whatever --js-runtimes adds
+      ...(jsRuntime ? ['--no-js-runtimes', '--js-runtimes', `${jsRuntime.name}:${jsRuntime.path}`] : []),
+      ...(options.rateLimit ? ['--limit-rate', options.rateLimit] : []),
     ]
+    this.#cookiesFile = options.cookiesFile
+    this.#browserCookies = new BrowserCookies(path.join(options.dataDir, 'cookies', 'browser.txt'))
+    this.#browserCookies.browser = options.cookiesFromBrowser || undefined
+    const strategies = options.youtube?.attestation ?? []
+    this.#attestation = strategies.length
+      ? new PoTokenService(strategies, options.youtube?.attestationOptions)
+      : undefined
+    this.#youtube = new YouTubeGate({
+      pacing: options.youtube?.pacing,
+      attestation: this.#attestation !== undefined,
+      canHold: options.youtube?.askUser === true,
+      startAttested: options.youtube?.tokens === 'always',
+      attestedDelaysMs: options.youtube?.attestedDelaysMs,
+      onChange: access => this.#youtubeChanged(access),
+    })
   }
 
   /**
    * Read cookies from this browser from now on ('chrome', 'safari',
-   * 'firefox'…: its signed-in session), or from none. YouTube requests paused
-   * by a bot check resume at once — a signed-in session is what gets past it.
+   * 'firefox'…: its signed-in session), or from none. They are read once (one
+   * Keychain prompt on macOS), not by every yt-dlp run. YouTube requests
+   * paused by a bot check resume at once — a signed-in session is what gets past it.
    */
   setCookiesFromBrowser(browser: string | undefined): void {
     const next = browser?.trim() || undefined
     if (next !== undefined && !/^[\w.+:-]+$/.test(next)) throw new TypeError(`Not a browser name: ${browser}`)
-    this.#cookiesFromBrowser = next
-    this.#commonArgs = this.#buildCommonArgs()
+    this.#browserCookies.browser = next
     if (next) {
       this.#youtube.resume()
       this.#log('info', `cookies from ${next} from now on; YouTube requests resume`)
     }
   }
 
-  /** When YouTube requests may start again after a bot check (ms since epoch), or undefined when they aren't paused. */
-  get youtubePausedUntil(): number | undefined {
-    const wait = this.#youtube.coolingDownMs
-    return wait > 0 ? Date.now() + wait : undefined
+  /** How YouTube is reached now: the ladder's rung, its pause, whether tokens are on. */
+  get youtube(): YouTubeAccess {
+    return this.#youtube.access
   }
 
-  /** YouTube asked for a bot check: the first refusal starts the pause (doubling each time), later ones join it. */
-  #youtubeRefused(): number {
-    const current = this.#youtube.coolingDownMs
-    if (current > 0) return current
-    const wait = this.#youtube.refused()
-    this.#log(
-      'warn',
-      `YouTube asks to confirm this is not a bot: YouTube requests pause for ${Math.round(wait / 60_000)} min — or continue now with a browser's signed-in session (cookies)`,
-    )
-    return wait
+  /** When YouTube requests may start again after a bot check (ms since epoch), or undefined when they aren't paused. */
+  get youtubePausedUntil(): number | undefined {
+    return this.#youtube.access.pausedUntil
+  }
+
+  /**
+   * The user agreed to sign in: YouTube runs use this signed-in session (a
+   * Netscape cookies.txt, YouTube only) and held requests go on. Tokens, when
+   * on, are minted afresh for it (a guest's tokens on an account look odd).
+   */
+  setYouTubeAccount(cookiesFile: string): void {
+    if (!path.isAbsolute(cookiesFile)) throw new TypeError('cookiesFile must be an absolute path.')
+    this.#accountJar = cookiesFile
+    this.#attestation?.reset()
+    this.#youtube.enterAccount()
+    this.#log('info', 'YouTube: signed-in session from now on; YouTube requests resume')
+  }
+
+  /** Back to the guest session (the user signed out). */
+  clearYouTubeAccount(): void {
+    if (this.#accountJar === undefined) return
+    this.#accountJar = undefined
+    this.#attestation?.reset()
+    this.#youtube.leaveAccount()
+    this.#log('info', 'YouTube: signed out; guest session from now on')
+  }
+
+  /** The user chose not to sign in: YouTube requests held for them try again after a long pause. */
+  waitOutYouTube(): void {
+    this.#youtube.waitItOut()
+  }
+
+  /** PO token health, for a report: which way of attestation works, what failed. */
+  get attestation(): AttestationStatus | undefined {
+    return this.#attestation?.status()
+  }
+
+  #youtubeChanged(access: YouTubeAccess): void {
+    if (access.level === 'held')
+      this.#log(
+        'warn',
+        'YouTube still asks to confirm this is not a bot after the retries with PO tokens: YouTube requests stop until you sign in or choose to wait',
+      )
+    this.emit('youtube', access)
+  }
+
+  /** YouTube asked for a bot check: one rung up the ladder (or join the pause already running). */
+  #youtubeRefused(): Refusal {
+    const before = this.#youtube.access
+    const refusal = this.#youtube.refused()
+    const after = this.#youtube.access
+    if (before.level !== after.level || before.refusals !== after.refusals) {
+      const wait = refusal.waitMs === undefined ? 'until you decide' : `${Math.ceil(refusal.waitMs / 60_000)} min`
+      this.#log(
+        'warn',
+        `YouTube asks to confirm this is not a bot: YouTube requests wait ${wait}${after.tokens ? ', then go on with PO tokens' : ''}`,
+      )
+    }
+    return refusal
+  }
+
+  /**
+   * Arguments and environment for one yt-dlp run on `url`. Cookies: the
+   * signed-in YouTube session for YouTube, else a browser's (read once), else
+   * the host's file — each as this run's own copy in `dir`. YouTube with tokens
+   * on: the PO token plugin and where it asks.
+   */
+  async #runSetup(
+    url: string,
+    dir: string,
+    bins: ResolvedBinaries,
+    signal?: AbortSignal,
+  ): Promise<{args: string[]; env: NodeJS.ProcessEnv}> {
+    const youtube = isYouTubeUrl(url)
+    const args = [...this.#baseArgs]
+    let env = this.#env
+    const jar =
+      (youtube ? this.#accountJar : undefined) ??
+      (await this.#browserCookies.jar((browser, dest) =>
+        exportBrowserCookies({ytDlp: bins.ytDlp.exe, env: this.#env, browser, dest, signal}),
+      )) ??
+      this.#cookiesFile
+    if (jar) args.push('--cookies', await jarCopy(jar, dir))
+    if (youtube && this.#attestation && this.#youtube.access.tokens) {
+      this.#broker ??= new PoTokenBroker(this.#attestation)
+      this.#plugins ??= installPlugin(path.join(this.dataDir, 'yt-dlp-plugins'))
+      // only our plugin: one the user installed for yt-dlp elsewhere is not part of this run
+      args.push(
+        '--no-plugin-dirs',
+        '--plugin-dirs',
+        await this.#plugins,
+        // the default clients, and mweb: the one tokens are made for. One `youtube:` argument for
+        // everything — yt-dlp keeps only the last of several
+        '--extractor-args',
+        'youtube:player_client=default,mweb',
+      )
+      env = {...env, ...(await this.#broker.env())}
+    }
+    return {args, env}
+  }
+
+  /** `#runSetup` in a scratch folder of its own, removed after `task`. */
+  async #withRun<T>(
+    url: string,
+    bins: ResolvedBinaries,
+    signal: AbortSignal | undefined,
+    task: (setup: {args: string[]; env: NodeJS.ProcessEnv}) => Promise<T>,
+  ): Promise<T> {
+    const dir = path.join(this.#cacheDir, 'runs', newId())
+    try {
+      return await task(await this.#runSetup(url, dir, bins, signal))
+    } finally {
+      await fs.rm(dir, {recursive: true, force: true})
+    }
   }
 
   // ─── Settings ─────────────────────────────────────────────────────────────
@@ -338,7 +460,9 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     // tracked so dispose() can stop it; linked to the caller's signal
     const analysis = new AbortController()
     const forward = () => analysis.abort()
-    opts.signal?.addEventListener('abort', forward, {once: true})
+    // a signal aborted already never fires 'abort': a cancel that came first must count too
+    if (opts.signal?.aborted) analysis.abort()
+    else opts.signal?.addEventListener('abort', forward, {once: true})
     this.#analyses.add(analysis)
     try {
       const source = this.#sourceFor(url)
@@ -356,15 +480,25 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
         }
       }
       const bins = await this.binaries.resolve()
+      const youtube = isYouTubeUrl(url)
+      if (youtube) {
+        // a link pasted while YouTube requests wait (a pause, or a hold for the user) says so at once
+        if (this.#youtube.blocked) throw youtubeWaiting()
+        await this.#youtube.turn(analysis.signal)
+      }
       try {
-        return await analyze(url, {
-          ytDlp: bins.ytDlp.exe,
-          env: this.#env,
-          cacheDir: this.#cacheDir,
-          commonArgs: this.#commonArgs,
-          signal: analysis.signal,
-          maxEntries: opts.maxEntries,
-        })
+        const result = await this.#withRun(url, bins, analysis.signal, run =>
+          analyze(url, {
+            ytDlp: bins.ytDlp.exe,
+            env: run.env,
+            cacheDir: this.#cacheDir,
+            commonArgs: run.args,
+            signal: analysis.signal,
+            maxEntries: opts.maxEntries,
+          }),
+        )
+        if (youtube) this.#youtube.succeeded()
+        return result
       } catch (error) {
         // a link pasted while YouTube bot-checks this connection: the pause starts here too
         if (error instanceof DownloadError && error.code === 'blocked' && isYouTubeUrl(url)) this.#youtubeRefused()
@@ -394,7 +528,9 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     const bins = await this.binaries.resolve()
     const analysis = new AbortController()
     const forward = () => analysis.abort()
-    opts.signal?.addEventListener('abort', forward, {once: true})
+    // a signal aborted already never fires 'abort': a cancel that came first must count too
+    if (opts.signal?.aborted) analysis.abort()
+    else opts.signal?.addEventListener('abort', forward, {once: true})
     this.#analyses.add(analysis)
     const results = new Map<string, ExtractResult>()
     try {
@@ -436,8 +572,9 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       }
       const runChunk = async (chunk: ReadonlyArray<(typeof items)[number]>) => {
         if (analysis.signal.aborted) return
-        const youtube = chunk.some(item => isYouTubeUrl(item.url))
-        if (youtube && this.#youtube.coolingDownMs > 0) {
+        // chunks are all YouTube or none (see below): one url tells
+        const youtube = isYouTubeUrl(chunk[0]!.url)
+        if (youtube && this.#youtube.blocked) {
           for (const item of chunk) {
             const result: ExtractResult = {ok: false, error: blockedNow}
             results.set(item.url, result)
@@ -445,16 +582,18 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
           }
           return
         }
-        if (youtube) await this.#youtube.run(async () => {}, analysis.signal)
-        const chunkResults = await extractMany(chunk, {
-          ytDlp: bins.ytDlp.exe,
-          env: this.#env,
-          cacheDir: this.#cacheDir,
-          commonArgs: youtube ? [...this.#commonArgs, ...YOUTUBE_POLITE_ARGS] : this.#commonArgs,
-          signal: analysis.signal,
-          onResult: opts.onResult,
-          keepMetadata: opts.keepMetadata,
-        })
+        if (youtube) await this.#youtube.turn(analysis.signal)
+        const chunkResults = await this.#withRun(chunk[0]!.url, bins, analysis.signal, run =>
+          extractMany(chunk, {
+            ytDlp: bins.ytDlp.exe,
+            env: run.env,
+            cacheDir: this.#cacheDir,
+            commonArgs: youtube ? [...run.args, ...YOUTUBE_POLITE_ARGS] : run.args,
+            signal: analysis.signal,
+            onResult: opts.onResult,
+            keepMetadata: opts.keepMetadata,
+          }),
+        )
         let blocked = false
         for (const [url, result] of chunkResults) {
           results.set(url, result)
@@ -465,24 +604,27 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       }
 
       const workers = this.concurrency
-      // small batches: one url per process for full parallelism; large ones: ≤ 8 per process
-      const size = Math.min(8, Math.max(1, Math.ceil(generic.length / (workers * 2))))
       const pool = new TaskPool<number>(workers)
-      for (let start = 0; start < generic.length; start += size) {
-        const chunk = generic.slice(start, start + size)
-        pool.add(start, () => runChunk(chunk))
+      let key = 0
+      // small batches: one url per process for full parallelism; large ones: ≤ 8 per process.
+      // YouTube and other sites never share a chunk: YouTube's pace, cookies and tokens are its own. O(n)
+      const enqueue = (list: ReadonlyArray<(typeof items)[number]>) => {
+        for (const group of [list.filter(i => isYouTubeUrl(i.url)), list.filter(i => !isYouTubeUrl(i.url))]) {
+          const size = Math.min(8, Math.max(1, Math.ceil(group.length / (workers * 2))))
+          for (let start = 0; start < group.length; start += size) {
+            const chunk = group.slice(start, start + size)
+            pool.add(key++, () => runChunk(chunk))
+          }
+        }
       }
+      enqueue(generic)
       await Promise.all([pool.whenIdle(), native])
       if (handBack.length) {
         this.#log(
           'warn',
           `${handBack.length} item(s) handed to yt-dlp: the built-in extractor is blocked or out of date`,
         )
-        const step = Math.min(8, Math.max(1, Math.ceil(handBack.length / (workers * 2))))
-        for (let start = 0; start < handBack.length; start += step) {
-          const chunk = handBack.slice(start, start + step)
-          pool.add(-1 - start, () => runChunk(chunk))
-        }
+        enqueue(handBack)
         await pool.whenIdle()
       }
       return results
@@ -708,7 +850,9 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     await this.#pool.whenIdle()
     this.#log('debug', 'engine disposed')
     // cleanup is best effort: one failing step (e.g. an unreadable folder) must not skip the others
+    this.#attestation?.close()
     await Promise.allSettled([
+      this.#broker?.close(),
       this.archive.close(),
       this.#hashes.close(),
       this.#trace?.close(),
@@ -737,14 +881,16 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     let profile = request.profile
     let strategy: AttemptStrategy = 'primary'
     const youtube = isYouTubeUrl(request.url)
+    /** YouTube refusals while its ladder still climbs: they don't use up this job's retries. */
+    let free = 0
 
     try {
       const bins = await this.binaries.resolve()
       if (await this.#skipIfArchived(job, request.extractor, request.mediaId)) return
 
       for (;;) {
-        // YouTube attempts start a second apart, and wait out a bot-check pause
-        if (youtube) await this.#youtube.run(async () => {}, signal)
+        // YouTube attempts start a second apart, and wait out a bot-check pause (or a hold for the user)
+        if (youtube) await this.#youtube.turn(signal)
         const attempt = job.beginAttempt(strategy)
         this.#emit(job, true)
         try {
@@ -762,6 +908,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
           const jobError = failure.toJSON()
           job.failCurrentStep(jobError)
           const step = job.currentStep
+          const counted = attempt - free
           // a corrupt partial may cause anything but a network hiccup: start clean
           if (failure.code !== 'network') await fs.rm(workDir, {recursive: true, force: true})
           // next attempt extracts fresh metadata — cached media urls may have expired
@@ -769,7 +916,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
           infoJsonPath = undefined
 
           // a native source that can't read the site any more: same request through yt-dlp
-          if (needsFallback(failure.details) && strategy !== 'extractor-fallback' && attempt < job.maxAttempts) {
+          if (needsFallback(failure.details) && strategy !== 'extractor-fallback' && counted < job.maxAttempts) {
             job.endAttempt(jobError, 0)
             this.#log(
               'warn',
@@ -784,7 +931,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
           // alternative before giving up: the requested resolution doesn't exist → best available
           const relaxed =
             failure.hint === 'format-unavailable' && strategy !== 'format-fallback' ? relaxProfile(profile) : undefined
-          if (relaxed && attempt < job.maxAttempts) {
+          if (relaxed && counted < job.maxAttempts) {
             job.endAttempt(jobError, 0)
             this.#log(
               'warn',
@@ -797,21 +944,27 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
             continue
           }
 
-          // YouTube's bot check: this job (and every YouTube request) waits the pause out, then tries again
-          if (failure.code === 'blocked' && youtube && attempt < job.maxAttempts) {
-            const wait = this.#youtubeRefused()
-            job.endAttempt(jobError, wait)
-            this.#log(
-              'warn',
-              `attempt ${attempt}/${job.maxAttempts}: YouTube asks to confirm this is not a bot — trying again in ${Math.ceil(wait / 60_000)} min`,
-              job,
-              {code: failure.code, retryInMs: wait},
-            )
-            this.#update(job, {status: 'queued', progress: {}}, true)
-            continue
+          // YouTube's bot check: this job (and every YouTube request) climbs the ladder — tokens, a hold
+          // for the user, pauses — and tries again; while it climbs, the attempt is not one of the retries
+          if (failure.code === 'blocked' && youtube) {
+            const refusal = this.#youtubeRefused()
+            if (refusal.free || counted < job.maxAttempts) {
+              if (refusal.free) free++
+              job.endAttempt(jobError, refusal.waitMs)
+              const when =
+                refusal.waitMs === undefined
+                  ? 'waiting for you to sign in or choose to wait'
+                  : `trying again in ${Math.ceil(refusal.waitMs / 60_000)} min`
+              this.#log('warn', `attempt ${attempt}: YouTube asks to confirm this is not a bot — ${when}`, job, {
+                code: failure.code,
+                ...(refusal.waitMs !== undefined && {retryInMs: refusal.waitMs}),
+              })
+              this.#update(job, {status: 'queued', progress: {}}, true)
+              continue
+            }
           }
 
-          if (!isRetryable(failure.code) || attempt >= job.maxAttempts) {
+          if (!isRetryable(failure.code) || counted >= job.maxAttempts) {
             job.endAttempt(jobError)
             const why = isRetryable(failure.code) ? 'no retries left' : 'not retryable'
             this.#log(
@@ -822,7 +975,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
             )
             throw failure
           }
-          const wait = retryDelay(attempt, this.#settings.retryDelayMaxMs)
+          const wait = retryDelay(counted, this.#settings.retryDelayMaxMs)
           job.endAttempt(jobError, wait)
           this.#log(
             'warn',
@@ -887,25 +1040,27 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
           onInfo,
           onProgress: progress => this.#update(job, {status: 'downloading', progress}),
         })
-      : await runYtDlp({
-          ytDlp: bins.ytDlp.exe,
-          ffmpeg: bins.ffmpeg.exe,
-          env: this.#env,
-          url: request.url,
-          infoJsonPath,
-          profile,
-          workDir,
-          fragments: this.#settings.fragmentsPerDownload,
-          commonArgs: this.#commonArgs,
-          embedMetadata: this.#settings.embedMetadata,
-          embedThumbnail: this.#settings.embedThumbnail,
-          extraArgs: this.#settings.extraYtDlpArgs,
-          stallTimeoutMs: this.#settings.stallTimeoutMs,
-          signal,
-          onInfo,
-          onProgress: progress => this.#update(job, {status: 'downloading', progress}),
-          onPostprocess: () => this.#update(job, {status: 'processing', progress: {}}, true),
-        })
+      : await this.#runSetup(request.url, path.join(workDir, 'run'), bins, signal).then(run =>
+          runYtDlp({
+            ytDlp: bins.ytDlp.exe,
+            ffmpeg: bins.ffmpeg.exe,
+            env: run.env,
+            url: request.url,
+            infoJsonPath,
+            profile,
+            workDir,
+            fragments: this.#settings.fragmentsPerDownload,
+            commonArgs: run.args,
+            embedMetadata: this.#settings.embedMetadata,
+            embedThumbnail: this.#settings.embedThumbnail,
+            extraArgs: this.#settings.extraYtDlpArgs,
+            stallTimeoutMs: this.#settings.stallTimeoutMs,
+            signal,
+            onInfo,
+            onProgress: progress => this.#update(job, {status: 'downloading', progress}),
+            onPostprocess: () => this.#update(job, {status: 'processing', progress: {}}, true),
+          }),
+        )
     info = {...info, ...downloaded.info}
     if (source && 'tags' in downloaded && downloaded.tags && this.#settings.embedMetadata) tags = downloaded.tags
     this.#stepDone(job, 'download', 'success')

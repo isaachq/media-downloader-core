@@ -4,7 +4,7 @@
 // post first, private accounts, verification pages, changed page layouts,
 // short links, and encodings the extractor should skip.
 import * as http from 'node:http'
-import type {AddressInfo} from 'node:net'
+import {listenLocal} from './listen.js'
 
 export type FakeTikTokConfig = {
   readonly user?: string
@@ -273,8 +273,7 @@ export async function startFakeTikTok(config: FakeTikTokConfig = {}): Promise<Fa
     send(404, 'not found')
   })
 
-  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
-  origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+  origin = `http://127.0.0.1:${await listenLocal(server)}`
   return {
     origin,
     user,

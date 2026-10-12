@@ -54,6 +54,11 @@ const api: MdcApi = {
   installUpdate: () => ipcRenderer.invoke(CHANNEL.updateInstall),
   onUpdate: listener => subscribe(CHANNEL.update, listener),
   onEvents: listener => subscribe(CHANNEL.events, listener),
+  youtubeState: () => ipcRenderer.invoke(CHANNEL.youtubeState),
+  youtubeSignIn: () => ipcRenderer.invoke(CHANNEL.youtubeSignIn),
+  youtubeSignOut: () => ipcRenderer.invoke(CHANNEL.youtubeSignOut),
+  youtubeWait: () => ipcRenderer.invoke(CHANNEL.youtubeWait),
+  onYouTube: listener => subscribe(CHANNEL.youtube, listener),
   onSetupProgress: listener => subscribe(CHANNEL.setupProgress, listener),
 }
 

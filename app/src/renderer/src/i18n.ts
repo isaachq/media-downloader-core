@@ -400,6 +400,25 @@ const en = {
     "Using {browser}'s session. If YouTube keeps asking, open YouTube in {browser}, check that you're signed in and pass the check if it shows one.",
   'ytpause.safari':
     "Safari: Media Download Core needs Full Disk Access to read its cookies (System Settings → Privacy & Security → Full Disk Access). Chrome, Firefox, Edge and Brave don't.",
+  'ytpause.tokens':
+    'YouTube downloads go on by themselves at {at}, with verification tokens the app makes. Nothing to do.',
+  'ytheld.title': 'YouTube needs you to sign in to go on',
+  'ytheld.why':
+    "YouTube keeps asking to confirm you're not a bot on this connection — several times in a row, also with the app's verification tokens. It happens after many requests in a short time and lifts by itself after a while (minutes to hours).",
+  'ytheld.paused':
+    'Your YouTube downloads are paused, not lost: they go on from where they were as soon as you choose.',
+  'ytheld.account':
+    'Signing in to YouTube inside the app gets past it now. The sign-in stays in this app, not in your browser. YouTube may limit an account that downloads a lot: a second account is safer.',
+  'ytheld.signIn': 'Sign in and continue',
+  'ytheld.continueAccount': 'Continue with my YouTube account',
+  'ytheld.browser': "Or use a browser where you're signed in to YouTube:",
+  'ytheld.wait': 'Wait and try again in 30 min',
+  'ytheld.refused': "Google didn't allow signing in inside the app. Use a browser where you're signed in instead.",
+  'ytheld.closed': 'The sign-in window was closed before signing in.',
+  'settings.youtubeAccount': 'YouTube account',
+  'settings.youtubeSignedIn': 'Signed in inside the app. Used only when YouTube requires it and you agree.',
+  'settings.youtubeNone': 'Not signed in. The app asks only if YouTube requires it.',
+  'settings.youtubeSignOut': 'Sign out',
   'cause.bot-check': 'bot check',
   'cause.blocked': 'blocked for a while',
   'cause.cookies-unreadable': 'cookies unreadable',
@@ -908,6 +927,24 @@ const es: Record<MessageKey, string> = {
     'Usando la sesión de {browser}. Si YouTube sigue pidiéndolo, abre YouTube en {browser}, revisa que hayas iniciado sesión y pasa la verificación si aparece.',
   'ytpause.safari':
     'Safari: Media Download Core necesita Acceso total al disco para leer sus cookies (Ajustes del Sistema → Privacidad y seguridad → Acceso total al disco). Chrome, Firefox, Edge y Brave no.',
+  'ytpause.tokens':
+    'Las descargas de YouTube siguen solas a las {at}, con tokens de verificación que genera la app. No tienes que hacer nada.',
+  'ytheld.title': 'YouTube necesita que inicies sesión para continuar',
+  'ytheld.why':
+    'YouTube sigue pidiendo confirmar que no eres un bot en esta conexión — varias veces seguidas, también con los tokens de verificación de la app. Pasa tras muchas solicitudes en poco tiempo y se levanta solo después de un rato (de minutos a horas).',
+  'ytheld.paused': 'Tus descargas de YouTube están en pausa, no perdidas: siguen donde iban en cuanto elijas.',
+  'ytheld.account':
+    'Iniciar sesión en YouTube dentro de la app lo resuelve ya. La sesión queda en esta app, no en tu navegador. YouTube puede limitar una cuenta que descarga mucho: una cuenta secundaria es más segura.',
+  'ytheld.signIn': 'Iniciar sesión y continuar',
+  'ytheld.continueAccount': 'Continuar con mi cuenta de YouTube',
+  'ytheld.browser': 'O usa un navegador donde ya iniciaste sesión en YouTube:',
+  'ytheld.wait': 'Esperar y reintentar en 30 min',
+  'ytheld.refused': 'Google no permitió iniciar sesión dentro de la app. Usa un navegador donde ya iniciaste sesión.',
+  'ytheld.closed': 'Se cerró la ventana antes de iniciar sesión.',
+  'settings.youtubeAccount': 'Cuenta de YouTube',
+  'settings.youtubeSignedIn': 'Sesión iniciada en la app. Se usa solo cuando YouTube lo exige y tú aceptas.',
+  'settings.youtubeNone': 'Sin sesión. La app solo lo pide si YouTube lo exige.',
+  'settings.youtubeSignOut': 'Cerrar sesión',
   'cause.bot-check': 'verificación anti-bot',
   'cause.blocked': 'bloqueo temporal',
   'cause.cookies-unreadable': 'cookies ilegibles',

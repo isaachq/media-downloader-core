@@ -1,9 +1,10 @@
 name: Publish library
 
-# Push a tag like lib-v1.6.0 to publish media-downloader-core to npm, with
-# provenance (npm shows it was built here, from this commit). Needs the
-# repository secret NPM_TOKEN: an npm automation / granular token with
-# publish rights for the package.
+# Push a tag like lib-v1.6.1 to publish media-downloader-core to npm.
+# Trusted Publishing (OIDC): npm trusts this workflow of this repository
+# (package settings → Trusted Publisher), so there is no token to keep —
+# and the package gets provenance (npm shows it was built here, from this
+# commit). Needs npm 11.5.1 or newer.
 on:
   push:
     tags: ['lib-v*']
@@ -27,7 +28,9 @@ jobs:
       - run: npm ci
       - name: The tag matches package.json
         run: test "lib-v$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
-      # prepublishOnly runs typecheck, lint, the tests and the build first
-      - run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # typecheck, lint, the tests, then the build — here rather than in prepublishOnly,
+      # so npm publish finds dist/ (and the CLI it names) already in place
+      - run: npm run check
+      - run: npm run build
+      - run: npm install -g npm@11
+      - run: npm publish --provenance --access public --ignore-scripts

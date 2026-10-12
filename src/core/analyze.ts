@@ -234,7 +234,10 @@ export async function extractMany(
       if (!url) return
       const keep = opts.keepMetadata?.(url) ?? true
       const infoJsonPath = keep ? path.join(opts.cacheDir, `info-${shortHash(url)}-${Date.now()}.json`) : undefined
-      if (infoJsonPath) writes.push(fs.writeFile(infoJsonPath, line))
+      // the metadata cache only saves the download an extraction: a write that fails (a shutdown
+      // removing the cache mid-run) leaves the job to extract again, and must not fail the
+      // chunk — nor reject unobserved when the run itself ends in an error before the writes are awaited
+      if (infoJsonPath) writes.push(fs.writeFile(infoJsonPath, line).catch(() => {}))
       settle(url, {
         ok: true,
         analysis: {

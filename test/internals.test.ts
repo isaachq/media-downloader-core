@@ -1,11 +1,12 @@
 import {strict as assert} from 'node:assert'
 import {createHash} from 'node:crypto'
+import {rmSync} from 'node:fs'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import {after, before, describe, it} from 'node:test'
 import {pathToFileURL} from 'node:url'
-import {assertHttpUrl} from '../src/core/analyze.js'
+import {assertHttpUrl, extractMany} from '../src/core/analyze.js'
 import {archiveKey, DownloadArchive} from '../src/core/archive.js'
 import {buildYtDlpArgs, type YtDlpRunOptions} from '../src/core/download.js'
 import {DownloadError} from '../src/core/errors.js'
@@ -16,12 +17,34 @@ import {ID_PATTERN, newId} from '../src/core/ids.js'
 import {LineSplitter, lastLines, run, TailBuffer} from '../src/core/process.js'
 import {PendingJournal, QueueStore} from '../src/core/queue-store.js'
 
+import {writeFakes} from './helpers/fakes.js'
 let dir = ''
 before(async () => {
   dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdc-internals-'))
 })
 after(async () => {
   await fs.rm(dir, {recursive: true, force: true})
+})
+
+describe('extractMany', () => {
+  it('keeps its results when the metadata cache disappears mid-run (a shutdown removing it)', async () => {
+    const fakes = await writeFakes(path.join(dir, 'extract-fakes'))
+    const cacheDir = path.join(dir, 'extract-cache')
+    const urls = ['https://fake.test/a1', 'https://fake.test/a2', 'https://fake.test/a3']
+    const results = await extractMany(
+      urls.map(url => ({url})),
+      {
+        ytDlp: fakes.ytDlp,
+        env: process.env,
+        cacheDir,
+        commonArgs: [],
+        // removed as soon as the first result arrives: the writes still pending find no folder
+        onResult: () => rmSync(cacheDir, {recursive: true, force: true}),
+      },
+    )
+    assert.equal(results.size, 3)
+    for (const url of urls) assert.equal(results.get(url)?.ok, true)
+  })
 })
 
 describe('LineSplitter', () => {

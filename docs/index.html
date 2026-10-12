@@ -147,7 +147,11 @@ section .intro { color: var(--muted); margin: 0 0 32px; max-width: 46em; font-si
 .os li a { display: flex; justify-content: space-between; gap: 8px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); text-decoration: none; color: var(--ink); font-size: 15px; }
 .os li a:hover { border-color: var(--accent); }
 .os li a small { color: var(--muted); }
-.os .hint { color: var(--muted); font-size: 13.5px; margin: 0; }
+.os .hint { color: var(--muted); font-size: 13.5px; margin: 0 0 8px; }
+.command { display: flex; align-items: stretch; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--bg); }
+.command code { flex: 1; min-width: 0; padding: 10px 12px; font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink); overflow-wrap: anywhere; }
+.command .copy { border: 0; border-left: 1px solid var(--line); background: var(--surface); color: var(--accent-ink); font: inherit; font-size: 13px; font-weight: 600; padding: 0 14px; cursor: pointer; }
+.command .copy:hover { background: color-mix(in srgb, var(--accent) 12%, var(--surface)); }
 .release-line { color: var(--muted); margin: -18px 0 24px; font-size: 15px; }
 
 .note { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: var(--radius); padding: 18px 22px; color: var(--muted); font-size: 15px; }
@@ -299,6 +303,11 @@ footer a { color: var(--muted); }
           <li><a data-asset="mac-x64.dmg" href="https://github.com/isaachq/media-downloader-core/releases"><span data-i18n="dl.macIntel">Intel</span><small>.dmg</small></a></li>
         </ul>
         <p class="hint" data-i18n="dl.macHint">First launch: System Settings → Privacy &amp; Security → “Open Anyway” (once). It isn't signed with a paid Apple certificate yet.</p>
+        <p class="hint" data-i18n="dl.macTerminal">No “Open Anyway” button? Drag the app to Applications and run this once in Terminal:</p>
+        <div class="command">
+          <code id="mac-command">xattr -dr com.apple.quarantine "/Applications/Media Download Core.app"</code>
+          <button type="button" class="copy" data-copy="mac-command" data-i18n="dl.copy">Copy</button>
+        </div>
       </div>
       <div class="os" data-os="windows">
         <h3>Windows</h3>
@@ -386,6 +395,8 @@ footer a { color: var(--muted); }
     'dl.title': 'Descargar', 'dl.line': 'La versión más nueva siempre está en GitHub Releases.',
     'dl.macArm': 'Apple Silicon (M1–M4)', 'dl.macIntel': 'Intel',
     'dl.macHint': 'Primera vez: Configuración del Sistema → Privacidad y seguridad → “Abrir de todos modos” (una vez). Aún no está firmada con un certificado de pago de Apple.',
+    'dl.macTerminal': '¿No aparece “Abrir de todos modos”? Arrastra la app a Aplicaciones y ejecuta esto una vez en Terminal:',
+    'dl.copy': 'Copiar', 'copied': 'Copiado',
     'dl.win64': '64 bits (la mayoría de las PC)', 'dl.winHint': 'Si aparece SmartScreen: Más información → Ejecutar de todas formas.',
     'dl.linuxHint': '.deb y .rpm también para ARM64 en la página de versiones.',
     'note': 'Hecho para respaldar contenido tuyo o que tienes permitido conservar. Respeta los términos de cada sitio y los derechos de autor. Gratis para uso personal y no comercial (PolyForm Noncommercial 1.0.0).',
@@ -393,7 +404,7 @@ footer a { color: var(--muted); }
     'primary.mac': 'Descargar para Mac', 'primary.macIntel': 'Descargar para Mac (Intel)', 'primary.windows': 'Descargar para Windows',
     'primary.linux': 'Descargar para Linux', 'release': 'Versión {version} · publicada el {date}',
   }
-  const en = {'primary.mac': 'Download for Mac', 'primary.macIntel': 'Download for Mac (Intel)', 'primary.windows': 'Download for Windows', 'primary.linux': 'Download for Linux', 'release': 'Version {version} · released {date}'}
+  const en = {'copied': 'Copied', 'primary.mac': 'Download for Mac', 'primary.macIntel': 'Download for Mac (Intel)', 'primary.windows': 'Download for Windows', 'primary.linux': 'Download for Linux', 'release': 'Version {version} · released {date}'}
   // the page's own English text is the default dictionary
   for (const el of document.querySelectorAll('[data-i18n]')) en[el.dataset.i18n] ??= el.innerHTML
   for (const el of document.querySelectorAll('[data-i18n-alt]')) en[el.dataset.i18nAlt] ??= el.alt
@@ -435,6 +446,21 @@ footer a { color: var(--muted); }
       const date = new Date(release.published_at).toLocaleDateString(lang === 'es' ? 'es' : 'en', {year: 'numeric', month: 'long', day: 'numeric'})
       document.getElementById('release-line').textContent = text('release', {version: release.tag_name.replace(/^app-v/, ''), date})
     }
+  }
+
+  for (const button of document.querySelectorAll('[data-copy]')) {
+    button.addEventListener('click', async () => {
+      const command = document.getElementById(button.dataset.copy).textContent
+      try {
+        await navigator.clipboard.writeText(command)
+      } catch {
+        // no clipboard access (file://, old browser): select it for a manual copy
+        getSelection().selectAllChildren(document.getElementById(button.dataset.copy))
+        return
+      }
+      button.textContent = text('copied')
+      setTimeout(() => (button.textContent = text('dl.copy')), 1500)
+    })
   }
 
   for (const button of document.querySelectorAll('[data-lang]')) {

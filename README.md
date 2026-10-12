@@ -97,8 +97,13 @@ certificate yet, so the system warns the first time; this is expected.
    next to the message about Media Download Core. Confirm with your password.
 4. From then on it opens normally.
 
-> Right click → Open no longer skips this on macOS 15 and later. Alternative,
-> in Terminal: `xattr -dr com.apple.quarantine "/Applications/Media Download Core.app"`
+**No "Open Anyway" button?** (it doesn't always show up, and right click → Open
+no longer skips the warning on macOS 15 and later) Run this once in **Terminal**
+— it removes the "downloaded from the internet" mark from the app, nothing else:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Media Download Core.app"
+```
 
 **Windows** (x64 and ARM) — `.exe`
 

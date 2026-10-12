@@ -30,7 +30,7 @@ export function SlideshowChoice({
   }
   const mode = settings.slideshowMode
   return (
-    <Space direction="vertical" size={6} className="full" data-testid="slideshow-choice">
+    <Space orientation="vertical" size={6} className="full" data-testid="slideshow-choice">
       {count !== undefined ? (
         <Typography.Text strong>
           <PictureOutlined /> {t('slides.title', {count})}
@@ -47,15 +47,17 @@ export function SlideshowChoice({
           onChange={value => void updateSettings({slideshowMode: value as (typeof MODES)[number]})}
         />
         {mode === 'video' ? (
-          <InputNumber
-            aria-label={t('slides.seconds')}
-            addonBefore={t('slides.seconds')}
-            min={1}
-            max={30}
-            value={settings.slideshowSeconds}
-            onChange={value => void updateSettings({slideshowSeconds: value ?? 3})}
-            style={{width: 210}}
-          />
+          <Space.Compact>
+            <Space.Addon>{t('slides.seconds')}</Space.Addon>
+            <InputNumber
+              aria-label={t('slides.seconds')}
+              min={1}
+              max={30}
+              value={settings.slideshowSeconds}
+              onChange={value => void updateSettings({slideshowSeconds: value ?? 3})}
+              className="seconds-input"
+            />
+          </Space.Compact>
         ) : null}
       </Space>
       <Typography.Text type="secondary">
@@ -86,7 +88,7 @@ export function SlideshowModal({
       onCancel={onCancel}
       width={620}
     >
-      <Space direction="vertical" className="full">
+      <Space orientation="vertical" className="full">
         <Typography.Text className="one-line" title={title}>
           {title}
         </Typography.Text>

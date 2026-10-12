@@ -2,30 +2,42 @@ import type {
   BatchId,
   BatchSnapshot,
   Diagnosis,
+  FormatProfile,
   InstallProgress,
   JobId,
   JobSnapshot,
   LogEntry,
   PreflightItem,
+  SubscriptionView,
+  SyncRun,
+  SyncSchedule,
 } from 'media-downloader-core'
 import {vi} from 'vitest'
-import type {
-  AnalyzeProgress,
-  AppInfo,
-  AppSettings,
-  EventBundle,
-  FinishedEntry,
-  FinishedGroup,
-  FinishedPage,
-  FinishedQuery,
-  FinishedTarget,
-  MdcApi,
-  OpenTarget,
-  Preview,
-  ScheduleInput,
-  UpdateState,
-  VerifySummary,
+import {
+  type AnalyzeProgress,
+  type AppInfo,
+  type AppSettings,
+  type EventBundle,
+  type FinishedEntry,
+  type FinishedGroup,
+  type FinishedPage,
+  type FinishedQuery,
+  type FinishedTarget,
+  type Format,
+  isAudioFormat,
+  type MdcApi,
+  type OpenTarget,
+  type Preview,
+  type ScheduleInput,
+  type SyncCheck,
+  type SyncFolder,
+  type SyncInput,
+  type UpdateState,
+  type VerifySummary,
 } from '../../../shared/contract'
+
+const profileOf = (format: Format): FormatProfile =>
+  isAudioFormat(format) ? {kind: 'audio', container: format} : {kind: 'video', container: format}
 
 export const INFO: AppInfo = {
   version: '0.1.0-test',
@@ -56,6 +68,7 @@ export const SETTINGS: AppSettings = {
   slideshowSeconds: 3,
   // tests start past the first-steps guide (its own tests turn it back on)
   tourDone: true,
+  syncEnabled: false,
 }
 
 export const READY: Diagnosis = {
@@ -210,6 +223,66 @@ export class FakeApi implements MdcApi {
   )
   openFolder = vi.fn(async (_target: OpenTarget) => true)
   focusWindow = vi.fn(async () => {})
+  /** Synced accounts, as the main process keeps them. */
+  syncs: SubscriptionView[] = []
+  #syncListeners = new Set<(event: {view?: SubscriptionView; removed?: string}) => void>()
+  /** What `syncCheck` answers. */
+  syncCheckResult: SyncCheck = {listed: 20, total: 860, inFolder: 835, new: 3, sample: [], gone: 0, caughtUp: true}
+  syncList = vi.fn(async () => this.syncs)
+  syncAdd = vi.fn(async (input: SyncInput): Promise<SubscriptionView> => {
+    const user = /@([\w.-]+)/.exec(input.url)?.[1] ?? 'someone'
+    const view: SubscriptionView = {
+      id: `S${this.syncs.length + 1}`.padEnd(32, '0'),
+      site: 'tiktok',
+      user,
+      url: `https://www.tiktok.com/@${user}`,
+      folder: input.folder,
+      profile: profileOf(input.format ?? this.syncFolderResult.format ?? 'mp4'),
+      schedule: input.schedule,
+      createdAt: Date.now(),
+      runs: [],
+      state: 'idle',
+    }
+    this.syncs = [...this.syncs, view]
+    this.pushSync({view})
+    return view
+  })
+  /** What `syncFolder` answers: an empty folder unless a test says otherwise. */
+  syncFolderResult: SyncFolder = {files: 0, formats: []}
+  syncFolder = vi.fn(async (_folder: string) => this.syncFolderResult)
+  syncUpdate = vi.fn(async (id: string, patch: {schedule?: SyncSchedule}) => {
+    const view = {...this.syncs.find(item => item.id === id)!, ...(patch.schedule && {schedule: patch.schedule})}
+    this.syncs = this.syncs.map(item => (item.id === id ? view : item))
+    this.pushSync({view})
+    return view
+  })
+  syncRemove = vi.fn(async (id: string) => {
+    this.syncs = this.syncs.filter(item => item.id !== id)
+    this.pushSync({removed: id})
+  })
+  syncRun = vi.fn(
+    async (id: string, deep: boolean): Promise<SyncRun> => ({
+      id: 'R1',
+      trigger: 'manual',
+      deep,
+      status: 'running',
+      startedAt: Date.now(),
+      listed: 20,
+      inFolder: 835,
+      new: 3,
+      downloaded: 0,
+      failed: 0,
+      batchId: `B-sync-${id}`,
+    }),
+  )
+  syncCheck = vi.fn(async (_id: string, _deep: boolean) => this.syncCheckResult)
+  onSync(listener: (event: {view?: SubscriptionView; removed?: string}) => void): () => void {
+    this.#syncListeners.add(listener)
+    return () => this.#syncListeners.delete(listener)
+  }
+  pushSync(event: {view?: SubscriptionView; removed?: string}): void {
+    for (const listener of this.#syncListeners) listener(event)
+  }
   finishedGroups = vi.fn(async (): Promise<FinishedGroup[]> => {
     const groups = new Map<string, FinishedGroup>()
     for (const entry of this.finishedEntries) {

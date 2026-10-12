@@ -15,6 +15,11 @@ itself (`mdc setup`).
 > you own or are allowed to download. Respect each site's terms of service and
 > copyright law; you are responsible for how you use it.
 
+```bash
+npm install media-downloader-core     # the library (Node 20+), ESM and CommonJS, types included
+npm install -g media-downloader-core  # …or the `mdc` command line
+```
+
 ```ts
 import {MediaDownloader} from 'media-downloader-core'
 
@@ -39,6 +44,7 @@ the ⌊CPUs/2⌋ pool and verified file by file.
 
 ### What's new in beta 7
 
+- **Sync Up** — keep TikTok accounts in step with their folders: next to New download, add an account (its folder may already hold its videos), and each sync downloads only what the folder is missing, as a regular batch — now, daily at a time, or every few hours. A folder keeps one format: one with MP4 files gets MP4. Also from the command line (`mdc sync`) and any scheduler. [How it works](#tiktok-sync-sync-up).
 - **Retry what failed, and see why** — each batch tells why items failed (removed, private, network…) and retries them in one click; the run report retries every batch.
 - **One batch at a time** — Downloads and Finished filter by batch (Finished, across sessions); a batch card opens them filtered. Finished also checks files again, exports a CSV and forgets entries.
 - **TikTok slideshows** — as an MP4 (N seconds per image, over the soundtrack), as images with their sound, or images only; with an audio format, just the soundtrack.
@@ -163,6 +169,7 @@ must also be this app, at the offered version, with a valid signature.
 ### Features
 
 - **Preview**: a playlist, YouTube Mix or channel opens a list of everything it holds first — filter, select all / some, or just the linked video — and only the picked items are downloaded. A Mix (an endless, auto-generated radio) loads its first 50 by default; load more from the preview.
+- **Sync Up** (turn it on in Settings): TikTok accounts kept in step with folders — check what is new without downloading, sync now or on a schedule, a history of every run; each sync is a batch in Batches / Downloads / Finished.
 - **Batches**: preflight (available / unavailable with the reason), disk forecast from real bitrates, progress weighted by size and the **estimated time left** — measured from this computer's real throughput, so you can start a big batch and walk away — plus paged item list, cancel, clear finished. New links queue behind the running batch.
 - **Downloads**: one row per job with progress, speed, ETA, the D·C·V·F sub-tasks (failed / in-progress / success), retries and their reason.
 - **Integrity**: the verdict of every file, with codecs, decoded vs expected duration and SHA-256 one click away.
@@ -200,6 +207,8 @@ mdc get   "https://youtube.com/playlist?list=…" -f m4a -i 1-20 -o ~/Music
 mdc get   "https://youtu.be/…" -f mp4 -q 1080
 mdc logs  <id>                           # replay a session / job / attempt / step from the trace logs
 mdc verify                               # re-hash every archived file
+mdc sync add @name --folder ~/TikTok-name --daily 08:00   # keep an account in step with a folder
+mdc sync run --due                       # the syncs whose time has come (cron, launchd, Task Scheduler)
 ```
 
 A live dashboard shows each job's progress, speed, retries and sub-task
@@ -296,10 +305,88 @@ scheduler.schedule({url: 'https://vm.tiktok.com/ZM…/', profile: {kind: 'video'
 | Dates | Every finished file — TikTok or any yt-dlp site — gets its **publication date as modification time** (TikTok's post time; yt-dlp's `timestamp`, else noon UTC of `upload_date`), so sorting a folder by date sorts by publication. The date tag inside the file carries it too. |
 
 No request signatures are generated and no anti-bot challenge is solved.
-Photo posts (slideshows) aren't supported yet and are reported as such.
+Photo posts (slideshows) download as an MP4, as images with their sound, or
+as images only (`slideshow` on the batch request).
 TikTok's terms restrict automated access: use this to back up content you
 are allowed to keep, at the default pace. `tiktok: false` sends TikTok to
 yt-dlp like any other site.
+
+## TikTok sync (Sync Up)
+
+A **subscription** keeps a TikTok account in step with a folder. A sync
+compares what the folder holds with what the account lists and downloads
+only what is missing, as one ordinary batch — so it shows in Batches,
+Downloads, Finished and the run report like any other.
+
+| | How |
+| --- | --- |
+| What the folder holds | The post id in each file name (`title-<id>.mp4`, `001-title-<id>.mp4`, `Title [<id>].mp4`), then the archive's records of files in the folder, then — only for renamed files — the post link the app writes into each file's tags. 835 files are read in ~50 ms. |
+| One format per folder | A folder with files decides the format: MP4 files mean MP4, never MP3 next to them. Adding a subscription with another format, a folder mixing formats, or a file in another format dropped in later is refused with the reason, before anything downloads. An empty folder takes the format asked for. |
+| First sync | Reads the **whole account**: a folder can have gaps anywhere, not only at the top (a real 839-post account: 4 missing, 3 of them years old, ~2 minutes). |
+| Later syncs | Read from the newest post down and stop after 20 posts in a row the folder already has (pinned posts don't count): a few requests, seconds. `deep` reads the whole account again and also reports files whose post TikTok no longer lists (they are left alone). |
+| New files | Straight into the folder (no subfolder, no position prefix), named `title-<id>.<ext>`, dated by publication. Photo posts become videos in a video folder. |
+| Schedules | `manual`, daily at `HH:MM` (local), or every 1–168 hours. The app runs them while it is open (a missed one runs when it opens); without the app, `mdc sync run --due` from any scheduler. |
+| Two processes | The app and `mdc` share `subscriptions.json` in the data folder; a lock per subscription, held until its downloads end, keeps them from syncing the same account at once (a lock left by a crashed process is taken over). |
+
+**In the app**: Settings → *TikTok sync*, then **Sync Up** next to New
+download. *Add account* suggests the folder a profile download uses
+(`<downloads>/TikTok-<name>`), shows what it holds and locks the format to
+it. Each account has *Sync now*, and under ⋮: *Check* (what is new, nothing
+downloaded), *Full check*, *Change schedule*, *Open folder*, *Remove* (the
+files stay).
+
+**From the command line**:
+
+```bash
+mdc sync add @name --folder ~/Downloads/TikTok-name --daily 08:00   # or --every 6, --manual; -f for an empty folder
+mdc sync                                  # accounts, folders, last and next sync
+mdc sync run @name --dry-run              # what is new, nothing downloaded
+mdc sync run @name                        # sync now (--deep: the whole account)
+mdc sync run --due -Q                     # every account whose time has come
+mdc sync remove @name                     # stop following (the folder stays)
+```
+
+**From a scheduler**, every 15 minutes (`--due` only runs what is due, so
+the schedule itself stays in `mdc sync add`):
+
+```bash
+# cron (macOS, Linux) — crontab -e
+*/15 * * * * /usr/local/bin/mdc sync run --due -Q
+```
+
+```xml
+<!-- launchd (macOS) — ~/Library/LaunchAgents/com.example.mdc-sync.plist, then: launchctl load <file> -->
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.example.mdc-sync</string>
+  <key>ProgramArguments</key><array>
+    <string>/usr/local/bin/mdc</string><string>sync</string><string>run</string><string>--due</string><string>-Q</string>
+  </array>
+  <key>StartInterval</key><integer>900</integer>
+</dict></plist>
+```
+
+```powershell
+# Task Scheduler (Windows)
+schtasks /Create /TN "mdc sync" /SC MINUTE /MO 15 /TR "mdc sync run --due -Q"
+```
+
+**From code**:
+
+```ts
+import {BatchScheduler, MediaDownloader, SyncManager} from 'media-downloader-core'
+
+await using dl = new MediaDownloader({dataDir})
+const scheduler = new BatchScheduler(dl)
+const sync = new SyncManager(dl, scheduler)            // subscriptions.json in dataDir
+const sub = await sync.add({url: 'https://www.tiktok.com/@name', folder: '/media/TikTok-name', schedule: {every: 'day', at: '08:00'}})
+const plan = await sync.check(sub.id)                   // {listed, inFolder, entries, gone, caughtUp}
+const run = await sync.run(sub.id)                      // schedules one batch with what is new
+await sync.whenDone(sub.id, run.id)                     // {status, new, downloaded, failed, …}
+sync.startSchedule()                                    // run due subscriptions every minute
+```
+
+`scanFolder()`, `folderFormat()` and `syncProfile()` are exported too: what
+a folder holds, which format it is in, and the profile a sync into it uses.
 
 ## Player-page sites (configured locally)
 

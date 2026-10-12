@@ -48,13 +48,13 @@ function useSystemDark(): boolean {
 function useNotify() {
   const {notification} = AntApp.useApp()
   return useCallback(
-    (kind: 'success' | 'warning' | 'error', message: string, description: string) => {
+    (kind: 'success' | 'warning' | 'error', title: string, description: string) => {
       if (!document.hasFocus() && typeof window.Notification === 'function') {
-        const shown = new window.Notification(message, {body: description})
+        const shown = new window.Notification(title, {body: description})
         shown.onclick = () => void api().focusWindow()
         return
       }
-      notification[kind]({message, description})
+      notification[kind]({title, description})
     },
     [notification],
   )
@@ -151,6 +151,8 @@ function Shell({
     if (target === 'jobs') setJobsBatch(batchId)
     else setFinishedBatch(batchId)
     setTab(target)
+    // from the top of the window (Sync Up), bring the tabs into view
+    document.querySelector('.main-tabs')?.scrollIntoView?.({behavior: 'smooth', block: 'start'})
   }, [])
   const [diagnosis, setDiagnosis] = useState(initialDiagnosis)
   const [setup, setSetup] = useState<{open: boolean; force: boolean}>({open: !initialDiagnosis.ready, force: false})
@@ -181,9 +183,10 @@ function Shell({
         />
         <Layout.Content className="app-content">
           <UpdateBanner />
-          <DownloadBar />
-          <Stats onOpen={setTab} />
+          {/* Sync Up (in the top card) opens its batches in the tabs below too */}
           <ShowBatchContext.Provider value={showBatch}>
+            <DownloadBar />
+            <Stats onOpen={setTab} />
             <Tabs
               className="main-tabs"
               activeKey={tab}

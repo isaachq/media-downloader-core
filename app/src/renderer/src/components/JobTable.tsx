@@ -70,7 +70,7 @@ export function JobTable({
       key: 'title',
       ellipsis: true,
       render: (_, job) => (
-        <Space direction="vertical" size={0} className="job-title">
+        <Space orientation="vertical" size={0} className="job-title">
           <Typography.Text className="one-line" title={job.title ?? job.url}>
             {job.title ?? job.url}
           </Typography.Text>
@@ -98,7 +98,7 @@ export function JobTable({
         const percent = job.outcome === 'success' ? 100 : fraction === undefined ? 0 : Math.round(fraction * 100)
         const status = job.outcome === 'failed' ? 'exception' : job.outcome === 'success' ? 'success' : 'active'
         return (
-          <Space direction="vertical" size={0} className="job-progress">
+          <Space orientation="vertical" size={0} className="job-progress">
             <Progress
               percent={percent}
               size="small"
@@ -169,7 +169,7 @@ export function JobTable({
   }
 
   return (
-    <Space direction="vertical" className="full">
+    <Space orientation="vertical" className="full">
       <Space wrap>
         {onBatch ? <BatchFilter value={batchId} options={options} onChange={onBatch} /> : null}
         <Button icon={paused ? <PlayCircleOutlined /> : <PauseCircleOutlined />} onClick={() => void togglePause()}>

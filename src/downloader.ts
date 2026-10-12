@@ -263,6 +263,8 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       maxEntries?: number
       /** Listing progress of long lists read by a native source (TikTok profiles). */
       onProgress?: (progress: ListingProgress) => void
+      /** Entry ids already had: a native source lists only what is newer (see MediaSource.analyze). */
+      known?: ReadonlySet<string>
     } = {},
   ): Promise<AnalysisResult> {
     this.#assertOpen()
@@ -279,6 +281,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
             signal: analysis.signal,
             ...(opts.maxEntries !== undefined && {maxEntries: opts.maxEntries}),
             ...(opts.onProgress && {onProgress: opts.onProgress}),
+            ...(opts.known && {known: opts.known}),
           })
         } catch (error) {
           if (!(error instanceof DownloadError) || !needsFallback(error.details)) throw error
@@ -913,7 +916,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
         validation: this.#settings.validation,
         batchId: request.batchId,
         // a playlist's name; a one-video batch is named after its video
-        batchTitle: request.batchId ? (request.playlist?.title ?? mediaTitle) : undefined,
+        batchTitle: request.batchId ? (request.batchTitle ?? request.playlist?.title ?? mediaTitle) : undefined,
       })
     }
     this.#stepDone(job, 'finalize', 'success')

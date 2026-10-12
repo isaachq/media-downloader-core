@@ -77,5 +77,23 @@ export {TikTokError, type TikTokProblem} from './sources/tiktok/errors.js'
 export {isTikTokProfile, parseTikTokLink, type TikTokLink} from './sources/tiktok/links.js'
 export {DEFAULT_SLIDESHOW, slideshowOptions} from './sources/tiktok/slideshow.js'
 export {TIKTOK_PROFILE_DEFAULT_ITEMS, type TikTokOptions, TikTokSource} from './sources/tiktok/source.js'
+export {type FolderFormat, type FolderScan, folderFormat, scanFolder, syncProfile} from './sync/folder.js'
+export {
+  type NewSubscription,
+  type SubscriptionView,
+  SyncManager,
+  type SyncPlan,
+  type SyncState,
+} from './sync/manager.js'
+export {
+  isDue,
+  nextRunAt,
+  type Subscription,
+  SubscriptionStore,
+  type SyncRun,
+  type SyncSchedule,
+  type SyncTrigger,
+  syncSchedule,
+} from './sync/subscriptions.js'
 export type * from './types.js'
 export {formatBytes, formatClock, formatRate} from './util/units.js'

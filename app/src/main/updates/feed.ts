@@ -108,7 +108,7 @@ function matchingAsset(
     const digest = typeof raw.digest === 'string' ? /^sha256:([0-9a-f]{64})$/i.exec(raw.digest)?.[1] : undefined
     const url = typeof raw.browser_download_url === 'string' ? raw.browser_download_url : undefined
     // only files GitHub can vouch for, from this project's releases, over https
-    if (!digest || !url || !url.startsWith(trustedPrefix)) continue
+    if (!digest || !url?.startsWith(trustedPrefix)) continue
     return {name: raw.name, url, size: typeof raw.size === 'number' ? raw.size : 0, sha256: digest.toLowerCase()}
   }
   return undefined

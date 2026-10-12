@@ -6,7 +6,6 @@ import {
   Col,
   Empty,
   Flex,
-  List,
   Modal,
   Progress,
   Row,
@@ -25,6 +24,7 @@ import {type MessageKey, useT} from '../i18n'
 import {buildReport, type Report, type ReportBatch, reportText, STAGES} from '../report'
 import {useAppStore} from '../store'
 import {causeLabel, Problems} from './Problems'
+import {Rows} from './Rows'
 
 /** The report is read again this often (and on demand). */
 export const REPORT_REFRESH_MS = 15_000
@@ -130,9 +130,9 @@ export function ReportModal({open, onClose}: {readonly open: boolean; readonly o
       className="report-modal"
     >
       {report ? (
-        <Space direction="vertical" size="middle" className="full" data-testid="report">
+        <Space orientation="vertical" size="middle" className="full" data-testid="report">
           <Flex justify="space-between" align="center" wrap gap={8}>
-            <Space direction="vertical" size={0}>
+            <Space orientation="vertical" size={0}>
               <Space wrap>
                 <Typography.Text type="secondary">{t('report.runId')}:</Typography.Text>
                 <Typography.Text code copyable={{text: report.runId}} data-testid="report-run-id">
@@ -197,7 +197,7 @@ export function ReportModal({open, onClose}: {readonly open: boolean; readonly o
                       <Statistic
                         title={t(`report.${key}` as MessageKey)}
                         value={value}
-                        {...(color && {valueStyle: {color}})}
+                        {...(color && {styles: {content: {color}}})}
                       />
                       {note ? <Typography.Text type="secondary">{note}</Typography.Text> : null}
                     </Card>
@@ -211,7 +211,7 @@ export function ReportModal({open, onClose}: {readonly open: boolean; readonly o
                   percent={Math.floor(report.fraction * 100)}
                   status={report.inProgress ? 'active' : 'normal'}
                 />
-                <Space wrap split="·">
+                <Space wrap separator="·">
                   <span>
                     {t('report.speed')}: {rate(report.speed, lang) || '—'}
                   </span>
@@ -244,7 +244,7 @@ export function ReportModal({open, onClose}: {readonly open: boolean; readonly o
                 {report.inProgress === 0 ? (
                   <Typography.Text type="secondary">{t('report.idle')}</Typography.Text>
                 ) : (
-                  <Space direction="vertical" className="full" size={4}>
+                  <Space orientation="vertical" className="full" size={4}>
                     {STAGES.filter(stage => report.now[stage].length > 0).map(stage => (
                       <div key={stage}>
                         <Typography.Text strong>
@@ -290,7 +290,7 @@ export function ReportModal({open, onClose}: {readonly open: boolean; readonly o
                       key: 'batch',
                       ellipsis: true,
                       render: (_, batch) => (
-                        <Space direction="vertical" size={0}>
+                        <Space orientation="vertical" size={0}>
                           <Typography.Text className="one-line" title={batch.title}>
                             {batch.title}
                           </Typography.Text>
@@ -365,37 +365,33 @@ export function ReportModal({open, onClose}: {readonly open: boolean; readonly o
               <Row gutter={[12, 12]}>
                 <Col xs={24} md={12}>
                   <Card size="small" title={t('report.recentDone')}>
-                    <List
-                      size="small"
-                      dataSource={[...report.recentDone]}
-                      locale={{emptyText: '—'}}
-                      renderItem={job => (
-                        <List.Item>
-                          <Typography.Text className="one-line" title={job.title}>
-                            {job.title}
-                          </Typography.Text>
-                        </List.Item>
+                    <Rows
+                      items={report.recentDone}
+                      rowKey={job => job.id}
+                      empty="—"
+                      render={job => (
+                        <Typography.Text className="one-line" title={job.title}>
+                          {job.title}
+                        </Typography.Text>
                       )}
                     />
                   </Card>
                 </Col>
                 <Col xs={24} md={12}>
                   <Card size="small" title={t('report.recentFailed')}>
-                    <List
-                      size="small"
-                      dataSource={[...report.recentFailed]}
-                      locale={{emptyText: '—'}}
-                      renderItem={job => (
-                        <List.Item>
-                          <Space direction="vertical" size={0} className="full">
-                            <Typography.Text className="one-line" title={job.title}>
-                              {job.title}
-                            </Typography.Text>
-                            <Typography.Text type="danger" className="one-line" title={job.error ?? ''}>
-                              {job.error}
-                            </Typography.Text>
-                          </Space>
-                        </List.Item>
+                    <Rows
+                      items={report.recentFailed}
+                      rowKey={job => job.id}
+                      empty="—"
+                      render={job => (
+                        <Space orientation="vertical" size={0} className="full">
+                          <Typography.Text className="one-line" title={job.title}>
+                            {job.title}
+                          </Typography.Text>
+                          <Typography.Text type="danger" className="one-line" title={job.error ?? ''}>
+                            {job.error}
+                          </Typography.Text>
+                        </Space>
                       )}
                     />
                   </Card>

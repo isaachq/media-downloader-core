@@ -1,9 +1,10 @@
 import {CheckCircleFilled, CloseCircleFilled, ExclamationCircleFilled} from '@ant-design/icons'
-import {Alert, Button, List, Modal, Progress, Space, Tag, Typography} from 'antd'
+import {Alert, Button, Modal, Progress, Space, Tag, Typography} from 'antd'
 import type {Diagnosis, InstallProgress} from 'media-downloader-core'
 import {useEffect, useState} from 'react'
 import {api} from '../api'
 import {type MessageKey, useT} from '../i18n'
+import {Rows} from './Rows'
 
 type Props = {
   readonly open: boolean
@@ -57,7 +58,7 @@ export function SetupModal({open, diagnosis, force, onDone, onClose}: Props) {
       open={open}
       title={t('setup.title')}
       closable={ready}
-      maskClosable={false}
+      mask={{closable: false}}
       onCancel={onClose}
       footer={
         ready ? (
@@ -71,28 +72,26 @@ export function SetupModal({open, diagnosis, force, onDone, onClose}: Props) {
         )
       }
     >
-      <Space direction="vertical" className="full">
+      <Space orientation="vertical" className="full">
         <Typography.Paragraph>{t('setup.intro')}</Typography.Paragraph>
         {current ? (
-          <List
-            size="small"
-            dataSource={[...current.tools]}
-            renderItem={tool => (
-              <List.Item>
-                <Space>
-                  {ICON[tool.state]}
-                  <Typography.Text strong>{tool.name}</Typography.Text>
-                  {tool.version ? <Tag>{tool.version}</Tag> : null}
-                  <Typography.Text type="secondary">
-                    {t(tool.state === 'ok' ? 'doctor.ok' : tool.state === 'warn' ? 'doctor.warn' : 'doctor.fail')}
-                  </Typography.Text>
-                </Space>
-              </List.Item>
+          <Rows
+            items={current.tools}
+            rowKey={tool => tool.name}
+            render={tool => (
+              <Space>
+                {ICON[tool.state]}
+                <Typography.Text strong>{tool.name}</Typography.Text>
+                {tool.version ? <Tag>{tool.version}</Tag> : null}
+                <Typography.Text type="secondary">
+                  {t(tool.state === 'ok' ? 'doctor.ok' : tool.state === 'warn' ? 'doctor.warn' : 'doctor.fail')}
+                </Typography.Text>
+              </Space>
             )}
           />
         ) : null}
         {progress ? (
-          <Space direction="vertical" className="full" data-testid="setup-progress">
+          <Space orientation="vertical" className="full" data-testid="setup-progress">
             <Typography.Text>
               {progress.tool} {progress.version ?? ''} — {t(`setup.stage.${progress.stage}` as MessageKey)}
               {progress.asset ? ` · ${progress.asset}` : ''}
@@ -100,8 +99,8 @@ export function SetupModal({open, diagnosis, force, onDone, onClose}: Props) {
             <Progress percent={percent ?? 0} status="active" showInfo={percent !== undefined} />
           </Space>
         ) : null}
-        {ready ? <Alert type="success" showIcon message={t('setup.ready')} /> : null}
-        {error ? <Alert type="error" showIcon message={t('setup.failed', {message: error})} /> : null}
+        {ready ? <Alert type="success" showIcon title={t('setup.ready')} /> : null}
+        {error ? <Alert type="error" showIcon title={t('setup.failed', {message: error})} /> : null}
       </Space>
     </Modal>
   )

@@ -181,7 +181,7 @@ export function FinishedList({
 
   const empty = data && data.total === 0
   return (
-    <Space direction="vertical" className="full" data-testid="finished-list">
+    <Space orientation="vertical" className="full" data-testid="finished-list">
       <Flex gap={8} wrap align="center">
         <Input
           allowClear
@@ -267,7 +267,7 @@ export function FinishedList({
             key: 'title',
             ellipsis: true,
             render: (_, entry) => (
-              <Space direction="vertical" size={0} className="job-title">
+              <Space orientation="vertical" size={0} className="job-title">
                 <Typography.Text className="one-line" title={entry.title}>
                   {entry.title}
                 </Typography.Text>

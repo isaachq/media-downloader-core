@@ -28,7 +28,12 @@ type ProbeStream = {
 }
 
 export type ProbeData = {
-  readonly format?: {readonly format_name?: string; readonly duration?: string}
+  readonly format?: {
+    readonly format_name?: string
+    readonly duration?: string
+    /** Container tags (title, comment…), as ffprobe reports them. */
+    readonly tags?: Readonly<Record<string, string>>
+  }
   readonly streams?: readonly ProbeStream[]
 }
 

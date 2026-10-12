@@ -36,6 +36,7 @@ export function defaultSettings(
     slideshowMode: 'video',
     slideshowSeconds: 3,
     tourDone: false,
+    syncEnabled: false,
   }
 }
 
@@ -73,6 +74,7 @@ export function mergeSettings(current: AppSettings, patch: unknown, maxConcurren
     next.slideshowMode = p['slideshowMode']
   }
   if (typeof p['tourDone'] === 'boolean') next.tourDone = p['tourDone']
+  if (typeof p['syncEnabled'] === 'boolean') next.syncEnabled = p['syncEnabled']
   if (typeof p['slideshowSeconds'] === 'number' && Number.isFinite(p['slideshowSeconds'])) {
     next.slideshowSeconds = Math.min(30, Math.max(1, Math.round(p['slideshowSeconds'])))
   }

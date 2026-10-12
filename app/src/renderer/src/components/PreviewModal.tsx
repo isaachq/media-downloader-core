@@ -101,7 +101,7 @@ export function PreviewModal({
       width={900}
       title={t('preview.title')}
       onCancel={onCancel}
-      maskClosable={false}
+      mask={{closable: false}}
       footer={
         <Flex justify="space-between" align="center" wrap gap={8}>
           <Typography.Text strong data-testid="preview-summary">
@@ -130,7 +130,7 @@ export function PreviewModal({
         </Flex>
       }
     >
-      <Space direction="vertical" size="middle" className="full">
+      <Space orientation="vertical" size="middle" className="full">
         <div>
           <Typography.Title level={5} className="preview-heading">
             {preview.mix ? <Tag color="purple">Mix</Tag> : null}
@@ -148,7 +148,7 @@ export function PreviewModal({
             type="info"
             showIcon
             data-testid="preview-unlisted"
-            message={t('preview.hidden', {
+            title={t('preview.hidden', {
               count: entries.length,
               total: preview.total!,
               missing: preview.total! - entries.length,
@@ -158,7 +158,7 @@ export function PreviewModal({
           <Alert
             type={preview.mix ? 'info' : 'warning'}
             showIcon
-            message={
+            title={
               preview.mix
                 ? t('preview.mix', {count: entries.length})
                 : stopped
@@ -182,14 +182,14 @@ export function PreviewModal({
                   </Button>
                 )}
                 <Space.Compact>
+                  <Space.Addon>{t('preview.load')}</Space.Addon>
                   <InputNumber
                     aria-label={t('preview.load')}
                     min={1}
                     max={MAX_ITEMS}
                     value={cap}
                     onChange={value => setCap(value ?? preview.maxItems)}
-                    addonBefore={t('preview.load')}
-                    style={{width: 190}}
+                    className="cap-input"
                   />
                   <Button icon={<ReloadOutlined />} loading={loading} onClick={() => onReload(cap)}>
                     {t('preview.reload')}

@@ -22,7 +22,9 @@ default, Load all), reading pages ahead in parallel; each pick is checked
 over HTTP, its media link is read from the site's own player in a hidden,
 sandboxed window, and the file comes straight from the media server with
 resume. An MP4 is kept byte for byte as served (no conversion, no tag
-rewrite): it is only validated, and dated by the server's Last-Modified. Measured on a 195-result, 9-page search: listed in 3.8 s (6.3 s
+rewrite): it is only validated, and dated by the server's Last-Modified.
+The disk forecast sizes each pick at the resolution its player offers (a
+1080p or 480p file, not an 8K-class "best" that would block a large batch). Measured on a 195-result, 9-page search: listed in 3.8 s (6.3 s
 reading only the linked pages), all 195 checked in ~13 s (22.5 s at 6 at a
 time), two ~200 MB videos downloaded and validated in ~14 s.
 

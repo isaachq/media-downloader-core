@@ -2,8 +2,17 @@ import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import type {ExtractResult} from '../../core/analyze.js'
 import {cancelledError, DownloadError} from '../../core/errors.js'
-import {genericChoices} from '../../core/formats.js'
-import type {AnalysisResult, MediaSummary, PlaylistAnalysis, VideoAnalysis} from '../../types.js'
+import {estimateBytes} from '../../core/cost.js'
+import {AUDIO_CONTAINERS, genericChoices} from '../../core/formats.js'
+import type {
+  AnalysisResult,
+  FormatChoice,
+  FormatProfile,
+  MediaSummary,
+  PlaylistAnalysis,
+  VideoAnalysis,
+  VideoContainer,
+} from '../../types.js'
 import type {MediaResolver} from '../browser.js'
 import {type Fetch, HttpSession} from '../http.js'
 import {fetchMedia} from '../media-fetch.js'
@@ -470,9 +479,48 @@ export class PlayerPageSource implements MediaSource {
     return {
       kind: 'video',
       media: this.#summary({id, url, title: page.title, duration: page.duration, thumbnail: page.thumbnail}),
-      choices: page.player ? genericChoices() : [],
+      choices: page.player ? playerChoices(page) : [],
     }
   }
+}
+
+/** Heights assumed when a page doesn't say which it offers (a common best). */
+const UNKNOWN_HEIGHTS: readonly number[] = [1080]
+
+/**
+ * What a video page can become, sized at the heights its player offers: the
+ * disk forecast then counts a 1080p (or 480p) file, not the "best" of any
+ * site (8K-class bitrates). Sizes come from duration × a typical bitrate for
+ * the height — measured files of such sites run 1.3–2.8× smaller, so the
+ * forecast errs on the safe side. MP4 is served as is; WebM is transcoded;
+ * audio is extracted from the smallest rendition.
+ */
+export function playerChoices(page: Pick<VideoPage, 'heights' | 'duration'>): FormatChoice[] {
+  const heights = page.heights.length > 0 ? page.heights : UNKNOWN_HEIGHTS
+  const containers: readonly VideoContainer[] = ['mp4', 'mkv', 'webm']
+  const video = containers.flatMap(container =>
+    heights.map(height => {
+      const profile: FormatProfile = {kind: 'video', container, maxHeight: height}
+      return {
+        profile,
+        label: `${height}p · ${container.toUpperCase()}`,
+        estimatedBytes: estimateBytes(profile, [], page.duration),
+        requiresConversion: container === 'webm',
+      } satisfies FormatChoice
+    }),
+  )
+  // audio is extracted from the smallest rendition: that download is the disk need
+  const smallest = estimateBytes({kind: 'video', container: 'mp4', maxHeight: heights.at(-1)!}, [], page.duration)
+  const audio = AUDIO_CONTAINERS.map(
+    container =>
+      ({
+        profile: {kind: 'audio', container},
+        label: `Audio · ${container.toUpperCase()}`,
+        estimatedBytes: smallest,
+        requiresConversion: false,
+      }) satisfies FormatChoice,
+  )
+  return [...video, ...audio]
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────

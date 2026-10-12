@@ -7,7 +7,8 @@ import {MediaDownloader} from '../src/downloader.js'
 import {BatchScheduler} from '../src/scheduler.js'
 import {parsePlayerPageSites} from '../src/sources/player-page/config.js'
 import {decodeEntities, firstPage, readListing, readVideoPage, videoMatcher} from '../src/sources/player-page/parse.js'
-import {candidates, PlayerPageSource} from '../src/sources/player-page/source.js'
+import {estimateBytes} from '../src/core/cost.js'
+import {candidates, PlayerPageSource, playerChoices} from '../src/sources/player-page/source.js'
 import {startFakePlayerSite} from './helpers/fake-player-site.js'
 import {type FakeBinaries, writeFakes} from './helpers/fakes.js'
 
@@ -85,6 +86,23 @@ describe('player pages: reading', () => {
     assert.deepEqual(candidates('https://m.test/v/9.mp4', heights, {kind: 'audio', container: 'mp3'}), [
       'https://m.test/v/9.mp4',
     ])
+  })
+
+  it('sizes a video at the heights its player offers, never at an 8K-class "best"', () => {
+    const hour = {duration: 3600}
+    const best = {kind: 'video', container: 'mp4'} as const
+    const at = (height: number) => estimateBytes({...best, maxHeight: height}, [], 3600)!
+    // a 1080p page: "best" is 1080p (~2.8 GB/h at 6 Mbps), not 50 Mbps (~22 GB/h)
+    assert.equal(estimateBytes(best, playerChoices({...hour, heights: [1080, 720]}), 3600), at(1080))
+    assert.ok(at(1080) < 3e9)
+    // a 480p-only page stays 480p whatever the cap
+    assert.equal(estimateBytes(best, playerChoices({...hour, heights: [480]}), 3600), at(480))
+    assert.equal(estimateBytes({...best, maxHeight: 720}, playerChoices({...hour, heights: [1080, 720]}), 3600), at(720))
+    // unknown heights: sized as 1080p
+    assert.equal(estimateBytes(best, playerChoices({...hour, heights: []}), 3600), at(1080))
+    // audio: the smallest rendition is what gets downloaded
+    assert.equal(estimateBytes(audio, playerChoices({...hour, heights: [1080, 480]}), 3600), at(480))
+    assert.equal(playerChoices({heights: [720], duration: undefined})[0]?.estimatedBytes, undefined)
   })
 
   it('validates the sites file strictly', () => {
@@ -230,7 +248,10 @@ describe('player pages, end to end (local fake)', () => {
     const batch = scheduler.schedule({url: site.searchUrl('term'), profile: mp4, outDir: out})
     await scheduler.whenIdle()
     const done = scheduler.batch(batch.id)!
-    assert.equal(done.status, 'completed-with-errors', 'one item was unavailable')
+    assert.equal(done.status, 'completed-with-errors', JSON.stringify({error: done.error, estimate: done.estimate}))
+    // forecast at the offered 1080p: 29 × ~49 MB, not 29 × an 8K-class "best"
+    const each = estimateBytes({...mp4, maxHeight: 1080}, [], 61.5)!
+    assert.equal(done.estimate?.bytes, 29 * each)
     assert.equal(done.preflight.total, 30)
     assert.equal(done.preflight.unavailable, 1, 'the removed video')
     assert.equal(done.jobs.succeeded, 29)

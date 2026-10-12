@@ -74,7 +74,7 @@ export async function startFakePlayerSite(config: FakePlayerSiteConfig = {}): Pr
   const videoPage = (id: string) => `<!DOCTYPE html><html><head>
     <meta property="og:title" content="Clip ${id} &amp; more">
     <meta property="og:image" content="${origin}/thumbs/${id}.jpg">
-    <script>var video_duration = "754.5"; var video_id = "${id}";</script>
+    <script>var video_duration = "61.5"; var video_id = "${id}";</script>
     <title>Clip ${id} - Fake</title></head><body>
     <script>let files = '{"files":[${heights.map(h => `{"src":"opaque","label":"${h}p", "res":"${h}"}`).join(',')}]}'</script>
     <video id="video" preload="auto" controls></video></body></html>`

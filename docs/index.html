@@ -148,6 +148,8 @@ section .intro { color: var(--muted); margin: 0 0 32px; max-width: 46em; font-si
 .os li a:hover { border-color: var(--accent); }
 .os li a small { color: var(--muted); }
 .os .hint { color: var(--muted); font-size: 13.5px; margin: 0 0 8px; }
+.install-steps { margin: 0 0 10px; padding-left: 20px; color: var(--ink); font-size: 14px; display: grid; gap: 6px; }
+.install-steps b { font-weight: 600; }
 .command { display: flex; align-items: stretch; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--bg); }
 .command code { flex: 1; min-width: 0; padding: 10px 12px; font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink); overflow-wrap: anywhere; }
 .command .copy { border: 0; border-left: 1px solid var(--line); background: var(--surface); color: var(--accent-ink); font: inherit; font-size: 13px; font-weight: 600; padding: 0 14px; cursor: pointer; }
@@ -315,7 +317,11 @@ footer a { color: var(--muted); }
           <li><a data-asset="win-x64.exe" href="https://github.com/isaachq/media-downloader-core/releases"><span data-i18n="dl.win64">64-bit (most PCs)</span><small>.exe</small></a></li>
           <li><a data-asset="win-arm64.exe" href="https://github.com/isaachq/media-downloader-core/releases"><span>ARM64</span><small>.exe</small></a></li>
         </ul>
-        <p class="hint" data-i18n="dl.winHint">If SmartScreen appears: More info → Run anyway.</p>
+        <ol class="install-steps">
+          <li data-i18n="dl.win1">Open the <b>.exe</b>. If a blue window says <b>“Windows protected your PC”</b>, click <b>More info</b>.</li>
+          <li data-i18n="dl.win2">Click <b>Run anyway</b>. The installer opens, finishes by itself and starts the app.</li>
+        </ol>
+        <p class="hint" data-i18n="dl.winWhy">Why the warning? This is a free project made at home, and it isn't signed with a paid Microsoft certificate yet. The warning is about that missing signature, not about the file — its code is public on GitHub, and Windows stops asking as more people install it.</p>
       </div>
       <div class="os" data-os="linux">
         <h3>Linux</h3>
@@ -397,7 +403,10 @@ footer a { color: var(--muted); }
     'dl.macHint': 'Primera vez: Configuración del Sistema → Privacidad y seguridad → “Abrir de todos modos” (una vez). Aún no está firmada con un certificado de pago de Apple.',
     'dl.macTerminal': '¿No aparece “Abrir de todos modos”? Arrastra la app a Aplicaciones y ejecuta esto una vez en Terminal:',
     'dl.copy': 'Copiar', 'copied': 'Copiado',
-    'dl.win64': '64 bits (la mayoría de las PC)', 'dl.winHint': 'Si aparece SmartScreen: Más información → Ejecutar de todas formas.',
+    'dl.win64': '64 bits (la mayoría de las PC)', 
+    'dl.win1': 'Abre el <b>.exe</b>. Si una ventana azul dice <b>“Windows protegió su PC”</b>, haz clic en <b>Más información</b>.',
+    'dl.win2': 'Haz clic en <b>Ejecutar de todas formas</b>. El instalador se abre, termina solo y arranca la app.',
+    'dl.winWhy': '¿Por qué el aviso? Es un proyecto gratuito hecho en casa y aún no está firmado con un certificado de pago de Microsoft. El aviso es por esa firma que falta, no por el archivo — su código es público en GitHub, y Windows deja de preguntar a medida que más personas lo instalan.',
     'dl.linuxHint': '.deb y .rpm también para ARM64 en la página de versiones.',
     'note': 'Hecho para respaldar contenido tuyo o que tienes permitido conservar. Respeta los términos de cada sitio y los derechos de autor. Gratis para uso personal y no comercial (PolyForm Noncommercial 1.0.0).',
     'footer.changes': 'Novedades', 'footer.issues': 'Reportar un problema',

@@ -705,6 +705,9 @@ npm run typecheck   # strict: exactOptionalPropertyTypes, noUncheckedIndexedAcce
 npm run lint        # biome
 npm run build       # dist/: ESM + CJS + .d.ts
 npm run stress      # orchestrator benchmark with fake binaries
+npm run perf        # every benchmark 3× in fresh processes, medians compared with .perf/baseline.json
+npm run perf -- --save-baseline        # keep this run as the baseline (per machine, not committed)
+npm run perf -- profile stress 1000    # CPU profile + the hottest functions in src/
 npm run demo -- "https://www.youtube.com/watch?v=jNQXAC9IVRw"     # list choices
 npm run demo -- "https://www.youtube.com/watch?v=jNQXAC9IVRw" 0   # download choice 0
 ```

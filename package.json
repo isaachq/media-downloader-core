@@ -45,7 +45,9 @@
     "demo": "tsx examples/demo.ts",
     "prepublishOnly": "npm run check && npm run build",
     "mdc": "tsx src/cli/bin.ts",
-    "bench": "node --expose-gc --import tsx scripts/batch-bench.ts"
+    "bench": "node --expose-gc --import tsx scripts/batch-bench.ts",
+    "bench:archive": "node --expose-gc --import tsx scripts/archive-bench.ts",
+    "perf": "tsx scripts/perf.ts"
   },
   "license": "PolyForm-Noncommercial-1.0.0",
   "devDependencies": {

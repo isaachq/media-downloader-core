@@ -1,6 +1,6 @@
 import {CloudDownloadOutlined, FolderOpenOutlined, ScheduleOutlined, SnippetsOutlined} from '@ant-design/icons'
 import {App as AntApp, Button, Card, Col, Form, Input, Row, Select, Space, Typography} from 'antd'
-import {useMemo, useRef, useState} from 'react'
+import {useRef, useState} from 'react'
 import {
   AUDIO_FORMATS,
   type Format,
@@ -14,11 +14,22 @@ import {api} from '../api'
 import {useApp} from '../context'
 import {isHttpUrl} from '../format'
 import {type MessageKey, useT} from '../i18n'
-import {useStore} from '../store'
+import {type AppStore, useAppStore, useStoreValue} from '../store'
 import {AnalyzeLoader} from './AnalyzeLoader'
 import {type PlaylistPreview, type PreviewChoice, PreviewModal} from './PreviewModal'
 
 const ACTIVE = new Set(['checking', 'running'])
+
+/** Where a new batch would go in the line: 0 when nothing runs (it starts now). O(batches). */
+function waitingPosition(store: AppStore): number {
+  let active = 0
+  let scheduled = 0
+  for (const batch of store.batches.values()) {
+    if (ACTIVE.has(batch.status)) active++
+    else if (batch.status === 'scheduled') scheduled++
+  }
+  return active > 0 ? scheduled + 1 : 0
+}
 
 /**
  * URL in, batch out. Submitting never blocks: if a batch is running the new
@@ -28,8 +39,9 @@ export function DownloadBar() {
   const t = useT()
   const {message} = AntApp.useApp()
   const {info, settings, updateSettings} = useApp()
-  const store = useStore()
-  const version = store.version
+  const store = useAppStore()
+  // the form re-renders when the line of batches changes, not on every progress event
+  const waiting = useStoreValue(waitingPosition)
   const [url, setUrl] = useState('')
   const [touched, setTouched] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -40,16 +52,6 @@ export function DownloadBar() {
 
   const audio = isAudioFormat(settings.format)
   const valid = isHttpUrl(url)
-  // biome-ignore lint/correctness/useExhaustiveDependencies: recompute when the store changes
-  const waiting = useMemo(() => {
-    let active = 0
-    let scheduled = 0
-    for (const batch of store.batches.values()) {
-      if (ACTIVE.has(batch.status)) active++
-      else if (batch.status === 'scheduled') scheduled++
-    }
-    return active > 0 ? scheduled + 1 : 0
-  }, [version])
 
   const fail = (error: unknown) => void message.error(error instanceof Error ? error.message : String(error))
 

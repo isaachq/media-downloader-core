@@ -1,5 +1,49 @@
 # Changelog
 
+## App 0.2.0-beta.6 · library 1.5.0
+
+**Finished tab.** Every finished file of every session, newest first, from the
+download archive (so it survives restarts and "clear finished"): search by
+title or file name, ignoring case and accents; play a file, show it in its
+folder, copy its path, open the downloads folder. Each file says whether it was
+verified (the archive now records which integrity check it passed — a file
+downloaded with the check off says "not checked", not "verified"), and whether
+it is still on disk or changed since. The page shown follows new completions,
+at most every 2 s. Batches get an Open folder button. Files open by archive
+key: the renderer never hands the system a path.
+
+**Run report.** A window that sums up the three tabs — the run ID (the id in
+every log line of this run), pending / in progress / finished / failed, each
+pipeline stage with what is in it right now, every batch with its progress and
+time left, recent results and failures. It reads the app's state every 15 s
+(or on demand), not on every event, and copies as plain text.
+
+**TikTok: posts a profile counts but doesn't list.** TikTok's post count
+includes posts its public listing never returns (private, deleted, visible
+only to the author). A real 1,022-post profile listed its 1,018 public posts
+back to its first one and TikTok said there were no more; the preview offered
+"Load all" anyway, which brought nothing. Listings now say whether they
+reached the end: the preview explains the gap instead, and a listing that
+really stopped short (refused, stalled) says so and offers to continue.
+
+**TikTok: veteran profiles.** The listing stopped at September 2016; videos
+from musical.ly (2014–2016) keep their dates on TikTok, so a veteran
+profile's oldest posts were silently left out. Tested with a 10-year,
+1,300-post profile.
+
+**Website.** A landing page (GitHub Pages, published from `docs/` by a
+workflow) with every feature and how it works, in English and Spanish; it
+reads the newest release and offers the installer that fits the visitor's
+computer. The README demo now shows the Finished tab and the run report, and
+its screenshots come from a real, verified download.
+
+**Faster, lighter.** `DownloadArchive.list()` — pages of the history from
+memory after one read of the log (10,000 records: first page 128 ms, then
+0.06 ms; a search 3 ms). The app's job counts are kept per change instead of
+scanned; the stats, the tab counts and the download form re-render only when
+what they show changes, not on every progress event; the Completed count is
+right past the 1,500 jobs the app keeps in memory.
+
 ## App 0.2.0-beta.5 · library 1.4.0
 
 **Whole TikTok profiles.** The preview tells how many posts a profile has and

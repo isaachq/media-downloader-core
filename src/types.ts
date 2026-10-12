@@ -95,6 +95,12 @@ export type PlaylistAnalysis = {
    * capped and can be continued.
    */
   readonly total?: number | undefined
+  /**
+   * The listing reached the end of the list. With fewer entries than `total`,
+   * the rest are items the site counts but does not list (private, deleted,
+   * visible only to their author): asking for more brings nothing.
+   */
+  readonly complete?: boolean | undefined
 }
 
 export type AnalysisResult = VideoAnalysis | PlaylistAnalysis

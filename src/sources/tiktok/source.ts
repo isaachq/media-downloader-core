@@ -304,8 +304,9 @@ export class TikTokSource implements MediaSource {
         newDeviceId,
         resume,
         onProgress: listed => onProgress?.({listed, expected: max}),
+        // once the end was reached, a later (second) pass that stops short doesn't undo it
         onEnd: whole => {
-          complete = whole
+          complete ||= whole
         },
       })
     // every chunk is kept as soon as it is listed: a refusal, a cancel or a
@@ -361,6 +362,7 @@ export class TikTokSource implements MediaSource {
       entries: posts.map((post, i) => ({...this.#summary(post), index: i + 1})),
       choices: genericChoices(),
       total: account.videoCount,
+      complete,
     }
   }
 

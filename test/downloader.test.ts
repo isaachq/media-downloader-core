@@ -278,6 +278,10 @@ describe('publication dates', () => {
     assert.equal(await mtime('time'), 1_700_000_000_000)
     assert.equal(await mtime('day'), Date.UTC(2024, 2, 5, 12))
     assert.ok((await mtime('none')) >= started - 1000, 'undated files keep the time they were written')
+    // the archive (the app's Finished tab) records which integrity check each file passed
+    const finished = await dl.archive.list()
+    assert.equal(finished.total, 3)
+    assert.ok(finished.entries.every(entry => entry.validation === 'none' && entry.sha256?.length === 64))
   })
 
   it('ignores placeholder and future dates', () => {

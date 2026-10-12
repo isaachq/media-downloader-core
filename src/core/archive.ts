@@ -3,7 +3,7 @@ import type {FileHandle} from 'node:fs/promises'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import {createInterface} from 'node:readline'
-import type {FormatProfile} from '../types.js'
+import type {FormatProfile, ValidationLevel} from '../types.js'
 import {renameRetrying} from './files.js'
 import {profileKey} from './formats.js'
 
@@ -18,7 +18,27 @@ export type ArchiveEntry = {
   readonly title?: string | undefined
   readonly sha256?: string | undefined
   readonly duration?: number | undefined
+  /** The integrity check the file passed ('none': only its checksum was taken). Absent in older records. */
+  readonly validation?: ValidationLevel | undefined
   readonly completedAt: number
+}
+
+/** A page of finished downloads, newest first (see `DownloadArchive.list`). */
+export type ArchiveQuery = {
+  /** Matching entries to skip, newest first. Default 0. */
+  readonly offset?: number | undefined
+  /** Entries per page, 1–500. Default 50. */
+  readonly limit?: number | undefined
+  /** Words that must all appear in the title or file name; case and accents are ignored. */
+  readonly search?: string | undefined
+}
+
+export type ArchivePage = {
+  readonly entries: readonly ArchiveEntry[]
+  /** Entries matching the search (all of them without one). */
+  readonly total: number
+  /** Bytes of the matching entries. */
+  readonly bytes: number
 }
 
 /** What a lookup needs — all the archive keeps in memory per entry. */
@@ -33,6 +53,13 @@ type Indexed = ArchiveHit & {readonly line: number}
 export function archiveKey(extractor: string, mediaId: string, profile: FormatProfile): string {
   return `${extractor.toLowerCase()}:${mediaId}:${profileKey(profile)}`
 }
+
+/** Lower case without accents: "Canción" and "cancion" find each other. */
+const fold = (text: string): string =>
+  text
+    .normalize('NFD')
+    .replace(/\p{M}+/gu, '')
+    .toLowerCase()
 
 /** Compact when the log holds this many more records than live entries. */
 const COMPACT_SLACK = 1000
@@ -74,6 +101,18 @@ export class DownloadArchive {
   #handle: FileHandle | undefined
   #opening: Promise<void> | undefined
   #writes: Promise<void> = Promise.resolve()
+  /**
+   * Full records by key, oldest first — only once `list()` has been used (the
+   * index alone serves downloads), then kept in step with every add / remove,
+   * so a list of finished files never re-reads the log.
+   */
+  #full: Map<string, ArchiveEntry> | undefined
+  #fullLoading: Promise<Map<string, ArchiveEntry>> | undefined
+  #fullBytes = 0
+  /** `#full` newest first, rebuilt on the first list() after a change. */
+  #newestFirst: ArchiveEntry[] | undefined
+  /** Folded title + file name per entry, for searching (computed once per entry). */
+  readonly #haystacks = new WeakMap<ArchiveEntry, string>()
 
   constructor(readonly file: string) {}
 
@@ -138,6 +177,11 @@ export class DownloadArchive {
     const full: ArchiveEntry = {...entry, completedAt: Date.now()}
     await this.#append({op: 'put', entry: full}, line => {
       this.#index.set(full.key, {filepath: full.filepath, sizeBytes: full.sizeBytes, line})
+      this.#forget(full.key)
+      if (this.#full) {
+        this.#full.set(full.key, full) // re-added keys move to the newest end, as in the log
+        this.#fullBytes += full.sizeBytes
+      }
     })
     return full
   }
@@ -145,13 +189,47 @@ export class DownloadArchive {
   async remove(key: string): Promise<void> {
     await this.open()
     if (!this.#index.has(key)) return
-    await this.#append({op: 'del', key}, () => this.#index.delete(key))
+    await this.#append({op: 'del', key}, () => {
+      this.#index.delete(key)
+      this.#forget(key)
+    })
+  }
+
+  /**
+   * Finished downloads, newest first, a page at a time, optionally filtered.
+   * The first call reads the log once (streamed); later calls are served from
+   * memory and follow every add / remove — O(page) without a search, O(n)
+   * with one (each entry's folded text is computed once).
+   */
+  async list(query: ArchiveQuery = {}): Promise<ArchivePage> {
+    const full = await this.#loadFull()
+    this.#newestFirst ??= [...full.values()].reverse()
+    const newest = this.#newestFirst
+    const words = fold(query.search ?? '')
+      .split(/\s+/)
+      .filter(Boolean)
+    let matching = newest
+    let bytes = this.#fullBytes
+    if (words.length > 0) {
+      matching = newest.filter(entry => {
+        const haystack = this.#haystack(entry)
+        return words.every(word => haystack.includes(word))
+      })
+      bytes = matching.reduce((sum, entry) => sum + entry.sizeBytes, 0)
+    }
+    const offset = Math.max(0, Math.floor(query.offset ?? 0))
+    const limit = Math.min(500, Math.max(1, Math.floor(query.limit ?? 50)))
+    return {entries: matching.slice(offset, offset + limit), total: matching.length, bytes}
   }
 
   /** Every live entry with its full record, streamed from disk (used by verification). */
   async entries(): Promise<ArchiveEntry[]> {
     await this.open()
     await this.#writes
+    return this.#live()
+  }
+
+  async #live(): Promise<ArchiveEntry[]> {
     const entries: ArchiveEntry[] = []
     let line = 0
     for await (const {record} of records(this.file)) {
@@ -171,6 +249,60 @@ export class DownloadArchive {
     this.#opening = undefined
     this.#index.clear()
     this.#records = 0
+    this.#full = undefined
+    this.#fullLoading = undefined
+    this.#fullBytes = 0
+    this.#newestFirst = undefined
+  }
+
+  /**
+   * Load the full records once. It runs inside the write chain, so no record
+   * lands between reading the log and following later writes.
+   */
+  #loadFull(): Promise<Map<string, ArchiveEntry>> {
+    if (this.#full) return Promise.resolve(this.#full)
+    this.#fullLoading ??= this.open().then(() => {
+      const load = this.#writes.then(async () => {
+        const full = new Map<string, ArchiveEntry>()
+        let bytes = 0
+        for (const entry of await this.#live()) {
+          full.set(entry.key, entry)
+          bytes += entry.sizeBytes
+        }
+        this.#full = full
+        this.#fullBytes = bytes
+        this.#newestFirst = undefined
+        return full
+      })
+      this.#writes = load.then(
+        () => {},
+        () => {},
+      )
+      // a failed read is tried again next time
+      return load.catch(error => {
+        this.#fullLoading = undefined
+        throw error
+      })
+    })
+    return this.#fullLoading
+  }
+
+  /** Drop a key from the loaded records (before a re-add or on removal). */
+  #forget(key: string): void {
+    this.#newestFirst = undefined
+    const old = this.#full?.get(key)
+    if (!old) return
+    this.#full!.delete(key)
+    this.#fullBytes -= old.sizeBytes
+  }
+
+  #haystack(entry: ArchiveEntry): string {
+    let text = this.#haystacks.get(entry)
+    if (text === undefined) {
+      text = fold(`${entry.title ?? ''} ${path.basename(entry.filepath)}`)
+      this.#haystacks.set(entry, text)
+    }
+    return text
   }
 
   /**

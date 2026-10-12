@@ -1,4 +1,10 @@
-import {ClearOutlined, ClockCircleOutlined, StopOutlined, UnorderedListOutlined} from '@ant-design/icons'
+import {
+  ClearOutlined,
+  ClockCircleOutlined,
+  FolderOpenOutlined,
+  StopOutlined,
+  UnorderedListOutlined,
+} from '@ant-design/icons'
 import {Button, Card, Empty, Flex, Popconfirm, Progress, Space, Table, Tag, Typography} from 'antd'
 import type {BatchId, BatchSnapshot, PreflightItem} from 'media-downloader-core'
 import {memo, useCallback, useEffect, useMemo, useState} from 'react'
@@ -164,6 +170,16 @@ const BatchCard = memo(function BatchCard({batch}: {readonly batch: BatchSnapsho
           {preflight.total ? (
             <Button size="small" icon={<UnorderedListOutlined />} onClick={() => setOpen(!open)} aria-expanded={open}>
               {t('batch.items')}
+            </Button>
+          ) : null}
+          {jobs.succeeded > 0 ? (
+            <Button
+              size="small"
+              icon={<FolderOpenOutlined />}
+              onClick={() => void api().openFolder({batchId: batch.id})}
+              data-testid="batch-open-folder"
+            >
+              {t('batch.openFolder')}
             </Button>
           ) : null}
           {!finished ? (

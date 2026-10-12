@@ -1,5 +1,7 @@
 // Records docs/demo.gif: the real app (out/, real yt-dlp + FFmpeg) pastes a link,
-// downloads it as MP4, verifies it and shows the integrity report.
+// downloads it as MP4, verifies it, shows the integrity report, finds the file in
+// the Finished tab and opens the run report — and saves those two screens as
+// docs/screenshots/finished.png and report.png (real files, really verified).
 //
 //   npm run build && MDC_DATA_DIR=<folder with tools from `mdc setup`> node scripts/record-demo.cjs [url]
 //
@@ -11,15 +13,19 @@ const {execFileSync} = require('node:child_process')
 const {_electron: electron} = require('@playwright/test')
 
 const APP_DIR = path.resolve(__dirname, '..')
-const OUTPUT = path.resolve(APP_DIR, '..', 'docs', 'demo.gif')
+const DOCS = path.resolve(APP_DIR, '..', 'docs')
+const OUTPUT = path.join(DOCS, 'demo.gif')
 const URL = process.argv[2] ?? 'https://www.youtube.com/watch?v=jNQXAC9IVRw'
 const SIZE = {width: 1280, height: 800}
 
+/** The FFmpeg `mdc setup` installed in the data folder, else the one on the PATH (setup keeps a working system copy). */
 function ffmpegPath(dataDir) {
   const root = path.join(dataDir, 'bin', 'ffmpeg')
-  const version = fs.readdirSync(root).filter(name => fs.statSync(path.join(root, name)).isDirectory()).sort().at(-1)
-  if (!version) throw new Error(`No FFmpeg in ${root}: run mdc setup --data-dir ${dataDir}`)
-  return path.join(root, version, process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg')
+  const versions = fs.existsSync(root)
+    ? fs.readdirSync(root).filter(name => fs.statSync(path.join(root, name)).isDirectory())
+    : []
+  const version = versions.sort().at(-1)
+  return version ? path.join(root, version, process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg') : 'ffmpeg'
 }
 
 async function main() {
@@ -67,10 +73,30 @@ async function main() {
     )
     await page.waitForTimeout(1500)
 
-    await page.getByRole('tab', {name: 'Downloads'}).click()
+    await page.getByRole('tab', {name: /^Downloads/}).click()
     await page.waitForTimeout(1200)
     await page.locator('[data-testid="integrity-tag"]').first().click()
     await page.waitForTimeout(3500)
+    await page.keyboard.press('Escape')
+    await page.mouse.click(SIZE.width - 40, SIZE.height - 40) // close the report popover
+
+    // every finished file, ready to play or show in its folder
+    await page.getByRole('tab', {name: /^Finished/}).click()
+    const row = page.locator('.finished-row').first()
+    await row.waitFor()
+    await page.waitForTimeout(900)
+    await page.screenshot({path: path.join(DOCS, 'screenshots', 'finished.png')})
+    await row.getByRole('button', {name: 'Play / open'}).hover()
+    await page.waitForTimeout(1600)
+    await row.getByRole('button', {name: 'Show in folder'}).hover()
+    await page.waitForTimeout(1400)
+
+    // the whole run, summed up
+    await page.getByTestId('open-report').click()
+    await page.getByTestId('report').waitFor()
+    await page.waitForTimeout(1200)
+    await page.screenshot({path: path.join(DOCS, 'screenshots', 'report.png')})
+    await page.waitForTimeout(2800)
     await cdp.send('Page.stopScreencast')
   } finally {
     await app.close()

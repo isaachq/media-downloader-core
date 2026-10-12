@@ -1,4 +1,5 @@
-import {readFileSync} from 'node:fs'
+import {appendFileSync, readFileSync} from 'node:fs'
+import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import {app, BrowserWindow, dialog, ipcMain, nativeTheme, screen, shell} from 'electron'
 import {
@@ -24,6 +25,9 @@ import {
   type AppInfo,
   type AppSettings,
   CHANNEL,
+  type FinishedEntry,
+  type FinishedPage,
+  type FinishedQuery,
   isAudioFormat,
   type Preview,
   RESTART_SETTINGS,
@@ -52,6 +56,8 @@ function binariesFromEnv(): BinaryPaths | undefined {
   }
 }
 
+/** When this run (the engine's session) began. */
+const STARTED_AT = Date.now()
 let window: BrowserWindow | undefined
 let engine: MediaDownloader
 let scheduler: BatchScheduler
@@ -253,6 +259,7 @@ function registerIpc(): void {
       maxConcurrency: MediaDownloader.maxConcurrency(),
       dataDir: engine.dataDir,
       sessionId: engine.sessionId,
+      startedAt: STARTED_AT,
     }),
   )
   ipcMain.handle(CHANNEL.getSettings, () => settings.current)
@@ -332,6 +339,7 @@ function registerIpc(): void {
       mix,
       maxItems: cap,
       total: analysis.total,
+      complete: analysis.complete,
     }
   })
   ipcMain.handle(CHANNEL.analyzeCancel, () => reading?.abort())
@@ -374,8 +382,91 @@ function registerIpc(): void {
   ipcMain.handle(CHANNEL.updateCheck, () => updater?.check() ?? {status: 'idle'})
   ipcMain.handle(CHANNEL.updateInstall, () => updater?.update())
   ipcMain.handle(CHANNEL.reveal, (_event, file: unknown) => {
-    if (typeof file === 'string' && path.isAbsolute(file)) shell.showItemInFolder(file)
+    if (typeof file === 'string' && path.isAbsolute(file)) opener.reveal(file)
   })
+  ipcMain.handle(CHANNEL.finished, async (_event, query: unknown): Promise<FinishedPage> => {
+    const q = (typeof query === 'object' && query !== null ? query : {}) as Partial<FinishedQuery>
+    const page = await engine.archive.list({
+      offset: Number.isInteger(q.offset) ? q.offset : 0,
+      limit: Number.isInteger(q.limit) ? q.limit : 50,
+      search: typeof q.search === 'string' ? q.search.slice(0, 200) : undefined,
+    })
+    // only the page shown is checked on disk: ≤ 500 stats, in parallel
+    const entries = await Promise.all(
+      page.entries.map(async (entry): Promise<FinishedEntry> => {
+        const stat = await fs.stat(entry.filepath).catch(() => undefined)
+        return {
+          key: entry.key,
+          title: entry.title ?? path.basename(entry.filepath),
+          filepath: entry.filepath,
+          sizeBytes: entry.sizeBytes,
+          duration: entry.duration,
+          extractor: entry.extractor,
+          url: entry.url,
+          completedAt: entry.completedAt,
+          sha256: entry.sha256,
+          validation: entry.validation,
+          file: !stat?.isFile() ? 'missing' : stat.size === entry.sizeBytes ? 'ok' : 'changed',
+        }
+      }),
+    )
+    return {entries, total: page.total, bytes: page.bytes}
+  })
+  ipcMain.handle(CHANNEL.openFinished, async (_event, key: unknown, target: unknown) => {
+    // a key from the archive, never a path from the renderer: only recorded downloads open
+    if (typeof key !== 'string' || (target !== 'file' && target !== 'folder')) return false
+    const hit = await engine.archive.find(key)
+    if (!hit) return false
+    if (target === 'folder') opener.reveal(hit.filepath)
+    else await opener.open(hit.filepath)
+    return true
+  })
+  ipcMain.handle(CHANNEL.openFolder, async (_event, target: unknown) => {
+    const folder = await folderOf(target)
+    if (!folder) return false
+    await opener.open(folder)
+    return true
+  })
+}
+
+/**
+ * Hands files and folders to the system (Finder / Explorer / the default
+ * player). e2e runs record the requests in MDC_OPEN_LOG instead of opening
+ * windows on the test machine.
+ */
+const opener = process.env['MDC_OPEN_LOG']
+  ? {
+      reveal: (file: string) => appendFileSync(process.env['MDC_OPEN_LOG']!, `reveal ${file}\n`),
+      open: async (target: string) => appendFileSync(process.env['MDC_OPEN_LOG']!, `open ${target}\n`),
+    }
+  : {
+      reveal: (file: string) => shell.showItemInFolder(file),
+      open: async (target: string) => {
+        const problem = await shell.openPath(target)
+        if (problem) engine.log('warn', `could not open ${target}: ${problem}`)
+      },
+    }
+
+/** The downloads folder (created if needed), or the folder holding a batch's files. */
+async function folderOf(target: unknown): Promise<string | undefined> {
+  if (target === 'downloads') {
+    const dir = settings.current.downloadDir
+    await fs.mkdir(dir, {recursive: true}).catch(() => {})
+    return dir
+  }
+  const batchId = typeof target === 'object' && target !== null ? (target as {batchId?: unknown}).batchId : undefined
+  if (typeof batchId !== 'string') return undefined
+  // a playlist's files sit in a sub-folder named after it: where its finished jobs went
+  for (const job of engine.jobs()) {
+    if (job.batchId === batchId && job.filepath) return path.dirname(job.filepath)
+  }
+  const batch = scheduler.batch(batchId as BatchId)
+  if (!batch) return undefined
+  const exists = await fs.stat(batch.outDir).then(
+    stat => stat.isDirectory(),
+    () => false,
+  )
+  return exists ? batch.outDir : undefined
 }
 
 if (!app.requestSingleInstanceLock()) app.quit()

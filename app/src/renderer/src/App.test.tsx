@@ -206,7 +206,7 @@ describe('preview before downloading a list', () => {
 
   it('offers to load a whole profile when it holds more than was listed, with progress, and shows dates', async () => {
     const dated = (index: number) => ({...entry(index, `Post ${index}`), publishedAt: Date.UTC(2024, 2, index) / 1000})
-    const {api, user, dialog} = await open(list({entries: [dated(1), dated(2)], maxItems: 500, total: 1234}))
+    const {api, user, dialog} = await open(list({entries: [dated(1), dated(2)], maxItems: 2, total: 1234}))
     expect(within(dialog).getByText('Showing 2 of 1234.')).toBeInTheDocument()
     expect(within(dialog).getByRole('columnheader', {name: 'Published'})).toBeInTheDocument()
     expect(within(dialog).getByText('Mar 1, 2024')).toBeInTheDocument()
@@ -348,7 +348,7 @@ describe('batches', () => {
     expect(screen.queryByText('Done list')).not.toBeInTheDocument()
     expect(screen.getByRole('button', {name: /Clear finished batches \(0\)/})).toBeDisabled()
 
-    await user.click(screen.getByRole('tab', {name: 'Downloads'}))
+    await user.click(screen.getByRole('tab', {name: /^Downloads/}))
     expect(screen.queryByText('Old video')).not.toBeInTheDocument()
   })
 
@@ -386,7 +386,7 @@ describe('downloads (one row per thread)', () => {
   it('lists running jobs with progress, speed, steps and tier', async () => {
     const running = job({tier: 'long', weight: 1.5, attempt: 2, title: 'Two hour concert'})
     const {user} = await mount(new FakeApi({state: {batches: [], jobs: [running]}}))
-    await user.click(screen.getByRole('tab', {name: 'Downloads'}))
+    await user.click(screen.getByRole('tab', {name: /^Downloads/}))
     expect(await screen.findByText('Two hour concert')).toBeInTheDocument()
     expect(screen.getByText('Long')).toBeInTheDocument()
     expect(screen.getByText('Attempt 2/4')).toBeInTheDocument()
@@ -415,7 +415,7 @@ describe('downloads (one row per thread)', () => {
       },
     })
     const {api, user} = await mount(new FakeApi({state: {batches: [], jobs: [done]}}))
-    await user.click(screen.getByRole('tab', {name: 'Downloads'}))
+    await user.click(screen.getByRole('tab', {name: /^Downloads/}))
     await user.click(await screen.findByTestId('integrity-tag'))
     const report = await screen.findByTestId('integrity-report')
     expect(report).toHaveTextContent('Full decode of every frame')
@@ -433,7 +433,7 @@ describe('downloads (one row per thread)', () => {
       error: {code: 'unavailable', hint: 'needs-sign-in', message: 'Sign in to confirm your age'},
     })
     const {api, user} = await mount(new FakeApi({state: {batches: [], jobs: [failed]}}))
-    await user.click(screen.getByRole('tab', {name: 'Downloads'}))
+    await user.click(screen.getByRole('tab', {name: /^Downloads/}))
     expect(await screen.findByText(/Sign-in required/)).toBeInTheDocument()
     await user.click(screen.getByRole('button', {name: 'Retry'}))
     expect(api.retryJob).toHaveBeenCalledWith(failed.id)
@@ -441,7 +441,7 @@ describe('downloads (one row per thread)', () => {
 
   it('pauses and resumes the queue', async () => {
     const {api, user} = await mount()
-    await user.click(screen.getByRole('tab', {name: 'Downloads'}))
+    await user.click(screen.getByRole('tab', {name: /^Downloads/}))
     await user.click(await screen.findByRole('button', {name: /pause queue/i}))
     expect(api.pause).toHaveBeenCalled()
     await user.click(await screen.findByRole('button', {name: /resume queue/i}))

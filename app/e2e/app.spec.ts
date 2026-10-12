@@ -87,7 +87,7 @@ test('downloads a playlist batch end to end: preflight, jobs, files on disk', as
   await expect(page.locator('.ant-message-notice, .ant-notification-notice')).toHaveCount(0, {timeout: 8_000})
   await page.screenshot({path: path.join(APP_DIR, 'test-results', 'batch.png'), fullPage: true})
 
-  await page.getByRole('tab', {name: 'Downloads'}).click()
+  await page.getByRole('tab', {name: /^Downloads/}).click()
   await expect(page.locator('[data-testid="job-status"][data-status="completed"]')).toHaveCount(4)
   await page.waitForTimeout(400)
   await page.screenshot({path: path.join(APP_DIR, 'test-results', 'downloads.png')})
@@ -114,6 +114,60 @@ test('downloads a playlist batch end to end: preflight, jobs, files on disk', as
     '003-Title-b3-b3.m4a',
     '004-Title-b4-b4.m4a',
   ])
+  await close(app)
+})
+
+test('finished files of every session, their folders, and the run report', async () => {
+  const openLog = path.join(root, 'finished-open.log')
+  const {app, page, outDir} = await launch('finished', {}, {MDC_OPEN_LOG: openLog})
+  await page.getByLabel('Video, playlist or profile URL').fill('https://fake.test/list?n=3')
+  await page
+    .getByRole('button', {name: /download/i})
+    .first()
+    .click()
+  await page
+    .locator('.ant-modal')
+    .getByRole('button', {name: /Download 3$/})
+    .click()
+  const card = page.getByTestId('batch-card').first()
+  await expect(card).toHaveAttribute('data-status', 'completed', {timeout: 60_000})
+
+  // the batch's folder, from its card
+  await card.getByTestId('batch-open-folder').click()
+  // the Finished tab: the three files, newest first, verified, with live count on the tab
+  await expect(page.getByRole('tab', {name: /^Finished/})).toContainText('3')
+  await page.getByRole('button', {name: 'Completed'}).click()
+  const list = page.getByTestId('finished-list')
+  await expect(list.locator('.finished-row')).toHaveCount(3)
+  await expect(list.getByTestId('finished-summary')).toContainText('3 files')
+  // these runs turn the integrity check off: the files have their checksum, not a "verified"
+  await expect(list.getByText('Not checked')).toHaveCount(3)
+  const first = list.locator('.finished-row').first()
+  await first.getByRole('button', {name: 'Play / open'}).click()
+  await first.getByRole('button', {name: 'Show in folder'}).click()
+  await list.getByRole('button', {name: /Open downloads folder/}).click()
+  await page.screenshot({path: path.join(APP_DIR, 'test-results', 'finished.png')})
+
+  // the run report sums the three tabs up
+  await page.locator('.ant-notification-notice-close').click()
+  await page.getByTestId('open-report').click()
+  const report = page.getByTestId('report')
+  await expect(report.getByTestId('report-finished')).toContainText('3')
+  await expect(report.getByTestId('report-run-id')).toHaveText(/^[A-Za-z0-9]{6,32}$/)
+  await expect(report).toContainText('Fake List')
+  await page.waitForTimeout(500) // the modal's opening animation
+  await page.screenshot({path: path.join(APP_DIR, 'test-results', 'report.png')})
+
+  // what the system was asked to open: the batch folder, then the newest file (whichever of the three
+  // parallel downloads ended last) with its app and in its folder, then the downloads folder
+  const folder = path.join(outDir, 'Fake-List')
+  await expect.poll(async () => (await fs.readFile(openLog, 'utf8').catch(() => '')).trim().split('\n').length).toBe(4)
+  const [batchFolder, played, revealed, downloads] = (await fs.readFile(openLog, 'utf8')).trim().split('\n')
+  expect(batchFolder).toBe(`open ${folder}`)
+  expect(played!.startsWith(`open ${folder}${path.sep}`)).toBe(true)
+  expect(path.basename(played!)).toMatch(/^00[1-3]-Title-b[1-3]-b[1-3]\.m4a$/)
+  expect(revealed).toBe(played!.replace(/^open /, 'reveal '))
+  expect(downloads).toBe(`open ${outDir}`)
   await close(app)
 })
 

@@ -259,3 +259,49 @@ h5.ant-typography.preview-heading {
 .analyze-hint {
   font-size: 12px;
 }
+/* stat cards that open a tab */
+.stat-link {
+  cursor: pointer;
+}
+.stat-link:focus-visible {
+  outline: 2px solid #13a8e0;
+  outline-offset: 2px;
+}
+/* live count next to a tab name */
+.tab-count {
+  display: inline-block;
+  min-width: 20px;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 18px;
+  text-align: center;
+  background: rgba(19, 168, 224, 0.16);
+  color: #13a8e0;
+}
+.finished-gone .ant-typography:first-child {
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+.report-stages {
+  margin-top: 8px;
+}
+.report-stages .ant-tag {
+  margin-bottom: 4px;
+}
+.report-job {
+  padding: 2px 0;
+}
+.report-job-title {
+  flex: 1;
+  min-width: 0;
+}
+.report-job-progress {
+  width: 160px;
+  margin: 0;
+}
+.report-job-rate {
+  width: 90px;
+  text-align: right;
+}

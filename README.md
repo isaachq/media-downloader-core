@@ -33,14 +33,29 @@ await dl.whenIdle()
 and a quality, and the batch is checked, forecast for disk space, downloaded on
 the ⌊CPUs/2⌋ pool and verified file by file.
 
-![Paste a link, download it as MP4, check its integrity report](docs/demo.gif)
+**Website: [isaachq.github.io/media-downloader-core](https://isaachq.github.io/media-downloader-core/)** — every feature, how it works, and the right installer for your computer.
 
-### What's new in beta 5
+![Paste a link, download it as MP4, check its integrity report, find it in Finished, open the run report](docs/demo.gif)
 
-- **Whole TikTok profiles** — the preview tells how many posts a profile has and offers **Load all (N)**; the listing runs in chunks of 500, each kept as it arrives, so a refusal or a cancel never loses what was listed and loading again continues from there.
-- **Files dated by publication** — every download gets its publication date as the file's date (TikTok's post time, the upload date for other sites): sort a folder by date and it sorts by publication. A **Published** column in the preview, too.
-- **Sites you configure yourself** — paged video sites can be added in a local `sites.json` ([details](#player-page-sites-configured-locally)): a search link lists every page (500 by default, Load all), checks each pick and downloads it straight from the media server; an MP4 is kept byte for byte and only validated.
-- **Faster listings** — pages are read in parallel, ahead of the pagination.
+### What's new in beta 6
+
+- **Finished tab** — every finished file of every session, newest first: search by title or file name (accents and case ignored), **play it**, **show it in its folder**, copy its path, or open the downloads folder. It says whether each file was verified, is still there or changed since. Batches get an **Open folder** button too.
+- **Run report** — one window that sums up the three tabs: the **run ID**, pending / in progress / finished / failed, every pipeline stage with what is in it right now, each batch with its progress and time left, recent results. It refreshes **every 15 seconds** (or on demand) and copies as text.
+- **Live counts** on the tabs, and the stat cards open the tab they count.
+- **TikTok profiles that count posts they don't list** — the preview now says so ("all 1,018 public posts are here; the other 4 are private, deleted or visible only to their author") instead of offering a load that brings nothing; a listing that really stopped short says that, and continues.
+- **Veteran TikTok profiles** list back to their musical.ly-era posts (2014–2016), which were cut off before.
+- **Lighter UI** — the stats and the download form no longer re-render on every progress event; finished counts stay right past 1,500 jobs.
+- **A website** — [isaachq.github.io/media-downloader-core](https://isaachq.github.io/media-downloader-core/), in English and Spanish, offers the installer that fits your computer.
+
+| Finished tab | Run report |
+| --- | --- |
+| ![Every finished file, with play, show in folder and integrity](docs/screenshots/finished.png) | ![The run report: run ID, totals, stages, batches](docs/screenshots/report.png) |
+
+### In beta 5
+
+- **Whole TikTok profiles** — the preview tells how many posts a profile has and offers **Load all (N)**, listed in chunks of 500 that are never lost.
+- **Files dated by publication** — sort a folder by date and it sorts by publication.
+- **Sites you configure yourself** in a local `sites.json` ([details](#player-page-sites-configured-locally)); an MP4 is kept byte for byte and only validated.
 
 ### In beta 4
 
@@ -57,7 +72,7 @@ the ⌊CPUs/2⌋ pool and verified file by file.
 
 The full list is in the [changelog](CHANGELOG.md).
 
-*A real run: paste a link → MP4 (H.264/AAC) → every frame decoded and checked → integrity report.*
+*A real run: paste a link → MP4 (H.264/AAC) → every frame decoded and checked → integrity report → the file in Finished, ready to play → the run report.*
 
 | Preview of a YouTube Mix | Downloading, with the estimated time left |
 | --- | --- |
@@ -420,7 +435,8 @@ yt-dlp writes into a private work folder; only validated files are moved into th
 
 ## Backups: archive, resume, verify
 
-- **Archive** (`archive.jsonl`): one record per `site:id:profile`. Re-adding a playlist downloads only new or missing items. Each record stores the file's **SHA-256**; `verifyArchive()` re-hashes everything and reports files that went missing, changed size or changed content.
+- **Archive** (`archive.jsonl`): one record per `site:id:profile`. Re-adding a playlist downloads only new or missing items. Each record stores the file's **SHA-256** and the integrity check it passed; `verifyArchive()` re-hashes everything and reports files that went missing, changed size or changed content.
+- **History** (`archive.list({offset, limit, search})`): finished downloads newest first, a page at a time, searched by title or file name without case or accents. The log is read once; after that pages come from memory and follow every new download. Measured with 10,000 records: first page 128 ms, later pages 0.06 ms, a search 3 ms, each new download 0.6 ms.
 - **Queue persistence** (`queue.json`): `restoreQueue()` re-queues what was pending when the app closed or crashed.
 - **Resume**: each job's work folder is derived from url + profile, so a retry or a restart continues the `.part` files.
 

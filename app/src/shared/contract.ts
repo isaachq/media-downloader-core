@@ -78,7 +78,10 @@ export type AppInfo = {
   readonly cpus: number
   readonly maxConcurrency: number
   readonly dataDir: string
+  /** This run's id: in every log line of it (the report shows it, the logs search it). */
   readonly sessionId: string
+  /** When this run began (ms). */
+  readonly startedAt: number
 }
 
 /**
@@ -146,7 +149,40 @@ export type Preview =
       readonly maxItems: number
       /** Items the list holds in all, when the site tells (a TikTok profile's video count). */
       readonly total?: number | undefined
+      /** The listing reached the end: entries short of `total` are not listed publicly. */
+      readonly complete?: boolean | undefined
     }
+
+/** A finished download from the archive (every session, not just this one). */
+export type FinishedEntry = {
+  /** Archive key: what the renderer passes back to open it (never a path). */
+  readonly key: string
+  readonly title: string
+  readonly filepath: string
+  readonly sizeBytes: number
+  readonly duration?: number | undefined
+  readonly extractor: string
+  readonly url: string
+  readonly completedAt: number
+  /** The SHA-256 recorded when the file was finished. */
+  readonly sha256?: string | undefined
+  /** The integrity check it passed; 'none' = checksum only; absent in records of older versions. */
+  readonly validation?: 'none' | 'quick' | 'full' | undefined
+  /** On disk with its recorded size; gone; or another size than recorded. */
+  readonly file: 'ok' | 'missing' | 'changed'
+}
+
+export type FinishedQuery = {readonly offset: number; readonly limit: number; readonly search?: string | undefined}
+
+export type FinishedPage = {
+  readonly entries: readonly FinishedEntry[]
+  /** Entries matching the search, all sessions. */
+  readonly total: number
+  /** Their bytes. */
+  readonly bytes: number
+}
+
+export type OpenTarget = 'downloads' | {readonly batchId: BatchId}
 
 export type SetupOutcome = {
   readonly ready: boolean
@@ -179,6 +215,12 @@ export type MdcApi = {
   clearFinished(): Promise<void>
   searchLogs(id: string, limit: number): Promise<{readonly entries: readonly LogEntry[]; readonly total: number}>
   reveal(path: string): Promise<void>
+  /** Finished downloads of every session, newest first, a page at a time. */
+  finished(query: FinishedQuery): Promise<FinishedPage>
+  /** Open a finished file with its app, or show it in its folder; false when it is gone. */
+  openFinished(key: string, target: 'file' | 'folder'): Promise<boolean>
+  /** Open the downloads folder, or the folder a batch's files went to; false when there is none yet. */
+  openFolder(target: OpenTarget): Promise<boolean>
   updateState(): Promise<UpdateState>
   checkForUpdates(): Promise<UpdateState>
   /** Download, verify and install the available update, then restart. */
@@ -210,6 +252,9 @@ export const CHANNEL = {
   clearFinished: 'mdc:clear-finished',
   searchLogs: 'mdc:search-logs',
   reveal: 'mdc:reveal',
+  finished: 'mdc:finished',
+  openFinished: 'mdc:open-finished',
+  openFolder: 'mdc:open-folder',
   updateState: 'mdc:update:state',
   updateCheck: 'mdc:update:check',
   updateInstall: 'mdc:update:install',

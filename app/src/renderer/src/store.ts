@@ -1,4 +1,12 @@
-import type {BatchId, BatchSnapshot, JobId, JobSnapshot, LogEntry, PreflightItem} from 'media-downloader-core'
+import type {
+  BatchId,
+  BatchSnapshot,
+  JobId,
+  JobSnapshot,
+  JobStatus,
+  LogEntry,
+  PreflightItem,
+} from 'media-downloader-core'
 import {createContext, useContext, useSyncExternalStore} from 'react'
 import type {EventBundle} from '../../shared/contract'
 
@@ -13,6 +21,43 @@ export const BATCH_FINISHED: ReadonlySet<string> = new Set([
 ])
 
 type ItemListener = (item: PreflightItem) => void
+
+const STATUSES: readonly JobStatus[] = [
+  'queued',
+  'downloading',
+  'processing',
+  'converting',
+  'validating',
+  'finalizing',
+  'completed',
+  'skipped',
+  'failed',
+  'cancelled',
+]
+/** Statuses of a job doing work (holding capacity). */
+export const WORKING: ReadonlySet<JobStatus> = new Set([
+  'downloading',
+  'processing',
+  'converting',
+  'validating',
+  'finalizing',
+])
+
+/**
+ * Jobs of this session by status, plus the capacity in use and the bytes of
+ * the files finished. Kept up to date per change (O(1) each), so the stats
+ * and the report never scan the jobs — and finished jobs the store drops to
+ * bound its memory still count until "clear finished".
+ */
+export type JobCounts = Readonly<Record<JobStatus, number>> & {
+  /** Capacity units held by working jobs. */
+  readonly used: number
+  /** Bytes of the files completed this session. */
+  readonly finishedBytes: number
+}
+
+const zero = (): Record<JobStatus, number> =>
+  Object.fromEntries(STATUSES.map(status => [status, 0])) as Record<JobStatus, number>
 
 /**
  * Renderer state. Event bundles arrive at most every 100 ms and are applied
@@ -30,6 +75,12 @@ export class AppStore {
   #version = 0
   readonly #listeners = new Set<() => void>()
   readonly #itemListeners = new Map<BatchId, Set<ItemListener>>()
+  /** Jobs in the map by status, and terminal ones trimmed from it (still counted). */
+  readonly #live = zero()
+  readonly #retired = zero()
+  #used = 0
+  #finishedBytes = 0
+  #counts: JobCounts | undefined
 
   get version(): number {
     return this.#version
@@ -42,19 +93,30 @@ export class AppStore {
 
   getVersion = (): number => this.#version
 
+  /**
+   * Jobs by status, capacity in use, bytes finished — O(1). The same object
+   * until a job changes status: progress events alone leave it untouched, so
+   * whatever shows only counts doesn't re-render 10×/s.
+   */
+  get counts(): JobCounts {
+    if (!this.#counts) {
+      const total = zero()
+      for (const status of STATUSES) total[status] = this.#live[status] + this.#retired[status]
+      this.#counts = {...total, used: this.#used, finishedBytes: this.#finishedBytes}
+    }
+    return this.#counts
+  }
+
   load(state: {readonly batches: readonly BatchSnapshot[]; readonly jobs: readonly JobSnapshot[]}): void {
     for (const batch of state.batches) this.batches.set(batch.id, batch)
-    for (const job of state.jobs) this.jobs.set(job.id, job)
+    for (const job of state.jobs) this.#setJob(job)
     this.#trimJobs()
     this.#notify()
   }
 
   apply(bundle: EventBundle): void {
     for (const batch of bundle.batches) this.batches.set(batch.id, batch)
-    for (const job of bundle.jobs) {
-      // Map keeps insertion order: re-inserting keeps a job in its original row
-      this.jobs.set(job.id, job)
-    }
+    for (const job of bundle.jobs) this.#setJob(job)
     for (const {batchId, item} of bundle.items) {
       for (const listener of this.#itemListeners.get(batchId) ?? []) listener(item)
     }
@@ -79,7 +141,13 @@ export class AppStore {
   /** Forget finished batches and jobs (files on disk are untouched). O(batches + jobs). */
   clearFinished(): void {
     for (const [id, batch] of this.batches) if (BATCH_FINISHED.has(batch.status)) this.batches.delete(id)
-    for (const [id, job] of this.jobs) if (job.outcome !== 'in-progress') this.jobs.delete(id)
+    for (const [id, job] of this.jobs) {
+      if (job.outcome === 'in-progress') continue
+      this.jobs.delete(id)
+      this.#live[job.status]--
+    }
+    for (const status of TERMINAL) this.#retired[status as JobStatus] = 0
+    this.#counts = undefined
     this.#notify()
   }
 
@@ -97,12 +165,32 @@ export class AppStore {
     }
   }
 
-  /** Drop the oldest finished jobs beyond the cap (running ones are never dropped). */
+  /** Store a job snapshot and move the counts from its previous status to the new one. */
+  #setJob(job: JobSnapshot): void {
+    const before = this.jobs.get(job.id)
+    if (before?.status !== job.status) this.#counts = undefined
+    if (before) {
+      this.#live[before.status]--
+      if (WORKING.has(before.status)) this.#used -= before.weight
+    }
+    this.#live[job.status]++
+    if (WORKING.has(job.status)) this.#used += job.weight
+    if (job.status === 'completed' && before?.status !== 'completed') {
+      this.#finishedBytes += job.validation?.sizeBytes ?? job.progress.totalBytes ?? 0
+    }
+    // Map keeps insertion order: re-inserting keeps a job in its original row
+    this.jobs.set(job.id, job)
+  }
+
+  /** Drop the oldest finished jobs beyond the cap (running ones are never dropped); they stay counted. */
   #trimJobs(): void {
     if (this.jobs.size <= MAX_JOBS) return
     for (const [id, job] of this.jobs) {
       if (this.jobs.size <= MAX_JOBS) break
-      if (TERMINAL.has(job.status)) this.jobs.delete(id)
+      if (!TERMINAL.has(job.status)) continue
+      this.jobs.delete(id)
+      this.#live[job.status]--
+      this.#retired[job.status]++
     }
   }
 
@@ -126,4 +214,14 @@ export function useStore(): AppStore {
   const store = useAppStore()
   useSyncExternalStore(store.subscribe, store.getVersion)
   return store
+}
+
+/**
+ * One value read from the store, re-rendering the caller only when that value
+ * changes (compared with Object.is): a number, a string, or an object the
+ * store keeps stable (`counts`) — not 10×/s.
+ */
+export function useStoreValue<T>(select: (store: AppStore) => T): T {
+  const store = useAppStore()
+  return useSyncExternalStore(store.subscribe, () => select(store))
 }

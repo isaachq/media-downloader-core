@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Media Download Core — back up whole playlists and profiles, every file verified</title>
+<meta name="description" content="A free desktop app for macOS, Windows and Linux: paste a playlist or a profile, pick what you want, and it downloads hundreds of videos or songs while it checks every single file.">
+<meta property="og:title" content="Media Download Core">
+<meta property="og:description" content="Back up whole playlists and profiles. Every file verified. Free for macOS, Windows and Linux.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="screenshots/finished.png">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2313a8e0'/%3E%3Cpath d='M32 14v26m0 0-10-10m10 10 10-10M18 48h28' stroke='white' stroke-width='6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<style>
+:root {
+  --accent: #13a8e0;
+  --accent-ink: #0b7fac;
+  --ok: #2f9e44;
+  --bg: #f4f9fc;
+  --surface: #ffffff;
+  --ink: #12212e;
+  --muted: #55697a;
+  --line: #dbe7ef;
+  --sky-1: #4aa3d8;
+  --sky-2: #9fd3ef;
+  --shadow: 0 10px 30px rgba(15, 60, 100, 0.12);
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --accent: #2bb8ec;
+    --accent-ink: #7fd6f6;
+    --ok: #3fb950;
+    --bg: #0b1420;
+    --surface: #111d2b;
+    --ink: #e6eef5;
+    --muted: #93a7b8;
+    --line: #22334a;
+    --sky-1: #0f2e4a;
+    --sky-2: #1b4a6e;
+    --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.6 Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent-ink); }
+img { max-width: 100%; display: block; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+
+/* nav */
+nav {
+  position: sticky; top: 0; z-index: 10;
+  backdrop-filter: saturate(1.4) blur(10px);
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  border-bottom: 1px solid var(--line);
+}
+nav .wrap { display: flex; align-items: center; gap: 20px; height: 60px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; color: var(--ink); text-decoration: none; }
+.brand-mark { width: 28px; height: 28px; border-radius: 8px; background: var(--accent); display: grid; place-items: center; }
+nav .links { display: flex; gap: 18px; margin-left: auto; align-items: center; }
+nav .links a { color: var(--muted); text-decoration: none; font-size: 15px; }
+nav .links a:hover { color: var(--ink); }
+.lang { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.lang button { border: 0; background: transparent; color: var(--muted); padding: 4px 10px; font: inherit; font-size: 13px; cursor: pointer; }
+.lang button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+@media (max-width: 720px) { nav .links a:not(.keep) { display: none; } }
+
+/* hero */
+.hero {
+  background: linear-gradient(180deg, var(--sky-1) 0%, var(--sky-2) 62%, var(--bg) 100%);
+  color: #fff;
+  padding: 72px 0 40px;
+  overflow: hidden;
+}
+.hero .wrap { display: grid; grid-template-columns: 1.05fr 1fr; gap: 48px; align-items: center; }
+@media (max-width: 900px) { .hero .wrap { grid-template-columns: 1fr; } }
+.badge { display: inline-block; padding: 4px 12px; border-radius: 999px; background: rgba(255, 255, 255, 0.22); font-size: 13px; font-weight: 600; letter-spacing: 0.02em; }
+.hero h1 { font-size: clamp(34px, 5vw, 54px); line-height: 1.08; margin: 16px 0 14px; letter-spacing: -0.02em; }
+.hero p.lead { font-size: 19px; opacity: 0.95; margin: 0 0 26px; max-width: 34em; }
+.cta { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.btn {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 13px 22px; border-radius: 12px; font-weight: 600; text-decoration: none;
+  border: 1px solid transparent; cursor: pointer; font-size: 16px;
+}
+.btn-primary { background: #fff; color: #0b5f86; box-shadow: var(--shadow); }
+.btn-primary:hover { transform: translateY(-1px); }
+.btn-ghost { color: #fff; border-color: rgba(255, 255, 255, 0.55); }
+.btn-ghost:hover { background: rgba(255, 255, 255, 0.12); }
+.cta-note { width: 100%; font-size: 14px; opacity: 0.9; margin-top: 4px; }
+.shot {
+  border-radius: var(--radius); overflow: hidden; box-shadow: 0 24px 60px rgba(8, 40, 70, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.35); background: var(--surface);
+}
+
+/* numbers */
+.numbers { margin-top: -10px; }
+.numbers .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+@media (max-width: 900px) { .numbers .grid { grid-template-columns: repeat(2, 1fr); } }
+.number { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; box-shadow: var(--shadow); }
+.number b { display: block; font-size: 26px; color: var(--accent-ink); letter-spacing: -0.01em; }
+.number span { color: var(--muted); font-size: 14px; }
+
+/* sections */
+section { padding: 72px 0 8px; }
+section h2 { font-size: clamp(26px, 3.4vw, 36px); margin: 0 0 8px; letter-spacing: -0.015em; }
+section .intro { color: var(--muted); margin: 0 0 32px; max-width: 46em; font-size: 17px; }
+.features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+@media (max-width: 900px) { .features { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 600px) { .features { grid-template-columns: 1fr; } }
+.feature { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px; }
+.feature .icon { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent-ink); margin-bottom: 12px; }
+.feature h3 { margin: 0 0 6px; font-size: 18px; }
+.feature p { margin: 0; color: var(--muted); font-size: 15px; }
+
+.steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; counter-reset: step; }
+@media (max-width: 800px) { .steps { grid-template-columns: 1fr; } }
+.step { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px 22px 22px 70px; }
+.step::before {
+  counter-increment: step; content: counter(step);
+  position: absolute; left: 20px; top: 20px; width: 34px; height: 34px; border-radius: 50%;
+  background: var(--accent); color: #fff; display: grid; place-items: center; font-weight: 700;
+}
+.step h3 { margin: 0 0 4px; font-size: 17px; }
+.step p { margin: 0; color: var(--muted); font-size: 15px; }
+
+.gallery { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+@media (max-width: 800px) { .gallery { grid-template-columns: 1fr; } }
+.gallery figure { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.gallery figcaption { padding: 12px 16px; color: var(--muted); font-size: 14px; }
+
+.downloads { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+@media (max-width: 800px) { .downloads { grid-template-columns: 1fr; } }
+.os { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px; }
+.os.mine { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+.os h3 { margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
+.os ul { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 8px; }
+.os li a { display: flex; justify-content: space-between; gap: 8px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); text-decoration: none; color: var(--ink); font-size: 15px; }
+.os li a:hover { border-color: var(--accent); }
+.os li a small { color: var(--muted); }
+.os .hint { color: var(--muted); font-size: 13.5px; margin: 0; }
+.release-line { color: var(--muted); margin: -18px 0 24px; font-size: 15px; }
+
+.note { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: var(--radius); padding: 18px 22px; color: var(--muted); font-size: 15px; }
+footer { margin-top: 72px; border-top: 1px solid var(--line); padding: 28px 0 40px; color: var(--muted); font-size: 14px; }
+footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; }
+footer a { color: var(--muted); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+</head>
+<body>
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="Media Download Core">
+      <span class="brand-mark" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0-5-5m5 5 5-5M5 21h14"/></svg></span>
+      Media Download Core
+    </a>
+    <div class="links">
+      <a href="#features" data-i18n="nav.features">Features</a>
+      <a href="#how" data-i18n="nav.how">How it works</a>
+      <a href="#download" class="keep" data-i18n="nav.download">Download</a>
+      <a href="https://github.com/isaachq/media-downloader-core">GitHub</a>
+      <span class="lang" role="group" aria-label="Language">
+        <button type="button" data-lang="en" aria-pressed="true">EN</button>
+        <button type="button" data-lang="es" aria-pressed="false">ES</button>
+      </span>
+    </div>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="wrap">
+    <div>
+      <span class="badge" data-i18n="hero.badge">Free · macOS · Windows · Linux</span>
+      <h1 data-i18n="hero.title">Back up whole playlists and profiles. Every file verified.</h1>
+      <p class="lead" data-i18n="hero.lead">Paste a link, pick what you want, and let it download hundreds of videos or songs while it checks every single file — then find them all in one place, ready to play.</p>
+      <div class="cta">
+        <a class="btn btn-primary" id="primary-download" href="https://github.com/isaachq/media-downloader-core/releases">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M5 21h14"/></svg>
+          <span id="primary-label" data-i18n="hero.download">Download</span>
+        </a>
+        <a class="btn btn-ghost" href="#download" data-i18n="hero.others">Other systems</a>
+        <div class="cta-note" id="release-note" data-i18n="hero.note">No account, no ads, no tracking. It runs on your computer.</div>
+      </div>
+    </div>
+    <div class="shot">
+      <img src="demo.gif" width="1200" height="760" alt="Pasting a link, downloading it as MP4 and opening its integrity report" data-i18n-alt="hero.alt">
+    </div>
+  </div>
+</header>
+
+<div class="numbers">
+  <div class="wrap">
+    <div class="grid">
+      <div class="number"><b data-i18n="n1.value">50,000</b><span data-i18n="n1.label">items in one list — playlists, channels, whole profiles</span></div>
+      <div class="number"><b data-i18n="n2.value">1,000+</b><span data-i18n="n2.label">TikTok posts of a profile listed in about 2½ minutes</span></div>
+      <div class="number"><b data-i18n="n3.value">100%</b><span data-i18n="n3.label">of the files checked: codecs, duration, every frame, SHA-256</span></div>
+      <div class="number"><b data-i18n="n4.value">0</b><span data-i18n="n4.label">accounts, ads or trackers — your files stay on your disk</span></div>
+    </div>
+  </div>
+</div>
+
+<section id="features">
+  <div class="wrap">
+    <h2 data-i18n="features.title">Made for the big jobs</h2>
+    <p class="intro" data-i18n="features.intro">Most downloaders handle one video at a time. This one is built for a whole playlist, a whole profile, a whole search — and for leaving it running while you do something else.</p>
+    <div class="features">
+      <article class="feature">
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div>
+        <h3 data-i18n="f1.title">Whole playlists and profiles</h3>
+        <p data-i18n="f1.text">YouTube playlists, channels and Mixes; TikTok videos, short links and entire profiles — with “Load all” for the thousands of posts of a veteran account.</p>
+      </article>
+      <article class="feature">
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 12 5 5L20 6"/></svg></div>
+        <h3 data-i18n="f2.title">Pick before you download</h3>
+        <p data-i18n="f2.text">A preview lists everything a link holds, with length and publication date. Filter, select all or just a few — only what you pick is downloaded.</p>
+      </article>
+      <article class="feature">
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6l-8-3Z"/><path d="m9 12 2 2 4-4"/></svg></div>
+        <h3 data-i18n="f3.title">Every file verified</h3>
+        <p data-i18n="f3.text">Each download is checked before it is delivered — codecs, duration, every frame decoded — and its SHA-256 is recorded. A broken file is downloaded again, not handed to you.</p>
+      </article>
+      <article class="feature">
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h6l2 2h10v10H3z"/><path d="m10 13 2 2 3-3"/></svg></div>
+        <h3 data-i18n="f4.title">Everything finished, in one place</h3>
+        <p data-i18n="f4.text">The Finished tab keeps every file of every session: search it, play it, show it in its folder. It even tells you if a file was moved or deleted since.</p>
+      </article>
+      <article class="feature">
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5m0 14h16M8 15v-4m4 4V8m4 7v-6"/></svg></div>
+        <h3 data-i18n="f5.title">A live report of the whole run</h3>
+        <p data-i18n="f5.text">What is pending, downloading, being verified and finished — per batch, with time left, refreshed every 15 seconds. Copy it as text with one click.</p>
+      </article>
+      <article class="feature">
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></div>
+        <h3 data-i18n="f6.title">Knows your disk and your time</h3>
+        <p data-i18n="f6.text">Before it starts, a batch tells you how much space it needs. While it runs, the time left is measured from your computer's real speed — start a big batch and walk away.</p>
+      </article>
+      <article class="feature">
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/><path d="M5 17H3v-5l2-5h11l3 5h2v5h-2M9 17h6"/></svg></div>
+        <h3 data-i18n="f7.title">Plays in your car and on your TV</h3>
+        <p data-i18n="f7.text">MP4 in H.264/AAC, MP3 with the tags car stereos read, and file names with plain letters and numbers that every USB stick accepts. Or M4A, Opus, FLAC, WAV, WebM, MKV.</p>
+      </article>
+      <article class="feature">
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4m8-4v4"/></svg></div>
+        <h3 data-i18n="f8.title">Sorted by when it was published</h3>
+        <p data-i18n="f8.text">Each file carries the date it was published, so sorting a folder by date sorts your backup by publication — not by the minute it happened to download.</p>
+      </article>
+      <article class="feature">
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></div>
+        <h3 data-i18n="f9.title">Keeps itself up to date</h3>
+        <p data-i18n="f9.text">New versions arrive inside the app: one button downloads them, checks them against GitHub's SHA-256, installs and restarts. Its tools (yt-dlp, FFmpeg) set themselves up the same way.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <h2 data-i18n="how.title">Three steps</h2>
+    <p class="intro" data-i18n="how.intro">No command line, no settings to learn first. English or Spanish, light or dark.</p>
+    <div class="steps">
+      <div class="step"><h3 data-i18n="s1.title">Paste a link</h3><p data-i18n="s1.text">A video, a playlist, a channel or a TikTok profile.</p></div>
+      <div class="step"><h3 data-i18n="s2.title">Pick what you want</h3><p data-i18n="s2.text">Everything it holds is listed first. Choose MP4 or MP3, the quality and the folder.</p></div>
+      <div class="step"><h3 data-i18n="s3.title">Let it work</h3><p data-i18n="s3.text">Several downloads at once, each one verified. Watch the report, or come back later.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="screens">
+  <div class="wrap">
+    <h2 data-i18n="screens.title">See it</h2>
+    <div class="gallery">
+      <figure><img loading="lazy" src="screenshots/preview.png" alt="" width="1600" height="971"><figcaption data-i18n="screens.preview">Preview: choose exactly what to download.</figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/batch.png" alt="" width="1600" height="971"><figcaption data-i18n="screens.batch">A batch with its disk forecast and time left.</figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/finished.png" alt="" width="1600" height="971"><figcaption data-i18n="screens.finished">Finished: play, show in folder, search every file.</figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/report.png" alt="" width="1600" height="971"><figcaption data-i18n="screens.report">The run report, refreshed every 15 seconds.</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section id="download">
+  <div class="wrap">
+    <h2 data-i18n="dl.title">Download</h2>
+    <p class="release-line" id="release-line" data-i18n="dl.line">The newest version is always on GitHub Releases.</p>
+    <div class="downloads">
+      <div class="os" data-os="mac">
+        <h3>macOS</h3>
+        <ul>
+          <li><a data-asset="mac-arm64.dmg" href="https://github.com/isaachq/media-downloader-core/releases"><span data-i18n="dl.macArm">Apple Silicon (M1–M4)</span><small>.dmg</small></a></li>
+          <li><a data-asset="mac-x64.dmg" href="https://github.com/isaachq/media-downloader-core/releases"><span data-i18n="dl.macIntel">Intel</span><small>.dmg</small></a></li>
+        </ul>
+        <p class="hint" data-i18n="dl.macHint">First launch: System Settings → Privacy &amp; Security → “Open Anyway” (once). It isn't signed with a paid Apple certificate yet.</p>
+      </div>
+      <div class="os" data-os="windows">
+        <h3>Windows</h3>
+        <ul>
+          <li><a data-asset="win-x64.exe" href="https://github.com/isaachq/media-downloader-core/releases"><span data-i18n="dl.win64">64-bit (most PCs)</span><small>.exe</small></a></li>
+          <li><a data-asset="win-arm64.exe" href="https://github.com/isaachq/media-downloader-core/releases"><span>ARM64</span><small>.exe</small></a></li>
+        </ul>
+        <p class="hint" data-i18n="dl.winHint">If SmartScreen appears: More info → Run anyway.</p>
+      </div>
+      <div class="os" data-os="linux">
+        <h3>Linux</h3>
+        <ul>
+          <li><a data-asset="linux-x86_64.AppImage" href="https://github.com/isaachq/media-downloader-core/releases"><span>AppImage · x64</span><small>.AppImage</small></a></li>
+          <li><a data-asset="linux-amd64.deb" href="https://github.com/isaachq/media-downloader-core/releases"><span>Debian / Ubuntu · x64</span><small>.deb</small></a></li>
+          <li><a data-asset="linux-x86_64.rpm" href="https://github.com/isaachq/media-downloader-core/releases"><span>Fedora / RHEL · x64</span><small>.rpm</small></a></li>
+          <li><a data-asset="linux-arm64.AppImage" href="https://github.com/isaachq/media-downloader-core/releases"><span>AppImage · ARM64</span><small>.AppImage</small></a></li>
+        </ul>
+        <p class="hint" data-i18n="dl.linuxHint">.deb and .rpm also for ARM64 on the releases page.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="note" data-i18n="note">Made for backing up content you own or are allowed to keep. Respect each site's terms and copyright law. Free for personal, non-commercial use (PolyForm Noncommercial 1.0.0).</div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>© 2026 isaachq · <a href="https://github.com/isaachq/media-downloader-core/blob/main/LICENSE">PolyForm Noncommercial 1.0.0</a></span>
+    <span><a href="https://github.com/isaachq/media-downloader-core">GitHub</a> · <a href="https://github.com/isaachq/media-downloader-core/blob/main/CHANGELOG.md" data-i18n="footer.changes">What's new</a> · <a href="https://github.com/isaachq/media-downloader-core/issues" data-i18n="footer.issues">Report a problem</a></span>
+  </div>
+</footer>
+
+<script>
+// Language (EN / ES, from the browser unless chosen) and the newest release's
+// installers, picked for this computer. Without JavaScript every link still
+// leads to the releases page.
+(() => {
+  const REPO = 'isaachq/media-downloader-core'
+  const RELEASES = `https://github.com/${REPO}/releases`
+  const es = {
+    'nav.features': 'Funciones', 'nav.how': 'Cómo funciona', 'nav.download': 'Descargar',
+    'hero.badge': 'Gratis · macOS · Windows · Linux',
+    'hero.title': 'Respalda playlists y perfiles completos. Cada archivo verificado.',
+    'hero.lead': 'Pega un enlace, elige lo que quieres y deja que descargue cientos de videos o canciones mientras revisa cada archivo — y luego encuéntralos todos en un solo lugar, listos para reproducir.',
+    'hero.download': 'Descargar', 'hero.others': 'Otros sistemas',
+    'hero.note': 'Sin cuenta, sin anuncios, sin rastreo. Funciona en tu computadora.',
+    'hero.alt': 'Pegar un enlace, descargarlo como MP4 y abrir su reporte de integridad',
+    'n1.value': '50,000', 'n1.label': 'elementos en una lista — playlists, canales, perfiles completos',
+    'n2.value': '1,000+', 'n2.label': 'publicaciones de un perfil de TikTok listadas en unos 2½ minutos',
+    'n3.value': '100%', 'n3.label': 'de los archivos revisados: códecs, duración, cada cuadro, SHA-256',
+    'n4.value': '0', 'n4.label': 'cuentas, anuncios o rastreadores — tus archivos se quedan en tu disco',
+    'features.title': 'Hecho para los trabajos grandes',
+    'features.intro': 'La mayoría de los descargadores van video por video. Este está hecho para una playlist entera, un perfil entero, una búsqueda entera — y para dejarlo trabajando mientras haces otra cosa.',
+    'f1.title': 'Playlists y perfiles completos',
+    'f1.text': 'Playlists, canales y Mixes de YouTube; videos, enlaces cortos y perfiles completos de TikTok — con “Cargar todo” para las miles de publicaciones de una cuenta veterana.',
+    'f2.title': 'Elige antes de descargar',
+    'f2.text': 'Una vista previa lista todo lo que contiene un enlace, con duración y fecha de publicación. Filtra, selecciona todo o solo algunos — se descarga solo lo que eliges.',
+    'f3.title': 'Cada archivo verificado',
+    'f3.text': 'Cada descarga se revisa antes de entregarla — códecs, duración, cada cuadro decodificado — y se guarda su SHA-256. Un archivo dañado se descarga otra vez, no te lo entrega.',
+    'f4.title': 'Todo lo terminado, en un lugar',
+    'f4.text': 'La pestaña Terminados guarda cada archivo de todas las sesiones: búscalo, reprodúcelo, ábrelo en su carpeta. Incluso te avisa si un archivo se movió o se borró.',
+    'f5.title': 'Un reporte en vivo de toda la ejecución',
+    'f5.text': 'Qué está pendiente, descargando, verificándose y terminado — por lote, con tiempo restante, actualizado cada 15 segundos. Cópialo como texto con un clic.',
+    'f6.title': 'Conoce tu disco y tu tiempo',
+    'f6.text': 'Antes de empezar, un lote te dice cuánto espacio necesita. Mientras corre, el tiempo restante se mide con la velocidad real de tu computadora — inicia un lote grande y vete.',
+    'f7.title': 'Suena en tu auto y en tu TV',
+    'f7.text': 'MP4 en H.264/AAC, MP3 con las etiquetas que leen los estéreos de auto y nombres con letras y números simples que acepta cualquier USB. O M4A, Opus, FLAC, WAV, WebM, MKV.',
+    'f8.title': 'Ordenado por fecha de publicación',
+    'f8.text': 'Cada archivo lleva la fecha en que se publicó: ordenar una carpeta por fecha ordena tu respaldo por publicación — no por el minuto en que se descargó.',
+    'f9.title': 'Se mantiene al día solo',
+    'f9.text': 'Las nuevas versiones llegan dentro de la app: un botón las descarga, las compara con el SHA-256 de GitHub, las instala y reinicia. Sus herramientas (yt-dlp, FFmpeg) se instalan igual.',
+    'how.title': 'Tres pasos', 'how.intro': 'Sin línea de comandos ni ajustes que aprender. En español o inglés, claro u oscuro.',
+    's1.title': 'Pega un enlace', 's1.text': 'Un video, una playlist, un canal o un perfil de TikTok.',
+    's2.title': 'Elige lo que quieres', 's2.text': 'Primero se lista todo lo que contiene. Elige MP4 o MP3, la calidad y la carpeta.',
+    's3.title': 'Déjalo trabajar', 's3.text': 'Varias descargas a la vez, cada una verificada. Mira el reporte, o regresa más tarde.',
+    'screens.title': 'Míralo',
+    'screens.preview': 'Vista previa: elige exactamente qué descargar.',
+    'screens.batch': 'Un lote con su pronóstico de disco y tiempo restante.',
+    'screens.finished': 'Terminados: reproduce, abre en carpeta, busca cada archivo.',
+    'screens.report': 'El reporte de la ejecución, actualizado cada 15 segundos.',
+    'dl.title': 'Descargar', 'dl.line': 'La versión más nueva siempre está en GitHub Releases.',
+    'dl.macArm': 'Apple Silicon (M1–M4)', 'dl.macIntel': 'Intel',
+    'dl.macHint': 'Primera vez: Configuración del Sistema → Privacidad y seguridad → “Abrir de todos modos” (una vez). Aún no está firmada con un certificado de pago de Apple.',
+    'dl.win64': '64 bits (la mayoría de las PC)', 'dl.winHint': 'Si aparece SmartScreen: Más información → Ejecutar de todas formas.',
+    'dl.linuxHint': '.deb y .rpm también para ARM64 en la página de versiones.',
+    'note': 'Hecho para respaldar contenido tuyo o que tienes permitido conservar. Respeta los términos de cada sitio y los derechos de autor. Gratis para uso personal y no comercial (PolyForm Noncommercial 1.0.0).',
+    'footer.changes': 'Novedades', 'footer.issues': 'Reportar un problema',
+    'primary.mac': 'Descargar para Mac', 'primary.macIntel': 'Descargar para Mac (Intel)', 'primary.windows': 'Descargar para Windows',
+    'primary.linux': 'Descargar para Linux', 'release': 'Versión {version} · publicada el {date}',
+  }
+  const en = {'primary.mac': 'Download for Mac', 'primary.macIntel': 'Download for Mac (Intel)', 'primary.windows': 'Download for Windows', 'primary.linux': 'Download for Linux', 'release': 'Version {version} · released {date}'}
+  // the page's own English text is the default dictionary
+  for (const el of document.querySelectorAll('[data-i18n]')) en[el.dataset.i18n] ??= el.innerHTML
+  for (const el of document.querySelectorAll('[data-i18n-alt]')) en[el.dataset.i18nAlt] ??= el.alt
+
+  let lang = (() => {
+    try { const saved = localStorage.getItem('lang'); if (saved === 'en' || saved === 'es') return saved } catch {}
+    for (const tag of navigator.languages ?? [navigator.language]) {
+      const base = String(tag).toLowerCase().slice(0, 2)
+      if (base === 'es' || base === 'en') return base
+    }
+    return 'en'
+  })()
+  const text = (key, params) => {
+    const raw = (lang === 'es' ? es[key] : undefined) ?? en[key] ?? key
+    return params ? raw.replace(/\{(\w+)\}/g, (_, name) => params[name] ?? '') : raw
+  }
+
+  // which installer suits this computer (Apple Silicon unless the browser says Intel)
+  const platform = (navigator.userAgentData?.platform || navigator.platform || navigator.userAgent).toLowerCase()
+  const os = /mac/.test(platform) ? 'mac' : /win/.test(platform) ? 'windows' : /linux|x11/.test(platform) ? 'linux' : undefined
+  let arch = /arm|aarch64/.test(navigator.userAgent.toLowerCase()) ? 'arm64' : undefined
+  let release
+
+  const render = () => {
+    document.documentElement.lang = lang
+    for (const el of document.querySelectorAll('[data-i18n]')) el.innerHTML = text(el.dataset.i18n)
+    for (const el of document.querySelectorAll('[data-i18n-alt]')) el.alt = text(el.dataset.i18nAlt)
+    for (const button of document.querySelectorAll('[data-lang]')) button.setAttribute('aria-pressed', String(button.dataset.lang === lang))
+    const label = document.getElementById('primary-label')
+    const primary = document.getElementById('primary-download')
+    if (os) {
+      document.querySelector(`.os[data-os="${os}"]`)?.classList.add('mine')
+      const intelMac = os === 'mac' && arch === 'x64'
+      label.textContent = text(intelMac ? 'primary.macIntel' : `primary.${os}`)
+      const wanted = os === 'mac' ? (intelMac ? 'mac-x64.dmg' : 'mac-arm64.dmg') : os === 'windows' ? (arch === 'arm64' ? 'win-arm64.exe' : 'win-x64.exe') : arch === 'arm64' ? 'linux-arm64.AppImage' : 'linux-x86_64.AppImage'
+      primary.href = release?.assets.find(asset => asset.name.endsWith(wanted))?.browser_download_url ?? RELEASES
+    }
+    if (release) {
+      const date = new Date(release.published_at).toLocaleDateString(lang === 'es' ? 'es' : 'en', {year: 'numeric', month: 'long', day: 'numeric'})
+      document.getElementById('release-line').textContent = text('release', {version: release.tag_name.replace(/^app-v/, ''), date})
+    }
+  }
+
+  for (const button of document.querySelectorAll('[data-lang]')) {
+    button.addEventListener('click', () => {
+      lang = button.dataset.lang
+      try { localStorage.setItem('lang', lang) } catch {}
+      render()
+    })
+  }
+  render()
+
+  // Chromium tells the CPU architecture; Safari doesn't (then Apple Silicon is the likely Mac)
+  navigator.userAgentData?.getHighEntropyValues?.(['architecture']).then(values => {
+    if (values.architecture === 'arm') arch = 'arm64'
+    else if (values.architecture === 'x86') arch = 'x64'
+    render()
+  }).catch(() => {})
+
+  // the newest release, pre-releases included (GitHub's "latest" skips betas)
+  fetch(`https://api.github.com/repos/${REPO}/releases?per_page=5`, {headers: {Accept: 'application/vnd.github+json'}})
+    .then(response => (response.ok ? response.json() : []))
+    .then(list => {
+      release = list.find(item => !item.draft && item.tag_name.startsWith('app-v'))
+      if (!release) return
+      for (const link of document.querySelectorAll('[data-asset]')) {
+        const asset = release.assets.find(item => item.name.endsWith(link.dataset.asset))
+        if (asset) link.href = asset.browser_download_url
+      }
+      render()
+    })
+    .catch(() => {})
+})()
+</script>
+</body>
+</html>

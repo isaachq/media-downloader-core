@@ -883,6 +883,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
         sizeBytes: report.sizeBytes,
         sha256: report.sha256,
         duration: report.duration ?? request.duration,
+        validation: this.#settings.validation,
       })
     }
     this.#stepDone(job, 'finalize', 'success')

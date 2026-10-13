@@ -57,6 +57,10 @@ the ⌊CPUs/2⌋ pool and verified file by file.
 - **Cancel drops one download** — the batch goes on and completes without it.
 - **Finished** — filter by integrity and size, sort by size, and remove the records of files deleted or moved since.
 
+| Settings: the site of this run, processors, checks | How to sign in, step by step |
+| --- | --- |
+| ![Settings with the site of this run, simultaneous downloads and the 60% option](docs/screenshots/settings.png) | ![How to sign in: the browser's session, step by step, with this system's permission](docs/screenshots/signin.png) |
+
 ### What's new in beta 9
 
 - **Player-page links on any site** — a search or video page from a site whose videos each have a page with a player now works without adding the site to `sites.json` first: any link yt-dlp doesn't support is tried as a player page, whatever its host. No site is named in the app. [How it works](#player-page-sites-configured-locally).

@@ -1,5 +1,6 @@
 import {Card, Col, Progress, Row, Statistic} from 'antd'
 import type {ReactNode} from 'react'
+import {concurrencyCap} from '../../../shared/contract'
 import {useApp} from '../context'
 import {useT} from '../i18n'
 import {useStoreValue} from '../store'
@@ -40,14 +41,22 @@ function StatCard({
 }
 
 /** This session at a glance; the counts come from the store's running tally (O(1) per render). */
-export function Stats({onOpen}: {readonly onOpen?: (tab: MainTab) => void}) {
+export function Stats({
+  onOpen,
+  onFailed,
+}: {
+  readonly onOpen?: (tab: MainTab) => void
+  /** The Failed card opens the list of failed downloads (to try them again in a new batch). */
+  readonly onFailed?: () => void
+}) {
   const t = useT()
-  const {info} = useApp()
+  const {info, settings} = useApp()
+  const cap = concurrencyCap(info, settings)
   // re-renders when a job changes status, not on progress events
   const counts = useStoreValue(store => store.counts)
   const running = counts.downloading + counts.processing + counts.converting + counts.validating + counts.finalizing
   const completed = counts.completed + counts.skipped
-  const capacity = Math.round((Math.min(counts.used, info.maxConcurrency) / info.maxConcurrency) * 100)
+  const capacity = Math.round((Math.min(counts.used, cap) / cap) * 100)
   const open = (tab: MainTab) => (onOpen ? () => onOpen(tab) : undefined)
 
   return (
@@ -68,7 +77,7 @@ export function Stats({onOpen}: {readonly onOpen?: (tab: MainTab) => void}) {
         </StatCard>
       </Col>
       <Col xs={12} md={4}>
-        <StatCard onOpen={open('jobs')} label={t('stats.failed')}>
+        <StatCard onOpen={onFailed ?? open('jobs')} label={t('stats.failedOpen')}>
           <Statistic
             title={t('stats.failed')}
             value={counts.failed}
@@ -79,9 +88,9 @@ export function Stats({onOpen}: {readonly onOpen?: (tab: MainTab) => void}) {
       <Col xs={24} md={8}>
         <Card size="small">
           <div className="capacity-label">
-            {t('stats.capacity')} · {counts.used}/{info.maxConcurrency}
+            {t('stats.capacity')} · {counts.used}/{cap}
           </div>
-          <Progress percent={capacity} steps={info.maxConcurrency * 2} size="small" aria-label={t('stats.capacity')} />
+          <Progress percent={capacity} steps={cap * 2} size="small" aria-label={t('stats.capacity')} />
         </Card>
       </Col>
     </Row>

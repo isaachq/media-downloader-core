@@ -158,6 +158,12 @@ export type FailureHint =
   | 'bot-check'
   /** The browser's cookies couldn't be read (on macOS, Safari's need Full Disk Access). */
   | 'cookies-unreadable'
+  /**
+   * The file the site serves is broken (it failed validation twice, or the
+   * check after its batch): it is not downloaded again — that would only
+   * waste time, bandwidth and disk (see `MediaDownloader.damaged`).
+   */
+  | 'damaged-source'
 
 export type JobError = {
   readonly code: ErrorCode
@@ -190,6 +196,8 @@ export type ValidationIssue = {
   readonly message: string
   readonly params?: MessageParams | undefined
 }
+
+export type ValidationTiming = 'during' | 'after-batch'
 
 /** none = trust yt-dlp · quick = probe + read every packet · full = decode every frame (default). */
 export type ValidationLevel = 'none' | 'quick' | 'full'
@@ -350,6 +358,11 @@ export type JobSnapshot = {
   /** Final location — set once completed or skipped. */
   readonly filepath?: string | undefined
   readonly validation?: ValidationReport | undefined
+  /**
+   * Downloaded with its integrity check put off until its batch has finished
+   * downloading (`validationTiming: 'after-batch'`); cleared once checked.
+   */
+  readonly validationPending?: boolean | undefined
   readonly error?: JobError | undefined
   readonly createdAt: number
   readonly startedAt?: number | undefined
@@ -395,6 +408,8 @@ export type BatchStatus =
   /** Preflight: resolving the url and checking every item is downloadable. */
   | 'checking'
   | 'running'
+  /** Every download ended; the files are being checked (`validationTiming: 'after-batch'`). */
+  | 'validating'
   | 'completed'
   /** Finished, some items succeeded and some didn't. */
   | 'completed-with-errors'
@@ -428,7 +443,10 @@ export type BatchCounts = {
   readonly queued: number
   readonly running: number
   readonly succeeded: number
+  /** Jobs that failed (not those cancelled: a cancel removes the item from the batch). */
   readonly failed: number
+  /** Jobs the user cancelled: dropped from the batch, which goes on without them. */
+  readonly cancelled: number
 }
 
 export type BatchSnapshot = {
@@ -467,6 +485,8 @@ export type BatchSnapshot = {
    * measured from this machine's actual throughput (see `WorkMeter`).
    */
   readonly progress?: {readonly fraction: number; readonly etaSeconds?: number | undefined} | undefined
+  /** While validating: files checked so far, of how many. */
+  readonly validation?: {readonly done: number; readonly total: number} | undefined
   /** Items are not part of the snapshot (a 5,000-item batch would make every event huge): use `scheduler.items()` and the `item` event. */
   readonly jobs: BatchCounts
   readonly error?: JobError | undefined
@@ -533,6 +553,22 @@ export type BatchRequest = {
    * video). Stale media links are refreshed by the jobs as usual.
    */
   readonly analysis?: VideoAnalysis | undefined
+  /**
+   * Where single items go, by their `index` in `selection`: their own folder,
+   * profile and list position — a batch gathering items of several batches
+   * (failed downloads tried again together) keeps each where it belonged.
+   */
+  readonly targets?: readonly BatchTarget[] | undefined
+}
+
+export type BatchTarget = {
+  /** The selection entry's index. */
+  readonly index: number
+  /** Absolute folder the file goes to (as is: no sub-folder is added). */
+  readonly outDir: string
+  readonly profile: FormatProfile
+  /** Its list and position, for the file name ("NNN - title"). */
+  readonly playlist?: PlaylistRef | undefined
 }
 
 export type BatchSelection = {
@@ -602,10 +638,24 @@ export type DownloaderOptions = {
    * stays responsive. Defaults to the maximum.
    */
   readonly concurrency?: number | undefined
+  /**
+   * Share of the logical processors the pool may use: 0.5 (default, ⌊CPUs/2⌋)
+   * up to 0.6 (⌊CPUs × 0.6⌋), leaving the rest for the user. Live with `setMaxCpuShare`.
+   */
+  readonly maxCpuShare?: number | undefined
   /** Parallel fragments inside one download (HLS/DASH sites). Network-bound. Default 3. */
   readonly fragmentsPerDownload?: number | undefined
   /** Default 'full'. */
   readonly validation?: ValidationLevel | undefined
+  /**
+   * When batch jobs are checked: 'during' (default) — each file before it is
+   * finished; 'after-batch' — files are finished as they download and the
+   * whole batch is checked once every download has ended (downloads run
+   * back to back, the CPU-heavy checks come after). A file found broken is
+   * marked damaged at the source and never downloaded again. Jobs outside a
+   * batch are always checked during. Live with `setValidationTiming`.
+   */
+  readonly validationTiming?: ValidationTiming | undefined
   /**
    * 'portable' (default): file and folder names with ASCII letters, digits and
    * hyphens only, as car stereos, TVs and FAT32 USB sticks need. 'original':

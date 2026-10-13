@@ -13,6 +13,7 @@ import type {
   VideoAnalysis,
   VideoContainer,
 } from '../../types.js'
+import {untilAborted} from '../../util/abort.js'
 import type {MediaResolver} from '../browser.js'
 import {type Fetch, HttpSession} from '../http.js'
 import {fetchMedia} from '../media-fetch.js'
@@ -49,6 +50,8 @@ export type PlayerPageOptions = {
    * was given. Without one, listings and checks work but downloads can't.
    */
   readonly resolveMedia?: MediaResolver | undefined
+  /** The most one player lookup may take before the attempt fails (and is retried). Default 45 s. */
+  readonly resolveTimeoutMs?: number | undefined
   /** Listings load at most this many videos unless asked otherwise. Default 500. */
   readonly maxListItems?: number | undefined
   /** Pace of page requests. Media downloads aren't paced. */
@@ -64,6 +67,11 @@ const LOOKAHEAD_PAGES = 6
 const MAX_LISTING_PAGES = 2000
 /** Reads of a page that failed transiently, before giving up. */
 const READ_ATTEMPTS = 3
+/**
+ * The most a player lookup (the host's browser) may take: a page that never
+ * answers must not hold a download slot forever — the attempt fails and is retried.
+ */
+export const RESOLVE_TIMEOUT_MS = 45_000
 const CACHE_LIMIT = 5000
 /** Such sites take ~1 s to render a page: many in flight, briefly spaced; a 429 / 5xx backs all off. */
 const DEFAULT_PACING: PacerOptions = {
@@ -89,6 +97,7 @@ export class PlayerPageSource implements MediaSource {
   readonly #session: HttpSession
   readonly #pacer: Pacer
   readonly #resolveMedia: MediaResolver | undefined
+  readonly #resolveTimeoutMs: number
   readonly #maxListItems: number
   readonly #log: (level: 'info' | 'warn', message: string) => void
   /** Video pages read, by url (insertion order = age: oldest evicted first). */
@@ -116,6 +125,7 @@ export class PlayerPageSource implements MediaSource {
     this.#session = new HttpSession({fetch: options.fetch})
     this.#pacer = new Pacer(options.pacing ?? DEFAULT_PACING)
     this.#resolveMedia = options.resolveMedia
+    this.#resolveTimeoutMs = Math.max(1, options.resolveTimeoutMs ?? RESOLVE_TIMEOUT_MS)
     this.#maxListItems = Math.max(1, Math.floor(options.maxListItems ?? PLAYER_PAGE_DEFAULT_ITEMS))
     this.#log = options.log ?? (() => {})
   }
@@ -248,10 +258,22 @@ export class PlayerPageSource implements MediaSource {
       )
     }
     let media: Awaited<ReturnType<MediaResolver>>
+    const limit = AbortSignal.timeout(this.#resolveTimeoutMs)
+    const bounded = AbortSignal.any([signal, limit])
     try {
-      media = await this.#resolveMedia(page, signal)
+      // the host's browser is told to stop, and is not waited for past the limit
+      media = await untilAborted(this.#resolveMedia(page, bounded), bounded)
     } catch (error) {
       if (signal.aborted) throw cancelledError()
+      if (limit.aborted) {
+        throw new DownloadError(
+          'network',
+          `${this.name}: the page's player gave no video link within ${Math.round(this.#resolveTimeoutMs / 1000)} s.`,
+          undefined,
+          undefined,
+          'retry-later',
+        )
+      }
       const reason = error instanceof Error ? error.message : String(error)
       throw new DownloadError('network', `${this.name}: ${reason}`, undefined, undefined, 'retry-later')
     }

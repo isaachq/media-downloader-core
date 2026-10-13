@@ -91,13 +91,13 @@ describe('run report', () => {
       title: 'Running list',
       status: 'running',
       progress: {fraction: 0.5, etaSeconds: 120},
-      jobs: {total: 10, queued: 3, running: 2, succeeded: 4, failed: 1},
+      jobs: {total: 10, queued: 3, running: 2, succeeded: 4, failed: 1, cancelled: 0},
     })
     const waiting = batch({
       id: 'B-wait' as never,
       title: 'Next list',
       status: 'scheduled',
-      jobs: {total: 0, queued: 0, running: 0, succeeded: 0, failed: 0},
+      jobs: {total: 0, queued: 0, running: 0, succeeded: 0, failed: 0, cancelled: 0},
       preflight: {total: 0, checked: 0, ok: 0, unavailable: 0},
     })
     const downloads = Array.from({length: 12}, (_, i) =>
@@ -135,7 +135,15 @@ describe('run report', () => {
       jobs: target.jobs.values(),
       now: 99,
     })
-    expect(report).toMatchObject({runId: 'RUN1', at: 99, pending: 1, inProgress: 13, finished: 2, failed: 1})
+    expect(report).toMatchObject({
+      runId: 'RUN1',
+      at: 99,
+      pending: 1,
+      inProgress: 13,
+      finished: 2,
+      failed: 1,
+      cancelled: 0,
+    })
     expect(report.stages).toEqual({downloading: 12, processing: 0, converting: 0, validating: 1, finalizing: 0})
     expect(report.now.downloading).toHaveLength(8)
     expect(report.now.downloading[0]?.title).toBe('Clip 11') // most advanced first
@@ -209,7 +217,9 @@ describe('finished tab', () => {
     expect(api.openFolder).toHaveBeenCalledWith('downloads')
 
     await user.type(within(list).getByLabelText('Search finished files by title or name'), 'clip 2')
-    await waitFor(() => expect(api.finished).toHaveBeenLastCalledWith({offset: 0, limit: 50, search: 'clip 2'}))
+    await waitFor(() =>
+      expect(api.finished).toHaveBeenLastCalledWith({offset: 0, limit: 50, search: 'clip 2', sort: 'newest'}),
+    )
     expect(await within(list).findByTestId('finished-summary')).toHaveTextContent('1 file · 2 MB')
     await waitFor(() => expect(within(list).queryByText('Finished clip 1')).not.toBeInTheDocument())
   })
@@ -273,7 +283,10 @@ describe('tabs, stats and batches', () => {
   })
 
   it("opens a batch's folder once it has finished files", async () => {
-    const done = batch({status: 'completed', jobs: {total: 2, queued: 0, running: 0, succeeded: 2, failed: 0}})
+    const done = batch({
+      status: 'completed',
+      jobs: {total: 2, queued: 0, running: 0, succeeded: 2, failed: 0, cancelled: 0},
+    })
     const {api, user} = await mount(new FakeApi({state: {batches: [done], jobs: []}}))
     await user.click(screen.getByTestId('batch-open-folder'))
     expect(api.openFolder).toHaveBeenCalledWith({batchId: done.id})
@@ -357,7 +370,7 @@ describe('preview of a profile whose count includes posts it does not list', () 
   })
 
   it('explains it instead of offering a load that brings nothing (Spanish)', async () => {
-    const api = new FakeApi({settings: {language: 'es'}})
+    const api = new FakeApi({info: {mode: 'tiktok'}, settings: {language: 'es'}})
     api.preview = {
       kind: 'playlist',
       title: 'TikTok @a',
@@ -377,7 +390,7 @@ describe('preview of a profile whose count includes posts it does not list', () 
   })
 
   it('a listing that stopped short offers to continue', async () => {
-    const api = new FakeApi()
+    const api = new FakeApi({info: {mode: 'tiktok'}})
     api.preview = {
       kind: 'playlist',
       title: 'TikTok @a',

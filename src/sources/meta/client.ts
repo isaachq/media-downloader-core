@@ -46,6 +46,29 @@ const COOKIES_FRESH_MS = 6 * 60 * 60_000
 /** What a login wall or a checkpoint page carries, on either site. */
 const WALL = /\/accounts\/login|\/login\.php|\/checkpoint\/|\/challenge\/|checkpoint_required|login_form/
 
+/**
+ * A 403 on a page or the API: the site won't serve this client as it is (no
+ * signed-in session, or this connection is not welcome) — waiting doesn't
+ * change that. A wall, as a verification page is: the browser tries once,
+ * else the source steps aside and yt-dlp reads the link at once, instead of
+ * cool-downs of 30 s and more for nothing.
+ */
+const forbidden = (site: string): MetaError =>
+  new MetaError('challenge', `${site} refused this (HTTP 403) — a signed-in session may be needed.`)
+
+/** A 4xx other than 401 / 403 / 404 / 410 / 429: the request itself is not accepted any more. */
+const unexpected = (status: number): boolean => status >= 400 && status < 500 && status !== 429
+
+/**
+ * The site no longer accepts the request this module builds (400, 405…): no
+ * wait makes it accept it. As a changed page is: yt-dlp reads the link now.
+ */
+const rejected = (site: string, status: number): MetaError =>
+  new MetaError(
+    'format-changed',
+    `${site} no longer accepts this request (HTTP ${status}) — without a signed-in session it may not show this list.`,
+  )
+
 function assertNotWalled(html: string, site: string): void {
   if (WALL.test(html)) throw new MetaError('challenge', `${site} showed the browser a login or verification page.`)
 }
@@ -179,7 +202,8 @@ export class MetaClient {
 
   /**
    * An API answer as JSON. Status codes are told apart here (404 removed,
-   * 401 login, 429 / 403 / 5xx refused — the pacer backs off); what the JSON
+   * 401 login, 403 a wall (as a verification page), another 4xx a changed request (yt-dlp takes the
+   * link), 429 / 5xx refused — the pacer backs off); what the JSON
    * says is for `read`. With `recoverAt`, a verification answer makes the
    * browser load that page once, so its session serves the next try.
    */
@@ -219,7 +243,7 @@ export class MetaClient {
   }
 
   /**
-   * A refusal (403 / 429 / empty answer) is retried after the shared cool-down.
+   * A refusal (429 / 5xx / empty answer) is retried after the shared cool-down.
    * A verification page is not: solving it is out of scope, so the source steps
    * aside for BLOCKED_MS and the engine uses yt-dlp meanwhile.
    */
@@ -282,6 +306,8 @@ export class MetaClient {
       if (response.status === 404 || response.status === 410) {
         throw new MetaError('removed', `${this.site} answered ${response.status}.`)
       }
+      if (response.status === 403) throw forbidden(this.site)
+      if (unexpected(response.status)) throw rejected(this.site, response.status)
       if (!response.ok) {
         this.pacer.refused()
         throw new MetaError('refused', `${this.site} answered HTTP ${response.status}.`)
@@ -321,6 +347,8 @@ export class MetaClient {
       if (response.status === 401) {
         throw new MetaError('login-required', `${this.site} asks to sign in for this.`)
       }
+      if (response.status === 403) throw forbidden(this.site)
+      if (unexpected(response.status)) throw rejected(this.site, response.status)
       if (!response.ok || !body) {
         this.pacer.refused()
         throw new MetaError('refused', `${this.site} answered HTTP ${response.status}${body ? '' : ' with no data'}.`)

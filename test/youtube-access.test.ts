@@ -212,7 +212,9 @@ describe('YouTubeGate: the ladder', () => {
   })
 
   it('tokens on the first refusal, three retries, then held for the user — none counted against the job', async () => {
-    const {g, changes} = gate()
+    // a clock of the test's own: the pauses are measured in it, whatever the machine's load
+    let clock = 0
+    const {g, changes} = gate({now: () => clock})
     const first = g.refused()
     assert.deepEqual(first, {waitMs: 10, free: true})
     assert.equal(g.access.level, 'attested')
@@ -220,11 +222,11 @@ describe('YouTubeGate: the ladder', () => {
     // the other requests refused by the same block join the pause: no extra rung
     assert.equal(g.refused().free, true)
     assert.equal(g.access.refusals, 0)
-    await new Promise(r => setTimeout(r, 15))
+    clock += 15
     assert.deepEqual(g.refused(), {waitMs: 20, free: true})
-    await new Promise(r => setTimeout(r, 25))
+    clock += 25
     assert.deepEqual(g.refused(), {waitMs: 30, free: true})
-    await new Promise(r => setTimeout(r, 35))
+    clock += 35
     assert.deepEqual(g.refused(), {waitMs: undefined, free: true})
     assert.equal(g.access.level, 'held')
     assert.equal(g.blocked, true)

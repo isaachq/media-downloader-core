@@ -71,6 +71,10 @@ export function toDownloadError(error: unknown, site: string): DownloadError {
       return new DownloadError('network', error.message, undefined, undefined, 'retry-later')
     case 'format-changed':
       // 'unknown' lets the engine fall back to yt-dlp for this url
-      return new DownloadError('unknown', `${site}: ${error.message}`, SOURCE_FORMAT_CHANGED)
+      return new DownloadError(
+        'unknown',
+        error.message.startsWith(site) ? error.message : `${site}: ${error.message}`,
+        SOURCE_FORMAT_CHANGED,
+      )
   }
 }

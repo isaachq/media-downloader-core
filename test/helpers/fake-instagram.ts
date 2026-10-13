@@ -23,6 +23,8 @@ export type FakeInstagramConfig = {
   readonly loginWall?: boolean
   /** The first N page / API answers are rate limited ("please wait a few minutes"). */
   readonly refusals?: number
+  /** Every page and API answer is 403 (a client the site won't serve). */
+  readonly forbidden?: boolean
   /** The listing queries' ids changed: GraphQL answers errors for them. */
   readonly rotatedQueries?: boolean
   /** API answers a checkpoint (HTML) until a browser visited a page (cookie ig_ok=1). */
@@ -215,6 +217,10 @@ export async function startFakeInstagram(config: FakeInstagramConfig = {}): Prom
       return send(200, body, {'Content-Length': String(size), 'Content-Type': 'video/mp4'})
     }
 
+    if (config.forbidden && (isApi || isPage)) {
+      hits.refused++
+      return send(403, 'forbidden')
+    }
     if (refusalsLeft > 0 && (isApi || isPage)) {
       refusalsLeft--
       hits.refused++

@@ -32,7 +32,7 @@ import {useCallback, useEffect, useState} from 'react'
 import {AUDIO_FORMATS, type Format, type SyncCheck, type SyncFolder, VIDEO_FORMATS} from '../../../shared/contract'
 import {api} from '../api'
 import {useApp} from '../context'
-import {moment} from '../format'
+import {errorText, moment} from '../format'
 import {type MessageKey, type Translate, useT} from '../i18n'
 import {useShowBatch} from './BatchFilter'
 import {Rows} from './Rows'
@@ -52,9 +52,6 @@ export function suggestedFolder(downloadDir: string, user: string): string {
   const sep = downloadDir.includes('\\') && !downloadDir.includes('/') ? '\\' : '/'
   return `${downloadDir.replace(/[\\/]+$/, '')}${sep}TikTok-${user}`
 }
-
-const errorText = (error: unknown): string =>
-  error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': (\w+: )?/, '') : String(error)
 
 function scheduleText(t: Translate, schedule: SyncSchedule): string {
   if (schedule.every === 'day') return t('sync.schedule.dailyAt', {at: schedule.at})

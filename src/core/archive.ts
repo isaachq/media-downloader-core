@@ -23,8 +23,16 @@ export type ArchiveEntry = {
   /** The batch it was downloaded in, and that batch's name (absent in older records). */
   readonly batchId?: string | undefined
   readonly batchTitle?: string | undefined
+  /**
+   * The check after its batch found the file broken where it comes from
+   * (what it found, in English): it is kept, and never downloaded again.
+   */
+  readonly damaged?: string | undefined
   readonly completedAt: number
 }
+
+/** Order of a page of finished downloads. */
+export type ArchiveSort = 'newest' | 'oldest' | 'largest' | 'smallest'
 
 /** A page of finished downloads, newest first (see `DownloadArchive.list`). */
 export type ArchiveQuery = {
@@ -36,6 +44,10 @@ export type ArchiveQuery = {
   readonly search?: string | undefined
   /** Only the files of this batch. */
   readonly batchId?: string | undefined
+  /** Only the entries this accepts (a host's own filter: a site, a size range, an integrity state). */
+  readonly match?: ((entry: ArchiveEntry) => boolean) | undefined
+  /** Default 'newest' (by when each file finished). */
+  readonly sort?: ArchiveSort | undefined
 }
 
 /** The batches finished files came from, for grouping a history (see `DownloadArchive.groups`). */
@@ -124,7 +136,7 @@ export class DownloadArchive {
   #full: Map<string, ArchiveEntry> | undefined
   #fullLoading: Promise<Map<string, ArchiveEntry>> | undefined
   #fullBytes = 0
-  /** `#full` newest first, rebuilt on the first list() after a change. */
+  /** `#full` newest first (by completedAt), rebuilt on the first list() after a change. */
   #newestFirst: ArchiveEntry[] | undefined
   /** Folded title + file name per entry, for searching (computed once per entry). */
   readonly #haystacks = new WeakMap<ArchiveEntry, string>()
@@ -210,6 +222,38 @@ export class DownloadArchive {
     })
   }
 
+  /** Forget several records; how many were there. */
+  async removeMany(keys: Iterable<string>): Promise<number> {
+    let removed = 0
+    for (const key of keys) {
+      await this.open()
+      if (!this.#index.has(key)) continue
+      await this.remove(key)
+      removed++
+    }
+    return removed
+  }
+
+  /**
+   * Change what is known about a finished file (its check, a damage found
+   * later) — when it finished stays as it was. Undefined when there is no such record.
+   */
+  async update(
+    key: string,
+    patch: Partial<Pick<ArchiveEntry, 'validation' | 'damaged' | 'sha256'>>,
+  ): Promise<ArchiveEntry | undefined> {
+    const current = (await this.#loadFull()).get(key)
+    if (!current) return undefined
+    const next: ArchiveEntry = {...current, ...patch}
+    await this.#append({op: 'put', entry: next}, line => {
+      this.#index.set(key, {filepath: next.filepath, sizeBytes: next.sizeBytes, line})
+      // same place in the history: Map.set on a present key keeps its position
+      this.#full?.set(key, next)
+      this.#newestFirst = undefined
+    })
+    return next
+  }
+
   /**
    * Finished downloads, newest first, a page at a time, optionally filtered.
    * The first call reads the log once (streamed); later calls are served from
@@ -218,23 +262,28 @@ export class DownloadArchive {
    */
   async list(query: ArchiveQuery = {}): Promise<ArchivePage> {
     const full = await this.#loadFull()
-    this.#newestFirst ??= [...full.values()].reverse()
+    // insertion order is nearly newest-last already: the stable sort is close to linear
+    this.#newestFirst ??= [...full.values()].reverse().sort((a, b) => b.completedAt - a.completedAt)
     const newest = this.#newestFirst
     const words = fold(query.search ?? '')
       .split(/\s+/)
       .filter(Boolean)
     let matching = newest
     let bytes = this.#fullBytes
-    const batchId = query.batchId
-    if (words.length > 0 || batchId !== undefined) {
+    const {batchId, match} = query
+    if (words.length > 0 || batchId !== undefined || match !== undefined) {
       matching = newest.filter(entry => {
         if (batchId !== undefined && entry.batchId !== batchId) return false
+        if (match && !match(entry)) return false
         if (words.length === 0) return true
         const haystack = this.#haystack(entry)
         return words.every(word => haystack.includes(word))
       })
       bytes = matching.reduce((sum, entry) => sum + entry.sizeBytes, 0)
     }
+    if (query.sort === 'oldest') matching = [...matching].reverse()
+    else if (query.sort === 'largest') matching = [...matching].sort((a, b) => b.sizeBytes - a.sizeBytes)
+    else if (query.sort === 'smallest') matching = [...matching].sort((a, b) => a.sizeBytes - b.sizeBytes)
     const offset = Math.max(0, Math.floor(query.offset ?? 0))
     const limit = Math.min(500, Math.max(1, Math.floor(query.limit ?? 50)))
     return {entries: matching.slice(offset, offset + limit), total: matching.length, bytes}

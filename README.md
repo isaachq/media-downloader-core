@@ -45,9 +45,17 @@ the ⌊CPUs/2⌋ pool and verified file by file.
 
 ![Paste a link, download it as MP4, check its integrity report, find it in Finished, open the run report](docs/demo.gif)
 
-### What's new in beta 10 (library 1.10.0, in progress)
+### What's new in beta 10 (library 1.10.0)
 
-- **Instagram and Facebook, built in** — paste a post, a reel, a whole profile, its stories or a highlight (Instagram), or a video, a reel, a page's videos or its stories (Facebook), and the library reads them itself: the same pool, pacing, retries, conversion, integrity checks and naming as TikTok. Photos and carousels become an MP4 or a folder of pictures, your choice. Stories need your own signed-in session (the browser cookies the app already uses). [How it works](#instagram-and-facebook-built-in-extractors). The app's tabs for them come next.
+- **Instagram and Facebook, built in** — paste a post, a reel, a whole profile, its stories or a highlight (Instagram), or a video, a reel, a page's videos or its stories (Facebook), and the library reads them itself: the same pool, pacing, retries, conversion, integrity checks and naming as TikTok. Photos and carousels become an MP4 or a folder of pictures, your choice. Stories need your own signed-in session (the browser cookies the app already uses). [How it works](#instagram-and-facebook-built-in-extractors).
+- **Signing in, explained** — Settings → Cookies → *How to sign in*: sign in on your own browser, choose it in the app, allow the one-time permission (macOS Keychain, Safari's Full Disk Access, Windows, Linux keyrings). [Step by step](#signing-in-your-browsers-session).
+- **One site per run** — Settings → Site: YouTube and websites, TikTok, Instagram or Facebook. Each run shows only that site's screens and controls (Sync Up only in TikTok mode, YouTube's sign-in only in the web mode), refuses links of the others, and its Finished tab holds that site's files. Changing it restarts the app.
+- **Failed downloads, together** — the Failed card lists every failed download of the session; pick some and they go into one new batch, each back to its own folder.
+- **Damaged at the source** — a file that comes down whole but is broken (it doesn't decode, or can't be read at all) is downloaded once more to be sure, then marked and never downloaded again; its tooltip says why. Settings lists them and lets one try again.
+- **Download first, check after** — a batch can download back to back and check all its files at the end.
+- **Up to 60% of the processors** — instead of half, keeping about 40% free.
+- **Cancel drops one download** — the batch goes on and completes without it.
+- **Finished** — filter by integrity and size, sort by size, and remove the records of files deleted or moved since.
 
 ### What's new in beta 9
 
@@ -169,6 +177,38 @@ fuse-libs` for it); on Ubuntu 24.04+ prefer the `.deb`.
 Settings, tools and the download history live in `~/Library/Application Support/Media Download Core`
 (macOS), `%APPDATA%\Media Download Core` (Windows) or `~/.config/Media Download Core` (Linux),
 shared with the `mdc` command line.
+
+### Signing in: your browser's session
+
+Some content needs your own account: private or members-only videos,
+age-restricted ones, Instagram profiles, stories and highlights, a Facebook
+page's list of videos — and YouTube when it asks to confirm you're not a bot.
+The app never asks for a password: it uses the session of the browser you
+already sign in with.
+
+1. Open your usual browser (Chrome, Edge, Firefox, Safari, Brave…) and **sign
+   in there as always** — to Google / YouTube, Instagram or Facebook.
+2. In the app: **Settings → Cookies from browser → choose that browser**
+   (Settings → Cookies → *How to sign in* shows these steps in the app).
+3. **Allow the permission your system asks for**, once:
+   - **macOS** — a Keychain window asks to let the app read "Chrome Safe
+     Storage" (or your browser's): type your Mac password and click **Always
+     Allow**. Safari: System Settings → Privacy & Security → **Full Disk
+     Access** → turn on Media Download Core.
+   - **Windows** — close the browser before downloading (Chrome and Edge lock
+     their cookies while open). If Chrome still can't be read (it protects its
+     cookies on Windows), sign in with **Firefox** and choose Firefox.
+   - **Linux** (Fedora, Ubuntu…) — your keyring (GNOME Keyring / KWallet) may
+     ask to allow access to the browser's saved data: allow it. Firefox asks
+     nothing.
+4. Paste the link again. If the site signs you out, sign in again in the
+   browser — the app picks the new session up by itself.
+
+The cookies stay on your computer: they are read once into a private copy
+the app uses only for downloading, filtered to the site at hand, and never
+sent anywhere else. Without a session, single public posts and videos still
+download; what a site keeps for signed-in accounts says so ("Sign-in
+required") instead of failing silently.
 
 ### Updates
 
@@ -572,7 +612,7 @@ One JavaScript thread orchestrates. The heavy work happens elsewhere, in paralle
 | SHA-256 of finished files | `HashPool` — worker threads, started on demand, exit when idle |
 | Queue, events, state | main thread — never blocked: all I/O is async, progress is parsed line by line |
 
-- **At most ⌊logical CPUs / 2⌋ jobs** run at once (`MediaDownloader.maxConcurrency()`); `setConcurrency(n)` is clamped to it. A job holds its slot through download → convert → validate → move, so the cap covers the whole pipeline.
+- **At most ⌊logical CPUs / 2⌋ jobs** run at once (`MediaDownloader.maxConcurrency()`); `setConcurrency(n)` is clamped to it. `maxCpuShare: 0.6` (or `setMaxCpuShare(0.6)`) raises the ceiling to ⌊CPUs × 0.6⌋ — never more, so about 40% of the machine stays free. A job holds its slot through download → convert → validate → move, so the cap covers the whole pipeline.
 - **CPU budget for ffmpeg:** each decode/encode gets `⌊limit / running jobs⌋` threads — a lone job validates with all of them, a full pool uses one each. Total never exceeds ⌊CPUs/2⌋.
 - **Fragments:** `fragmentsPerDownload` (default 3) parallelizes HLS/DASH fragments inside one download; network-bound, near-zero CPU.
 
@@ -681,6 +721,10 @@ only the offending stream is re-encoded locally.
 `'quick'` replaces step 4 with a packet read (≈50× faster; catches truncation, not bitstream corruption). `'none'` trusts yt-dlp.
 
 Failures are retried from scratch; a file that still fails ends as `failed` with code `validation` and structured `issues` (`{code, message, params}`).
+
+**Damaged at the source.** When the file came down whole and fails as broken (`decode-failed`, `decode-errors`, `incomplete-decode`, `duration-mismatch`, `probe-failed`, `file-empty` — not a codec or container mismatch, which is about the conversion), one fresh download confirms it; the second failure marks the media in `damaged.json` (`MediaDownloader.damaged`, by media id and url) and the job fails with hint `damaged-source` instead of spending its remaining retries. From then on the scheduler's check settles such items as unavailable (`damaged-source`) and a loose job fails at once. `damaged.remove(key)` lets one try again.
+
+**Checks after the batch.** `validationTiming: 'after-batch'` (or `setValidationTiming`) finishes batch jobs as they download — probed only, archived with `validation: 'none'`, `JobSnapshot.validationPending` — and once every download of the batch has ended the batch turns `validating` (`BatchSnapshot.validation = {done, total}`) and `checkLater()` checks the files at the configured level, a few at a time. Passing files get that level in their record; a file broken at the source is marked damaged and kept (its record carries `damaged`); one failing for another reason is removed with its record so it can be downloaded again.
 yt-dlp writes into a private work folder; only validated files are moved into the destination (cross-volume moves copy → verify size → rename), so a truncated file never appears under its final name.
 
 ## Backups: archive, resume, verify

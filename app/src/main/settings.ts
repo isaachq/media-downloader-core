@@ -9,6 +9,8 @@ import {
   pickLanguage,
   QUALITIES,
   type Quality,
+  RUN_MODES,
+  type RunMode,
   type ThemeMode,
   VIDEO_FORMATS,
 } from '../shared/contract'
@@ -38,8 +40,14 @@ export function defaultSettings(
     slideshowSeconds: 3,
     tourDone: false,
     syncEnabled: false,
+    mode: 'web',
+    validateAfter: false,
+    cpuBoost: false,
   }
 }
+
+/** The most simultaneous downloads: with half the processors, and with up to 60% of them. */
+export type ConcurrencyLimits = {readonly half: number; readonly boosted: number}
 
 const FORMATS: readonly string[] = [...VIDEO_FORMATS, ...AUDIO_FORMATS]
 
@@ -47,10 +55,13 @@ const FORMATS: readonly string[] = [...VIDEO_FORMATS, ...AUDIO_FORMATS]
  * Merge an untrusted patch (it comes from the renderer) into settings: every
  * field is type- and range-checked, unknown or invalid values are ignored.
  */
-export function mergeSettings(current: AppSettings, patch: unknown, maxConcurrency: number): AppSettings {
+export function mergeSettings(current: AppSettings, patch: unknown, limits: ConcurrencyLimits): AppSettings {
   if (typeof patch !== 'object' || patch === null) return current
   const p = patch as Record<string, unknown>
   const next: {-readonly [K in keyof AppSettings]: AppSettings[K]} = {...current}
+  // the boost first: it decides how many downloads at once are allowed
+  if (typeof p['cpuBoost'] === 'boolean') next.cpuBoost = p['cpuBoost']
+  const maxConcurrency = next.cpuBoost ? limits.boosted : limits.half
   if (p['language'] === 'en' || p['language'] === 'es') next.language = p['language'] as Language
   if (p['theme'] === 'system' || p['theme'] === 'light' || p['theme'] === 'dark') next.theme = p['theme'] as ThemeMode
   if (typeof p['downloadDir'] === 'string' && path.isAbsolute(p['downloadDir'])) next.downloadDir = p['downloadDir']
@@ -59,6 +70,11 @@ export function mergeSettings(current: AppSettings, patch: unknown, maxConcurren
     next.quality = p['quality'] as Quality
   if (Number.isInteger(p['concurrency']))
     next.concurrency = Math.min(maxConcurrency, Math.max(1, p['concurrency'] as number))
+  // boost off: what was allowed only with it comes down to the new ceiling
+  next.concurrency = Math.min(maxConcurrency, next.concurrency)
+  if (typeof p['mode'] === 'string' && (RUN_MODES as readonly string[]).includes(p['mode']))
+    next.mode = p['mode'] as RunMode
+  if (typeof p['validateAfter'] === 'boolean') next.validateAfter = p['validateAfter']
   if (p['validation'] === 'full' || p['validation'] === 'quick' || p['validation'] === 'none')
     next.validation = p['validation']
   if (
@@ -91,7 +107,7 @@ export class SettingsStore {
   constructor(
     private readonly file: string,
     defaults: AppSettings,
-    private readonly maxConcurrency: number,
+    private readonly limits: ConcurrencyLimits,
   ) {
     this.#current = defaults
   }
@@ -103,7 +119,7 @@ export class SettingsStore {
   async load(): Promise<AppSettings> {
     try {
       const saved: unknown = JSON.parse(await fs.readFile(this.file, 'utf8'))
-      this.#current = mergeSettings(this.#current, saved, this.maxConcurrency)
+      this.#current = mergeSettings(this.#current, saved, this.limits)
     } catch {
       // first launch or unreadable file: keep defaults
     }
@@ -111,7 +127,7 @@ export class SettingsStore {
   }
 
   async update(patch: unknown): Promise<AppSettings> {
-    this.#current = mergeSettings(this.#current, patch, this.maxConcurrency)
+    this.#current = mergeSettings(this.#current, patch, this.limits)
     await fs.mkdir(path.dirname(this.file), {recursive: true})
     const tmp = `${this.file}.${process.pid}.tmp`
     await fs.writeFile(tmp, JSON.stringify(this.#current, null, 2))

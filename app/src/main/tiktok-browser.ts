@@ -1,5 +1,6 @@
 import {BrowserWindow, type Session, session} from 'electron'
 import type {BrowserAssist, BrowserPage} from 'media-downloader-core'
+import {within} from './player-browser'
 
 /** How long a page may take to pass TikTok's check and show its data. */
 const PAGE_TIMEOUT_MS = 25_000
@@ -75,20 +76,30 @@ export function createTikTokBrowser(origin = 'https://www.tiktok.com'): {
     if (!onTikTok(url)) throw new Error(`Not a TikTok page: ${url}`)
     clearTimeout(idle)
     const page = prepare()
-    const abort = () => close()
+    // a cancel stops this page only: the window (and its session) stays for the next one
+    const abort = () => {
+      if (!page.isDestroyed()) page.webContents.stop()
+    }
     signal?.addEventListener('abort', abort, {once: true})
     try {
-      await page.loadURL(url).catch(() => {}) // the check reloads the page: the first load may be superseded
+      await within(page.loadURL(url), PAGE_TIMEOUT_MS, undefined) // the check reloads the page: the first load may be superseded
       const deadline = Date.now() + PAGE_TIMEOUT_MS
       let ready = false
       while (!ready && Date.now() < deadline && !signal?.aborted && !page.isDestroyed()) {
-        ready = await page.webContents
-          .executeJavaScript(`Boolean(document.getElementById(${JSON.stringify(DATA_SCRIPT)}))`)
-          .catch(() => false)
+        ready = await within(
+          page.webContents.executeJavaScript(`Boolean(document.getElementById(${JSON.stringify(DATA_SCRIPT)}))`),
+          3000,
+          false,
+        )
         if (!ready) await new Promise(resolve => setTimeout(resolve, POLL_MS))
       }
       signal?.throwIfAborted()
-      const html: string = await page.webContents.executeJavaScript('document.documentElement.outerHTML')
+      const html: string = await within(
+        page.webContents.executeJavaScript('document.documentElement.outerHTML'),
+        10_000,
+        '',
+      )
+      if (!html) throw new Error('The page did not answer.')
       const cookies = await ses!.cookies.get({url: origin})
       const result: BrowserPage = {
         html,

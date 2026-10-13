@@ -37,6 +37,7 @@ export {
   type ArchiveGroup,
   type ArchivePage,
   type ArchiveQuery,
+  type ArchiveSort,
   archiveKey,
   DownloadArchive,
 } from './core/archive.js'
@@ -52,6 +53,13 @@ export {
   YOUTUBE_COOKIE_DOMAINS,
 } from './core/cookies.js'
 export {estimateBytes, jobTier, peakBytes, TIER_WEIGHT} from './core/cost.js'
+export {
+  type DamagedEntry,
+  type DamagedLookup,
+  DamagedRegistry,
+  isSourceDamage,
+  SOURCE_DAMAGE,
+} from './core/damaged.js'
 export {classifyYtDlpError, DownloadError, isRetryable} from './core/errors.js'
 export {type WorkEstimate, WorkMeter} from './core/eta.js'
 export {
@@ -79,7 +87,15 @@ export {
   VIDEO_RULES,
 } from './core/formats.js'
 export {HashPool} from './core/hash-pool.js'
-export {clampConcurrency, cpuCount, maxConcurrency, TaskPool} from './core/pool.js'
+export {
+  clampConcurrency,
+  cpuCount,
+  cpuShare,
+  DEFAULT_CPU_SHARE,
+  MAX_CPU_SHARE,
+  maxConcurrency,
+  TaskPool,
+} from './core/pool.js'
 export {searchTrace} from './core/trace-log.js'
 export {ffprobe, summarizeProbe, validateFile} from './core/validate.js'
 export {type ArchiveCheck, MediaDownloader, relaxProfile, retryDelay} from './downloader.js'

@@ -414,3 +414,14 @@ describe('Facebook, end to end (local fake)', () => {
     assert.ok(incremental.kind === 'playlist' && incremental.entries.length < 40)
   })
 })
+
+describe('Facebook that stops accepting the listing query', () => {
+  it('a 400 is not waited out: yt-dlp reads the link at once', async () => {
+    const {site, engine} = await setup('bad-request', {videos: 30, badRequest: true})
+    const started = Date.now()
+    const result = await engine.analyze(videosUrl(site))
+    assert.ok(Date.now() - started < 5000, `took ${Date.now() - started} ms`)
+    assert.ok(site.hits.graphql >= 1, 'the query was tried')
+    assert.ok(result.kind === 'playlist' || result.kind === 'video')
+  })
+})

@@ -7,10 +7,11 @@ import {
   SettingOutlined,
   SunOutlined,
 } from '@ant-design/icons'
-import {Button, Segmented, Space, Tooltip, Typography} from 'antd'
+import {Button, Segmented, Space, Tag, Tooltip, Typography} from 'antd'
 import type {ThemeMode} from '../../../shared/contract'
 import {useApp} from '../context'
 import {useT} from '../i18n'
+import {modeName} from '../mode'
 import {Banner} from './Banner'
 
 type Props = {
@@ -23,7 +24,7 @@ type Props = {
 
 export function Header({onLogs, onSettings, onAbout, onReport, onGuide}: Props) {
   const t = useT()
-  const {settings, updateSettings, dark} = useApp()
+  const {info, settings, updateSettings, dark} = useApp()
   return (
     <Banner dark={dark}>
       <div className="header-row">
@@ -32,6 +33,23 @@ export function Header({onLogs, onSettings, onAbout, onReport, onGuide}: Props) 
             Media Download Core
           </Typography.Title>
           <Typography.Text className="app-tagline">{t('app.tagline')}</Typography.Text>
+          <div>
+            <Tooltip title={t('mode.badgeTip')}>
+              <Tag
+                className="mode-tag"
+                role="button"
+                tabIndex={0}
+                onClick={onSettings}
+                onKeyDown={event => {
+                  if (event.key === 'Enter' || event.key === ' ') onSettings()
+                }}
+                data-testid="mode-tag"
+                data-mode={info.mode}
+              >
+                {t('mode.badge', {mode: modeName(t, info.mode)})}
+              </Tag>
+            </Tooltip>
+          </div>
         </div>
         <Space wrap className="header-actions">
           <Segmented

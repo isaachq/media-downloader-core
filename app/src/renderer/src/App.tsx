@@ -11,6 +11,7 @@ import {ShowBatchContext} from './components/BatchFilter'
 import {BatchList} from './components/BatchList'
 import {BootScreen} from './components/BootScreen'
 import {DownloadBar} from './components/DownloadBar'
+import {FailedModal} from './components/FailedModal'
 import {FinishedList} from './components/FinishedList'
 import {FirstSteps} from './components/FirstSteps'
 import {Header} from './components/Header'
@@ -136,7 +137,7 @@ function Shell({
 }) {
   const t = useMemo(() => translator(settings.language), [settings.language])
   const notify = useBatchNotifications(t, settings)
-  const [panel, setPanel] = useState<'logs' | 'settings' | 'about' | 'report' | undefined>()
+  const [panel, setPanel] = useState<'logs' | 'settings' | 'about' | 'report' | 'failed' | undefined>()
   const [tab, setTab] = useState<MainTab>('batches')
   // the first-steps guide: once on the first launch, then from Header → Guide
   const {updateSettings} = useApp()
@@ -185,11 +186,12 @@ function Shell({
         />
         <Layout.Content className="app-content">
           <UpdateBanner />
-          <YouTubeAccess />
+          {/* YouTube's sign-in belongs to the web mode only */}
+          {info.mode === 'web' ? <YouTubeAccess /> : null}
           {/* Sync Up (in the top card) opens its batches in the tabs below too */}
           <ShowBatchContext.Provider value={showBatch}>
             <DownloadBar />
-            <Stats onOpen={setTab} />
+            <Stats onOpen={setTab} onFailed={() => setPanel('failed')} />
             <Tabs
               className="main-tabs"
               activeKey={tab}
@@ -230,6 +232,15 @@ function Shell({
       />
       <LogsDrawer open={panel === 'logs'} onClose={() => setPanel(undefined)} />
       <AboutModal open={panel === 'about'} onClose={() => setPanel(undefined)} />
+      {panel === 'failed' ? (
+        <FailedModal
+          onClose={() => setPanel(undefined)}
+          onCreated={() => {
+            setPanel(undefined)
+            setTab('batches')
+          }}
+        />
+      ) : null}
       <ReportModal open={panel === 'report'} onClose={() => setPanel(undefined)} />
       <FirstSteps open={guide} onClose={closeGuide} />
       <SetupModal

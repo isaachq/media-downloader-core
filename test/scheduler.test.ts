@@ -73,7 +73,7 @@ describe('BatchScheduler', () => {
     assert.deepEqual(statuses.get(second.id), ['scheduled', 'checking', 'running', 'completed'])
     const done = scheduler.batch(first.id)!
     assert.equal(done.kind, 'playlist')
-    assert.deepEqual(done.jobs, {total: 3, queued: 0, running: 0, succeeded: 3, failed: 0})
+    assert.deepEqual(done.jobs, {total: 3, queued: 0, running: 0, succeeded: 3, failed: 0, cancelled: 0})
     assert.ok(done.startedAt! <= scheduler.batch(second.id)!.startedAt!)
   })
 
@@ -354,7 +354,7 @@ describe('BatchScheduler', () => {
     await scheduler.whenIdle()
     const first = scheduler.batch(batch.id)!
     assert.equal(first.status, 'completed-with-errors')
-    assert.deepEqual(first.jobs, {total: 3, queued: 0, running: 0, succeeded: 1, failed: 2})
+    assert.deepEqual(first.jobs, {total: 3, queued: 0, running: 0, succeeded: 1, failed: 2, cancelled: 0})
     assert.deepEqual(first.problems, {failed: {network: 2}, unavailable: {removed: 1}})
 
     assert.equal(scheduler.retryFailed(batch.id), 2)
@@ -362,7 +362,7 @@ describe('BatchScheduler', () => {
     await scheduler.whenIdle()
     const after = scheduler.batch(batch.id)!
     assert.equal(after.status, 'completed-with-errors', 'the unavailable item still keeps it from "completed"')
-    assert.deepEqual(after.jobs, {total: 3, queued: 0, running: 0, succeeded: 3, failed: 0})
+    assert.deepEqual(after.jobs, {total: 3, queued: 0, running: 0, succeeded: 3, failed: 0, cancelled: 0})
     assert.deepEqual(after.problems, {failed: {}, unavailable: {removed: 1}})
     assert.deepEqual(statuses.get(batch.id)?.slice(-3), ['completed-with-errors', 'running', 'completed-with-errors'])
     const items = scheduler.items(batch.id)
@@ -417,6 +417,6 @@ describe('BatchScheduler', () => {
     await scheduler.whenIdle()
     const after = scheduler.batch(batch.id)!
     assert.equal(after.status, 'completed')
-    assert.deepEqual(after.jobs, {total: 1, queued: 0, running: 0, succeeded: 1, failed: 0})
+    assert.deepEqual(after.jobs, {total: 1, queued: 0, running: 0, succeeded: 1, failed: 0, cancelled: 0})
   })
 })

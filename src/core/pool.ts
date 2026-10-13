@@ -5,17 +5,32 @@ export function cpuCount(): number {
   return os.availableParallelism()
 }
 
-/**
- * Ceiling for simultaneous jobs: half the logical processors, at least one.
- * Each job drives its own yt-dlp / ffmpeg processes, so this keeps the
- * system responsive while downloading.
- */
-export function maxConcurrency(cpus: number = cpuCount()): number {
-  return Math.max(1, Math.floor(cpus / 2))
+/** Share of the logical processors jobs may use: half by default, at most 60% (the rest stays free for the user). */
+export const DEFAULT_CPU_SHARE = 0.5
+export const MAX_CPU_SHARE = 0.6
+
+/** A share within 50–60% (anything else falls back to the nearest bound, invalid input to 50%). */
+export function cpuShare(share: number | undefined): number {
+  if (share === undefined || !Number.isFinite(share)) return DEFAULT_CPU_SHARE
+  return Math.min(MAX_CPU_SHARE, Math.max(DEFAULT_CPU_SHARE, share))
 }
 
-export function clampConcurrency(requested: number | undefined, cpus: number = cpuCount()): number {
-  const max = maxConcurrency(cpus)
+/**
+ * Ceiling for simultaneous jobs: half the logical processors (or up to 60%
+ * with a larger `share`), at least one. Each job drives its own yt-dlp /
+ * ffmpeg processes, so this keeps the system responsive while downloading.
+ */
+export function maxConcurrency(cpus: number = cpuCount(), share: number = DEFAULT_CPU_SHARE): number {
+  // the epsilon keeps 10 × 0.6 at 6, not 5.999…
+  return Math.max(1, Math.floor(cpus * cpuShare(share) + 1e-9))
+}
+
+export function clampConcurrency(
+  requested: number | undefined,
+  cpus: number = cpuCount(),
+  share: number = DEFAULT_CPU_SHARE,
+): number {
+  const max = maxConcurrency(cpus, share)
   if (requested === undefined || !Number.isFinite(requested)) return max
   return Math.min(max, Math.max(1, Math.floor(requested)))
 }

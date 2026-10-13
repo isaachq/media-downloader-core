@@ -51,6 +51,8 @@ export class Job {
   mediaId: string | undefined
   filepath: string | undefined
   validation: ValidationReport | undefined
+  /** Finished with its check put off until its batch has downloaded everything. */
+  validationPending = false
   error: JobError | undefined
   readonly createdAt = Date.now()
   startedAt: number | undefined
@@ -145,6 +147,11 @@ export class Job {
     this.#setStep(name, state, error)
   }
 
+  /** Put a started step back to pending: it runs later (a check after the batch). */
+  putOff(name: StepName): void {
+    this.#setStep(name, 'pending')
+  }
+
   /** Mark the step in progress as failed (no-op when none is). */
   failCurrentStep(error: JobError): void {
     const name = this.#currentStep
@@ -181,6 +188,21 @@ export class Job {
     this.release()
   }
 
+  /**
+   * The check put off until after the batch: its verdict. A file that failed
+   * turns a completed job into a failed one (outcome success → failed).
+   */
+  checkedLater(report: ValidationReport, error?: JobError): void {
+    this.validationPending = false
+    this.validation = report
+    this.#setStep('validate', error ? 'failed' : 'success', error)
+    if (error) {
+      this.status = 'failed'
+      this.error = error
+    }
+    this.#snapshot = undefined
+  }
+
   snapshot(): JobSnapshot {
     this.#snapshot ??= Object.freeze({
       id: this.id,
@@ -202,6 +224,7 @@ export class Job {
       maxAttempts: this.maxAttempts,
       filepath: this.filepath,
       validation: this.validation,
+      ...(this.validationPending && {validationPending: true}),
       error: this.error,
       createdAt: this.createdAt,
       startedAt: this.startedAt,

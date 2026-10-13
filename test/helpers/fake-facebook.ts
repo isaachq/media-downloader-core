@@ -15,6 +15,8 @@ export type FakeFacebookConfig = {
   readonly stories?: ReadonlyArray<'video' | 'image'>
   /** Pages redirect to the login page unless the session is signed in. */
   readonly loginWall?: boolean
+  /** The pagination query answers 400 (the site stopped accepting the request as built). */
+  readonly badRequest?: boolean
   /** The first N page answers are refused (429). */
   readonly refusals?: number
   /** Videos (by index) that only have a DASH manifest, no progressive url. */
@@ -192,6 +194,7 @@ export async function startFakeFacebook(config: FakeFacebookConfig = {}): Promis
 
     if (isApi && parts[1] === 'graphql' && req.method === 'POST') {
       hits.graphql++
+      if (config.badRequest) return send(400, 'bad request')
       let body = ''
       req.on('data', chunk => {
         body += chunk

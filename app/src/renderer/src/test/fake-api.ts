@@ -1,6 +1,7 @@
 import type {
   BatchId,
   BatchSnapshot,
+  DamagedEntry,
   Diagnosis,
   FormatProfile,
   InstallProgress,
@@ -18,6 +19,7 @@ import {
   type AppInfo,
   type AppSettings,
   type EventBundle,
+  type FailedRetry,
   type FinishedEntry,
   type FinishedGroup,
   type FinishedPage,
@@ -29,6 +31,7 @@ import {
   type OpenTarget,
   type Preview,
   type ScheduleInput,
+  SIZE_LIMITS,
   type SyncCheck,
   type SyncFolder,
   type SyncInput,
@@ -45,6 +48,8 @@ export const INFO: AppInfo = {
   platform: 'test-x64',
   cpus: 12,
   maxConcurrency: 6,
+  boostedConcurrency: 7,
+  mode: 'web',
   dataDir: '/data',
   sessionId: 'S'.repeat(32),
   startedAt: Date.UTC(2026, 9, 11, 15, 0),
@@ -70,6 +75,9 @@ export const SETTINGS: AppSettings = {
   // tests start past the first-steps guide (its own tests turn it back on)
   tourDone: true,
   syncEnabled: false,
+  mode: 'web',
+  validateAfter: false,
+  cpuBoost: false,
 }
 
 export const READY: Diagnosis = {
@@ -105,7 +113,7 @@ export function batch(patch: Partial<BatchSnapshot> = {}): BatchSnapshot {
     kind: 'playlist',
     title: 'My playlist',
     preflight: {total: 3, checked: 3, ok: 2, unavailable: 1},
-    jobs: {total: 2, queued: 0, running: 1, succeeded: 1, failed: 0},
+    jobs: {total: 2, queued: 0, running: 1, succeeded: 1, failed: 0, cancelled: 0},
     createdAt: Date.now(),
     ...patch,
   }
@@ -149,14 +157,18 @@ export class FakeApi implements MdcApi {
       settings?: Partial<AppSettings>
       diagnosis?: Diagnosis
       state?: {batches: BatchSnapshot[]; jobs: JobSnapshot[]}
+      /** This run's info (e.g. another mode than the web one). */
+      info?: Partial<AppInfo>
     } = {},
   ) {
-    this.settings = {...SETTINGS, ...opts.settings}
+    this.settings = {...SETTINGS, ...(opts.info?.mode && {mode: opts.info.mode}), ...opts.settings}
+    this.appInfo = {...INFO, ...opts.info}
     this.diagnosis = opts.diagnosis ?? READY
     this.state = vi.fn(async () => opts.state ?? {batches: [], jobs: []})
   }
 
-  info = vi.fn(async () => INFO)
+  appInfo: AppInfo
+  info = vi.fn(async () => this.appInfo)
   getSettings = vi.fn(async () => this.settings)
   setSettings = vi.fn(async (patch: Partial<AppSettings>) => {
     this.settings = {...this.settings, ...patch}
@@ -207,11 +219,29 @@ export class FakeApi implements MdcApi {
   finishedEntries: FinishedEntry[] = []
   finished = vi.fn(async (query: FinishedQuery): Promise<FinishedPage> => {
     const words = (query.search ?? '').toLowerCase().split(/\s+/).filter(Boolean)
+    const integrity = (entry: FinishedEntry) =>
+      entry.damaged
+        ? 'damaged'
+        : entry.file !== 'ok'
+          ? entry.file
+          : entry.validation === 'quick' || entry.validation === 'full'
+            ? 'verified'
+            : entry.validation === 'none' || !entry.sha256
+              ? 'unverified'
+              : 'checksum'
     const matching = this.finishedEntries.filter(
       entry =>
         (query.batchId === undefined || entry.batchId === query.batchId) &&
-        words.every(word => entry.title.toLowerCase().includes(word)),
+        words.every(word => entry.title.toLowerCase().includes(word)) &&
+        (!query.integrity?.length || query.integrity.includes(integrity(entry))) &&
+        (!query.size?.length ||
+          query.size.some(
+            range => entry.sizeBytes >= SIZE_LIMITS[range][0] && entry.sizeBytes < SIZE_LIMITS[range][1],
+          )),
     )
+    if (query.sort === 'largest') matching.sort((a, b) => b.sizeBytes - a.sizeBytes)
+    else if (query.sort === 'smallest') matching.sort((a, b) => a.sizeBytes - b.sizeBytes)
+    else if (query.sort === 'oldest') matching.reverse()
     return {
       entries: matching.slice(query.offset, query.offset + query.limit),
       total: matching.length,
@@ -314,6 +344,20 @@ export class FakeApi implements MdcApi {
     this.finishedEntries = this.finishedEntries.filter(entry => !keys.includes(entry.key))
     return keys.length
   })
+  pruneFinished = vi.fn(async (_target: FinishedTarget) => {
+    const before = this.finishedEntries.length
+    this.finishedEntries = this.finishedEntries.filter(entry => entry.file !== 'missing')
+    return before - this.finishedEntries.length
+  })
+  retryFailed = vi.fn(async (items: readonly FailedRetry[]) =>
+    batch({url: items[0]!.url, status: 'scheduled', kind: undefined, title: `Failed, retried (${items.length})`}),
+  )
+  damaged: DamagedEntry[] = []
+  damagedList = vi.fn(async () => this.damaged)
+  damagedForget = vi.fn(async (key: string) => {
+    this.damaged = this.damaged.filter(entry => entry.key !== key)
+  })
+  relaunch = vi.fn(async () => {})
   exportFinished = vi.fn(
     async (_target: FinishedTarget): Promise<string | undefined> => '/Users/me/Downloads/finished.csv',
   )

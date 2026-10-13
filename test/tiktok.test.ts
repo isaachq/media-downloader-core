@@ -420,7 +420,10 @@ describe('TikTok, end to end (local fake)', () => {
     assert.equal(done.status, 'completed', JSON.stringify(done.error))
     assert.equal(done.jobs.succeeded, 20)
     assert.equal(renders, 1, 'one browser page; everything after went over HTTP with its session')
-    assert.ok(Date.now() - started < 5000, `no refusal cool-down after the browser passed (${Date.now() - started} ms)`)
+    // the cool-down a refusal would add is told apart by the requests, not by a stopwatch (the
+    // machine's load would decide that): the browser passed once, and nothing was refused after it
+    assert.equal(site.hits.refusedMedia, 0, 'no media request was refused after the browser passed')
+    assert.ok(Date.now() - started < 60_000, `finished (${Date.now() - started} ms)`)
     assert.equal(site.hits.challenge, 1, 'only the first plain request met the check')
   })
 

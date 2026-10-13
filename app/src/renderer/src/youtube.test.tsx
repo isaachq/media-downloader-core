@@ -87,7 +87,7 @@ describe("YouTube's bot check", () => {
     const closed = batch({
       title: 'Mix - Song',
       status: 'completed-with-errors',
-      jobs: {total: 3, queued: 0, running: 0, succeeded: 1, failed: 2},
+      jobs: {total: 3, queued: 0, running: 0, succeeded: 1, failed: 2, cancelled: 0},
       problems: {failed: {'bot-check': 2}, unavailable: {}},
     })
     await mount(new FakeApi({state: {batches: [closed], jobs: []}}))

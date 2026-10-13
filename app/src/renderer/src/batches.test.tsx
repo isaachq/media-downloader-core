@@ -29,7 +29,7 @@ describe('failures by cause, and retrying them', () => {
     const closed = batch({
       title: 'Road trip',
       status: 'completed-with-errors',
-      jobs: {total: 5, queued: 0, running: 0, succeeded: 3, failed: 2},
+      jobs: {total: 5, queued: 0, running: 0, succeeded: 3, failed: 2, cancelled: 0},
       problems: {failed: {network: 1, removed: 1}, unavailable: {private: 2}},
     })
     const {api, user} = await mount(new FakeApi({state: {batches: [closed], jobs: []}}))
@@ -44,12 +44,12 @@ describe('failures by cause, and retrying them', () => {
   it('the report sums causes over the run and retries every batch with failures', async () => {
     const a = batch({
       status: 'completed-with-errors',
-      jobs: {total: 2, queued: 0, running: 0, succeeded: 1, failed: 1},
+      jobs: {total: 2, queued: 0, running: 0, succeeded: 1, failed: 1, cancelled: 0},
       problems: {failed: {network: 1}, unavailable: {}},
     })
     const b = batch({
       status: 'failed',
-      jobs: {total: 1, queued: 0, running: 0, succeeded: 0, failed: 1},
+      jobs: {total: 1, queued: 0, running: 0, succeeded: 0, failed: 1, cancelled: 0},
       problems: {failed: {network: 1}, unavailable: {removed: 3}},
     })
     const {api, user} = await mount(new FakeApi({state: {batches: [a, b], jobs: []}}))
@@ -64,7 +64,7 @@ describe('failures by cause, and retrying them', () => {
   it('speaks Spanish', async () => {
     const closed = batch({
       status: 'failed',
-      jobs: {total: 1, queued: 0, running: 0, succeeded: 0, failed: 1},
+      jobs: {total: 1, queued: 0, running: 0, succeeded: 0, failed: 1, cancelled: 0},
       problems: {failed: {removed: 1}, unavailable: {}},
     })
     await mount(new FakeApi({settings: {language: 'es'}, state: {batches: [closed], jobs: []}}))
@@ -92,12 +92,12 @@ describe('downloads and finished, one batch at a time', () => {
     const trip = batch({
       id: 'B-trip' as BatchId,
       title: 'Road trip',
-      jobs: {total: 1, queued: 0, running: 1, succeeded: 0, failed: 0},
+      jobs: {total: 1, queued: 0, running: 1, succeeded: 0, failed: 0, cancelled: 0},
     })
     const gym = batch({
       id: 'B-gym' as BatchId,
       title: 'Gym mix',
-      jobs: {total: 1, queued: 0, running: 1, succeeded: 0, failed: 0},
+      jobs: {total: 1, queued: 0, running: 1, succeeded: 0, failed: 0, cancelled: 0},
     })
     const api = new FakeApi({
       state: {
@@ -172,7 +172,7 @@ describe('downloads and finished, one batch at a time', () => {
             id: 'B-trip' as BatchId,
             title: 'Road trip',
             status: 'completed',
-            jobs: {total: 2, queued: 0, running: 0, succeeded: 2, failed: 0},
+            jobs: {total: 2, queued: 0, running: 0, succeeded: 2, failed: 0, cancelled: 0},
           }),
         ],
         jobs: [],
@@ -268,7 +268,7 @@ describe('TikTok slideshows', () => {
   })
 
   it('a list with slideshows asks what they become, remembers it, and schedules with it', async () => {
-    const api = new FakeApi()
+    const api = new FakeApi({info: {mode: 'tiktok'}})
     api.preview = {
       kind: 'playlist',
       title: 'TikTok @a',
@@ -291,7 +291,7 @@ describe('TikTok slideshows', () => {
   })
 
   it('a single slideshow link asks first, with the seconds per image for a video', async () => {
-    const api = new FakeApi()
+    const api = new FakeApi({info: {mode: 'tiktok'}})
     api.preview = {kind: 'video', title: 'My carousel', slideshow: {images: 4, audio: true}}
     const {user} = await mount(api)
     await user.type(screen.getByLabelText('Video, playlist or profile URL'), 'https://www.tiktok.com/@a/photo/1')
@@ -308,7 +308,7 @@ describe('TikTok slideshows', () => {
   })
 
   it('with an audio format there is nothing to choose: only the soundtrack (Spanish)', async () => {
-    const api = new FakeApi({settings: {language: 'es', format: 'mp3'}})
+    const api = new FakeApi({info: {mode: 'tiktok'}, settings: {language: 'es', format: 'mp3'}})
     api.preview = {
       kind: 'playlist',
       title: 'TikTok @a',

@@ -15,6 +15,7 @@ import {type ArchiveEntry, archiveKey, DownloadArchive} from './core/archive.js'
 import {ensureContainer, extractAudio, type MediaTags, writeTags} from './core/convert.js'
 import {BrowserCookies, type CookieRecord, exportBrowserCookies, jarCopy, parseNetscape} from './core/cookies.js'
 import {jobTier, peakBytes, TIER_WEIGHT} from './core/cost.js'
+import {type DamagedEntry, type DamagedLookup, DamagedRegistry, isSourceDamage} from './core/damaged.js'
 import {type DownloadedInfo, runYtDlp} from './core/download.js'
 import {cancelledError, DownloadError, isRetryable, toJobError} from './core/errors.js'
 import {
@@ -32,11 +33,11 @@ import {profileKey, profileProblem, rulesFor} from './core/formats.js'
 import {HashPool} from './core/hash-pool.js'
 import {newId} from './core/ids.js'
 import {Job, type JobPatch} from './core/job.js'
-import {clampConcurrency, cpuCount, maxConcurrency, TaskPool} from './core/pool.js'
+import {clampConcurrency, cpuCount, cpuShare, maxConcurrency, TaskPool} from './core/pool.js'
 import {utf8Env} from './core/process.js'
 import {PendingJournal} from './core/queue-store.js'
 import {TraceLog} from './core/trace-log.js'
-import {ffprobe, summarizeProbe, validateBundle, validateFile} from './core/validate.js'
+import {ffprobe, ProbeError, summarizeProbe, validateBundle, validateFile} from './core/validate.js'
 import {FacebookSource} from './sources/facebook/source.js'
 import {InstagramSource} from './sources/instagram/source.js'
 import {type ListingProgress, type MediaSource, needsFallback} from './sources/source.js'
@@ -58,7 +59,10 @@ import type {
   StepName,
   TerminalStatus,
   TraceId,
+  ValidationIssueCode,
   ValidationLevel,
+  ValidationReport,
+  ValidationTiming,
   VideoAnalysis,
 } from './types.js'
 import {type AttestationStatus, PoTokenService} from './youtube/attestation.js'
@@ -81,6 +85,9 @@ const youtubeWaiting = (): DownloadError =>
 
 type Settings = {
   validation: ValidationLevel
+  validationTiming: ValidationTiming
+  /** Share of the logical processors the pool may use (0.5–0.6). */
+  cpuShare: number
   fileNames: FileNameStyle
   readonly fragmentsPerDownload: number
   readonly checksums: boolean
@@ -96,6 +103,27 @@ type Settings = {
   readonly metadataMaxAgeMs: number
   readonly longVideoMinutes: number
   readonly extraYtDlpArgs: readonly string[]
+}
+
+/** What the check put off until after a batch found (see `checkLater`). */
+export type LaterCheck = {
+  readonly checked: number
+  readonly ok: number
+  /** Broken at the source: kept, marked, never downloaded again. */
+  readonly damaged: number
+  /** Failed for another reason (codecs, container): removed, to be downloaded again. */
+  readonly failed: number
+}
+
+/** The error of a media known to be damaged at the source. */
+function damagedError(entry: Pick<DamagedEntry, 'reason'>): DownloadError {
+  return new DownloadError(
+    'unavailable',
+    `Damaged at the source — not downloaded again: ${entry.reason}`,
+    undefined,
+    undefined,
+    'damaged-source',
+  )
 }
 
 export type ArchiveCheck = {
@@ -125,6 +153,8 @@ export type ArchiveCheck = {
 export class MediaDownloader extends EventEmitter<DownloaderEvents> implements AsyncDisposable {
   readonly binaries: BinaryManager
   readonly archive: DownloadArchive
+  /** Media found damaged at the source: never downloaded again (until removed from it). */
+  readonly damaged: DamagedRegistry
   readonly #settings: Settings
   readonly #pool: TaskPool<JobId>
   readonly #hashes = new HashPool()
@@ -138,6 +168,12 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
   readonly #jobs = new Map<JobId, Job>()
   /** Terminal jobs in finishing order, for releasing the oldest ones. */
   readonly #finished = new Set<JobId>()
+  /**
+   * Finished jobs released from #jobs while their check after the batch is
+   * still to come: kept here until it runs, so a batch longer than
+   * retainFinishedJobs still has every file checked.
+   */
+  readonly #awaitingCheck = new Map<JobId, Job>()
   readonly #analyses = new Set<AbortController>()
   /** Folder holding tools, archive, queue state and logs. */
   readonly dataDir: string
@@ -169,9 +205,9 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
   readonly sessionId: TraceId = newId()
   #disposing = false
 
-  /** Upper bound of `concurrency` on this machine: ⌊logical CPUs / 2⌋. */
-  static maxConcurrency(): number {
-    return maxConcurrency()
+  /** Upper bound of `concurrency` on this machine: ⌊logical CPUs / 2⌋, or ⌊CPUs × share⌋ (share 0.5–0.6). */
+  static maxConcurrency(share?: number): number {
+    return maxConcurrency(cpuCount(), share)
   }
 
   static cpuCount(): number {
@@ -183,6 +219,8 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     if (!path.isAbsolute(options.dataDir)) throw new TypeError('dataDir must be an absolute path.')
     this.#settings = {
       validation: options.validation ?? 'full',
+      validationTiming: options.validationTiming === 'after-batch' ? 'after-batch' : 'during',
+      cpuShare: cpuShare(options.maxCpuShare),
       fileNames: options.fileNames ?? 'portable',
       fragmentsPerDownload: Math.max(1, Math.floor(options.fragmentsPerDownload ?? 3)),
       checksums: options.checksums ?? true,
@@ -221,6 +259,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     this.#unsupportedUrlSource = options.unsupportedUrlSource
     this.binaries = new BinaryManager(options.dataDir, options.binaries)
     this.archive = new DownloadArchive(path.join(options.dataDir, 'archive.jsonl'))
+    this.damaged = new DamagedRegistry(path.join(options.dataDir, 'damaged.json'))
     this.#queue = new PendingJournal(path.join(options.dataDir, 'pending.jsonl'), () => this.#pendingEntries())
     this.dataDir = options.dataDir
     this.#workRoot = path.join(options.dataDir, 'work')
@@ -229,7 +268,9 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       options.traceLog === false
         ? undefined
         : new TraceLog(path.join(options.dataDir, 'logs'), options.traceRetentionDays ?? 14)
-    this.#pool = new TaskPool<JobId>(clampConcurrency(options.concurrency), () => this.emit('idle'))
+    this.#pool = new TaskPool<JobId>(clampConcurrency(options.concurrency, cpuCount(), this.#settings.cpuShare), () =>
+      this.emit('idle'),
+    )
 
     const auto = options.jsRuntime === undefined ? defaultJsRuntime() : undefined
     const jsRuntime = options.jsRuntime === false ? undefined : (options.jsRuntime ?? auto?.runtime)
@@ -422,11 +463,34 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     return this.#pool.limit
   }
 
-  /** Change simultaneous jobs at runtime; returns the applied value (clamped to ⌊CPUs/2⌋). */
+  /** Change simultaneous jobs at runtime; returns the applied value (clamped to the CPU share's ceiling). */
   setConcurrency(requested: number): number {
-    const value = clampConcurrency(requested)
+    const value = clampConcurrency(requested, cpuCount(), this.#settings.cpuShare)
     this.#pool.setLimit(value)
     return value
+  }
+
+  /** The CPU share in effect (0.5–0.6). */
+  get maxCpuShare(): number {
+    return this.#settings.cpuShare
+  }
+
+  /** The most jobs `setConcurrency` accepts now (⌊CPUs × share⌋). */
+  get concurrencyCeiling(): number {
+    return maxConcurrency(cpuCount(), this.#settings.cpuShare)
+  }
+
+  /**
+   * Let the pool use up to this share of the logical processors (0.5–0.6) from
+   * now on. A lower share lowers the concurrency at once if it is above the new
+   * ceiling (running jobs finish; no new one starts until there is room).
+   * Returns the share applied.
+   */
+  setMaxCpuShare(share: number): number {
+    this.#settings.cpuShare = cpuShare(share)
+    const ceiling = this.concurrencyCeiling
+    if (this.#pool.limit > ceiling) this.#pool.setLimit(ceiling)
+    return this.#settings.cpuShare
   }
 
   get validation(): ValidationLevel {
@@ -435,6 +499,20 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
 
   setValidation(level: ValidationLevel): void {
     this.#settings.validation = level
+  }
+
+  get validationTiming(): ValidationTiming {
+    return this.#settings.validationTiming
+  }
+
+  /** Applies to jobs that start from now on. */
+  setValidationTiming(timing: ValidationTiming): void {
+    this.#settings.validationTiming = timing === 'after-batch' ? 'after-batch' : 'during'
+  }
+
+  /** Whether a media is known damaged at the source (by media id, or by url). */
+  async isDamaged(lookup: DamagedLookup): Promise<DamagedEntry | undefined> {
+    return this.damaged.find(lookup)
   }
 
   /** Applies to files finished from now on. */
@@ -507,6 +585,8 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     if (opts.signal?.aborted) analysis.abort()
     else opts.signal?.addEventListener('abort', forward, {once: true})
     this.#analyses.add(analysis)
+    /** Why the native source handed the link to yt-dlp: said instead of yt-dlp's "Unsupported URL", when it can't either. */
+    let sourceError: DownloadError | undefined
     try {
       const source = this.#sourceFor(url)
       if (source) {
@@ -519,7 +599,8 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
           })
         } catch (error) {
           if (!(error instanceof DownloadError) || !needsFallback(error.details)) throw error
-          this.#log('warn', `${source.name}: ${error.message} — reading ${url} with yt-dlp instead`)
+          sourceError = error
+          this.#log('warn', `${error.message} — reading ${url} with yt-dlp instead`)
         }
       }
       const bins = await this.binaries.resolve()
@@ -545,6 +626,10 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       } catch (error) {
         // a link pasted while YouTube bot-checks this connection: the pause starts here too
         if (error instanceof DownloadError && error.code === 'blocked' && isYouTubeUrl(url)) this.#youtubeRefused()
+        // the site's own source could not read it and yt-dlp doesn't know the link: the source's reason
+        if (sourceError && isUnsupported(error)) {
+          throw new DownloadError('unavailable', sourceError.message, sourceError.details, undefined, 'retry-later')
+        }
         // a site yt-dlp doesn't know: the source made for its host may read it
         const fallback = isUnsupported(error) ? this.#fallbackFor(url) : undefined
         if (!fallback) throw error
@@ -775,8 +860,21 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
   }
 
   /** Whether a file has an audio stream. */
+  /**
+   * Whether a file a native source downloaded has an audio stream. A file
+   * ffprobe can't read at all (e.g. "moov atom not found") came down whole
+   * and is broken: a validation failure, so a second one in a row marks it
+   * damaged at the source instead of retrying it again and again.
+   */
   async #hasAudio(bins: ResolvedBinaries, file: string, signal: AbortSignal): Promise<boolean> {
-    return summarizeProbe(await ffprobe(bins.ffprobe.exe, file, signal)).audio !== undefined
+    try {
+      return summarizeProbe(await ffprobe(bins.ffprobe.exe, file, signal)).audio !== undefined
+    } catch (error) {
+      if (!(error instanceof ProbeError)) throw error
+      throw new DownloadError('validation', `The file failed validation: ${error.message}`, undefined, {
+        issues: 'probe-failed',
+      })
+    }
   }
 
   // ─── Queue ────────────────────────────────────────────────────────────────
@@ -961,6 +1059,148 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     return results
   }
 
+  /** What a job was asked to do (its folder, profile, list position…); undefined once it is released. */
+  request(id: JobId): JobRequest | undefined {
+    const job = this.#jobs.get(id)
+    return job ? {...job.request, infoJsonPath: undefined} : undefined
+  }
+
+  /** Jobs of these that still wait for their check (finished with `validationTiming: 'after-batch'`). */
+  pendingChecks(ids: Iterable<JobId>): JobId[] {
+    const pending: JobId[] = []
+    for (const id of ids) if (this.#withCheck(id)?.validationPending) pending.push(id)
+    return pending
+  }
+
+  /**
+   * Give up the checks still waiting (their batch was cancelled while it
+   * checked): the files stay finished, unchecked ("none" in their records, as
+   * they already are), and stop saying they wait.
+   */
+  dropPendingChecks(ids: Iterable<JobId>): void {
+    for (const id of ids) {
+      const job = this.#withCheck(id)
+      this.#awaitingCheck.delete(id)
+      if (!job?.validationPending) continue
+      job.validationPending = false
+      job.endStep('validate', 'skipped')
+      this.emit('job', job.snapshot())
+    }
+  }
+
+  /**
+   * The integrity check put off until after a batch, for its finished files:
+   * a few at a time (the pool's limit), each with its share of the CPU. A
+   * file broken at the source is marked damaged (it stays where it is, its
+   * record says so, and it is never downloaded again); one that fails for
+   * another reason is removed with its record, so it can be downloaded again.
+   * Either way the job turns failed (an event goes out). Passing files get
+   * the level they passed in their record.
+   */
+  async checkLater(
+    ids: readonly JobId[],
+    opts: {readonly signal?: AbortSignal | undefined; readonly onProgress?: (done: number, total: number) => void} = {},
+  ): Promise<LaterCheck> {
+    const jobs = ids
+      .map(id => this.#withCheck(id))
+      .filter((job): job is Job => job?.validationPending === true && job.filepath !== undefined)
+    const result = {checked: 0, ok: 0, damaged: 0, failed: 0}
+    if (jobs.length === 0) return result
+    const bins = await this.binaries.resolve()
+    const level = this.#settings.validation === 'none' ? 'quick' : this.#settings.validation
+    // biggest first, and the CPU budget shared by size: the largest file (the longest check) is not
+    // left on one thread while small ones finish early — each worker keeps its share for its next file
+    const size = (job: Job) => job.validation?.sizeBytes ?? job.request.estimatedBytes ?? 0
+    const order = [...jobs].sort((a, b) => size(b) - size(a))
+    const parallel = Math.max(1, Math.min(this.#pool.limit, order.length))
+    const shares = cpuShares(this.#pool.limit, order.slice(0, parallel).map(size))
+    let next = 0
+    const worker = async (threads: number) => {
+      for (let i = next++; i < order.length; i = next++) {
+        opts.signal?.throwIfAborted()
+        await this.#checkOne(order[i]!, bins, level, threads, opts.signal, result)
+        this.#awaitingCheck.delete(order[i]!.id)
+        result.checked++
+        opts.onProgress?.(result.checked, jobs.length)
+      }
+    }
+    await Promise.all(shares.map(worker))
+    return result
+  }
+
+  /** A job, or one released already whose check after the batch is still to come. */
+  #withCheck(id: JobId): Job | undefined {
+    return this.#jobs.get(id) ?? this.#awaitingCheck.get(id)
+  }
+
+  async #checkOne(
+    job: Job,
+    bins: ResolvedBinaries,
+    level: ValidationLevel,
+    threads: number,
+    signal: AbortSignal | undefined,
+    result: {ok: number; damaged: number; failed: number},
+  ): Promise<void> {
+    const file = job.filepath!
+    const {request} = job
+    const profile = request.profile
+    const expectAudio = profile.kind === 'audio' || job.validation?.audio !== undefined
+    const report: ValidationReport = await validateFile({
+      ffmpeg: bins.ffmpeg.exe,
+      ffprobe: bins.ffprobe.exe,
+      file,
+      rules: rulesFor(profile),
+      level,
+      expectedDuration: request.duration ?? job.validation?.duration,
+      expectAudio,
+      threads,
+      signal: signal ?? new AbortController().signal,
+    })
+    const extractor = request.extractor
+    const mediaId = job.mediaId ?? request.mediaId
+    const key = extractor && mediaId ? archiveKey(extractor, mediaId, profile) : undefined
+    const kept = {...report, sha256: job.validation?.sha256}
+    if (report.ok) {
+      if (key) await this.archive.update(key, {validation: level})
+      job.checkedLater(kept)
+      result.ok++
+      this.#log('debug', `checked after its batch: ok (${level})`, job)
+      this.emit('job', job.snapshot())
+      return
+    }
+    const issues = report.issues.map(issue => issue.code)
+    const reason = report.issues.map(issue => issue.message).join(' ')
+    if (isSourceDamage(issues)) {
+      await this.damaged.add({url: request.url, title: job.title ?? request.title, extractor, mediaId, reason, issues})
+      if (key) await this.archive.update(key, {validation: level, damaged: reason})
+      job.checkedLater(kept, damagedError({reason}).toJSON())
+      result.damaged++
+      this.#log(
+        'error',
+        `checked after its batch: broken at the source (${reason}) — marked damaged, kept at ${file}`,
+        job,
+        {
+          code: 'unavailable',
+        },
+      )
+    } else {
+      if (key) await this.archive.remove(key)
+      await fs.rm(file, {force: true})
+      job.checkedLater(kept, new DownloadError('validation', `The file failed validation: ${reason}`).toJSON())
+      result.failed++
+      this.#log(
+        'error',
+        `checked after its batch: failed (${reason}) — file removed, it can be downloaded again`,
+        job,
+        {
+          code: 'validation',
+        },
+      )
+    }
+    this.emit('job', job.snapshot())
+    this.emit('failed', job.snapshot())
+  }
+
   /**
    * Shut down: save the pending queue, stop every process, keep partial
    * downloads for the next launch, release workers, files and listeners.
@@ -988,6 +1228,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     for (const job of this.#jobs.values()) job.release()
     this.#jobs.clear()
     this.#finished.clear()
+    this.#awaitingCheck.clear()
     this.removeAllListeners()
   }
 
@@ -1012,9 +1253,16 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     const youtube = isYouTubeUrl(request.url)
     /** YouTube refusals while its ladder still climbs: they don't use up this job's retries. */
     let free = 0
+    /** Attempts whose file failed validation as broken at the source: two in a row and it is damaged there. */
+    let broken = 0
 
     try {
       const bins = await this.binaries.resolve()
+      const known = await this.damaged.find({url: request.url, extractor: request.extractor, mediaId: request.mediaId})
+      if (known) {
+        this.#log('warn', `damaged at the source (${known.reason}) — not downloaded again`, job)
+        throw damagedError(known)
+      }
       if (await this.#skipIfArchived(job, request.extractor, request.mediaId)) return
 
       for (;;) {
@@ -1041,6 +1289,28 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
           const counted = attempt - free
           // a corrupt partial may cause anything but a network hiccup: start clean
           if (failure.code !== 'network') await fs.rm(workDir, {recursive: true, force: true})
+
+          // the file came down whole and is broken: once more from scratch to be sure, then it is the source
+          const issues = failure.code === 'validation' ? issueCodes(failure.params?.['issues']) : []
+          if (isSourceDamage(issues) && ++broken >= 2) {
+            const reason = failure.message.replace(/^The file failed validation: /, '')
+            await this.damaged.add({
+              url: request.url,
+              title: job.title ?? request.title,
+              extractor: request.extractor,
+              mediaId: job.mediaId ?? request.mediaId,
+              reason,
+              issues,
+            })
+            job.endAttempt(jobError)
+            this.#log(
+              'error',
+              `attempt ${attempt}/${job.maxAttempts}: the file is broken at the source (${reason}) — marked damaged, not downloaded again`,
+              job,
+              {code: 'unavailable'},
+            )
+            throw damagedError({reason})
+          }
           // next attempt extracts fresh metadata — cached media urls may have expired
           if (infoJsonPath && strategy !== 'extractor-fallback') strategy = 'fresh-extraction'
           infoJsonPath = undefined
@@ -1259,7 +1529,12 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       this.#stepDone(job, 'convert', 'skipped') // yt-dlp already produced the audio format
     }
 
-    // ── validate
+    // ── validate (or, for a batch checked after its downloads, only a probe of what came down)
+    const later =
+      this.#settings.validationTiming === 'after-batch' &&
+      request.batchId !== undefined &&
+      !bundle &&
+      this.#settings.validation !== 'none'
     this.#step(job, 'validate')
     this.#update(job, {status: 'validating', progress: {fraction: 0}}, true)
     let report = bundle
@@ -1269,7 +1544,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
           ffprobe: bins.ffprobe.exe,
           file,
           rules: rulesFor(profile),
-          level: this.#settings.validation,
+          level: later ? 'none' : this.#settings.validation,
           expectedDuration: info.duration ?? request.duration,
           expectAudio,
           threads: this.#cpuShare(job),
@@ -1285,7 +1560,11 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
         {issues: report.issues.map(i => i.code).join(',')},
       )
     }
-    this.#stepDone(job, 'validate', this.#settings.validation === 'none' ? 'skipped' : 'success')
+    if (later) {
+      job.validationPending = true
+      job.putOff('validate')
+      this.#emit(job, true)
+    } else this.#stepDone(job, 'validate', this.#settings.validation === 'none' ? 'skipped' : 'success')
 
     // ── finalize: move into place, checksum, archive
     this.#step(job, 'finalize')
@@ -1326,7 +1605,8 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
         sizeBytes: report.sizeBytes,
         sha256: report.sha256,
         duration: report.duration ?? request.duration,
-        validation: this.#settings.validation,
+        // checked after the batch: 'none' until then
+        validation: later ? 'none' : this.#settings.validation,
         batchId: request.batchId,
         // a playlist's name; a one-video batch is named after its video
         batchTitle: request.batchId ? (request.batchTitle ?? request.playlist?.title ?? mediaTitle) : undefined,
@@ -1483,6 +1763,8 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     while (this.#finished.size > this.#settings.retainFinishedJobs) {
       const oldest = this.#finished.values().next().value as JobId
       this.#finished.delete(oldest)
+      const job = this.#jobs.get(oldest)
+      if (job?.validationPending) this.#awaitingCheck.set(oldest, job)
       this.#jobs.delete(oldest)
     }
   }
@@ -1515,6 +1797,35 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     }
     return pending
   }
+}
+
+/**
+ * `budget` threads shared by weight (largest remainder): every share at least
+ * one, together exactly `budget` (or one each when there are more weights).
+ */
+export function cpuShares(budget: number, weights: readonly number[]): number[] {
+  const n = weights.length
+  if (n === 0) return []
+  if (budget <= n) return weights.map(() => 1)
+  const spare = budget - n // one each first, the rest by weight
+  const total = weights.reduce((sum, weight) => sum + Math.max(0, weight), 0)
+  const exact = weights.map(weight => (total > 0 ? (spare * Math.max(0, weight)) / total : spare / n))
+  const shares = exact.map(value => 1 + Math.floor(value))
+  let left = budget - shares.reduce((sum, share) => sum + share, 0)
+  const byRemainder = exact
+    .map((value, index) => [value - Math.floor(value), index] as const)
+    .sort((a, b) => b[0] - a[0])
+  for (const [, index] of byRemainder) {
+    if (left <= 0) break
+    shares[index]!++
+    left--
+  }
+  return shares
+}
+
+/** The validation issue codes a validation error carried (its `issues` param, comma separated). */
+function issueCodes(value: unknown): ValidationIssueCode[] {
+  return typeof value === 'string' ? (value.split(',').filter(Boolean) as ValidationIssueCode[]) : []
 }
 
 /** A looser profile to try when the requested one has no matching format: drop the resolution cap. */

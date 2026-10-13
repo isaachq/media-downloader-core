@@ -110,7 +110,7 @@ export function JobTable({
               <Typography.Text type="secondary" className="mono">
                 {rate(job.progress.speed, settings.language)} {job.progress.eta ? `· ${clock(job.progress.eta)}` : ''}
               </Typography.Text>
-            ) : job.error ? (
+            ) : job.error && job.status !== 'cancelled' ? (
               <Typography.Text type="danger" className="one-line" title={job.error.message}>
                 {job.error.hint ? t(`hint.${job.error.hint}` as MessageKey) : job.error.message}
               </Typography.Text>
@@ -120,7 +120,7 @@ export function JobTable({
       },
     },
     {title: t('job.steps'), key: 'steps', width: 150, render: (_, job) => <StepTrack steps={job.steps} />},
-    {title: t('job.integrity'), key: 'integrity', width: 130, render: (_, job) => <IntegrityTag job={job} />},
+    {title: t('job.integrity'), key: 'integrity', width: 150, render: (_, job) => <IntegrityTag job={job} />},
     {
       title: t('job.actions'),
       key: 'actions',
@@ -128,11 +128,11 @@ export function JobTable({
       render: (_, job) => (
         <Space size={4}>
           {job.outcome === 'in-progress' ? (
-            <Tooltip title={t('job.cancel')}>
+            <Tooltip title={job.batchId ? t('job.cancelOne') : t('job.cancel')}>
               <Button
                 size="small"
                 icon={<StopOutlined />}
-                aria-label={t('job.cancel')}
+                aria-label={job.batchId ? t('job.cancelOne') : t('job.cancel')}
                 onClick={() => void api().cancelJob(job.id)}
               />
             </Tooltip>

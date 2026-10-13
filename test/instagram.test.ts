@@ -602,3 +602,15 @@ describe('Instagram, end to end (local fake)', () => {
     assert.equal(Math.floor(stat.mtimeMs / 1000), 1_790_000_000)
   })
 })
+
+describe('Instagram that answers 403', () => {
+  it('is a wall, not a rate limit: yt-dlp reads the link at once instead of waiting out cool-downs', async () => {
+    const {site, engine} = await setup('forbidden', {forbidden: true})
+    const started = Date.now()
+    const result = await engine.analyze(postUrl(site))
+    // the fake yt-dlp answers for any link: the engine fell back to it, without the source's back-off
+    assert.equal(result.kind, 'video')
+    assert.ok(Date.now() - started < 5000, `took ${Date.now() - started} ms`)
+    assert.ok(site.hits.refused >= 1)
+  })
+})

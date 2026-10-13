@@ -160,6 +160,13 @@ section .intro { color: var(--muted); margin: 0 0 32px; max-width: 46em; font-si
 footer { margin-top: 72px; border-top: 1px solid var(--line); padding: 28px 0 40px; color: var(--muted); font-size: 14px; }
 footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; }
 footer a { color: var(--muted); }
+.new-badge { display: inline-block; background: var(--accent); color: #fff; font-size: 13px; font-weight: 700; border-radius: 999px; padding: 2px 10px; margin-bottom: 10px; }
+.steps.four { grid-template-columns: repeat(4, 1fr); }
+@media (max-width: 1000px) { .steps.four { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 600px) { .steps.four { grid-template-columns: 1fr; } }
+.systems { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 16px; }
+@media (max-width: 800px) { .systems { grid-template-columns: 1fr; } }
+.systems .feature h3 { margin-top: 0; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 </style>
 </head>
@@ -171,8 +178,10 @@ footer a { color: var(--muted); }
       Media Download Core
     </a>
     <div class="links">
+      <a href="#new" data-i18n="nav.new">New</a>
       <a href="#features" data-i18n="nav.features">Features</a>
       <a href="#how" data-i18n="nav.how">How it works</a>
+      <a href="#signin" data-i18n="nav.signin">Sign in</a>
       <a href="#download" class="keep" data-i18n="nav.download">Download</a>
       <a href="https://github.com/isaachq/media-downloader-core">GitHub</a>
       <span class="lang" role="group" aria-label="Language">
@@ -215,6 +224,46 @@ footer a { color: var(--muted); }
   </div>
 </div>
 
+<section id="new">
+  <div class="wrap">
+    <span class="new-badge" data-i18n="new.badge">Beta 10</span>
+    <h2 data-i18n="new.title">New in beta 10</h2>
+    <p class="intro" data-i18n="new.intro">The most complete version so far — run against the real sites, and its whole test suite and the app itself passing on macOS, Windows and Linux.</p>
+    <div class="features">
+      <article class="feature">
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><path d="M17.5 6.5h.01"/></svg></div>
+        <h3 data-i18n="b1.title">Instagram and Facebook</h3>
+        <p data-i18n="b1.text">Posts, reels, carousels, profiles, stories and highlights from Instagram; videos, reels and a page’s videos from Facebook — with the same checks and naming as every other site.</p>
+      </article>
+      <article class="feature">
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M3 12h18"/></svg></div>
+        <h3 data-i18n="b2.title">One site per run</h3>
+        <p data-i18n="b2.text">Choose YouTube and websites, TikTok, Instagram or Facebook: each run shows only that site’s screens and controls, and refuses links of the others — one site can’t trip another.</p>
+      </article>
+      <article class="feature">
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></div>
+        <h3 data-i18n="b3.title">Failed downloads, together</h3>
+        <p data-i18n="b3.text">The Failed card lists every failed download of the session. Pick some or all: they go into one new batch, each back to its own folder.</p>
+      </article>
+      <article class="feature">
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4m0 4h.01"/><path d="M10.3 3.9 2 18a2 2 0 0 0 1.7 3h16.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg></div>
+        <h3 data-i18n="b4.title">Damaged at the source</h3>
+        <p data-i18n="b4.text">A file that arrives whole but broken is downloaded once more to be sure, then marked — and never downloaded again. Its tooltip tells you why.</p>
+      </article>
+      <article class="feature">
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h6"/><path d="m15 17 2 2 4-4"/></svg></div>
+        <h3 data-i18n="b5.title">Download first, check after</h3>
+        <p data-i18n="b5.text">Optionally, a batch downloads back to back and checks all its files at the end — the heavy part when you are not waiting for it.</p>
+      </article>
+      <article class="feature">
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/></svg></div>
+        <h3 data-i18n="b6.title">Faster and steadier</h3>
+        <p data-i18n="b6.text">Up to 60% of the processors if you want, a cancel that drops one download and lets the batch go on, and Finished filtered by integrity and size.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
 <section id="features">
   <div class="wrap">
     <h2 data-i18n="features.title">Made for the big jobs</h2>
@@ -223,7 +272,7 @@ footer a { color: var(--muted); }
       <article class="feature">
         <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div>
         <h3 data-i18n="f1.title">Whole playlists and profiles</h3>
-        <p data-i18n="f1.text">YouTube playlists, channels and Mixes; TikTok videos, slideshows (as a video, or as images with their sound) and entire profiles — with “Load all” for the thousands of posts of a veteran account.</p>
+        <p data-i18n="f1.text">YouTube playlists, channels and Mixes; TikTok, Instagram and Facebook videos, slideshows and carousels (as a video, or as images with their sound) and entire profiles — with “Load all” for the thousands of posts of a veteran account.</p>
       </article>
       <article class="feature">
         <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 12 5 5L20 6"/></svg></div>
@@ -233,7 +282,7 @@ footer a { color: var(--muted); }
       <article class="feature">
         <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6l-8-3Z"/><path d="m9 12 2 2 4-4"/></svg></div>
         <h3 data-i18n="f3.title">Every file verified</h3>
-        <p data-i18n="f3.text">Each download is checked before it is delivered — codecs, duration, every frame decoded — and its SHA-256 is recorded. A broken file is downloaded again, not handed to you.</p>
+        <p data-i18n="f3.text">Each download is checked — codecs, duration, every frame decoded — and its SHA-256 is recorded. A broken file is downloaded again; one broken at the source is marked and never downloaded twice.</p>
       </article>
       <article class="feature">
         <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h6l2 2h10v10H3z"/><path d="m10 13 2 2 3-3"/></svg></div>
@@ -289,7 +338,7 @@ footer a { color: var(--muted); }
     <h2 data-i18n="how.title">Three steps</h2>
     <p class="intro" data-i18n="how.intro">No command line, no settings to learn first — the first time, a short guide shows you around. English or Spanish, light or dark.</p>
     <div class="steps">
-      <div class="step"><h3 data-i18n="s1.title">Paste a link</h3><p data-i18n="s1.text">A video, a playlist, a channel or a TikTok profile.</p></div>
+      <div class="step"><h3 data-i18n="s1.title">Paste a link</h3><p data-i18n="s1.text">A video, a playlist, a channel, or a TikTok, Instagram or Facebook profile.</p></div>
       <div class="step"><h3 data-i18n="s2.title">Pick what you want</h3><p data-i18n="s2.text">Everything it holds is listed first. Choose MP4 or MP3, the quality and the folder.</p></div>
       <div class="step"><h3 data-i18n="s3.title">Let it work</h3><p data-i18n="s3.text">Several downloads at once, each one verified. Watch the report, or come back later.</p></div>
     </div>
@@ -305,6 +354,25 @@ footer a { color: var(--muted); }
       <figure><img loading="lazy" src="screenshots/finished.png" alt="" width="2560" height="1600"><figcaption data-i18n="screens.finished">Finished: play, show in folder, search every file.</figcaption></figure>
       <figure><img loading="lazy" src="screenshots/report.png" alt="" width="2560" height="1600"><figcaption data-i18n="screens.report">The run report, refreshed every 15 seconds.</figcaption></figure>
     </div>
+  </div>
+</section>
+
+<section id="signin">
+  <div class="wrap">
+    <h2 data-i18n="signin.title">Private content: sign in on your browser</h2>
+    <p class="intro" data-i18n="signin.intro">Private or members-only videos, age-restricted ones, Instagram profiles and stories, a Facebook page’s videos — and YouTube when it asks to confirm you’re not a bot — need your own account. The app never asks for a password: it uses the session of the browser you already sign in with.</p>
+    <div class="steps four">
+      <div class="step"><h3 data-i18n="g1.title">Sign in on your browser</h3><p data-i18n="g1.text">Chrome, Edge, Firefox, Safari or Brave — to Google / YouTube, Instagram or Facebook, as always.</p></div>
+      <div class="step"><h3 data-i18n="g2.title">Choose it in the app</h3><p data-i18n="g2.text">Settings → Cookies from browser → that same browser. “How to sign in” shows these steps.</p></div>
+      <div class="step"><h3 data-i18n="g3.title">Allow it once</h3><p data-i18n="g3.text">Your system asks for permission the first time (see below for yours).</p></div>
+      <div class="step"><h3 data-i18n="g4.title">Paste the link again</h3><p data-i18n="g4.text">It downloads with your session. Signed out? Sign in again on the browser.</p></div>
+    </div>
+    <div class="systems">
+      <article class="feature"><h3>macOS</h3><p data-i18n="g.mac">A Keychain window asks to let the app read “Chrome Safe Storage” (or your browser’s): type your Mac password and click <b>Always Allow</b>. Safari: System Settings → Privacy &amp; Security → <b>Full Disk Access</b> → turn on Media Download Core.</p></article>
+      <article class="feature"><h3>Windows</h3><p data-i18n="g.win">Close the browser before downloading — Chrome and Edge lock their cookies while open. If Chrome still can’t be read (it protects its cookies on Windows), sign in with <b>Firefox</b> and choose Firefox.</p></article>
+      <article class="feature"><h3>Linux</h3><p data-i18n="g.linux">On Fedora, Ubuntu and others, your keyring (GNOME Keyring / KWallet) may ask to allow access to the browser’s saved data: allow it. Firefox asks nothing.</p></article>
+    </div>
+    <p class="intro" style="margin-top: 20px" data-i18n="g.privacy">Your cookies stay on your computer: read once into a private copy used only for downloading, and never sent anywhere else.</p>
   </div>
 </section>
 
@@ -374,6 +442,31 @@ footer a { color: var(--muted); }
   const RELEASES = `https://github.com/${REPO}/releases`
   const es = {
     'nav.features': 'Funciones', 'nav.how': 'Cómo funciona', 'nav.download': 'Descargar',
+    'nav.new': 'Novedades', 'nav.signin': 'Iniciar sesión',
+    'new.badge': 'Beta 10', 'new.title': 'Novedades de la beta 10',
+    'new.intro': 'La versión más completa hasta ahora — probada contra los sitios reales, y con todas sus pruebas y la app misma pasando en macOS, Windows y Linux.',
+    'b1.title': 'Instagram y Facebook',
+    'b1.text': 'Publicaciones, reels, carruseles, perfiles, historias y destacadas de Instagram; videos, reels y los videos de una página de Facebook — con las mismas revisiones y nombres que cualquier otro sitio.',
+    'b2.title': 'Un sitio por ejecución',
+    'b2.text': 'Elige YouTube y sitios web, TikTok, Instagram o Facebook: cada ejecución muestra solo las pantallas y controles de ese sitio y rechaza los enlaces de los demás — un sitio no puede afectar a otro.',
+    'b3.title': 'Fallidas, juntas',
+    'b3.text': 'La tarjeta Fallidas lista todas las descargas fallidas de la sesión. Elige algunas o todas: van juntas a un solo lote nuevo, cada una a su carpeta.',
+    'b4.title': 'Dañado en origen',
+    'b4.text': 'Un archivo que llega completo pero dañado se descarga una vez más para confirmarlo, se marca — y no se vuelve a descargar nunca. Su tooltip te dice por qué.',
+    'b5.title': 'Primero descargar, después validar',
+    'b5.text': 'Si quieres, un lote descarga todo de corrido y valida todos sus archivos al final — la parte pesada cuando no la estás esperando.',
+    'b6.title': 'Más rápida y estable',
+    'b6.text': 'Hasta el 60% de los procesadores si quieres, cancelar quita una sola descarga y el lote sigue, y Terminados se filtra por integridad y tamaño.',
+    'signin.title': 'Contenido privado: inicia sesión en tu navegador',
+    'signin.intro': 'Los videos privados o de miembros, los de restricción de edad, los perfiles e historias de Instagram, los videos de una página de Facebook — y YouTube cuando pide confirmar que no eres un bot — necesitan tu propia cuenta. La app nunca pide contraseñas: usa la sesión del navegador donde ya inicias sesión.',
+    'g1.title': 'Inicia sesión en tu navegador', 'g1.text': 'Chrome, Edge, Firefox, Safari o Brave — en Google / YouTube, Instagram o Facebook, como siempre.',
+    'g2.title': 'Elígelo en la app', 'g2.text': 'Configuración → Cookies del navegador → ese mismo navegador. “Cómo iniciar sesión” muestra estos pasos.',
+    'g3.title': 'Permítelo una vez', 'g3.text': 'Tu sistema pide permiso la primera vez (abajo, el tuyo).',
+    'g4.title': 'Vuelve a pegar el enlace', 'g4.text': 'Se descarga con tu sesión. ¿Cerraste sesión? Inicia sesión otra vez en el navegador.',
+    'g.mac': 'Una ventana del Llavero pide dejar que la app lea “Chrome Safe Storage” (o el de tu navegador): escribe la contraseña de tu Mac y haz clic en <b>Permitir siempre</b>. Safari: Configuración del Sistema → Privacidad y seguridad → <b>Acceso total al disco</b> → activa Media Download Core.',
+    'g.win': 'Cierra el navegador antes de descargar — Chrome y Edge bloquean sus cookies mientras están abiertos. Si Chrome aún no se puede leer (en Windows protege sus cookies), inicia sesión con <b>Firefox</b> y elige Firefox.',
+    'g.linux': 'En Fedora, Ubuntu y otros, tu llavero (GNOME Keyring / KWallet) puede pedir permiso para acceder a los datos guardados del navegador: permítelo. Firefox no pide nada.',
+    'g.privacy': 'Tus cookies se quedan en tu computadora: se leen una vez a una copia privada que se usa solo para descargar, y nunca se envían a ningún otro lado.',
     'hero.badge': 'Gratis · macOS · Windows · Linux',
     'hero.title': 'Respalda playlists y perfiles completos. Cada archivo verificado.',
     'hero.lead': 'Pega un enlace, elige lo que quieres y deja que descargue cientos de videos o canciones mientras revisa cada archivo — y luego encuéntralos todos en un solo lugar, listos para reproducir.',
@@ -387,11 +480,11 @@ footer a { color: var(--muted); }
     'features.title': 'Hecho para los trabajos grandes',
     'features.intro': 'La mayoría de los descargadores van video por video. Este está hecho para una playlist entera, un perfil entero, una búsqueda entera — y para dejarlo trabajando mientras haces otra cosa.',
     'f1.title': 'Playlists y perfiles completos',
-    'f1.text': 'Playlists, canales y Mixes de YouTube; videos, carruseles (como video, o como imágenes con su música) y perfiles completos de TikTok — con “Cargar todo” para las miles de publicaciones de una cuenta veterana.',
+    'f1.text': 'Playlists, canales y Mixes de YouTube; videos, carruseles (como video, o como imágenes con su música) y perfiles completos de TikTok, Instagram y Facebook — con “Cargar todo” para las miles de publicaciones de una cuenta veterana.',
     'f2.title': 'Elige antes de descargar',
     'f2.text': 'Una vista previa lista todo lo que contiene un enlace, con duración y fecha de publicación. Filtra, selecciona todo o solo algunos — se descarga solo lo que eliges. También puedes pegar una lista entera de enlaces.',
     'f3.title': 'Cada archivo verificado',
-    'f3.text': 'Cada descarga se revisa antes de entregarla — códecs, duración, cada cuadro decodificado — y se guarda su SHA-256. Un archivo dañado se descarga otra vez, no te lo entrega.',
+    'f3.text': 'Cada descarga se revisa — códecs, duración, cada cuadro decodificado — y se guarda su SHA-256. Un archivo dañado se descarga otra vez; uno dañado desde el origen se marca y nunca se descarga dos veces.',
     'f4.title': 'Todo lo terminado, en un lugar',
     'f4.text': 'La pestaña Terminados guarda cada archivo de todas las sesiones, lote por lote: búscalo, reprodúcelo, ábrelo en su carpeta, revísalo de nuevo, exporta la lista. Si algo falló, un clic lo reintenta — y ves por qué falló.',
     'f5.title': 'Un reporte en vivo de toda la ejecución',
@@ -411,7 +504,7 @@ footer a { color: var(--muted); }
     'f12.title': 'También línea de comandos y librería',
     'f12.text': 'El mismo motor corre desde una terminal (<code>mdc</code>) y desde tu propio código — programa la sincronización de cuentas con cron, launchd o el Programador de tareas, sin la app abierta.',
     'how.title': 'Tres pasos', 'how.intro': 'Sin línea de comandos ni ajustes que aprender — la primera vez, una guía corta te muestra cómo. En español o inglés, claro u oscuro.',
-    's1.title': 'Pega un enlace', 's1.text': 'Un video, una playlist, un canal o un perfil de TikTok.',
+    's1.title': 'Pega un enlace', 's1.text': 'Un video, una playlist, un canal, o un perfil de TikTok, Instagram o Facebook.',
     's2.title': 'Elige lo que quieres', 's2.text': 'Primero se lista todo lo que contiene. Elige MP4 o MP3, la calidad y la carpeta.',
     's3.title': 'Déjalo trabajar', 's3.text': 'Varias descargas a la vez, cada una verificada. Mira el reporte, o regresa más tarde.',
     'screens.title': 'Míralo',

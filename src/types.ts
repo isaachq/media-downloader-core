@@ -1,4 +1,6 @@
 import type {FileNameStyle} from './core/files.js'
+import type {FacebookOptions} from './sources/facebook/source.js'
+import type {InstagramOptions} from './sources/instagram/source.js'
 import type {MediaSource} from './sources/source.js'
 import type {TikTokOptions} from './sources/tiktok/source.js'
 import type {AttestationOptions, AttestationStrategy} from './youtube/attestation.js'
@@ -615,6 +617,20 @@ export type DownloaderOptions = {
    * yt-dlp). `false` hands TikTok urls to yt-dlp like any other site.
    */
   readonly tiktok?: false | TikTokOptions | undefined
+  /**
+   * Instagram through the built-in extractor (post pages and the web client's
+   * API, paced; no yt-dlp): posts, reels, carousels, whole profiles, stories
+   * and highlights. Stories and highlights need the user's signed-in session:
+   * the browser cookies (`setCookiesFromBrowser`) or `cookiesFile`, unless the
+   * host passes `cookies` itself. `false` hands Instagram urls to yt-dlp.
+   */
+  readonly instagram?: false | InstagramOptions | undefined
+  /**
+   * Facebook through the built-in extractor (video pages, paced; no yt-dlp):
+   * videos, reels, posts with a video, a profile's or page's videos, stories
+   * (signed-in session, as for Instagram). `false` hands Facebook urls to yt-dlp.
+   */
+  readonly facebook?: false | FacebookOptions | undefined
   /**
    * YouTube when it asks to confirm this is not a bot. Requests go a second
    * apart; a bot check climbs a ladder only as far as needed: PO tokens from

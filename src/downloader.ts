@@ -13,7 +13,7 @@ import {
 import {analyze, assertHttpUrl, type ExtractResult, extractMany, isYouTubeUrl} from './core/analyze.js'
 import {type ArchiveEntry, archiveKey, DownloadArchive} from './core/archive.js'
 import {ensureContainer, extractAudio, type MediaTags, writeTags} from './core/convert.js'
-import {BrowserCookies, exportBrowserCookies, jarCopy} from './core/cookies.js'
+import {BrowserCookies, type CookieRecord, exportBrowserCookies, jarCopy, parseNetscape} from './core/cookies.js'
 import {jobTier, peakBytes, TIER_WEIGHT} from './core/cost.js'
 import {type DownloadedInfo, runYtDlp} from './core/download.js'
 import {cancelledError, DownloadError, isRetryable, toJobError} from './core/errors.js'
@@ -37,6 +37,8 @@ import {utf8Env} from './core/process.js'
 import {PendingJournal} from './core/queue-store.js'
 import {TraceLog} from './core/trace-log.js'
 import {ffprobe, summarizeProbe, validateBundle, validateFile} from './core/validate.js'
+import {FacebookSource} from './sources/facebook/source.js'
+import {InstagramSource} from './sources/instagram/source.js'
 import {type ListingProgress, type MediaSource, needsFallback} from './sources/source.js'
 import {DEFAULT_SLIDESHOW, slideshowOptions} from './sources/tiktok/slideshow.js'
 import {TikTokSource} from './sources/tiktok/source.js'
@@ -197,10 +199,23 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       longVideoMinutes: Math.max(1, options.longVideoMinutes ?? 30),
       extraYtDlpArgs: options.extraYtDlpArgs ?? [],
     }
+    const log = (level: 'info' | 'warn', message: string) => this.#log(level, message)
     this.#sources = [
-      ...(options.tiktok === false
+      ...(options.tiktok === false ? [] : [new TikTokSource({log, ...options.tiktok})]),
+      // Instagram and Facebook take the user's signed-in session from the browser cookies the engine
+      // reads for yt-dlp (one read for everything), unless the host hands them its own
+      ...(options.instagram === false
         ? []
-        : [new TikTokSource({log: (level, message) => this.#log(level, message), ...options.tiktok})]),
+        : [
+            new InstagramSource({
+              log,
+              cookies: () => this.#siteCookies(['instagram.com']),
+              ...options.instagram,
+            }),
+          ]),
+      ...(options.facebook === false
+        ? []
+        : [new FacebookSource({log, cookies: () => this.#siteCookies(['facebook.com']), ...options.facebook})]),
       ...(options.sources ?? []),
     ]
     this.#unsupportedUrlSource = options.unsupportedUrlSource
@@ -361,6 +376,29 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       env = {...env, ...(await this.#broker.env())}
     }
     return {args, env}
+  }
+
+  /**
+   * The user's cookies for `domains`, for a native source that talks to the
+   * site over plain HTTP: the browser's (read once, the same jar yt-dlp gets),
+   * else the host's cookies file. Undefined when there is neither.
+   */
+  async #siteCookies(domains: readonly string[]): Promise<readonly CookieRecord[] | undefined> {
+    const bins = await this.binaries.resolve().catch(() => undefined)
+    const jar =
+      (bins
+        ? await this.#browserCookies
+            .jar((browser, dest) => exportBrowserCookies({ytDlp: bins.ytDlp.exe, env: this.#env, browser, dest}))
+            .catch(error => {
+              this.#log('warn', `browser cookies could not be read: ${toJobError(error).message}`)
+              return undefined
+            })
+        : undefined) ?? this.#cookiesFile
+    if (!jar) return undefined
+    const text = await fs.readFile(jar, 'utf8').catch(() => undefined)
+    if (text === undefined) return undefined
+    const cookies = parseNetscape(text, domains)
+    return cookies.length > 0 ? cookies : undefined
   }
 
   /** `#runSetup` in a scratch folder of its own, removed after `task`. */

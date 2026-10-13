@@ -43,6 +43,13 @@ export const BLOCKED_MS = 10 * 60_000
 /** Cookies the host hands over are asked for again after this long (a browser may have signed out). */
 const COOKIES_FRESH_MS = 6 * 60 * 60_000
 
+/** What a login wall or a checkpoint page carries, on either site. */
+const WALL = /\/accounts\/login|\/login\.php|\/checkpoint\/|\/challenge\/|checkpoint_required|login_form/
+
+function assertNotWalled(html: string, site: string): void {
+  if (WALL.test(html)) throw new MetaError('challenge', `${site} showed the browser a login or verification page.`)
+}
+
 export type PageRead = {
   readonly html: string
   /** Where the request ended up (a login wall is a redirect). */
@@ -186,8 +193,14 @@ export class MetaClient {
     } catch (error) {
       if (!(error instanceof MetaError) || error.problem !== 'challenge' || !this.#browser || !opts.recoverAt)
         throw error
-      await this.inBrowser(opts.recoverAt, () => undefined, opts.signal)
-      return this.#jsonOnce(url, read, opts)
+      // the browser's page must be a real one: a captcha or login wall there too means stepping aside
+      await this.inBrowser(opts.recoverAt, page => assertNotWalled(page.html, this.site), opts.signal)
+      try {
+        return await this.#jsonOnce(url, read, opts)
+      } catch (again) {
+        if (again instanceof MetaError && again.problem === 'challenge') this.stepAside(again.message)
+        throw again
+      }
     }
   }
 
@@ -310,9 +323,8 @@ export class MetaClient {
         json = JSON.parse(body)
       } catch {
         // HTML where JSON was expected: a login page or a checkpoint
-        if (/\/accounts\/login|\/login\.php|\/checkpoint\/|login_form/.test(body)) {
+        if (WALL.test(body))
           throw new MetaError('challenge', `${this.site} answered with a login or verification page.`)
-        }
         throw new MetaError('format-changed', `${this.site} answered something that is not JSON.`)
       }
       try {

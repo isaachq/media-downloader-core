@@ -64,18 +64,23 @@ export async function walkCursor<T>(
   while (found.size < opts.max) {
     const page = await fetchPage(cursor)
     let added = 0
+    let leftOut = false
     for (const item of page.items) {
       const id = opts.idOf(item)
       if (!opts.isPinned?.(item)) {
         knownRun = opts.known?.has(id) ? knownRun + 1 : 0
         if (opts.known && knownRun >= KNOWN_RUN) caughtUp = true
       }
-      if (!found.has(id) && found.size < opts.max) {
+      if (found.has(id)) continue
+      if (found.size < opts.max) {
         found.set(id, item)
         added++
-      }
+      } else leftOut = true
     }
     if (added > 0) opts.onProgress?.(found.size)
+    // the cap fell in the middle of this page: a later request re-reads it (de-duplicated) rather
+    // than skipping its remaining items
+    if (leftOut) break
     if (caughtUp) {
       cursor = page.next
       break

@@ -322,7 +322,7 @@ export function readStoriesPage(page: {readonly html: string; readonly url: stri
       seen.add(id)
       posts.push({
         id,
-        url: `${PUBLIC_ORIGIN}/stories/${bucket}/${cardId ?? id}/`,
+        url: `${PUBLIC_ORIGIN}/stories/${bucket}/${cardId && /^\d+$/.test(cardId) ? cardId : id}/`,
         caption: text(dig(card, 'message', 'text')) ?? '',
         author: owner.handle || bucket,
         authorName: owner.name,

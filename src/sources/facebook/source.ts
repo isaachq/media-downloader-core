@@ -214,11 +214,9 @@ export class FacebookSource implements MediaSource {
 
   async #postFor(link: Exclude<FacebookLink, {kind: 'short'}>, signal: AbortSignal, fresh: boolean): Promise<MetaPost> {
     if (link.kind === 'video' || link.kind === 'post') return this.#readVideo(link, signal, fresh)
-    if (link.kind === 'stories' && link.card) {
-      const cached = this.#posts.get(link.card)
-      if (!fresh && cached && Date.now() - cached.at < POST_FRESH_MS) return cached.post
-      return storyCard(await this.#bucket(link.bucket, signal, true), link.card)
-    }
+    // a story card: from the bucket's recent listing, or the bucket read again
+    if (link.kind === 'stories' && link.card)
+      return storyCard(await this.#bucket(link.bucket, signal, fresh), link.card)
     throw new DownloadError('invalid-request', 'A profile or a set of stories is not a single video.')
   }
 
@@ -249,9 +247,10 @@ export class FacebookSource implements MediaSource {
       if (link.kind === 'profile' || (link.kind === 'stories' && !link.card)) {
         throw new DownloadError('invalid-request', 'A profile or a set of stories is not a single video.')
       }
-      // listed videos are known (their page is read at download time); others are read now
-      const known = this.#posts.get(link.kind === 'stories' ? link.card! : link.id)?.post
-      const post = known ?? (await this.#postFor(link, signal ?? new AbortController().signal, false))
+      // a listing names videos without their media: each page is read here (and reused by the download)
+      const known = link.kind === 'stories' ? undefined : this.#posts.get(link.id)?.post
+      const post =
+        known && downloadable(known) ? known : await this.#postFor(link, signal ?? new AbortController().signal, false)
       if (shapeOf(post) === 'empty') throw new MetaError('format-changed', 'This post has no media to download.')
       return {ok: true, analysis: this.#videoAnalysis(post)}
     } catch (error) {
@@ -299,10 +298,9 @@ export class FacebookSource implements MediaSource {
     }
     if (!cached) {
       // the Videos tab itself: the first videos, the cursor of the rest, and the page's tokens
-      let first: VideoListing | undefined
       if (posts.length === 0) {
         const url = profileVideosUrl(this.#client.origin, page)
-        first = await this.#client.page(
+        const first: VideoListing = await this.#client.page(
           url,
           p => {
             const listing = readVideoListing(p)
@@ -312,24 +310,24 @@ export class FacebookSource implements MediaSource {
           {signal: abort},
         )
         collectionId = first.collectionId
+        posts = first.items.slice(0, max)
+        cursor = first.next
+        complete = first.next === undefined
+        keep()
       }
       try {
+        // the rest comes from the pagination query, continued from the tab's cursor
         while (posts.length < max && !complete) {
           const target = Math.min(max, posts.length + PROFILE_CHUNK)
-          const seed = first
-          first = undefined
-          const listing = await walkCursor(
-            next => (seed ? Promise.resolve(seed) : this.#listingPage(page, collectionId, tokens, next, abort)),
-            {
-              max: target,
-              idOf: post => post.id,
-              isPinned: post => post.pinned,
-              resume: posts.length > 0 || cursor !== undefined ? {items: posts, cursor} : undefined,
-              known: owned,
-              onProgress: listed => onProgress?.({listed, expected: max}),
-              site: 'Facebook',
-            },
-          )
+          const listing = await walkCursor(next => this.#listingPage(page, collectionId, tokens, next, abort), {
+            max: target,
+            idOf: post => post.id,
+            isPinned: post => post.pinned,
+            resume: posts.length > 0 || cursor !== undefined ? {items: posts, cursor} : undefined,
+            known: owned,
+            onProgress: listed => onProgress?.({listed, expected: max}),
+            site: 'Facebook',
+          })
           posts = listing.items
           cursor = listing.cursor
           complete = listing.complete

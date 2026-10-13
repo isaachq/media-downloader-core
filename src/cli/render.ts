@@ -230,6 +230,7 @@ export const HINT_TEXT: Readonly<Record<FailureHint, string>> = {
     "the site asks to confirm you're not a bot — it waits and retries; or retry with --cookies <your browser>",
   'cookies-unreadable':
     "couldn't read the browser's cookies (Safari: give the terminal Full Disk Access) — or try another browser",
+  'damaged-source': 'the file is broken at the source — it is not downloaded again',
 }
 
 /** "checking ▰▰▰▱▱ 12/50 · 10 ok · 2 unavailable" — the live preflight row. */

@@ -3,17 +3,31 @@ import {
   ClockCircleOutlined,
   FolderOpenOutlined,
   RedoOutlined,
+  SafetyCertificateOutlined,
   StopOutlined,
   UnorderedListOutlined,
 } from '@ant-design/icons'
-import {App as AntApp, Button, Card, Empty, Flex, Popconfirm, Progress, Space, Table, Tag, Typography} from 'antd'
-import type {BatchId, BatchSnapshot, PreflightItem} from 'media-downloader-core'
+import {
+  App as AntApp,
+  Button,
+  Card,
+  Empty,
+  Flex,
+  Popconfirm,
+  Progress,
+  Space,
+  Table,
+  Tag,
+  Tooltip,
+  Typography,
+} from 'antd'
+import type {BatchId, BatchSnapshot, JobId, PreflightItem} from 'media-downloader-core'
 import {memo, useCallback, useEffect, useMemo, useState} from 'react'
 import {api} from '../api'
 import {useApp} from '../context'
 import {bytes, clock, finishesAt, timeLeft} from '../format'
 import {type MessageKey, useT} from '../i18n'
-import {BATCH_FINISHED, useAppStore, useStore} from '../store'
+import {BATCH_FINISHED, useAppStore, useStore, useStoreValue} from '../store'
 import {useShowBatch} from './BatchFilter'
 import {Problems} from './Problems'
 
@@ -21,12 +35,36 @@ const STATUS_COLOR: Readonly<Record<BatchSnapshot['status'], string>> = {
   scheduled: 'default',
   checking: 'processing',
   running: 'processing',
+  validating: 'processing',
   completed: 'success',
   'completed-with-errors': 'warning',
   failed: 'error',
   cancelled: 'warning',
 }
 const PAGE = 50
+
+/**
+ * The download of one item, while it runs: Cancel drops only this item —
+ * the batch goes on with the rest. Re-renders when that job's status changes.
+ */
+function ItemCancel({jobId}: {readonly jobId: JobId}) {
+  const t = useT()
+  const outcome = useStoreValue(store => store.jobs.get(jobId)?.outcome)
+  const status = useStoreValue(store => store.jobs.get(jobId)?.status)
+  if (status === 'cancelled') return <Tag color="warning">{t('job.status.cancelled')}</Tag>
+  if (outcome !== 'in-progress') return null
+  return (
+    <Tooltip title={t('job.cancelOne')}>
+      <Button
+        size="small"
+        icon={<StopOutlined />}
+        aria-label={t('job.cancelOne')}
+        onClick={() => void api().cancelJob(jobId)}
+        data-testid="item-cancel"
+      />
+    </Tooltip>
+  )
+}
 
 /** Items of one batch, fetched a page at a time from the main process and patched live. */
 function BatchItems({batchId}: {readonly batchId: BatchId}) {
@@ -61,17 +99,26 @@ function BatchItems({batchId}: {readonly batchId: BatchId}) {
         {
           title: t('job.status'),
           key: 'state',
-          width: 260,
+          width: 300,
           render: (_, item) => (
             <Space size={4} wrap>
-              <Tag color={item.state === 'ok' ? 'success' : item.state === 'unavailable' ? 'error' : 'processing'}>
-                {t(`item.state.${item.state}` as MessageKey)}
-              </Tag>
+              {item.error?.hint === 'damaged-source' ? (
+                <Tooltip title={`${t('integrity.damagedTip')} ${item.error.message}`}>
+                  <Tag color="error" data-testid="item-damaged">
+                    {t('integrity.damaged')}
+                  </Tag>
+                </Tooltip>
+              ) : (
+                <Tag color={item.state === 'ok' ? 'success' : item.state === 'unavailable' ? 'error' : 'processing'}>
+                  {t(`item.state.${item.state}` as MessageKey)}
+                </Tag>
+              )}
               {item.archived ? <Tag color="cyan">{t('item.archived')}</Tag> : null}
               {item.tier && item.tier !== 'normal' ? (
                 <Tag color="gold">{t(`job.tier.${item.tier}` as MessageKey)}</Tag>
               ) : null}
-              {item.error ? (
+              {item.jobId ? <ItemCancel jobId={item.jobId} /> : null}
+              {item.error && item.error.hint !== 'damaged-source' ? (
                 <Typography.Text type="danger">
                   {item.error.hint ? t(`hint.${item.error.hint}` as MessageKey) : item.error.message}
                 </Typography.Text>
@@ -93,14 +140,20 @@ const BatchCard = memo(function BatchCard({batch}: {readonly batch: BatchSnapsho
   const [open, setOpen] = useState(false)
   const lang = settings.language
   const {preflight, jobs, estimate} = batch
-  const done = jobs.succeeded + jobs.failed
+  const cancelled = jobs.cancelled ?? 0
+  // damaged at the source: listed among the failures, never offered again
+  const retryable = jobs.failed - (batch.problems?.failed['damaged-source'] ?? 0)
+  const done = jobs.succeeded + jobs.failed + cancelled
   const finished = ['completed', 'completed-with-errors', 'failed', 'cancelled'].includes(batch.status)
+  const checkingFiles = batch.status === 'validating' ? batch.validation : undefined
   const percent =
     batch.status === 'checking'
       ? Math.round((preflight.checked / Math.max(1, preflight.total)) * 100)
-      : batch.progress
-        ? Math.floor(batch.progress.fraction * 100) // weighted by size, includes running downloads
-        : Math.round((done / Math.max(1, jobs.total)) * 100)
+      : checkingFiles
+        ? Math.floor((checkingFiles.done / Math.max(1, checkingFiles.total)) * 100)
+        : batch.progress
+          ? Math.floor(batch.progress.fraction * 100) // weighted by size, includes running downloads
+          : Math.round((done / Math.max(1, jobs.total)) * 100)
   const eta = batch.status === 'running' ? batch.progress?.etaSeconds : undefined
 
   return (
@@ -133,11 +186,14 @@ const BatchCard = memo(function BatchCard({batch}: {readonly batch: BatchSnapsho
           ) : null}
           {estimate ? (
             <Typography.Text type="secondary" data-testid="batch-forecast">
-              {t('batch.forecast', {
-                bytes: bytes(estimate.bytes, lang),
-                required: bytes(estimate.requiredBytes, lang),
-                free: bytes(estimate.freeBytes, lang),
-              })}
+              {estimate.bytes > 0 || estimate.unknown === 0
+                ? t('batch.forecast', {
+                    bytes: bytes(estimate.bytes, lang),
+                    required: bytes(estimate.requiredBytes, lang),
+                    free: bytes(estimate.freeBytes, lang),
+                  })
+                : // the site gave no sizes: no made-up figures, only the free space
+                  t('batch.forecastUnknown', {free: bytes(estimate.freeBytes, lang)})}
               {estimate.long || estimate.heavy
                 ? ` · ${t('batch.forecastLong', {long: estimate.long, heavy: estimate.heavy})}`
                 : ''}
@@ -152,6 +208,13 @@ const BatchCard = memo(function BatchCard({batch}: {readonly batch: BatchSnapsho
                 running: jobs.running,
                 failed: jobs.failed,
               })}
+              {cancelled ? ` · ${t('batch.cancelledCount', {count: cancelled})}` : ''}
+            </Typography.Text>
+          ) : null}
+          {batch.status === 'validating' ? (
+            <Typography.Text data-testid="batch-validating">
+              <SafetyCertificateOutlined />{' '}
+              {t('batch.validating', {done: checkingFiles?.done ?? 0, total: checkingFiles?.total ?? 0})}
             </Typography.Text>
           ) : null}
           {batch.status === 'running' ? (
@@ -190,7 +253,7 @@ const BatchCard = memo(function BatchCard({batch}: {readonly batch: BatchSnapsho
               ) : null}
             </Space.Compact>
           ) : null}
-          {jobs.failed > 0 && (finished || batch.status === 'running') ? (
+          {retryable > 0 && (finished || batch.status === 'running') ? (
             <Button
               size="small"
               icon={<RedoOutlined />}
@@ -201,7 +264,7 @@ const BatchCard = memo(function BatchCard({batch}: {readonly batch: BatchSnapsho
               }
               data-testid="batch-retry-failed"
             >
-              {t('batch.retryFailed', {count: jobs.failed})}
+              {t('batch.retryFailed', {count: retryable})}
             </Button>
           ) : null}
           {jobs.succeeded > 0 ? (
@@ -215,7 +278,11 @@ const BatchCard = memo(function BatchCard({batch}: {readonly batch: BatchSnapsho
             </Button>
           ) : null}
           {!finished ? (
-            <Popconfirm title={t('batch.cancel')} onConfirm={() => void api().cancelBatch(batch.id)}>
+            <Popconfirm
+              title={t('batch.cancel')}
+              description={t('batch.cancelWhole')}
+              onConfirm={() => void api().cancelBatch(batch.id)}
+            >
               <Button size="small" danger icon={<StopOutlined />}>
                 {t('batch.cancel')}
               </Button>

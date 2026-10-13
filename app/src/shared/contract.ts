@@ -6,7 +6,9 @@ import type {
   BatchId,
   BatchSelection,
   BatchSnapshot,
+  DamagedEntry,
   Diagnosis,
+  FormatProfile,
   InstallProgress,
   JobId,
   JobSnapshot,
@@ -36,6 +38,43 @@ export function pickLanguage(preferred: readonly string[]): Language {
   return 'en'
 }
 export type ThemeMode = 'system' | 'light' | 'dark'
+
+/**
+ * What one run of the app downloads: YouTube and other web sites, TikTok,
+ * Instagram or Facebook — one per run, each with only its own screens and
+ * controls (TikTok's Sync Up exists only in TikTok mode, YouTube's sign-in
+ * only in web mode…), so a feature of one site can never act in another's.
+ * Changing it restarts the app.
+ */
+export type RunMode = 'web' | 'tiktok' | 'instagram' | 'facebook'
+export const RUN_MODES: readonly RunMode[] = ['web', 'tiktok', 'instagram', 'facebook']
+
+const inDomain = (host: string, domains: readonly string[]): boolean =>
+  domains.some(domain => host === domain || host.endsWith(`.${domain}`))
+
+/**
+ * The mode a link belongs to; undefined when it isn't an http(s) link. O(1).
+ * `aliases` maps more hosts ("host:port") to a mode: the local fakes of e2e runs.
+ */
+export function platformOf(url: string, aliases?: Readonly<Record<string, RunMode>>): RunMode | undefined {
+  let host: string
+  try {
+    const parsed = new URL(url.trim())
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return undefined
+    host = parsed.hostname.toLowerCase()
+    const alias = aliases?.[parsed.host.toLowerCase()]
+    if (alias) return alias
+  } catch {
+    return undefined
+  }
+  if (inDomain(host, ['tiktok.com'])) return 'tiktok'
+  if (inDomain(host, ['instagram.com', 'instagr.am'])) return 'instagram'
+  if (inDomain(host, ['facebook.com', 'fb.watch', 'fb.com', 'fb.me', 'fb.gg'])) return 'facebook'
+  return 'web'
+}
+
+/** Thrown by the main process for a link of another mode; the renderer shows its own words for it. */
+export const MODE_MISMATCH = 'mode-mismatch'
 export type Format = VideoContainer | AudioContainer
 export type Quality = 'best' | '2160' | '1440' | '1080' | '720' | '480' | '360'
 
@@ -72,9 +111,23 @@ export type AppSettings = {
   readonly slideshowSeconds: number
   /** The first-steps guide was finished or closed (it shows once; Header → Guide replays it). */
   readonly tourDone: boolean
-  /** TikTok sync: the Sync tab, and its schedule running while the app is open. Off by default. */
+  /** TikTok mode: Sync Up's schedule runs while the app is open (the tab is always there in that mode). */
   readonly syncEnabled: boolean
+  /** What the next run downloads (see RunMode); the run in progress keeps `AppInfo.mode`. */
+  readonly mode: RunMode
+  /**
+   * Download a batch first and check its files once every download ended
+   * (instead of each file before it finishes). Files broken at the source
+   * are marked and never downloaded again.
+   */
+  readonly validateAfter: boolean
+  /** Let downloads use up to 60% of the processors instead of half. */
+  readonly cpuBoost: boolean
 }
+
+/** The most simultaneous downloads the settings allow on this machine. */
+export const concurrencyCap = (info: AppInfo, settings: Pick<AppSettings, 'cpuBoost'>): number =>
+  settings.cpuBoost ? info.boostedConcurrency : info.maxConcurrency
 
 /** What a sync check found, small enough for the screen (a profile can have thousands of posts). */
 export type SyncCheck = {
@@ -114,13 +167,21 @@ export const RESTART_SETTINGS: ReadonlyArray<keyof AppSettings> = [
   'embedMetadata',
   'embedThumbnail',
   'longVideoMinutes',
+  'mode',
 ]
 
 export type AppInfo = {
   readonly version: string
   readonly platform: string
   readonly cpus: number
+  /** Simultaneous downloads with half the processors. */
   readonly maxConcurrency: number
+  /** With up to 60% of them (`cpuBoost`): on small machines the same as `maxConcurrency`. */
+  readonly boostedConcurrency: number
+  /** This run's mode (settings.mode applies from the next run). */
+  readonly mode: RunMode
+  /** Hosts ("host:port") standing in for a site: e2e runs point a mode at a local fake. */
+  readonly siteAliases?: Readonly<Record<string, RunMode>> | undefined
   readonly dataDir: string
   /** This run's id: in every log line of it (the report shows it, the logs search it). */
   readonly sessionId: string
@@ -242,14 +303,44 @@ export type FinishedEntry = {
   /** The batch it came from (absent for files of older versions). */
   readonly batchId?: string | undefined
   readonly batchTitle?: string | undefined
+  /** Broken at the source (what the check found): kept, never downloaded again. */
+  readonly damaged?: string | undefined
 }
 
-export type FinishedQuery = {
-  readonly offset: number
-  readonly limit: number
+/** Integrity states the history can be filtered by (the Integrity column). */
+export type FinishedIntegrity = 'verified' | 'unverified' | 'checksum' | 'damaged' | 'missing' | 'changed'
+export const FINISHED_INTEGRITY: readonly FinishedIntegrity[] = [
+  'verified',
+  'unverified',
+  'checksum',
+  'damaged',
+  'missing',
+  'changed',
+]
+/** Size ranges the history can be filtered by (the Size column). */
+export type SizeRange = 'lt10m' | '10m-100m' | '100m-1g' | 'gt1g'
+export const SIZE_RANGES: readonly SizeRange[] = ['lt10m', '10m-100m', '100m-1g', 'gt1g']
+export const SIZE_LIMITS: Readonly<Record<SizeRange, readonly [number, number]>> = {
+  lt10m: [0, 10e6],
+  '10m-100m': [10e6, 100e6],
+  '100m-1g': [100e6, 1e9],
+  gt1g: [1e9, Number.POSITIVE_INFINITY],
+}
+export type FinishedSort = 'newest' | 'oldest' | 'largest' | 'smallest'
+
+/** What narrows the history: words, a batch, integrity states, size ranges (any of each). */
+export type FinishedFilter = {
   readonly search?: string | undefined
   /** Only the files of this batch. */
   readonly batchId?: string | undefined
+  readonly integrity?: readonly FinishedIntegrity[] | undefined
+  readonly size?: readonly SizeRange[] | undefined
+}
+
+export type FinishedQuery = FinishedFilter & {
+  readonly offset: number
+  readonly limit: number
+  readonly sort?: FinishedSort | undefined
 }
 
 /** A batch finished files came from, every session. */
@@ -276,7 +367,16 @@ export type VerifySummary = {
 export type FinishedTarget =
   | {readonly keys: readonly string[]}
   | {readonly batchId: string}
-  | {readonly search?: string | undefined; readonly batchId?: string | undefined; readonly all: true}
+  | (FinishedFilter & {readonly all: true})
+
+/** A failed download to try again in a new batch (with others, from any batch). */
+export type FailedRetry = {
+  readonly jobId: JobId
+  readonly url: string
+  readonly title?: string | undefined
+  readonly mediaId?: string | undefined
+  readonly profile: FormatProfile
+}
 
 export type FinishedPage = {
   readonly entries: readonly FinishedEntry[]
@@ -354,6 +454,16 @@ export type MdcApi = {
   onVerifyProgress(listener: (progress: {readonly done: number; readonly total: number}) => void): () => void
   /** Forget files from the history (the files themselves stay where they are). */
   removeFinished(keys: readonly string[]): Promise<number>
+  /** Forget the records whose file is no longer where it was (deleted or moved); how many. */
+  pruneFinished(target: FinishedTarget): Promise<number>
+  /** One new batch with these failed downloads, from however many batches; each keeps its folder. */
+  retryFailed(items: readonly FailedRetry[]): Promise<BatchSnapshot>
+  /** Videos found damaged at the source (never downloaded again), newest first. */
+  damagedList(): Promise<readonly DamagedEntry[]>
+  /** Let one be downloaded again. */
+  damagedForget(key: string): Promise<void>
+  /** Restart the app (a new mode applies). */
+  relaunch(): Promise<void>
   /** Save the matching history as a CSV the user picks; its path, or undefined when cancelled. */
   exportFinished(target: FinishedTarget): Promise<string | undefined>
   updateState(): Promise<UpdateState>
@@ -412,6 +522,11 @@ export const CHANNEL = {
   verifyFinished: 'mdc:verify-finished',
   verifyProgress: 'mdc:verify-progress',
   removeFinished: 'mdc:remove-finished',
+  pruneFinished: 'mdc:prune-finished',
+  retryFailed: 'mdc:retry-failed',
+  damagedList: 'mdc:damaged:list',
+  damagedForget: 'mdc:damaged:forget',
+  relaunch: 'mdc:relaunch',
   exportFinished: 'mdc:export-finished',
   updateState: 'mdc:update:state',
   updateCheck: 'mdc:update:check',

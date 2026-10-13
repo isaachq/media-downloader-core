@@ -17,11 +17,15 @@ export type FakeBinaries = {
  *                  …list?n=500 makes a playlist of 500 items; &dur=3600 / &size=… are passed on
  *                  to every entry (duration in seconds, reported file size in bytes)
  *   …nofmt…        has no format matching a height cap (yt-dlp "format is not available")
- *   …slow…         downloads take ~400 ms
+ *   …slow…         downloads take ~400 ms (…slowest… ~3 s)
  *   …hang…         prints its info, then goes silent forever (a stall)
  *   …unavailable…  fails like a removed video
  *   …nosite…       a site no extractor reads: "ERROR: Unsupported URL: <url>" (checks and downloads)
  *   …flaky…        fails with a network error on the first attempt only
+ *   …broken…       downloads fine, but the file doesn't decode (the fake ffmpeg's check fails on it);
+ *                  …list-broken?g=x… lists ok-x, broken-x, fine-x
+ *   …list-gone?g=x… lists ok-x and gone-x: gone-x passes the check, then its download fails (removed)
+ *   …list?n=4&p=slow-… names the entries slow-1…slow-4 (downloads that take ~400 ms)
  *   …bot…          YouTube's bot check ("Sign in to confirm you're not a bot") when checked, and on
  *                  the first download attempt — never with a signed-in session (cookies)
  *   …wall…         the bot check every time, unless signed in
@@ -95,9 +99,14 @@ if (args.includes('--dump-single-json')) {
   const audio = {format_id: '140', ext: 'm4a', vcodec: 'none', acodec: 'mp4a.40.2', abr: 128, filesize: 1000}
   if (url.includes('list')) {
     const big = /[?&]n=([0-9]+)/.exec(url)
+    const params = new URL(url).searchParams
+    const tag = params.get('g') || '1'
     const ids = big
-      ? Array.from({length: Number(big[1])}, (_, i) => 'b' + (i + 1))
-      : url.includes('mixed') ? ['e1', 'e2', 'unavailable-e3', 'e4'] : ['e1', 'e2', 'e3']
+      ? Array.from({length: Number(big[1])}, (_, i) => (params.get('p') || 'b') + (i + 1))
+      : url.includes('mixed') ? ['e1', 'e2', 'unavailable-e3', 'e4']
+      : url.includes('gone') ? ['ok-' + tag, 'gone-' + tag]
+      : url.includes('broken') ? ['ok-' + tag, 'broken-' + tag, 'fine-' + tag]
+      : ['e1', 'e2', 'e3']
     const passOn = ['dur', 'size'].map(k => [k, new URL(url).searchParams.get(k)]).filter(([, v]) => v).map(([k, v]) => k + '=' + v).join('&')
     const end = args.includes('--playlist-end') ? Number(args[args.indexOf('--playlist-end') + 1]) : ids.length
     const entries = ids.slice(0, end).map(e => ({_type: 'url', id: e, url: 'https://fake.test/' + e + (passOn ? '?' + passOn : ''), title: 'Entry ' + e, duration: 10, ie_key: 'Fake'}))
@@ -115,13 +124,15 @@ if (infoJson) fs.writeFileSync(path.join(dataDir, 'used-info-json-' + id), '')
 const selector = args[args.indexOf('--format') + 1] || ''
 if (url.includes('nofmt') && selector.includes('height<=')) { console.error('ERROR: [youtube] ' + id + ': Requested format is not available'); process.exit(1) }
 const ext = args.includes('--merge-output-format') ? 'mp4' : 'm4a'
-const delay = url.includes('slow') ? 400 : 60
+const delay = url.includes('slowest') ? 3000 : url.includes('slow') ? 400 : 60
 if (url.includes('hang')) {
   console.log('__MDC_INFO__' + JSON.stringify({id, title: 'Hang', duration: 10, extractor: 'Fake', formatId: '140'}))
   setInterval(() => {}, 1000)
   return
 }
 if (url.includes('unavailable')) { console.error('ERROR: [youtube] ' + id + ': Video unavailable'); process.exit(1) }
+// checked fine, gone by the time it downloads
+if (id.startsWith('gone')) { console.error('ERROR: [youtube] ' + id + ': Video unavailable. This video has been removed'); process.exit(1) }
 if (url.includes('nosite')) { console.error('ERROR: Unsupported URL: ' + url); process.exit(1) }
 const counter = path.join(dataDir, 'attempts-' + id)
 const attempts = (fs.existsSync(counter) ? Number(fs.readFileSync(counter, 'utf8')) : 0) + 1
@@ -157,6 +168,11 @@ function fakeFfmpeg(): string {
   })
   return `
 if (process.argv.includes('-show_format')) {
+  // a file starting "nomoov": whole, but no container ffprobe can read
+  try {
+    const head = require('node:fs').readFileSync(process.argv[process.argv.length - 1]).subarray(0, 6).toString()
+    if (head === 'nomoov') { console.error('[mov,mp4,m4a,3gp,3g2,mj2 @ 0x1] moov atom not found'); process.exit(1) }
+  } catch {}
   // a file whose content starts with "s" stands for one without sound
   let silent = false
   try { silent = require('node:fs').readFileSync(process.argv[process.argv.length - 1]).subarray(0, 1).toString() === 's' } catch {}
@@ -174,6 +190,12 @@ if (process.argv.includes('-show_format')) {
 const input = process.argv.indexOf('-i')
 if (input !== -1) {
   const out = process.argv[process.argv.length - 1]
+  // a decode check of a file whose content says "broken": the decoder trips on it, every time
+  if (out === '-') {
+    let text = ''
+    try { text = require('node:fs').readFileSync(process.argv[input + 1], 'utf8') } catch {}
+    if (text.includes('broken')) { console.error('[h264 @ 0x1] Invalid NAL unit size (1234 > 99).'); process.exit(1) }
+  }
   if (out !== '-') require('node:fs').copyFileSync(process.argv[input + 1], out) // '-': a decode check
   process.exit(0)
 }

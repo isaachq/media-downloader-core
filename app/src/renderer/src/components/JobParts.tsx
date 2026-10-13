@@ -1,5 +1,6 @@
 import {
   CheckCircleFilled,
+  ClockCircleOutlined,
   CloseCircleFilled,
   LoadingOutlined,
   SafetyCertificateOutlined,
@@ -53,6 +54,25 @@ export function IntegrityTag({job}: {readonly job: JobSnapshot}) {
   const {settings} = useApp()
   const report = job.validation
   const validateStep = job.steps.find(step => step.name === 'validate')
+  // broken where it comes from: why it is never downloaded again, on hover
+  if (job.error?.hint === 'damaged-source') {
+    return (
+      <Tooltip title={`${t('integrity.damagedTip')} ${job.error.message}`}>
+        <Tag color="error" icon={<CloseCircleFilled />} data-testid="integrity-damaged">
+          {t('integrity.damaged')}
+        </Tag>
+      </Tooltip>
+    )
+  }
+  if (job.validationPending) {
+    return (
+      <Tooltip title={t('integrity.laterTip')}>
+        <Tag icon={<ClockCircleOutlined />} color="default" data-testid="integrity-later">
+          {t('integrity.later')}
+        </Tag>
+      </Tooltip>
+    )
+  }
   if (!report) {
     if (validateStep?.state === 'in-progress') {
       return (

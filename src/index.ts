@@ -37,6 +37,7 @@ export {
   type ArchiveGroup,
   type ArchivePage,
   type ArchiveQuery,
+  type ArchiveSort,
   archiveKey,
   DownloadArchive,
 } from './core/archive.js'
@@ -46,11 +47,19 @@ export {
   type CookieRecord,
   exportBrowserCookies,
   keepDomains,
+  parseNetscape,
   toNetscape,
   writeJar,
   YOUTUBE_COOKIE_DOMAINS,
 } from './core/cookies.js'
 export {estimateBytes, jobTier, peakBytes, TIER_WEIGHT} from './core/cost.js'
+export {
+  type DamagedEntry,
+  type DamagedLookup,
+  DamagedRegistry,
+  isSourceDamage,
+  SOURCE_DAMAGE,
+} from './core/damaged.js'
 export {classifyYtDlpError, DownloadError, isRetryable} from './core/errors.js'
 export {type WorkEstimate, WorkMeter} from './core/eta.js'
 export {
@@ -78,14 +87,39 @@ export {
   VIDEO_RULES,
 } from './core/formats.js'
 export {HashPool} from './core/hash-pool.js'
-export {clampConcurrency, cpuCount, maxConcurrency, TaskPool} from './core/pool.js'
+export {
+  clampConcurrency,
+  cpuCount,
+  cpuShare,
+  DEFAULT_CPU_SHARE,
+  MAX_CPU_SHARE,
+  maxConcurrency,
+  TaskPool,
+} from './core/pool.js'
 export {searchTrace} from './core/trace-log.js'
 export {ffprobe, summarizeProbe, validateFile} from './core/validate.js'
 export {type ArchiveCheck, MediaDownloader, relaxProfile, retryDelay} from './downloader.js'
 export {BatchScheduler} from './scheduler.js'
 export type {BrowserAssist, BrowserPage, MediaResolver, PlayerMedia} from './sources/browser.js'
+export type {FacebookQueries} from './sources/facebook/endpoints.js'
+export {type FacebookLink, isFacebookListing, parseFacebookLink} from './sources/facebook/links.js'
+export {
+  FACEBOOK_PROFILE_DEFAULT_ITEMS,
+  type FacebookOptions,
+  FacebookSource,
+} from './sources/facebook/source.js'
 export {HttpSession} from './sources/http.js'
+export type {InstagramQueries} from './sources/instagram/endpoints.js'
+export {type InstagramLink, isInstagramListing, parseInstagramLink} from './sources/instagram/links.js'
+export {
+  INSTAGRAM_PROFILE_DEFAULT_ITEMS,
+  type InstagramOptions,
+  InstagramSource,
+} from './sources/instagram/source.js'
 export {type FetchedMedia, fetchMedia, type MediaFetch} from './sources/media-fetch.js'
+export {MetaClient, type MetaClientOptions, type SessionCookies} from './sources/meta/client.js'
+export {MetaError, type MetaProblem} from './sources/meta/errors.js'
+export type {MetaMedia, MetaPost} from './sources/meta/post.js'
 export {Pacer, type PacerOptions} from './sources/pacer.js'
 export {parsePlayerPageSites} from './sources/player-page/config.js'
 export {
@@ -94,6 +128,7 @@ export {
   type PlayerPageSite,
   PlayerPageSource,
 } from './sources/player-page/source.js'
+export {type Rendition, rankRenditions, renditionChoices, type VideoCodec} from './sources/renditions.js'
 export type {ListingProgress, MediaSource, SourceDownload, SourceFile} from './sources/source.js'
 export {TikTokError, type TikTokProblem} from './sources/tiktok/errors.js'
 export {isTikTokProfile, parseTikTokLink, type TikTokLink} from './sources/tiktok/links.js'

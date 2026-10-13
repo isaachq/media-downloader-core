@@ -103,3 +103,9 @@ export function timeLeft(seconds: number): string {
 export function finishesAt(seconds: number, locale: string, now = Date.now()): string {
   return new Date(now + seconds * 1000).toLocaleTimeString(locale, {hour: '2-digit', minute: '2-digit'})
 }
+
+/** An error from the main process as words for the user: without Electron's "Error invoking remote method …:" wrapper. */
+export const errorText = (error: unknown): string =>
+  error instanceof Error
+    ? error.message.replace(/^Error invoking remote method '[^']+': (?:\w*Error: )?/, '')
+    : String(error)

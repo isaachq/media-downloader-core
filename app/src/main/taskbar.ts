@@ -1,6 +1,6 @@
 import type {BatchSnapshot} from 'media-downloader-core'
 
-const ACTIVE = new Set<BatchSnapshot['status']>(['checking', 'running'])
+const ACTIVE = new Set<BatchSnapshot['status']>(['checking', 'running', 'validating'])
 
 /**
  * What the Dock / taskbar icon shows for the batches at work: overall
@@ -16,11 +16,17 @@ export function taskbarState(batches: Iterable<BatchSnapshot>): {readonly progre
     if (!ACTIVE.has(batch.status)) continue
     active++
     const total = batch.jobs.total || batch.preflight.total
-    const settled = batch.jobs.succeeded + batch.jobs.failed
-    const fraction = batch.status === 'checking' ? 0 : (batch.progress?.fraction ?? (total ? settled / total : 0))
+    const settled = batch.jobs.succeeded + batch.jobs.failed + (batch.jobs.cancelled ?? 0)
+    // checking the files after the downloads: that check's own progress
+    const fraction =
+      batch.status === 'checking'
+        ? 0
+        : batch.status === 'validating' && batch.validation
+          ? batch.validation.done / Math.max(1, batch.validation.total)
+          : (batch.progress?.fraction ?? (total ? settled / total : 0))
     weighted += fraction * total
     items += total
-    left += Math.max(0, total - settled)
+    left += batch.status === 'validating' ? 0 : Math.max(0, total - settled)
   }
   if (active === 0) return {progress: -1, left: 0}
   // a batch still being checked has no size yet: an indeterminate bar (2 in Electron) until it has

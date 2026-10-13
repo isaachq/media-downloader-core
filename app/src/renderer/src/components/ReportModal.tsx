@@ -33,6 +33,7 @@ const BATCH_COLOR: Readonly<Record<ReportBatch['status'], string>> = {
   scheduled: 'default',
   checking: 'processing',
   running: 'processing',
+  validating: 'processing',
   completed: 'success',
   'completed-with-errors': 'warning',
   failed: 'error',

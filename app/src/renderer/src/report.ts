@@ -136,7 +136,7 @@ export function buildReport(input: {
 
   // running first, then the line, then finished newest first — as the Batches tab
   const order = (status: BatchSnapshot['status']) =>
-    status === 'running' || status === 'checking' ? 0 : status === 'scheduled' ? 1 : 2
+    status === 'running' || status === 'checking' || status === 'validating' ? 0 : status === 'scheduled' ? 1 : 2
   const snapshots = [...input.batches].sort((a, b) => order(a.status) - order(b.status) || b.createdAt - a.createdAt)
   const batches: ReportBatch[] = []
   let weighted = 0
@@ -151,10 +151,11 @@ export function buildReport(input: {
       failedBy[cause] = (failedBy[cause] ?? 0) + count
     for (const [cause, count] of Object.entries(batch.problems?.unavailable ?? {}))
       unavailableBy[cause] = (unavailableBy[cause] ?? 0) + count
-    if (BATCH_FINISHED.has(batch.status) || batch.status === 'running') retryable += batch.jobs.failed
+    if (BATCH_FINISHED.has(batch.status) || batch.status === 'running')
+      retryable += batch.jobs.failed - (batch.problems?.failed['damaged-source'] ?? 0)
     if (batch.status === 'scheduled') batchesWaiting++
     const total = batch.jobs.total || batch.preflight.ok
-    const settled = batch.jobs.succeeded + batch.jobs.failed
+    const settled = batch.jobs.succeeded + batch.jobs.failed + (batch.jobs.cancelled ?? 0)
     const finishedBatch = BATCH_FINISHED.has(batch.status)
     const fraction = finishedBatch
       ? 1

@@ -1,5 +1,160 @@
 # Changelog
 
+## App 0.2.0-beta.10 · library 1.10.0
+
+Beta 10: Instagram and Facebook in the app, one site per run, and the
+feedback of beta 9 — failed downloads retried together, files broken at the
+source never downloaded twice, downloads first and checks after, 60% of the
+processors, a cancel that drops one download only, and the history filtered
+and cleaned.
+
+**One site per run.** Settings → Site: *YouTube and websites* (the default:
+YouTube and player-page sites), *TikTok*, *Instagram* or *Facebook*. Each run
+builds only that site's source and shows only its own screens: Sync Up (and
+its schedule) exists only in TikTok mode, YouTube's sign-in only in the web
+mode, and a link of another site is refused under the field before anything
+is asked (the main process refuses it too). Finished shows the files of that
+site. Changing the site restarts the app (a button does it), and waits for
+the open batches. This ends the TikTok bug where Sync Up seemed to start
+from Finished → Check again: in any other mode it can't run at all.
+
+**Failed downloads, together.** The Failed card opens the list of this
+session's failed downloads from every batch; pick some or all and they go
+into one new batch, each to the folder, format and list position it had
+(library: `BatchRequest.targets`). Files damaged at the source are listed,
+not offered.
+
+**Damaged at the source.** A file that comes down whole and still fails its
+check (it doesn't decode, ends early, ffprobe can't read it — e.g. "moov atom
+not found") is downloaded once more to be sure, then marked *damaged at the
+source* and never downloaded again: not by that job's remaining retries, not
+by a later batch (the check says so per item), not by a loose job. Its
+tooltip says why. Settings → Damaged at the source lists them and lets one
+try again (library: `MediaDownloader.damaged`, `damaged.json`, hint
+`damaged-source`).
+
+**Download first, check after.** Settings → Download first, check after: a
+batch downloads back to back, then checks all its files at once (new batch
+status `validating`, with its progress). A broken file is marked damaged and
+kept where it is; one failing for another reason is removed so it can be
+downloaded again (library: `validationTiming: 'after-batch'`,
+`checkLater()`, `JobSnapshot.validationPending`).
+
+**Up to 60% of the processors.** Settings → Allow up to 60% of the
+processors raises the most downloads at once from ⌊CPUs/2⌋ to ⌊CPUs × 0.6⌋,
+about 40% staying free (live; on machines where that is the same number the
+setting says so). Library: `maxCpuShare`, `setMaxCpuShare()`.
+
+**Cancel drops one download.** Cancelling a download (Downloads, or the new
+Cancel on a batch's Items) removes only that item: the batch goes on and
+completes without it, counts it apart (`BatchCounts.cancelled`), and "Retry
+failed" leaves it alone. Cancel batch now says it stops everything.
+
+**Finished.** Filter by Integrity (verified, not checked, checksum only,
+damaged at the source, missing, changed) and Size, sort by size or date —
+all in the main process, over the whole history. *Remove missing records*
+forgets the files deleted or moved since (the files you still have are not
+touched).
+
+**Nothing waits forever.** A player-page lookup is bounded (45 s, then the
+attempt fails and is retried) and the app's hidden browsers never wait on a
+page that stopped answering — a page that never gave its player a link used
+to keep a download "Downloading" and its batch open indefinitely. Cancelling
+a TikTok page no longer closes the browser window other lookups share.
+
+**Signing in, explained.** Settings → Cookies → *How to sign in* walks
+through using a signed-in session: sign in on your usual browser (Google /
+YouTube, Instagram, Facebook), choose that browser in the app, allow the
+one-time permission your system asks for (macOS Keychain "Always Allow",
+Safari's Full Disk Access, closing Chrome / Edge on Windows or using
+Firefox, the Linux keyring). The same steps are in the README and on the
+website, and "Sign-in required" points to them.
+
+**Website.** A "New in beta 10" section, the sign-in guide for each system,
+and Instagram and Facebook in the features — English and Spanish.
+
+**Found by a live regression, fixed.** Every site was run for real (a
+YouTube video, a TikTok profile, an Instagram post, a Facebook video and a
+Facebook page, two player-page searches of hundreds of results):
+
+- A file served whole but unreadable ("moov atom not found") was retried
+  four times as an unknown error; it now counts as a broken file and is
+  marked damaged at the source on the second try.
+- Instagram / Facebook answering 403 waited out 30 s + 60 s of cool-downs
+  before failing (91 s on screen with nothing happening). A 403 is a wall,
+  not a rate limit: the browser tries once, then yt-dlp reads the link at
+  once — the Instagram post now downloads in 10 s. Any other 4xx but 429
+  (e.g. a 400 to the listing query) hands the link to yt-dlp at once too,
+  and when yt-dlp doesn't know the link either the user reads the site's
+  reason, not "Unsupported URL".
+- Errors read as words ("Error invoking remote method…" is gone), with how
+  to sign in when a site keeps something for signed-in sessions.
+- In a batch longer than the jobs the engine keeps in memory (1,000), the
+  files released before the check after the batch were never checked; they
+  are kept until it runs.
+- The check after a batch shares the CPU by file size (largest first, more
+  threads): the same kind of batch checked in about half the time.
+- "Retry failed" no longer offers files damaged at the source; a forecast
+  without sizes says so instead of showing dashes; cancelling a batch while
+  it checks leaves no file saying it still waits.
+- Two old tests that timed the machine (a 5 s bound, 15 ms sleeps) failed
+  under load: they now count requests and use their own clock.
+
+Performance, measured against the branch before these changes with the
+perf harness (same machine, at rest, alternating order): batch, stress and
+archive within noise or better — nothing on the hot paths got slower.
+
+Tests: library 300 (new: the same cancel and check-after scenarios on
+YouTube, TikTok, Instagram, Facebook and player-page fakes, a stuck player,
+unreadable files, a 403 / 400 from Meta, a long batch checked after), app
+136 unit + 15 end-to-end (one site per run, cancel one, failed into one
+batch, check after with a damaged file, history filters and cleanup) —
+the library suite passed three times in a row.
+
+### Library 1.10.0 · Instagram and Facebook
+
+
+**Instagram and Facebook, natively.** Two new built-in extractors beside
+TikTok's, on the same architecture (`MediaSource` + `HttpSession` + `Pacer` +
+retries + circuit breaker + `BrowserAssist` + yt-dlp fallback), with the
+plumbing lifted into `src/sources/meta/` so the two share it instead of each
+carrying a copy of TikTok's:
+
+- `MetaClient`: the session, the pacer, reads retried after the shared
+  cool-down, a browser for pages that only open in one, stepping aside for
+  10 minutes when the site blocks the source, and — new — a signed-in session
+  supplied by the host (cookies), since both sites keep stories and most
+  listings for signed-in accounts.
+- `walkCursor`: cursor pagination with the guarantees of TikTok's date walk
+  (O(1) de-duplication, stalls, incremental "caught up" after 20 known items,
+  resume from a kept cursor, a cap falling mid-page re-reads that page).
+- One post model (`MetaPost`: video / photo / carousel / story) and one
+  download path (best encoding for the profile, every mirror of each; a
+  slideshow MP4 or a folder of pictures; a carousel with videos as a folder).
+- `src/sources/renditions.ts`: the encoding ranking and the format choices,
+  shared with TikTok (TikTok's behaviour is unchanged; 38/38 tests as before).
+- `InstagramSource`: posts, reels, carousels and photos, whole profiles (the
+  web client's timeline query by cursor; the feed API when signed in), stories
+  and highlights (signed in). `FacebookSource`: videos, reels, posts with a
+  video, a profile's or page's videos (the Videos tab, then the web client's
+  pagination query with the page's tokens), stories (signed in).
+- `DownloaderOptions.instagram` / `.facebook` like `tiktok`. Both take the
+  user's session from the browser cookies the engine already reads for yt-dlp
+  (`parseNetscape`, new), else `cookiesFile`. Query ids live in one file per
+  site and can be overridden (`queries`).
+- Errors in the engine's terms: `needs-sign-in` for stories without a session,
+  `private`, `removed`, `retry-later`; a login wall or checkpoint →
+  `source:blocked` (yt-dlp for a while); a changed page or rotated query →
+  `source:format-changed` (yt-dlp for that url).
+- 38 new tests against local fakes of both sites (login walls, rate limits,
+  checkpoints through a browser, rotated queries, DASH-only videos, stories,
+  carousels, cursor paging, memory and incremental listings). Full suite 274.
+
+Not in this release yet: Sync Up for Instagram and Facebook accounts, and
+verification against the live sites (the fakes serve the shapes known when
+this was written; see the README).
+
+
 ## App 0.2.0-beta.9 · library 1.9.0
 
 Beta 9: a player-page link works again without being configured first.

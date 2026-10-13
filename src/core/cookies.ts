@@ -51,6 +51,39 @@ export function toNetscape(cookies: Iterable<CookieRecord>): string {
   return `${HEADER}${lines.join('\n')}${lines.length ? '\n' : ''}`
 }
 
+/**
+ * cookies.txt → cookies, O(lines): the inverse of `toNetscape`, for native
+ * sources that take the browser's session over plain HTTP. Malformed lines
+ * are skipped. With `domains`, only those domains (and their subdomains).
+ */
+export function parseNetscape(netscape: string, domains?: readonly string[]): CookieRecord[] {
+  const wanted = domains?.map(d => d.replace(/^\./, '').toLowerCase())
+  const cookies: CookieRecord[] = []
+  for (const line of netscape.split(/\r?\n/)) {
+    if (!line || (line.startsWith('#') && !line.startsWith('#HttpOnly_'))) continue
+    const fields = line.split('\t')
+    if (fields.length < 7) continue
+    const [rawDomain, , cookiePath, secure, expires, name, ...rest] = fields
+    const httpOnly = rawDomain!.startsWith('#HttpOnly_')
+    const domain = rawDomain!.replace(/^#HttpOnly_/, '')
+    const host = domain.replace(/^\./, '').toLowerCase()
+    if (wanted && !wanted.some(d => host === d || host.endsWith(`.${d}`))) continue
+    if (!name) continue
+    const expirationDate = Number(expires)
+    cookies.push({
+      name,
+      value: rest.join('\t'),
+      domain: host,
+      path: cookiePath || '/',
+      secure: secure === 'TRUE',
+      httpOnly,
+      expirationDate: expirationDate > 0 ? expirationDate : undefined,
+      hostOnly: !domain.startsWith('.'),
+    })
+  }
+  return cookies
+}
+
 /** Only the cookies of these domains (and their subdomains), O(lines). */
 export function keepDomains(netscape: string, domains: readonly string[]): string {
   const wanted = domains.map(d => d.replace(/^\./, '').toLowerCase())

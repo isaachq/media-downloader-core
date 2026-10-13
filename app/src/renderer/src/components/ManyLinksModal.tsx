@@ -1,7 +1,9 @@
 import {CloseOutlined, ScheduleOutlined} from '@ant-design/icons'
 import {Alert, Button, Modal, Typography} from 'antd'
 import {useState} from 'react'
+import {useApp} from '../context'
 import {useT} from '../i18n'
+import {modeName} from '../mode'
 import {Rows} from './Rows'
 
 /**
@@ -11,15 +13,19 @@ import {Rows} from './Rows'
 export function ManyLinksModal({
   urls: initial,
   repeated,
+  otherMode = 0,
   onSchedule,
   onCancel,
 }: {
   readonly urls: readonly string[]
   readonly repeated: number
+  /** Links of other sites than this run's mode: left out. */
+  readonly otherMode?: number
   readonly onSchedule: (urls: readonly string[]) => Promise<void>
   readonly onCancel: () => void
 }) {
   const t = useT()
+  const {info} = useApp()
   const [urls, setUrls] = useState(initial)
   const [busy, setBusy] = useState(false)
   return (
@@ -54,6 +60,15 @@ export function ManyLinksModal({
       ]}
     >
       <Alert type="info" showIcon title={t('many.hint')} className="many-hint" />
+      {otherMode > 0 ? (
+        <Alert
+          type="warning"
+          showIcon
+          className="many-hint"
+          title={t('many.otherMode', {count: otherMode, mode: modeName(t, info.mode)})}
+          data-testid="many-other-mode"
+        />
+      ) : null}
       {repeated > 0 ? (
         <Typography.Text type="secondary">{t('many.repeated', {count: repeated})}</Typography.Text>
       ) : null}

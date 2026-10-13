@@ -22,6 +22,8 @@ import type {
   BatchSelection,
   BatchSnapshot,
   BatchStatus,
+  BatchTarget,
+  FormatProfile,
   JobError,
   JobId,
   JobOutcome,
@@ -79,6 +81,8 @@ type Batch = {
   readonly running: Set<JobId>
   succeeded: number
   failed: number
+  /** Jobs the user cancelled: out of the batch, which goes on (and can still complete) without them. */
+  readonly cancelledJobs: Set<JobId>
   /** Why each failed job failed (its hint, else its code) — kept per job so a retry can take it back. */
   readonly failedCause: Map<JobId, string>
   /** Failed jobs and unavailable items by cause: running totals, O(1) per change. */
@@ -97,6 +101,10 @@ type Batch = {
   snapshot: BatchSnapshot | undefined
   /** Weighted progress and time left of the running jobs (set when they are enqueued). */
   meter: WorkMeter | undefined
+  /** The check after the downloads (`validationTiming: 'after-batch'`), while it runs. */
+  checking: {done: number; total: number} | undefined
+  /** Single items' own folder / profile / list position, by index (a batch gathering items of several). */
+  readonly targets: ReadonlyMap<number, BatchTarget>
   lastEmit: number
   emitTimer: NodeJS.Timeout | undefined
 }
@@ -173,6 +181,15 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
     if (maxItems !== undefined && !(Number.isInteger(maxItems) && maxItems >= 1 && maxItems <= MAX_REQUESTED_ITEMS)) {
       throw new DownloadError('invalid-request', `maxItems must be an integer from 1 to ${MAX_REQUESTED_ITEMS}.`)
     }
+    const targets = new Map<number, BatchTarget>()
+    for (const target of request.targets ?? []) {
+      const issue =
+        !Number.isInteger(target?.index) || typeof target.outDir !== 'string' || !path.isAbsolute(target.outDir)
+          ? 'Every target needs an entry index and an absolute outDir.'
+          : profileProblem(target.profile)
+      if (issue) throw new DownloadError('invalid-request', issue)
+      targets.set(target.index, {...target, outDir: path.resolve(target.outDir)})
+    }
 
     const batch: Batch = {
       id: newId() as BatchId,
@@ -200,6 +217,7 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
       running: new Set(),
       succeeded: 0,
       failed: 0,
+      cancelledJobs: new Set(),
       failedCause: new Map(),
       failedBy: new Map(),
       unavailableBy: new Map(),
@@ -207,6 +225,8 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
       enqueuing: false,
       estimate: undefined,
       meter: undefined,
+      checking: undefined,
+      targets,
       error: undefined,
       createdAt: Date.now(),
       startedAt: undefined,
@@ -269,7 +289,13 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
   retryFailed(id: BatchId): number {
     const batch = this.#batches.get(id)
     if (!batch || batch.failed === 0 || batch.status === 'scheduled' || batch.status === 'checking') return 0
-    const failed = [...batch.jobs].filter(([, outcome]) => outcome === 'failed').map(([jobId]) => jobId)
+    // damaged at the source: trying again would only fail the same way
+    const failed = [...batch.jobs]
+      .filter(
+        ([jobId, outcome]) =>
+          outcome === 'failed' && !batch.cancelledJobs.has(jobId) && batch.failedCause.get(jobId) !== 'damaged-source',
+      )
+      .map(([jobId]) => jobId)
     return this.#retry(batch, failed).length
   }
 
@@ -283,6 +309,8 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
 
   /** The new jobs, one per job that could be retried. */
   #retry(batch: Batch, jobIds: readonly JobId[]): JobSnapshot[] {
+    // while its files are being checked a batch takes nothing new: try again once it has closed
+    if (batch.status === 'validating') return []
     const reopen = TERMINAL.has(batch.status)
     const retried: JobSnapshot[] = []
     // item of each job, found once: O(items) per call, not per job
@@ -296,10 +324,13 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
       retried.push(job)
       batch.jobs.delete(oldId)
       this.#byJob.delete(oldId)
-      batch.failed--
-      const cause = batch.failedCause.get(oldId)
-      batch.failedCause.delete(oldId)
-      if (cause) bump(batch.failedBy, cause, -1)
+      // a cancelled item comes back into the batch; a failed one is no longer a failure
+      if (!batch.cancelledJobs.delete(oldId)) {
+        batch.failed--
+        const cause = batch.failedCause.get(oldId)
+        batch.failedCause.delete(oldId)
+        if (cause) bump(batch.failedBy, cause, -1)
+      }
       batch.jobs.set(job.id, job.outcome)
       this.#byJob.set(job.id, batch.id)
       const position = itemOf.get(oldId)
@@ -326,7 +357,11 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
     return retried
   }
 
-  /** Cancel a batch: scheduled → dropped, checking → stopped, running → its jobs cancelled. */
+  /**
+   * Cancel a batch: scheduled → dropped, checking → stopped, running → its
+   * jobs cancelled, validating → the check stops (files stay as they are).
+   * Cancelling one job instead (`engine.cancel`) only drops that item.
+   */
   cancel(id: BatchId): void {
     const batch = this.#batches.get(id)
     if (!batch || TERMINAL.has(batch.status)) return
@@ -500,14 +535,26 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
     }
   }
 
+  /** The profile an item downloads in: its target's, else the batch's. */
+  #profileOf(batch: Batch, index: number): FormatProfile {
+    return batch.targets.get(index)?.profile ?? batch.request.profile
+  }
+
   /** A checked item: downloadable if the source offers the requested kind of stream; sized and classified. */
   #resolveItem(batch: Batch, position: number, analysis: VideoAnalysis): void {
-    const {profile} = batch.request
+    const profile = this.#profileOf(batch, batch.items[position]?.index ?? 0)
     const choice =
       matchingChoice(profile, analysis.choices) ?? analysis.choices.find(c => c.profile.kind === profile.kind)
     const duration = analysis.media.duration ?? batch.items[position]?.duration
     const requiresConversion = choice?.requiresConversion ?? false
-    const facts = {title: analysis.media.title, duration, infoJsonPath: analysis.infoJsonPath}
+    // what the check found is what the job and the archive go by (an entry's own may be a guess)
+    const facts = {
+      title: analysis.media.title,
+      duration,
+      infoJsonPath: analysis.infoJsonPath,
+      ...(analysis.media.extractor && {extractor: analysis.media.extractor}),
+      ...(analysis.media.id && {mediaId: analysis.media.id}),
+    }
     if (!choice) {
       this.#settleItem(batch, position, 'unavailable', {
         ...facts,
@@ -530,7 +577,7 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
    * volume. O(n) over the items, one stat per item for the archive check.
    */
   async #forecast(batch: Batch): Promise<boolean> {
-    const {profile, outDir} = batch.request
+    const {outDir} = batch.request
     let bytes = 0
     let unknown = 0
     let archived = 0
@@ -538,17 +585,44 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
     let heavy = 0
     let largestPeak = 0
     let candidates = 0
+    let damaged = 0
     for (let start = 0; start < batch.items.length; start += FORECAST_SLICE) {
       const slice = batch.items.slice(start, start + FORECAST_SLICE)
-      const done = await Promise.all(
+      // damaged at the source first: such an item is never downloaded, archived or not
+      const broken = await Promise.all(
         slice.map(item =>
-          item.state === 'ok' && item.extractor && item.mediaId
-            ? this.#engine.isArchived(item.extractor, item.mediaId, profile)
+          item.state === 'ok'
+            ? this.#engine.isDamaged({url: item.url, extractor: item.extractor, mediaId: item.mediaId})
+            : undefined,
+        ),
+      )
+      const done = await Promise.all(
+        slice.map((item, offset) =>
+          item.state === 'ok' && !broken[offset] && item.extractor && item.mediaId
+            ? this.#engine.isArchived(item.extractor, item.mediaId, this.#profileOf(batch, item.index))
             : false,
         ),
       )
       slice.forEach((item, offset) => {
         if (item.state !== 'ok') return
+        const known = broken[offset]
+        if (known) {
+          damaged++
+          batch.ok--
+          batch.unavailable++
+          bump(batch.unavailableBy, 'damaged-source', 1)
+          batch.items[start + offset] = {
+            ...item,
+            state: 'unavailable',
+            error: {
+              code: 'unavailable',
+              hint: 'damaged-source',
+              message: `Damaged at the source — not downloaded again: ${known.reason}`,
+            },
+          }
+          this.emit('item', batch.id, publicItem(batch.items[start + offset]!))
+          return
+        }
         if (done[offset]) {
           archived++
           batch.items[start + offset] = {...item, archived: true}
@@ -565,6 +639,17 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
       })
     }
 
+    if (damaged) {
+      this.#engine.log('warn', `${damaged} item(s) damaged at the source: not downloaded again`, {batchId: batch.id})
+      if (batch.ok === 0) {
+        this.#close(batch, 'failed', {
+          code: 'unavailable',
+          hint: 'damaged-source',
+          message: 'Every item of this batch is unavailable or damaged at the source.',
+        })
+        return false
+      }
+    }
     // temporary space: the largest job's peak times the jobs that can run at once
     const temp = largestPeak * Math.min(candidates, this.#engine.concurrency)
     const [outFree, workFree, sameVolume] = await volumes(outDir, this.#engine.workDir)
@@ -612,10 +697,11 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
       if (signal.aborted) break
       const item = batch.items[position]!
       if (item.state !== 'ok') continue
+      const target = batch.targets.get(item.index)
       const request: JobRequest = {
         url: item.url,
-        profile,
-        outDir: folder,
+        profile: target?.profile ?? profile,
+        outDir: target?.outDir ?? folder,
         batchId: batch.id,
         batchTitle: batch.title,
         title: item.title,
@@ -625,8 +711,9 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
         estimatedBytes: item.estimatedBytes,
         requiresConversion: item.requiresConversion,
         // a flat batch names files without a position: they join a folder that has its own order
-        playlist:
-          batch.kind === 'playlist' && !flat
+        playlist: target
+          ? target.playlist
+          : batch.kind === 'playlist' && !flat
             ? {id: batch.playlistId ?? batch.id, title: batch.title ?? 'Playlist', index: item.index}
             : undefined,
         infoJsonPath: item.infoJsonPath,
@@ -643,7 +730,7 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
     batch.enqueuing = false
     this.#emitBatch(batch, true)
     // jobs of the first slices may all have finished already
-    if (batch.status === 'running' && batch.succeeded + batch.failed === batch.jobs.size) this.#finishRun(batch)
+    if (batch.status === 'running' && this.#ended(batch) === batch.jobs.size) void this.#finishRun(batch)
   }
 
   #jobChanged(job: JobSnapshot): void {
@@ -665,10 +752,15 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
     }
     if (before !== job.outcome) {
       batch.jobs.set(job.id, job.outcome)
+      // a file found broken by the check after the downloads: its success becomes a failure
+      if (before === 'success') batch.succeeded--
       if (job.outcome === 'success') batch.succeeded++
-      else if (job.outcome === 'failed') {
+      else if (job.status === 'cancelled') {
+        // cancelled by the user: the item leaves the batch, which goes on without it
+        batch.cancelledJobs.add(job.id)
+      } else if (job.outcome === 'failed') {
         batch.failed++
-        const cause = job.status === 'cancelled' ? 'cancelled' : (job.error?.hint ?? job.error?.code ?? 'unknown')
+        const cause = job.error?.hint ?? job.error?.code ?? 'unknown'
         batch.failedCause.set(job.id, cause)
         bump(batch.failedBy, cause, 1)
       }
@@ -678,14 +770,57 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
     }
     // throttled by #emitBatch: progress moves the ETA at most every progressIntervalMs
     if (before !== job.outcome || isRunning !== wasRunning || progressed) this.#emitBatch(batch, false)
-    if (!batch.enqueuing && batch.status === 'running' && batch.succeeded + batch.failed === batch.jobs.size) {
-      this.#finishRun(batch)
+    if (!batch.enqueuing && batch.status === 'running' && this.#ended(batch) === batch.jobs.size) {
+      void this.#finishRun(batch)
     }
   }
 
-  #finishRun(batch: Batch): void {
+  /** Jobs of the batch that ended, whichever way. */
+  #ended(batch: Batch): number {
+    return batch.succeeded + batch.failed + batch.cancelledJobs.size
+  }
+
+  /**
+   * Every download ended: with `validationTiming: 'after-batch'`, check the
+   * files first (status 'validating'), then close by how it went. Items the
+   * user cancelled don't count against the batch: the rest all done → completed.
+   */
+  async #finishRun(batch: Batch): Promise<void> {
+    const pending = this.#engine.pendingChecks(batch.jobs.keys())
+    if (pending.length > 0 && !batch.controller?.signal.aborted) {
+      batch.checking = {done: 0, total: pending.length}
+      this.#setStatus(batch, 'validating')
+      this.#engine.log('info', `downloads done — checking ${pending.length} file(s) now`, {batchId: batch.id})
+      try {
+        const found = await this.#engine.checkLater(pending, {
+          signal: batch.controller?.signal,
+          onProgress: (done, total) => {
+            batch.checking = {done, total}
+            this.#emitBatch(batch, false)
+          },
+        })
+        this.#engine.log(
+          found.damaged || found.failed ? 'warn' : 'info',
+          `checked ${found.checked} file(s) after the downloads: ${found.ok} ok, ${found.damaged} damaged at the source, ${found.failed} failed`,
+          {batchId: batch.id},
+        )
+      } catch (error) {
+        if (!batch.controller?.signal.aborted) {
+          this.#engine.log('error', `the check after the downloads stopped: ${toJobError(error).message}`, {
+            batchId: batch.id,
+          })
+        }
+      }
+      batch.checking = undefined
+      // cancelled while checking: what wasn't checked stays unchecked, and says so
+      this.#engine.dropPendingChecks(pending)
+      if (batch.status !== 'validating') return // closed meanwhile
+    }
+    const cancelled = batch.cancelledJobs.size
     if (batch.controller?.signal.aborted) this.#close(batch, 'cancelled', cancelledError().toJSON())
-    else if (batch.succeeded === batch.items.length) this.#close(batch, 'completed')
+    else if (batch.succeeded === 0 && batch.failed === 0 && cancelled > 0)
+      this.#close(batch, 'cancelled', cancelledError().toJSON())
+    else if (batch.succeeded + cancelled === batch.items.length) this.#close(batch, 'completed')
     else if (batch.succeeded > 0) this.#close(batch, 'completed-with-errors')
     else this.#close(batch, 'failed', {code: 'unavailable', message: 'No item of this batch could be downloaded.'})
   }
@@ -747,13 +882,14 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
   }
 
   #counts(batch: Batch): BatchCounts {
-    const pending = batch.jobs.size - batch.succeeded - batch.failed
+    const pending = batch.jobs.size - this.#ended(batch)
     return {
       total: batch.jobs.size,
-      queued: pending - batch.running.size,
+      queued: Math.max(0, pending - batch.running.size),
       running: batch.running.size,
       succeeded: batch.succeeded,
       failed: batch.failed,
+      cancelled: batch.cancelledJobs.size,
     }
   }
 
@@ -789,6 +925,7 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
       startedAt: batch.startedAt,
       finishedAt: batch.finishedAt,
       progress: batch.status === 'running' ? batch.meter?.estimate() : undefined,
+      validation: batch.status === 'validating' ? batch.checking : undefined,
     })
     return batch.snapshot
   }

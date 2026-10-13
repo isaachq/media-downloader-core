@@ -8,6 +8,25 @@ const POLL_MS = 100
 const IDLE_CLOSE_MS = 60_000
 /** Pages read at once: each lookup is one short page load. */
 const WINDOWS = 2
+/** One look into the page: a page that is busy (or stuck) must not stop the lookup's clock. */
+const PROBE_MS = 3000
+
+/** `promise`, or `fallback` after `ms` — whichever comes first (the promise is not waited for). */
+export function within<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise(resolve => {
+    const timer = setTimeout(() => resolve(fallback), ms)
+    promise.then(
+      value => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      () => {
+        clearTimeout(timer)
+        resolve(fallback)
+      },
+    )
+  })
+}
 
 /** Media requests and heavy page parts a player lookup never needs. */
 const NEVER = new Set(['image', 'media', 'font', 'stylesheet', 'subFrame', 'object', 'ping', 'cspReport'])
@@ -94,12 +113,27 @@ export function createPlayerBrowser(hosts: readonly string[]): {readonly resolve
     return win
   }
 
-  const acquire = (): Promise<BrowserWindow> => {
+  /** A window for one lookup: a free one, a new one, or the next one released — unless the lookup is cancelled first. */
+  const acquire = (signal?: AbortSignal): Promise<BrowserWindow> => {
     clearTimeout(idleTimer)
-    const free = idle.pop()
-    if (free && !free.isDestroyed()) return Promise.resolve(free)
+    let free = idle.pop()
+    while (free?.isDestroyed()) free = idle.pop()
+    if (free) return Promise.resolve(free)
     if (all.size < WINDOWS) return Promise.resolve(open())
-    return new Promise(resolve => waiting.push(resolve))
+    return new Promise((resolve, reject) => {
+      const take = (win: BrowserWindow) => {
+        signal?.removeEventListener('abort', leave)
+        resolve(win)
+      }
+      // a cancelled lookup leaves the line: it never takes (and holds) a window it no longer needs
+      const leave = () => {
+        const at = waiting.indexOf(take)
+        if (at !== -1) waiting.splice(at, 1)
+        reject(signal?.reason ?? new Error('Cancelled.'))
+      }
+      signal?.addEventListener('abort', leave, {once: true})
+      waiting.push(take)
+    })
   }
 
   const release = (win: BrowserWindow) => {
@@ -129,7 +163,7 @@ export function createPlayerBrowser(hosts: readonly string[]): {readonly resolve
   const resolve: MediaResolver = async (pageUrl, signal) => {
     if (!onSite(pageUrl)) throw new Error('Not a page of a configured site.')
     signal?.throwIfAborted()
-    const win = await acquire()
+    const win = await acquire(signal)
     const abort = () => {
       if (!win.isDestroyed()) win.destroy()
     }
@@ -141,9 +175,9 @@ export function createPlayerBrowser(hosts: readonly string[]): {readonly resolve
       while (Date.now() < deadline) {
         signal?.throwIfAborted()
         if (win.isDestroyed()) throw new Error('The page window was closed.')
-        const probe: Probe = await win.webContents.executeJavaScript(PROBE).catch(() => ({}))
+        const probe: Probe = await within(win.webContents.executeJavaScript(PROBE), PROBE_MS, {})
         if (probe.url) {
-          const cookies = await ownSession().cookies.get({url: pageUrl})
+          const cookies = await within(ownSession().cookies.get({url: pageUrl}), PROBE_MS, [])
           const media: PlayerMedia = {
             url: probe.url,
             userAgent: win.webContents.getUserAgent(),

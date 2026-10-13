@@ -227,7 +227,11 @@ test('previews a list and downloads only the picked items', async () => {
 test('backs up picked posts of a TikTok profile as MP3 (built-in extractor)', async () => {
   const site = await startFakeTikTok({posts: 6, pinned: true})
   try {
-    const {app, page, outDir} = await launch('tiktok', {format: 'mp3'}, {MDC_TIKTOK_ORIGIN: site.origin})
+    const {app, page, outDir} = await launch(
+      'tiktok',
+      {format: 'mp3', mode: 'tiktok'},
+      {MDC_TIKTOK_ORIGIN: site.origin},
+    )
     await page.getByLabel('Video, playlist or profile URL').fill(`${site.origin}/@${site.user}`)
     await page
       .getByRole('button', {name: /download/i})
@@ -260,7 +264,11 @@ test('Sync Up keeps a TikTok account in step with its folder, in the format of t
     const folder = path.join(root, 'sync', 'out', 'TikTok-fakeuser')
     await fs.mkdir(folder, {recursive: true})
     for (const id of site.ids.slice(2)) await fs.writeFile(path.join(folder, `old-${id}.mp3`), 'audio')
-    const {app, page} = await launch('sync', {format: 'm4a', syncEnabled: true}, {MDC_TIKTOK_ORIGIN: site.origin})
+    const {app, page} = await launch(
+      'sync',
+      {format: 'm4a', syncEnabled: true, mode: 'tiktok'},
+      {MDC_TIKTOK_ORIGIN: site.origin},
+    )
     await page.getByRole('tab', {name: 'Sync Up'}).click()
     await page.getByTestId('sync-add').click()
     const dialog = page.locator('.ant-modal').filter({hasText: 'TikTok account'})
@@ -309,7 +317,11 @@ test('a TikTok profile behind a verification page opens through the built-in bro
   // plain requests get a "please wait" page whose script sets a cookie and reloads: only a browser passes
   const site = await startFakeTikTok({posts: 6, jsChallenge: true})
   try {
-    const {app, page, outDir} = await launch('tiktok-browser', {format: 'mp3'}, {MDC_TIKTOK_ORIGIN: site.origin})
+    const {app, page, outDir} = await launch(
+      'tiktok-browser',
+      {format: 'mp3', mode: 'tiktok'},
+      {MDC_TIKTOK_ORIGIN: site.origin},
+    )
     await page.getByLabel('Video, playlist or profile URL').fill(`${site.origin}/@${site.user}`)
     await page
       .getByRole('button', {name: /download/i})
@@ -421,5 +433,141 @@ test('remembers language and theme across restarts', async () => {
   const page = await app.firstWindow()
   await expect(page.getByText('Nueva descarga')).toBeVisible()
   await expect(page.getByTestId('theme-mode')).toHaveText('dark')
+  await close(app)
+})
+
+// ─── beta 10 ────────────────────────────────────────────────────────────────
+
+test('one site per run: TikTok mode has Sync Up and refuses other links; web mode has no Sync Up', async () => {
+  const site = await startFakeTikTok({posts: 2})
+  try {
+    const tiktok = await launch('mode-tiktok', {mode: 'tiktok', syncEnabled: true}, {MDC_TIKTOK_ORIGIN: site.origin})
+    await expect(tiktok.page.getByTestId('mode-tag')).toHaveText('Mode: TikTok')
+    await expect(tiktok.page.getByRole('tab', {name: 'Sync Up'})).toBeVisible()
+    await tiktok.page.getByLabel('Video, playlist or profile URL').fill('https://www.youtube.com/watch?v=x')
+    await expect(
+      tiktok.page.getByText(/This is a YouTube and websites link — this run is in TikTok mode/),
+    ).toBeVisible()
+    await tiktok.page.screenshot({path: path.join(APP_DIR, 'test-results', 'mode-tiktok.png')})
+    await close(tiktok.app)
+
+    // a scheduled sync never runs outside TikTok mode, and its controls are not there
+    const web = await launch('mode-web', {mode: 'web', syncEnabled: true}, {MDC_TIKTOK_ORIGIN: site.origin})
+    await expect(web.page.getByTestId('mode-tag')).toHaveText('Mode: YouTube and websites')
+    await expect(web.page.getByRole('tab', {name: 'Sync Up'})).toHaveCount(0)
+    await web.page.getByLabel('Video, playlist or profile URL').fill(`${site.origin}/@${site.user}`)
+    await expect(web.page.getByText(/This is a TikTok link — this run is in YouTube and websites mode/)).toBeVisible()
+    await web.page.getByRole('button', {name: /settings/i}).click()
+    await expect(web.page.getByTestId('settings-mode')).toBeVisible()
+    await expect(web.page.getByRole('switch', {name: 'Run scheduled syncs (Sync Up)'})).toHaveCount(0)
+    await web.page.waitForTimeout(500)
+    await web.page.screenshot({path: path.join(APP_DIR, 'test-results', 'settings-mode.png')})
+    expect(site.hits.list + site.hits.profile).toBe(0)
+    await close(web.app)
+  } finally {
+    await site.close()
+  }
+})
+
+test('cancelling one download leaves the rest of its batch running, and the batch completes', async () => {
+  const {app, page} = await launch('cancel-one', {concurrency: 1})
+  await download(page, 'https://fake.test/list?n=4&p=slowest-')
+  const card = page.getByTestId('batch-card').first()
+  await expect(card).toHaveAttribute('data-status', 'running', {timeout: 60_000})
+  await page.getByRole('tab', {name: /^Downloads/}).click()
+  // the running one (first row): only it is cancelled
+  await page
+    .locator('.job-row')
+    .first()
+    .getByRole('button', {name: 'Cancel only this download (the batch goes on)'})
+    .click()
+  await page.getByRole('tab', {name: /^Batches/}).click()
+  await expect(card).toHaveAttribute('data-status', 'completed', {timeout: 60_000})
+  await expect(card).toContainText('3/4 done')
+  await expect(card).toContainText('1 cancelled')
+  await expect(card.getByTestId('batch-retry-failed')).toHaveCount(0)
+  await close(app)
+})
+
+test('failed downloads of several batches go into one new batch from the Failed card', async () => {
+  const {app, page} = await launch('failed-list')
+  await download(page, 'https://fake.test/list-gone?g=a')
+  await download(page, 'https://fake.test/list-gone?g=b')
+  const cards = page.getByTestId('batch-card')
+  await expect(cards.nth(1)).toHaveAttribute('data-status', 'completed-with-errors', {timeout: 60_000})
+  await expect(cards.nth(0)).toHaveAttribute('data-status', 'completed-with-errors', {timeout: 60_000})
+  await page.locator('.ant-notification-notice-close').first().click()
+
+  await page.getByRole('button', {name: 'Failed — see the list and retry'}).click()
+  const modal = page.getByTestId('failed-modal')
+  await expect(modal.locator('.ant-table-row')).toHaveCount(2)
+  await page.waitForTimeout(400)
+  await page.screenshot({path: path.join(APP_DIR, 'test-results', 'failed-list.png')})
+  await modal.getByRole('button', {name: 'Select all (2)'}).click()
+  await page.getByTestId('failed-retry').click()
+  await expect(modal).toHaveCount(0)
+  // one new batch with both, from both batches
+  await expect(cards).toHaveCount(3)
+  const retried = cards.filter({hasText: 'Failed, retried'})
+  await expect(retried).toHaveAttribute('data-status', 'failed', {timeout: 60_000})
+  await expect(retried).toContainText('0/2 done')
+  await close(app)
+})
+
+test('download first, check after: a damaged file is marked, kept, and never downloaded again', async () => {
+  const {app, page, outDir} = await launch('check-after', {validation: 'quick', validateAfter: true, format: 'mp4'})
+  await download(page, 'https://fake.test/list-broken?g=x')
+  const card = page.getByTestId('batch-card').first()
+  await expect(card).toHaveAttribute('data-status', 'completed-with-errors', {timeout: 60_000})
+  await expect(card.getByTestId('problems')).toContainText('damaged at the source 1')
+
+  await page.getByRole('tab', {name: /^Finished/}).click()
+  const list = page.getByTestId('finished-list')
+  await expect(list.locator('.finished-row')).toHaveCount(3)
+  await expect(list.getByTestId('finished-damaged')).toHaveCount(1)
+  await expect(list.getByText('Verified')).toHaveCount(2)
+  await list.getByTestId('finished-damaged').hover()
+  await expect(page.getByText(/can’t be downloaded/)).toBeVisible()
+  await page.screenshot({path: path.join(APP_DIR, 'test-results', 'finished-damaged.png')})
+  const files = await fs.readdir(path.join(outDir, 'Fake-List'))
+  expect(files.some(file => file.includes('broken-x'))).toBe(true)
+
+  // asked again: the check says so, nothing downloads
+  await page.getByRole('tab', {name: /^Batches/}).click()
+  await download(page, 'https://fake.test/list-broken?g=x')
+  const again = page.getByTestId('batch-card').first()
+  await expect(again).toHaveAttribute('data-status', 'completed-with-errors', {timeout: 60_000})
+  await expect(again.getByTestId('problems')).toContainText('damaged at the source 1')
+  await again.getByRole('button', {name: /items/i}).click()
+  await expect(again.getByTestId('item-damaged')).toHaveCount(1)
+  await close(app)
+})
+
+test('Finished: filters by integrity and size, and forgets the records of deleted files', async () => {
+  const {app, page, outDir} = await launch('prune')
+  await download(page, 'https://fake.test/list?n=3')
+  await expect(page.getByTestId('batch-card').first()).toHaveAttribute('data-status', 'completed', {timeout: 60_000})
+  await fs.rm(path.join(outDir, 'Fake-List', '002-Title-b2-b2.m4a'))
+  await page.getByRole('tab', {name: /^Finished/}).click()
+  const list = page.getByTestId('finished-list')
+  await expect(list.locator('.finished-row')).toHaveCount(3)
+
+  const integrity = list.locator('.ant-table-thead th').filter({hasText: 'Integrity'})
+  await integrity.locator('.ant-table-filter-trigger').click()
+  const menu = page.locator('.ant-table-filter-dropdown').last()
+  await menu.getByText('Missing (deleted or moved)').click()
+  await menu.getByRole('button', {name: 'OK'}).click()
+  await expect(list.locator('.ant-table-row')).toHaveCount(1)
+  await expect(list.locator('.ant-table-row')).toContainText('Title b2')
+  await page.screenshot({path: path.join(APP_DIR, 'test-results', 'finished-filter.png')})
+
+  await list.getByTestId('finished-prune').click()
+  await page.getByRole('button', {name: 'Remove', exact: true}).click()
+  await expect(page.getByText('1 record(s) of missing files removed')).toBeVisible()
+  await expect(list.locator('.ant-table-row')).toHaveCount(0)
+  await integrity.locator('.ant-table-filter-trigger').click()
+  await page.locator('.ant-table-filter-dropdown').last().getByRole('button', {name: 'Reset'}).click()
+  await page.locator('.ant-table-filter-dropdown').last().getByRole('button', {name: 'OK'}).click()
+  await expect(list.locator('.finished-row')).toHaveCount(2)
   await close(app)
 })

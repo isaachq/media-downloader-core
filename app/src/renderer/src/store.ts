@@ -11,8 +11,17 @@ import {createContext, useContext, useSyncExternalStore} from 'react'
 import type {EventBundle, YouTubeState} from '../../shared/contract'
 
 const MAX_JOBS = 1500
+/** Failed jobs are kept past MAX_JOBS (the Failed list retries them) up to this many. */
+const MAX_FAILED = 5000
 const MAX_LOGS = 500
 const TERMINAL = new Set(['completed', 'skipped', 'failed', 'cancelled'])
+/** Failed jobs the Failed list offers: this session's, not yet sent to a new batch. O(jobs). */
+export function failedJobs(store: AppStore): JobSnapshot[] {
+  const failed: JobSnapshot[] = []
+  for (const job of store.jobs.values()) if (job.status === 'failed' && !store.retried.has(job.id)) failed.push(job)
+  return failed
+}
+
 export const BATCH_FINISHED: ReadonlySet<string> = new Set([
   'completed',
   'completed-with-errors',
@@ -73,6 +82,8 @@ export class AppStore {
   youtubePausedUntil: number | undefined
   /** How YouTube is reached (tokens after a bot check, a hold for the user, an account), as the app last said. */
   youtube: YouTubeState | undefined
+  /** Failed jobs already sent to a new batch from the Failed list: no longer offered there. */
+  readonly retried = new Set<JobId>()
   // stable React keys for log lines (entries carry no id of their own): O(1), no copies
   readonly #logKeys = new WeakMap<LogEntry, number>()
   #nextLogKey = 0
@@ -169,6 +180,12 @@ export class AppStore {
     this.#notify()
   }
 
+  /** These failed jobs went into a new batch: the Failed list stops offering them. */
+  markRetried(ids: Iterable<JobId>): void {
+    for (const id of ids) this.retried.add(id)
+    this.#notify()
+  }
+
   /** Follow item changes of one batch (an expanded batch table). */
   onItem(batchId: BatchId, listener: ItemListener): () => void {
     let set = this.#itemListeners.get(batchId)
@@ -203,9 +220,11 @@ export class AppStore {
   /** Drop the oldest finished jobs beyond the cap (running ones are never dropped); they stay counted. */
   #trimJobs(): void {
     if (this.jobs.size <= MAX_JOBS) return
+    // failed ones stay for the Failed list, unless there are very many of them
+    const keepFailed = this.#live.failed <= MAX_FAILED
     for (const [id, job] of this.jobs) {
       if (this.jobs.size <= MAX_JOBS) break
-      if (!TERMINAL.has(job.status)) continue
+      if (!TERMINAL.has(job.status) || (keepFailed && job.status === 'failed')) continue
       this.jobs.delete(id)
       this.#live[job.status]--
       this.#retired[job.status]++

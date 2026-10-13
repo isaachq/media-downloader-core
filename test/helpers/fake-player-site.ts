@@ -16,6 +16,8 @@ export type FakePlayerSiteConfig = {
   /** Video ids whose page redirects home (removed). */
   readonly removed?: readonly string[]
   readonly mediaBytes?: number
+  /** Video ids whose media file is served whole but broken (ffprobe: "moov atom not found"). */
+  readonly brokenMedia?: readonly string[]
   /** What a page past the last one answers: the last page again (default), no results, or 404. */
   readonly pastEnd?: 'repeat' | 'empty' | 'missing'
   /** Page 1 of a listing answers this late (the other pages answer first). */
@@ -135,7 +137,9 @@ export async function startFakePlayerSite(config: FakePlayerSiteConfig = {}): Pr
       const height = Number(/_(\d+)p\.mp4$/.exec(url.pathname)?.[1])
       if (!heights.includes(height)) return send(404, 'no')
       if (!(req.headers.referer ?? '').startsWith(origin)) return send(403, 'forbidden')
+      const mediaId = /\/(\d+)_\d+p\.mp4$/.exec(url.pathname)?.[1] ?? ''
       const body = Buffer.alloc(size, String(height % 10))
+      if (config.brokenMedia?.includes(mediaId)) body.write('nomoov')
       const modified = {'Last-Modified': new Date(PUBLISHED * 1000).toUTCString(), 'Accept-Ranges': 'bytes'}
       const range = /^bytes=(\d+)-$/.exec(req.headers.range ?? '')
       if (range) {

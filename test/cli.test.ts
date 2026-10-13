@@ -248,7 +248,7 @@ describe('terminal rendering', () => {
       outDir: '/o',
       status: 'completed-with-errors',
       preflight: {total: 3, checked: 3, ok: 2, unavailable: 1},
-      jobs: {total: 2, queued: 0, running: 0, succeeded: 2, failed: 0},
+      jobs: {total: 2, queued: 0, running: 0, succeeded: 2, failed: 0, cancelled: 0},
       createdAt: 0,
     } as unknown as BatchSnapshot
     const text = stripAnsi(summary(batch, 5000, 'S'.repeat(32), color))

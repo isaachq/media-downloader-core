@@ -1,27 +1,48 @@
-import {FolderOpenOutlined, MedicineBoxOutlined, ToolOutlined} from '@ant-design/icons'
+import {FolderOpenOutlined, MedicineBoxOutlined, ReloadOutlined, ToolOutlined, WarningOutlined} from '@ant-design/icons'
 import {
   Alert,
   Button,
   Divider,
   Drawer,
+  Empty,
   Form,
   Input,
   InputNumber,
+  Modal,
   Radio,
   Segmented,
   Select,
   Slider,
   Space,
   Switch,
+  Table,
   Typography,
 } from 'antd'
-import type {ValidationLevel} from 'media-downloader-core'
-import {useState} from 'react'
-import {type AppSettings, BROWSERS, RESTART_SETTINGS, type ThemeMode} from '../../../shared/contract'
+import type {DamagedEntry, ValidationLevel} from 'media-downloader-core'
+import {useEffect, useState} from 'react'
+import {
+  type AppSettings,
+  BROWSERS,
+  concurrencyCap,
+  RESTART_SETTINGS,
+  RUN_MODES,
+  type RunMode,
+  type ThemeMode,
+} from '../../../shared/contract'
 import {api} from '../api'
 import {useApp} from '../context'
-import {useT} from '../i18n'
-import {useStoreValue} from '../store'
+import {moment} from '../format'
+import {type MessageKey, useT} from '../i18n'
+import {modeName} from '../mode'
+import {type AppStore, BATCH_FINISHED, useStoreValue} from '../store'
+import {SignInHelp} from './SignInHelp'
+
+/** Batches not closed yet (scheduled, checking, running, validating): the mode can't change under them. */
+const openBatches = (store: AppStore): number => {
+  let open = 0
+  for (const batch of store.batches.values()) if (!BATCH_FINISHED.has(batch.status)) open++
+  return open
+}
 
 type Props = {
   readonly open: boolean
@@ -35,8 +56,15 @@ export function SettingsDrawer({open, onClose, onDoctor, onReinstall}: Props) {
   const {info, settings, updateSettings} = useApp()
   const [restartNeeded, setRestartNeeded] = useState(false)
 
+  const [damagedOpen, setDamagedOpen] = useState(false)
+  const [signInOpen, setSignInOpen] = useState(false)
+  const busy = useStoreValue(openBatches)
+  const cap = concurrencyCap(info, settings)
+
   const change = (patch: Partial<AppSettings>) => {
-    if (Object.keys(patch).some(key => RESTART_SETTINGS.includes(key as keyof AppSettings))) setRestartNeeded(true)
+    // the mode has its own notice (with a restart button)
+    if (Object.keys(patch).some(key => key !== 'mode' && RESTART_SETTINGS.includes(key as keyof AppSettings)))
+      setRestartNeeded(true)
     void updateSettings(patch)
   }
   const chooseFolder = async () => {
@@ -48,6 +76,49 @@ export function SettingsDrawer({open, onClose, onDoctor, onReinstall}: Props) {
     <Drawer title={t('settings.title')} open={open} onClose={onClose} size={480} destroyOnHidden>
       {restartNeeded ? <Alert type="info" showIcon title={t('settings.restart')} className="restart-alert" /> : null}
       <Form layout="vertical">
+        <Divider titlePlacement="start">{t('settings.mode')}</Divider>
+        <Form.Item extra={t('settings.modeHelp')} data-testid="settings-mode">
+          <Radio.Group
+            value={settings.mode}
+            disabled={busy > 0}
+            onChange={event => change({mode: event.target.value as RunMode})}
+            aria-label={t('settings.mode')}
+          >
+            <Space orientation="vertical">
+              {RUN_MODES.map(mode => (
+                <Radio key={mode} value={mode} data-testid={`mode-${mode}`}>
+                  <Typography.Text strong>{modeName(t, mode)}</Typography.Text>
+                  <br />
+                  <Typography.Text type="secondary">{t(`mode.${mode}.help` as MessageKey)}</Typography.Text>
+                </Radio>
+              ))}
+            </Space>
+          </Radio.Group>
+        </Form.Item>
+        {busy > 0 ? (
+          <Alert type="info" showIcon title={t('settings.modeBusy', {count: busy})} className="restart-alert" />
+        ) : null}
+        {settings.mode !== info.mode ? (
+          <Alert
+            type="warning"
+            showIcon
+            className="restart-alert"
+            data-testid="mode-restart"
+            title={t('settings.modeRestart', {mode: modeName(t, settings.mode)})}
+            action={
+              <Button
+                size="small"
+                type="primary"
+                icon={<ReloadOutlined />}
+                disabled={busy > 0}
+                onClick={() => void api().relaunch()}
+              >
+                {t('settings.restartNow')}
+              </Button>
+            }
+          />
+        ) : null}
+
         <Divider titlePlacement="start">{t('settings.downloads')}</Divider>
         <Form.Item label={t('settings.folder')}>
           <Space.Compact block>
@@ -57,16 +128,34 @@ export function SettingsDrawer({open, onClose, onDoctor, onReinstall}: Props) {
         </Form.Item>
         <Form.Item
           label={`${t('settings.threads')}: ${settings.concurrency}`}
-          extra={t('settings.threadsHelp', {max: info.maxConcurrency, cpus: info.cpus})}
+          extra={
+            settings.cpuBoost
+              ? t('settings.threadsHelpBoost', {max: cap, cpus: info.cpus})
+              : t('settings.threadsHelp', {max: cap, cpus: info.cpus})
+          }
         >
           <Slider
             aria-label={t('settings.threads')}
             min={1}
-            max={info.maxConcurrency}
-            value={settings.concurrency}
-            marks={{1: '1', [info.maxConcurrency]: String(info.maxConcurrency)}}
+            max={cap}
+            value={Math.min(settings.concurrency, cap)}
+            marks={{1: '1', [cap]: String(cap)}}
             onChange={value => change({concurrency: value})}
           />
+        </Form.Item>
+        <Form.Item>
+          <SwitchRow id="opt-boost" checked={settings.cpuBoost} onChange={value => change({cpuBoost: value})}>
+            {t('settings.cpuBoost')}
+          </SwitchRow>
+          <Typography.Paragraph type="secondary" className="switch-help" data-testid="cpu-boost-help">
+            {info.boostedConcurrency > info.maxConcurrency
+              ? t('settings.cpuBoostHelp', {
+                  half: info.maxConcurrency,
+                  boosted: info.boostedConcurrency,
+                  cpus: info.cpus,
+                })
+              : t('settings.cpuBoostSame', {half: info.maxConcurrency, cpus: info.cpus})}
+          </Typography.Paragraph>
         </Form.Item>
         <Form.Item label={t('settings.validation')}>
           <Radio.Group
@@ -80,6 +169,27 @@ export function SettingsDrawer({open, onClose, onDoctor, onReinstall}: Props) {
             </Space>
           </Radio.Group>
         </Form.Item>
+        <Form.Item>
+          <SwitchRow
+            id="opt-validate-after"
+            checked={settings.validateAfter}
+            disabled={settings.validation === 'none'}
+            onChange={value => change({validateAfter: value})}
+          >
+            {t('settings.validateAfter')}
+          </SwitchRow>
+          <Typography.Paragraph type="secondary" className="switch-help">
+            {t('settings.validateAfterHelp')}
+          </Typography.Paragraph>
+          <Button
+            size="small"
+            icon={<WarningOutlined />}
+            onClick={() => setDamagedOpen(true)}
+            data-testid="open-damaged"
+          >
+            {t('settings.damaged')}
+          </Button>
+        </Form.Item>
         <Form.Item label={t('settings.longVideo')}>
           <InputNumber
             min={5}
@@ -89,7 +199,23 @@ export function SettingsDrawer({open, onClose, onDoctor, onReinstall}: Props) {
             aria-label={t('settings.longVideo')}
           />
         </Form.Item>
-        <Form.Item label={t('settings.cookies')} extra={t('settings.cookiesHelp')}>
+        <Form.Item
+          label={t('settings.cookies')}
+          extra={
+            <span>
+              {t('settings.cookiesHelp')}{' '}
+              <Button
+                type="link"
+                size="small"
+                className="link-inline"
+                onClick={() => setSignInOpen(true)}
+                data-testid="open-signin-help"
+              >
+                {t('signin.open')}
+              </Button>
+            </span>
+          }
+        >
           <Select
             aria-label={t('settings.cookies')}
             value={settings.cookiesFromBrowser}
@@ -97,9 +223,11 @@ export function SettingsDrawer({open, onClose, onDoctor, onReinstall}: Props) {
             options={[{value: '', label: t('settings.cookies.none')}, ...BROWSERS.map(b => ({value: b, label: b}))]}
           />
         </Form.Item>
-        <Form.Item label={t('settings.youtubeAccount')} data-testid="youtube-account">
-          <YouTubeAccountRow />
-        </Form.Item>
+        {info.mode === 'web' ? (
+          <Form.Item label={t('settings.youtubeAccount')} data-testid="youtube-account">
+            <YouTubeAccountRow />
+          </Form.Item>
+        ) : null}
         <Form.Item>
           <Space orientation="vertical" size="middle">
             <SwitchRow
@@ -123,14 +251,20 @@ export function SettingsDrawer({open, onClose, onDoctor, onReinstall}: Props) {
             >
               {t('settings.notifications')}
             </SwitchRow>
-            <div>
-              <SwitchRow id="opt-sync" checked={settings.syncEnabled} onChange={value => change({syncEnabled: value})}>
-                {t('settings.sync')}
-              </SwitchRow>
-              <Typography.Paragraph type="secondary" className="switch-help">
-                {t('settings.syncHelp')}
-              </Typography.Paragraph>
-            </div>
+            {info.mode === 'tiktok' ? (
+              <div>
+                <SwitchRow
+                  id="opt-sync"
+                  checked={settings.syncEnabled}
+                  onChange={value => change({syncEnabled: value})}
+                >
+                  {t('settings.sync')}
+                </SwitchRow>
+                <Typography.Paragraph type="secondary" className="switch-help">
+                  {t('settings.syncHelp')}
+                </Typography.Paragraph>
+              </div>
+            ) : null}
             <SwitchRow id="opt-update" checked={settings.autoUpdate} onChange={value => change({autoUpdate: value})}>
               {t('settings.autoUpdate')}
             </SwitchRow>
@@ -182,7 +316,67 @@ export function SettingsDrawer({open, onClose, onDoctor, onReinstall}: Props) {
           </Button>
         </Space>
       </Form>
+      {damagedOpen ? <DamagedModal onClose={() => setDamagedOpen(false)} /> : null}
+      {signInOpen ? <SignInHelp onClose={() => setSignInOpen(false)} /> : null}
     </Drawer>
+  )
+}
+
+/** Videos found damaged at the source: never downloaded again, unless the user lets one try again. */
+function DamagedModal({onClose}: {readonly onClose: () => void}) {
+  const t = useT()
+  const {settings} = useApp()
+  const [entries, setEntries] = useState<readonly DamagedEntry[] | undefined>()
+  const load = () => void api().damagedList().then(setEntries)
+  useEffect(load, [])
+  return (
+    <Modal open title={t('damaged.title')} onCancel={onClose} footer={null} width={760}>
+      <Space orientation="vertical" className="full" data-testid="damaged-modal">
+        <Typography.Text type="secondary">{t('damaged.hint')}</Typography.Text>
+        <Table<DamagedEntry>
+          size="small"
+          rowKey="key"
+          loading={entries === undefined}
+          dataSource={entries ? [...entries] : []}
+          pagination={entries && entries.length > 20 ? {pageSize: 20, showSizeChanger: false} : false}
+          locale={{emptyText: <Empty description={t('damaged.empty')} />}}
+          scroll={{x: 640}}
+          columns={[
+            {
+              title: t('job.title'),
+              key: 'title',
+              ellipsis: true,
+              render: (_, entry) => (
+                <Space orientation="vertical" size={0}>
+                  <Typography.Text className="one-line" title={entry.title ?? entry.url}>
+                    {entry.title ?? entry.url}
+                  </Typography.Text>
+                  <Typography.Text type="secondary" className="one-line" title={entry.reason}>
+                    {entry.reason}
+                  </Typography.Text>
+                </Space>
+              ),
+            },
+            {
+              title: t('damaged.when'),
+              key: 'at',
+              width: 170,
+              render: (_, entry) => moment(entry.at, settings.language),
+            },
+            {
+              title: '',
+              key: 'forget',
+              width: 150,
+              render: (_, entry) => (
+                <Button size="small" onClick={() => void api().damagedForget(entry.key).then(load)}>
+                  {t('damaged.forget')}
+                </Button>
+              ),
+            },
+          ]}
+        />
+      </Space>
+    </Modal>
   )
 }
 
@@ -190,17 +384,19 @@ export function SettingsDrawer({open, onClose, onDoctor, onReinstall}: Props) {
 function SwitchRow({
   id,
   checked,
+  disabled,
   onChange,
   children,
 }: {
   readonly id: string
   readonly checked: boolean
+  readonly disabled?: boolean | undefined
   readonly onChange: (value: boolean) => void
   readonly children: string
 }) {
   return (
     <span className="switch-row">
-      <Switch id={id} checked={checked} onChange={onChange} />
+      <Switch id={id} checked={checked} disabled={disabled === true} onChange={onChange} />
       <label htmlFor={id}>{children}</label>
     </span>
   )

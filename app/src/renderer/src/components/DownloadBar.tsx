@@ -3,8 +3,10 @@ import {App as AntApp, Button, Card, Col, Form, Input, Row, Select, Space, Typog
 import {type DragEvent, useRef, useState} from 'react'
 import {
   AUDIO_FORMATS,
+  concurrencyCap,
   type Format,
   isAudioFormat,
+  platformOf,
   QUALITIES,
   type Quality,
   type ScheduleInput,
@@ -12,8 +14,9 @@ import {
 } from '../../../shared/contract'
 import {api} from '../api'
 import {useApp} from '../context'
-import {extractUrls, isHttpUrl} from '../format'
+import {errorText, extractUrls, isHttpUrl} from '../format'
 import {type MessageKey, useT} from '../i18n'
+import {mismatchText, modeName} from '../mode'
 import {type AppStore, useAppStore, useStoreValue} from '../store'
 import {AnalyzeLoader} from './AnalyzeLoader'
 import {ManyLinksModal} from './ManyLinksModal'
@@ -21,7 +24,7 @@ import {type PlaylistPreview, type PreviewChoice, PreviewModal} from './PreviewM
 import {SlideshowModal} from './SlideshowChoice'
 import {SyncPanel} from './SyncPanel'
 
-const ACTIVE = new Set(['checking', 'running'])
+const ACTIVE = new Set(['checking', 'running', 'validating'])
 
 /** Where a new batch would go in the line: 0 when nothing runs (it starts now). O(batches). */
 function waitingPosition(store: AppStore): number {
@@ -52,18 +55,32 @@ export function DownloadBar() {
   const [preview, setPreview] = useState<{url: string; data: PlaylistPreview} | undefined>()
   const [reloading, setReloading] = useState(false)
   /** Several links pasted or dropped at once, under review. */
-  const [many, setMany] = useState<{urls: string[]; repeated: number} | undefined>()
+  const [many, setMany] = useState<{urls: string[]; repeated: number; otherMode: number} | undefined>()
   const [dropping, setDropping] = useState(false)
   // set when the user stops the reading: its rejection is not an error to show
   const cancelled = useRef(false)
 
   const audio = isAudioFormat(settings.format)
-  const valid = isHttpUrl(url)
+  const mode = info.mode
+  const http = isHttpUrl(url)
+  // a link of another site than this run's: said under the field, before anything is asked
+  const otherMode = http ? platformOf(url.trim(), info.siteAliases) : undefined
+  const wrongMode = otherMode !== undefined && otherMode !== mode
+  const valid = http && !wrongMode
 
   const fail = (error: unknown) => {
-    const text = error instanceof Error ? error.message : String(error)
+    const mismatch = mismatchText(t, error, mode)
+    if (mismatch) {
+      void message.error(mismatch)
+      return
+    }
+    const text = errorText(error)
     // YouTube's bot check: one line here; the banner above says when it goes on, and how to go on now
-    void message.error(/not a (?:ro)?bot/i.test(text) ? t('hint.bot-check') : text)
+    if (/not a (?:ro)?bot/i.test(text)) void message.error(t('hint.bot-check'))
+    // a site that keeps this for signed-in accounts: say how to sign in (the browser's session)
+    else if (/asks to sign in|sign-in required|login required/i.test(text))
+      void message.error(`${text} ${t('hint.needs-sign-in')}`)
+    else void message.error(text)
   }
 
   const slideshow = {mode: settings.slideshowMode, secondsPerImage: settings.slideshowSeconds}
@@ -131,11 +148,15 @@ export function DownloadBar() {
     }
   }
 
-  /** One link fills the field; several open the review of many links. True when it took the text. */
+  /**
+   * One link fills the field; several open the review of many links — only
+   * this mode's (the others are counted, not scheduled). True when it took the text.
+   */
   const take = (text: string): boolean => {
     const found = extractUrls(text)
     if (found.urls.length < 2) return false
-    setMany(found)
+    const ours = found.urls.filter(link => platformOf(link, info.siteAliases) === mode)
+    setMany({urls: ours, repeated: found.repeated, otherMode: found.urls.length - ours.length})
     return true
   }
 
@@ -192,10 +213,12 @@ export function DownloadBar() {
     {label: t('download.audio'), options: AUDIO_FORMATS.map(f => ({value: f, label: t(`format.${f}` as MessageKey)}))},
   ]
   const qualityOptions = QUALITIES.map(q => ({value: q, label: q === 'best' ? t('quality.best') : `${q}p`}))
-  const longAtOnce = Math.max(1, Math.floor(info.maxConcurrency / 1.5))
+  const cap = concurrencyCap(info, settings)
+  const longAtOnce = Math.max(1, Math.floor(cap / 1.5))
 
-  // with sync on, the card has two sections: New download and Sync Up
-  const syncing = settings.syncEnabled && section === 'sync'
+  // TikTok mode only: the card has two sections, New download and Sync Up
+  const withSync = mode === 'tiktok'
+  const syncing = withSync && section === 'sync'
   if (syncing) {
     return (
       <Card className="download-card" {...sections}>
@@ -207,7 +230,7 @@ export function DownloadBar() {
   return (
     <Card
       className={dropping ? 'download-card dropping' : 'download-card'}
-      {...(settings.syncEnabled ? sections : {title: t('download.title')})}
+      {...(withSync ? sections : {title: t('download.titleMode', {mode: modeName(t, mode)})})}
       onDragOver={event => {
         event.preventDefault()
         setDropping(true)
@@ -218,16 +241,22 @@ export function DownloadBar() {
     >
       <Form layout="vertical" onFinish={() => void submit()} requiredMark={false}>
         <Form.Item
-          label={t('download.url')}
-          validateStatus={touched && !valid ? 'error' : ''}
-          help={touched && !valid ? t('download.invalidUrl') : undefined}
+          label={t(`download.url.${mode}` as MessageKey)}
+          validateStatus={(touched && !valid) || wrongMode ? 'error' : ''}
+          help={
+            wrongMode
+              ? t('mode.wrongLink', {site: modeName(t, otherMode), mode: modeName(t, mode)})
+              : touched && !valid
+                ? t('download.invalidUrl')
+                : undefined
+          }
         >
           <Space.Compact block data-tour="url">
             <Input
               size="large"
               allowClear
               aria-label={t('download.url')}
-              placeholder={t('download.urlPlaceholder')}
+              placeholder={t(`download.urlPlaceholder.${mode}` as MessageKey)}
               value={url}
               onChange={event => setUrl(event.target.value)}
               onPaste={event => {
@@ -305,7 +334,7 @@ export function DownloadBar() {
       <Typography.Text type="secondary" className="download-hint">
         {waiting
           ? t('download.scheduledHint', {position: waiting})
-          : t('download.capacity', {normal: info.maxConcurrency, cpus: info.cpus, long: longAtOnce})}
+          : t('download.capacity', {normal: cap, cpus: info.cpus, long: longAtOnce})}
       </Typography.Text>
       {slide ? (
         <SlideshowModal
@@ -322,6 +351,7 @@ export function DownloadBar() {
         <ManyLinksModal
           urls={many.urls}
           repeated={many.repeated}
+          otherMode={many.otherMode}
           onSchedule={scheduleMany}
           onCancel={() => setMany(undefined)}
         />

@@ -43,6 +43,21 @@ export class HttpSession {
       readonly timeoutMs?: number | undefined
     } = {},
   ): Promise<Response> {
+    return this.request(url, opts)
+  }
+
+  /** Any method; a POST carries `body` (a form or JSON string: set Content-Type in `headers`). */
+  async request(
+    url: string,
+    opts: {
+      readonly method?: 'GET' | 'POST' | undefined
+      readonly body?: string | undefined
+      readonly headers?: Readonly<Record<string, string>> | undefined
+      readonly signal?: AbortSignal | undefined
+      readonly redirect?: 'follow' | 'manual' | 'error' | undefined
+      readonly timeoutMs?: number | undefined
+    } = {},
+  ): Promise<Response> {
     const target = new URL(url)
     const headers: Record<string, string> = {
       'User-Agent': this.#userAgent,
@@ -53,6 +68,8 @@ export class HttpSession {
     if (cookie) headers['Cookie'] = cookie
     const timeout = AbortSignal.timeout(opts.timeoutMs ?? this.#timeoutMs)
     const response = await this.#fetch(target.href, {
+      method: opts.method ?? 'GET',
+      ...(opts.method === 'POST' && {body: opts.body ?? ''}),
       headers,
       redirect: opts.redirect ?? 'follow',
       signal: opts.signal ? AbortSignal.any([opts.signal, timeout]) : timeout,
@@ -68,6 +85,15 @@ export class HttpSession {
       for (const [name, value] of this.#jar.get(domain) ?? []) pairs.push(`${name}=${value}`)
     }
     return pairs.join('; ')
+  }
+
+  /** One cookie as it applies to `host` (its own or a parent domain's), or undefined. */
+  cookie(host: string, name: string): string | undefined {
+    for (let domain = host; domain.includes('.'); domain = domain.slice(domain.indexOf('.') + 1)) {
+      const value = this.#jar.get(domain)?.get(name)
+      if (value !== undefined) return value
+    }
+    return undefined
   }
 
   get userAgent(): string {

@@ -379,3 +379,12 @@ h5.ant-typography.preview-heading {
 .about-repo {
   margin: 8px 0 0;
 }
+
+/* the sign-in steps: a numbered list with room between the steps */
+.signin-steps {
+  margin: 0;
+  padding-left: 22px;
+}
+.signin-steps li + li {
+  margin-top: 6px;
+}

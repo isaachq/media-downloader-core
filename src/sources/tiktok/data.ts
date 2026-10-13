@@ -1,3 +1,4 @@
+import type {Rendition, VideoCodec} from '../renditions.js'
 import {TikTokError} from './errors.js'
 
 // ─── Page data ──────────────────────────────────────────────────────────────
@@ -57,20 +58,8 @@ function checkStatus(status: unknown, message: unknown): void {
 
 // ─── Model ──────────────────────────────────────────────────────────────────
 
-export type VideoCodec = 'h264' | 'h265'
-
-/** One encoding of a post's video. */
-export type Rendition = {
-  readonly codec: VideoCodec
-  readonly width: number
-  readonly height: number
-  /** Short side — what "720p" means for a vertical video too. */
-  readonly resolution: number
-  readonly bitrate: number
-  readonly bytes?: number | undefined
-  /** Mirrors of the same file, best first. */
-  readonly urls: readonly string[]
-}
+// Encodings are the shared model of every native source (../renditions.ts).
+export type {Rendition, VideoCodec} from '../renditions.js'
 
 export type TikTokPost = {
   readonly id: string

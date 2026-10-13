@@ -45,6 +45,18 @@ the ⌊CPUs/2⌋ pool and verified file by file.
 
 ![Paste a link, download it as MP4, check its integrity report, find it in Finished, open the run report](docs/demo.gif)
 
+### What's new in beta 10 (library 1.10.0)
+
+- **Instagram and Facebook, built in** — paste a post, a reel, a whole profile, its stories or a highlight (Instagram), or a video, a reel, a page's videos or its stories (Facebook), and the library reads them itself: the same pool, pacing, retries, conversion, integrity checks and naming as TikTok. Photos and carousels become an MP4 or a folder of pictures, your choice. Stories need your own signed-in session (the browser cookies the app already uses). [How it works](#instagram-and-facebook-built-in-extractors).
+- **Signing in, explained** — Settings → Cookies → *How to sign in*: sign in on your own browser, choose it in the app, allow the one-time permission (macOS Keychain, Safari's Full Disk Access, Windows, Linux keyrings). [Step by step](#signing-in-your-browsers-session).
+- **One site per run** — Settings → Site: YouTube and websites, TikTok, Instagram or Facebook. Each run shows only that site's screens and controls (Sync Up only in TikTok mode, YouTube's sign-in only in the web mode), refuses links of the others, and its Finished tab holds that site's files. Changing it restarts the app.
+- **Failed downloads, together** — the Failed card lists every failed download of the session; pick some and they go into one new batch, each back to its own folder.
+- **Damaged at the source** — a file that comes down whole but is broken (it doesn't decode, or can't be read at all) is downloaded once more to be sure, then marked and never downloaded again; its tooltip says why. Settings lists them and lets one try again.
+- **Download first, check after** — a batch can download back to back and check all its files at the end.
+- **Up to 60% of the processors** — instead of half, keeping about 40% free.
+- **Cancel drops one download** — the batch goes on and completes without it.
+- **Finished** — filter by integrity and size, sort by size, and remove the records of files deleted or moved since.
+
 ### What's new in beta 9
 
 - **Player-page links on any site** — a search or video page from a site whose videos each have a page with a player now works without adding the site to `sites.json` first: any link yt-dlp doesn't support is tried as a player page, whatever its host. No site is named in the app. [How it works](#player-page-sites-configured-locally).
@@ -165,6 +177,38 @@ fuse-libs` for it); on Ubuntu 24.04+ prefer the `.deb`.
 Settings, tools and the download history live in `~/Library/Application Support/Media Download Core`
 (macOS), `%APPDATA%\Media Download Core` (Windows) or `~/.config/Media Download Core` (Linux),
 shared with the `mdc` command line.
+
+### Signing in: your browser's session
+
+Some content needs your own account: private or members-only videos,
+age-restricted ones, Instagram profiles, stories and highlights, a Facebook
+page's list of videos — and YouTube when it asks to confirm you're not a bot.
+The app never asks for a password: it uses the session of the browser you
+already sign in with.
+
+1. Open your usual browser (Chrome, Edge, Firefox, Safari, Brave…) and **sign
+   in there as always** — to Google / YouTube, Instagram or Facebook.
+2. In the app: **Settings → Cookies from browser → choose that browser**
+   (Settings → Cookies → *How to sign in* shows these steps in the app).
+3. **Allow the permission your system asks for**, once:
+   - **macOS** — a Keychain window asks to let the app read "Chrome Safe
+     Storage" (or your browser's): type your Mac password and click **Always
+     Allow**. Safari: System Settings → Privacy & Security → **Full Disk
+     Access** → turn on Media Download Core.
+   - **Windows** — close the browser before downloading (Chrome and Edge lock
+     their cookies while open). If Chrome still can't be read (it protects its
+     cookies on Windows), sign in with **Firefox** and choose Firefox.
+   - **Linux** (Fedora, Ubuntu…) — your keyring (GNOME Keyring / KWallet) may
+     ask to allow access to the browser's saved data: allow it. Firefox asks
+     nothing.
+4. Paste the link again. If the site signs you out, sign in again in the
+   browser — the app picks the new session up by itself.
+
+The cookies stay on your computer: they are read once into a private copy
+the app uses only for downloading, filtered to the site at hand, and never
+sent anywhere else. Without a session, single public posts and videos still
+download; what a site keeps for signed-in accounts says so ("Sign-in
+required") instead of failing silently.
 
 ### Updates
 
@@ -396,6 +440,48 @@ TikTok's terms restrict automated access: use this to back up content you
 are allowed to keep, at the default pace. `tiktok: false` sends TikTok to
 yt-dlp like any other site.
 
+## Instagram and Facebook (built-in extractors)
+
+Instagram and Facebook are read by the library itself too, the same way as
+TikTok and with the same plumbing — one `MetaClient` per site: an HTTP
+session with the site's cookies, a shared Pacer, reads retried after the
+shared cool-down, a real browser for pages that only open in one, a circuit
+breaker while the site blocks the source, and yt-dlp as the fallback:
+
+```ts
+scheduler.schedule({url: 'https://www.instagram.com/p/C0DE…/', profile: {kind: 'video', container: 'mp4'}, outDir})
+scheduler.schedule({url: 'https://www.instagram.com/some.user/', profile: {kind: 'video', container: 'mp4'}, outDir, slideshow: {mode: 'images', secondsPerImage: 3}})
+scheduler.schedule({url: 'https://www.instagram.com/stories/some.user/', profile: {kind: 'video', container: 'mp4'}, outDir})
+scheduler.schedule({url: 'https://www.facebook.com/watch/?v=10000…', profile: {kind: 'video', container: 'mp4'}, outDir})
+scheduler.schedule({url: 'https://www.facebook.com/somepage/videos/', profile: {kind: 'video', container: 'mp4'}, outDir})
+```
+
+| | Instagram | Facebook |
+| --- | --- | --- |
+| Links | `/p/<code>/`, `/reel/<code>/`, `/tv/<code>/`, `/<user>/`, `/<user>/reels/`, `/stories/<user>/[<id>/]`, `/stories/highlights/<id>/`, `/share/…` (a redirect) | `/watch/?v=<id>`, `/<page>/videos/<id>/`, `/reel/<id>`, `/video.php?v=`, `/<page>/posts/<id>`, `/<page>` and `/<page>/videos/`, `/profile.php?id=`, `/stories/<bucket>/[<card>/]`, `fb.watch/…` and `/share/…` (redirects) |
+| A post | The web client's own post query (JSON; public posts answer without a session), else the post page — what Instagram embeds for its player. | The video page: the data Facebook embeds for its player, spread over several Relay objects that share the video's id and are merged. Progressive HD / SD files; a DASH-only video goes to yt-dlp. |
+| A profile | `web_profile_info` (the account, its post count, private or not), then the web client's timeline query by cursor; with a signed-in session, the feed API the app itself reads. Pages of 12. | The Videos tab (its first videos, the cursor of the rest and the page's `fb_dtsg` / `lsd` tokens), then the web client's pagination query by cursor. A listing names videos without their media: each page is read at the check and reused by the download. |
+| Listing | Cursor pagination shared by both: de-duplicated by id (O(1) per item), a page that brings nothing new or a cursor that repeats counts as a stall (three end the walk), the cap falling mid-page re-reads that page later rather than losing its tail. Listed in chunks of 500, each kept as soon as it is in; a reopened preview answers from memory for 15 minutes and asking for more continues from its cursor. Incremental (`known`): stops after 20 known posts in a row. | Same walk. |
+| Photos and carousels | A photo or a carousel of photos becomes what `slideshow` asks: an MP4 (default, N seconds per image) or a folder of the pictures (`'images'` — the faithful backup). A carousel with videos is always a folder of everything, in order, as the site serves it; an audio format takes its first video's soundtrack. `MediaSummary.slideshow` tells the UI. | Videos only (a page's Videos tab); stories can be pictures. |
+| Stories and highlights | Both need the user's **signed-in session**: Instagram shows them to accounts only. Without one the batch fails at once with `needs-sign-in`, before asking the site. A story's url names the user, the item its id; `stories last 24 hours` is the reason when it is gone. | Same for a stories bucket (`/stories/<bucket>/`). |
+| The session | The browser cookies the engine already reads for yt-dlp (`setCookiesFromBrowser`), else `cookiesFile`, filtered to the site's domain — read once, asked again every 6 hours. A host may pass `cookies` itself. Nothing is stored beyond the engine's cookie jar. | Same. |
+| Pace | One shared **Pacer** per site, TikTok's defaults: 2 requests at a time, ~1.5–2.5 s apart; a refusal (403 / 429 / "please wait a few minutes") makes every request back off 30 s → 10 min. Media downloads aren't paced. | Same. |
+| Walls | A login wall or a checkpoint (`/challenge/`, `/checkpoint/`) is never solved: with a browser at hand (`instagram.browser`) the page is loaded there once and its session adopted; without one, or when the browser gets the wall too, the source steps aside for 10 minutes and yt-dlp handles the site (with the user's cookies it may get further). A page whose layout changed, or a query Instagram rotated, falls back to yt-dlp for that url (`extractor-fallback`). | Same. |
+| Query ids | The web client's Relay `doc_id`s live in one file per site (`endpoints.ts`) and can be overridden without a release (`instagram.queries`, `facebook.queries`). A rotated listing query leaves a profile at the posts its info carried (`complete: false`) and a page's videos at what the tab showed, never a failed listing. | Same. |
+
+**What was verified, and what wasn't.** Every behaviour above is covered by
+the tests against local fakes (`test/helpers/fake-instagram.ts`,
+`test/helpers/fake-facebook.ts`) that serve the shapes the real sites served
+when this was written, taken from their web clients and yt-dlp's extractors.
+The live endpoints and query ids were **not** re-verified from the build
+environment of this release; both sites change them without notice. Anything
+that stops answering falls back to yt-dlp, and `endpoints.ts` is the one
+place to update.
+
+Both sites' terms restrict automated access: use this to back up content you
+are allowed to keep, at the default pace. `instagram: false` / `facebook: false`
+send their urls to yt-dlp like any other site.
+
 ## TikTok sync (Sync Up)
 
 A **subscription** keeps a TikTok account in step with a folder. A sync
@@ -526,7 +612,7 @@ One JavaScript thread orchestrates. The heavy work happens elsewhere, in paralle
 | SHA-256 of finished files | `HashPool` — worker threads, started on demand, exit when idle |
 | Queue, events, state | main thread — never blocked: all I/O is async, progress is parsed line by line |
 
-- **At most ⌊logical CPUs / 2⌋ jobs** run at once (`MediaDownloader.maxConcurrency()`); `setConcurrency(n)` is clamped to it. A job holds its slot through download → convert → validate → move, so the cap covers the whole pipeline.
+- **At most ⌊logical CPUs / 2⌋ jobs** run at once (`MediaDownloader.maxConcurrency()`); `setConcurrency(n)` is clamped to it. `maxCpuShare: 0.6` (or `setMaxCpuShare(0.6)`) raises the ceiling to ⌊CPUs × 0.6⌋ — never more, so about 40% of the machine stays free. A job holds its slot through download → convert → validate → move, so the cap covers the whole pipeline.
 - **CPU budget for ffmpeg:** each decode/encode gets `⌊limit / running jobs⌋` threads — a lone job validates with all of them, a full pool uses one each. Total never exceeds ⌊CPUs/2⌋.
 - **Fragments:** `fragmentsPerDownload` (default 3) parallelizes HLS/DASH fragments inside one download; network-bound, near-zero CPU.
 
@@ -635,6 +721,10 @@ only the offending stream is re-encoded locally.
 `'quick'` replaces step 4 with a packet read (≈50× faster; catches truncation, not bitstream corruption). `'none'` trusts yt-dlp.
 
 Failures are retried from scratch; a file that still fails ends as `failed` with code `validation` and structured `issues` (`{code, message, params}`).
+
+**Damaged at the source.** When the file came down whole and fails as broken (`decode-failed`, `decode-errors`, `incomplete-decode`, `duration-mismatch`, `probe-failed`, `file-empty` — not a codec or container mismatch, which is about the conversion), one fresh download confirms it; the second failure marks the media in `damaged.json` (`MediaDownloader.damaged`, by media id and url) and the job fails with hint `damaged-source` instead of spending its remaining retries. From then on the scheduler's check settles such items as unavailable (`damaged-source`) and a loose job fails at once. `damaged.remove(key)` lets one try again.
+
+**Checks after the batch.** `validationTiming: 'after-batch'` (or `setValidationTiming`) finishes batch jobs as they download — probed only, archived with `validation: 'none'`, `JobSnapshot.validationPending` — and once every download of the batch has ended the batch turns `validating` (`BatchSnapshot.validation = {done, total}`) and `checkLater()` checks the files at the configured level, a few at a time. Passing files get that level in their record; a file broken at the source is marked damaged and kept (its record carries `damaged`); one failing for another reason is removed with its record so it can be downloaded again.
 yt-dlp writes into a private work folder; only validated files are moved into the destination (cross-volume moves copy → verify size → rename), so a truncated file never appears under its final name.
 
 ## Backups: archive, resume, verify
@@ -666,6 +756,7 @@ new MediaDownloader({
   embedMetadata?: true, embedThumbnail?: false,
   jsRuntime?,                   // default: this Node.js (Electron: app binary as Node)
   cookiesFromBrowser?, cookiesFile?, rateLimit?, extraYtDlpArgs?,
+  tiktok?, instagram?, facebook?,   // false, or each built-in extractor's options (pacing, browser, cookies, queries)
   progressIntervalMs?: 250, minFreeSpaceBytes?: 512 MiB, retainFinishedJobs?: 1000,
 })
 

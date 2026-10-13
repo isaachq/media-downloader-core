@@ -130,15 +130,22 @@ export class MetaClient {
     }
   }
 
-  /** Load the host's cookies if they were never loaded or are old. Concurrent callers share one load. */
+  /**
+   * Load the host's cookies if they were never loaded or are old. Concurrent
+   * callers share one load. None is not remembered: the user may sign in or
+   * pick a browser later, and asking again is cheap (the host caches its jar).
+   * A host that fails to read them leaves the session as it is.
+   */
   async loadCookies(): Promise<void> {
     if (!this.#cookies) return
     if (this.#cookiesAt !== undefined && this.#now() - this.#cookiesAt < COOKIES_FRESH_MS) return
     this.#loading ??= this.#cookies()
-      .then(cookies => {
-        if (cookies) this.adoptCookies(cookies)
-        else this.#cookiesAt = this.#now()
-      })
+      .then(
+        cookies => {
+          if (cookies) this.adoptCookies(cookies)
+        },
+        error => this.#log('warn', `${this.site}: the session cookies could not be read: ${String(error)}`),
+      )
       .finally(() => {
         this.#loading = undefined
       })

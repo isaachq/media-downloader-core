@@ -1,5 +1,48 @@
 # Changelog
 
+## Library 1.10.0 (in progress) · app beta 10
+
+**Instagram and Facebook, natively.** Two new built-in extractors beside
+TikTok's, on the same architecture (`MediaSource` + `HttpSession` + `Pacer` +
+retries + circuit breaker + `BrowserAssist` + yt-dlp fallback), with the
+plumbing lifted into `src/sources/meta/` so the two share it instead of each
+carrying a copy of TikTok's:
+
+- `MetaClient`: the session, the pacer, reads retried after the shared
+  cool-down, a browser for pages that only open in one, stepping aside for
+  10 minutes when the site blocks the source, and — new — a signed-in session
+  supplied by the host (cookies), since both sites keep stories and most
+  listings for signed-in accounts.
+- `walkCursor`: cursor pagination with the guarantees of TikTok's date walk
+  (O(1) de-duplication, stalls, incremental "caught up" after 20 known items,
+  resume from a kept cursor, a cap falling mid-page re-reads that page).
+- One post model (`MetaPost`: video / photo / carousel / story) and one
+  download path (best encoding for the profile, every mirror of each; a
+  slideshow MP4 or a folder of pictures; a carousel with videos as a folder).
+- `src/sources/renditions.ts`: the encoding ranking and the format choices,
+  shared with TikTok (TikTok's behaviour is unchanged; 38/38 tests as before).
+- `InstagramSource`: posts, reels, carousels and photos, whole profiles (the
+  web client's timeline query by cursor; the feed API when signed in), stories
+  and highlights (signed in). `FacebookSource`: videos, reels, posts with a
+  video, a profile's or page's videos (the Videos tab, then the web client's
+  pagination query with the page's tokens), stories (signed in).
+- `DownloaderOptions.instagram` / `.facebook` like `tiktok`. Both take the
+  user's session from the browser cookies the engine already reads for yt-dlp
+  (`parseNetscape`, new), else `cookiesFile`. Query ids live in one file per
+  site and can be overridden (`queries`).
+- Errors in the engine's terms: `needs-sign-in` for stories without a session,
+  `private`, `removed`, `retry-later`; a login wall or checkpoint →
+  `source:blocked` (yt-dlp for a while); a changed page or rotated query →
+  `source:format-changed` (yt-dlp for that url).
+- 38 new tests against local fakes of both sites (login walls, rate limits,
+  checkpoints through a browser, rotated queries, DASH-only videos, stories,
+  carousels, cursor paging, memory and incremental listings). Full suite 274.
+
+Not in this release yet: the app's Instagram and Facebook tabs, Sync Up for
+Instagram and Facebook accounts, and verification against the live sites
+(the fakes serve the shapes known when this was written; see the README).
+
+
 ## App 0.2.0-beta.9 · library 1.9.0
 
 Beta 9: a player-page link works again without being configured first.

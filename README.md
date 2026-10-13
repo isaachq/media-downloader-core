@@ -45,6 +45,10 @@ the ⌊CPUs/2⌋ pool and verified file by file.
 
 ![Paste a link, download it as MP4, check its integrity report, find it in Finished, open the run report](docs/demo.gif)
 
+### What's new in beta 10 (library 1.10.0, in progress)
+
+- **Instagram and Facebook, built in** — paste a post, a reel, a whole profile, its stories or a highlight (Instagram), or a video, a reel, a page's videos or its stories (Facebook), and the library reads them itself: the same pool, pacing, retries, conversion, integrity checks and naming as TikTok. Photos and carousels become an MP4 or a folder of pictures, your choice. Stories need your own signed-in session (the browser cookies the app already uses). [How it works](#instagram-and-facebook-built-in-extractors). The app's tabs for them come next.
+
 ### What's new in beta 9
 
 - **Player-page links on any site** — a search or video page from a site whose videos each have a page with a player now works without adding the site to `sites.json` first: any link yt-dlp doesn't support is tried as a player page, whatever its host. No site is named in the app. [How it works](#player-page-sites-configured-locally).
@@ -396,6 +400,48 @@ TikTok's terms restrict automated access: use this to back up content you
 are allowed to keep, at the default pace. `tiktok: false` sends TikTok to
 yt-dlp like any other site.
 
+## Instagram and Facebook (built-in extractors)
+
+Instagram and Facebook are read by the library itself too, the same way as
+TikTok and with the same plumbing — one `MetaClient` per site: an HTTP
+session with the site's cookies, a shared Pacer, reads retried after the
+shared cool-down, a real browser for pages that only open in one, a circuit
+breaker while the site blocks the source, and yt-dlp as the fallback:
+
+```ts
+scheduler.schedule({url: 'https://www.instagram.com/p/C0DE…/', profile: {kind: 'video', container: 'mp4'}, outDir})
+scheduler.schedule({url: 'https://www.instagram.com/some.user/', profile: {kind: 'video', container: 'mp4'}, outDir, slideshow: {mode: 'images', secondsPerImage: 3}})
+scheduler.schedule({url: 'https://www.instagram.com/stories/some.user/', profile: {kind: 'video', container: 'mp4'}, outDir})
+scheduler.schedule({url: 'https://www.facebook.com/watch/?v=10000…', profile: {kind: 'video', container: 'mp4'}, outDir})
+scheduler.schedule({url: 'https://www.facebook.com/somepage/videos/', profile: {kind: 'video', container: 'mp4'}, outDir})
+```
+
+| | Instagram | Facebook |
+| --- | --- | --- |
+| Links | `/p/<code>/`, `/reel/<code>/`, `/tv/<code>/`, `/<user>/`, `/<user>/reels/`, `/stories/<user>/[<id>/]`, `/stories/highlights/<id>/`, `/share/…` (a redirect) | `/watch/?v=<id>`, `/<page>/videos/<id>/`, `/reel/<id>`, `/video.php?v=`, `/<page>/posts/<id>`, `/<page>` and `/<page>/videos/`, `/profile.php?id=`, `/stories/<bucket>/[<card>/]`, `fb.watch/…` and `/share/…` (redirects) |
+| A post | The web client's own post query (JSON; public posts answer without a session), else the post page — what Instagram embeds for its player. | The video page: the data Facebook embeds for its player, spread over several Relay objects that share the video's id and are merged. Progressive HD / SD files; a DASH-only video goes to yt-dlp. |
+| A profile | `web_profile_info` (the account, its post count, private or not), then the web client's timeline query by cursor; with a signed-in session, the feed API the app itself reads. Pages of 12. | The Videos tab (its first videos, the cursor of the rest and the page's `fb_dtsg` / `lsd` tokens), then the web client's pagination query by cursor. A listing names videos without their media: each page is read at the check and reused by the download. |
+| Listing | Cursor pagination shared by both: de-duplicated by id (O(1) per item), a page that brings nothing new or a cursor that repeats counts as a stall (three end the walk), the cap falling mid-page re-reads that page later rather than losing its tail. Listed in chunks of 500, each kept as soon as it is in; a reopened preview answers from memory for 15 minutes and asking for more continues from its cursor. Incremental (`known`): stops after 20 known posts in a row. | Same walk. |
+| Photos and carousels | A photo or a carousel of photos becomes what `slideshow` asks: an MP4 (default, N seconds per image) or a folder of the pictures (`'images'` — the faithful backup). A carousel with videos is always a folder of everything, in order, as the site serves it; an audio format takes its first video's soundtrack. `MediaSummary.slideshow` tells the UI. | Videos only (a page's Videos tab); stories can be pictures. |
+| Stories and highlights | Both need the user's **signed-in session**: Instagram shows them to accounts only. Without one the batch fails at once with `needs-sign-in`, before asking the site. A story's url names the user, the item its id; `stories last 24 hours` is the reason when it is gone. | Same for a stories bucket (`/stories/<bucket>/`). |
+| The session | The browser cookies the engine already reads for yt-dlp (`setCookiesFromBrowser`), else `cookiesFile`, filtered to the site's domain — read once, asked again every 6 hours. A host may pass `cookies` itself. Nothing is stored beyond the engine's cookie jar. | Same. |
+| Pace | One shared **Pacer** per site, TikTok's defaults: 2 requests at a time, ~1.5–2.5 s apart; a refusal (403 / 429 / "please wait a few minutes") makes every request back off 30 s → 10 min. Media downloads aren't paced. | Same. |
+| Walls | A login wall or a checkpoint (`/challenge/`, `/checkpoint/`) is never solved: with a browser at hand (`instagram.browser`) the page is loaded there once and its session adopted; without one, or when the browser gets the wall too, the source steps aside for 10 minutes and yt-dlp handles the site (with the user's cookies it may get further). A page whose layout changed, or a query Instagram rotated, falls back to yt-dlp for that url (`extractor-fallback`). | Same. |
+| Query ids | The web client's Relay `doc_id`s live in one file per site (`endpoints.ts`) and can be overridden without a release (`instagram.queries`, `facebook.queries`). A rotated listing query leaves a profile at the posts its info carried (`complete: false`) and a page's videos at what the tab showed, never a failed listing. | Same. |
+
+**What was verified, and what wasn't.** Every behaviour above is covered by
+the tests against local fakes (`test/helpers/fake-instagram.ts`,
+`test/helpers/fake-facebook.ts`) that serve the shapes the real sites served
+when this was written, taken from their web clients and yt-dlp's extractors.
+The live endpoints and query ids were **not** re-verified from the build
+environment of this release; both sites change them without notice. Anything
+that stops answering falls back to yt-dlp, and `endpoints.ts` is the one
+place to update.
+
+Both sites' terms restrict automated access: use this to back up content you
+are allowed to keep, at the default pace. `instagram: false` / `facebook: false`
+send their urls to yt-dlp like any other site.
+
 ## TikTok sync (Sync Up)
 
 A **subscription** keeps a TikTok account in step with a folder. A sync
@@ -666,6 +712,7 @@ new MediaDownloader({
   embedMetadata?: true, embedThumbnail?: false,
   jsRuntime?,                   // default: this Node.js (Electron: app binary as Node)
   cookiesFromBrowser?, cookiesFile?, rateLimit?, extraYtDlpArgs?,
+  tiktok?, instagram?, facebook?,   // false, or each built-in extractor's options (pacing, browser, cookies, queries)
   progressIntervalMs?: 250, minFreeSpaceBytes?: 512 MiB, retainFinishedJobs?: 1000,
 })
 

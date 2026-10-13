@@ -1,10 +1,15 @@
 # Changelog
 
-## Library 1.11.0
+## App 0.2.0-beta.11 · library 1.11.0
 
-What the Android host did around the library, now in it: Instagram posts read
-without a session, TikTok sessions handed over like the others, Facebook's
-signed-in-only videos said as such, and hosts without yt-dlp.
+Beta 11: Instagram reels without a session the way the apps that "just work"
+read them, and errors that say what to do — wait (Instagram is limiting this
+network) or sign in (Facebook keeps most videos for signed-in visitors now) —
+instead of "the site changed". In the app, nothing else changes: the same
+screens, the same sign-in help. In the library: what the Android host did
+around it, now in it — Instagram posts read without a session, TikTok
+sessions handed over like the others, Facebook's signed-in-only videos said as
+such, and hosts without yt-dlp.
 
 **Instagram: the anonymous routes first.** A post or reel is read first the
 way yt-dlp, cobalt and gallery-dl read a public one, one request each: the

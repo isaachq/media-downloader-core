@@ -41,6 +41,12 @@ export type ResolvedBinaries = {
   readonly ffprobe: ResolvedTool
 }
 
+/** The tools found where yt-dlp is optional (a host without it): ffmpeg and ffprobe, and yt-dlp when there is one. */
+export type AvailableBinaries = Omit<ResolvedBinaries, 'ytDlp'> & {readonly ytDlp?: ResolvedTool | undefined}
+
+/** 'required' (default): yt-dlp is a tool like the others. 'optional': a host without it (native sources only). */
+export type YtDlpPolicy = 'required' | 'optional'
+
 export type InstallStage = 'resolving' | 'downloading' | 'extracting' | 'testing' | 'done'
 
 export type InstallProgress = {
@@ -81,6 +87,11 @@ export async function probeVersion(tool: ToolName, exe: Executable): Promise<str
   }
 }
 
+function missingTools(tools: ReadonlyArray<string | false>): BinaryError {
+  const missing = tools.filter(Boolean).join(', ')
+  return new BinaryError(`Missing required tools: ${missing}. Run the setup (\`mdc setup\`) to install them.`)
+}
+
 async function exists(file: string): Promise<boolean> {
   return fs.access(file).then(
     () => true,
@@ -100,14 +111,26 @@ export class BinaryManager {
   readonly #stores: Readonly<Record<ManagedTool, ManagedStore>>
   readonly #configured: BinaryPaths
   readonly #fetcher: Fetcher
-  #resolved: Promise<ResolvedBinaries> | undefined
+  readonly #ytDlp: YtDlpPolicy
+  #resolved: Promise<AvailableBinaries> | undefined
   readonly #installing = new Map<ManagedTool, Promise<ManagedInstall>>()
 
-  constructor(dataDir: string, configured: BinaryPaths = {}, fetcher: Fetcher = fetch) {
+  constructor(
+    dataDir: string,
+    configured: BinaryPaths = {},
+    fetcher: Fetcher = fetch,
+    options: {readonly ytDlp?: YtDlpPolicy | undefined} = {},
+  ) {
     const binRoot = path.join(dataDir, 'bin')
     this.#stores = {'yt-dlp': new ManagedStore(binRoot, 'yt-dlp'), ffmpeg: new ManagedStore(binRoot, 'ffmpeg')}
     this.#configured = configured
     this.#fetcher = fetcher
+    this.#ytDlp = options.ytDlp ?? 'required'
+  }
+
+  /** yt-dlp may be missing (the host said so): `resolve()` then fails without it, `available()` does not. */
+  get ytDlpOptional(): boolean {
+    return this.#ytDlp === 'optional'
   }
 
   /** Find one tool without failing. */
@@ -132,7 +155,17 @@ export class BinaryManager {
   }
 
   /** Resolve all three tools once and cache. A failure isn't cached, so the next call retries. */
-  resolve(): Promise<ResolvedBinaries> {
+  async resolve(): Promise<ResolvedBinaries> {
+    const bins = await this.available()
+    if (!bins.ytDlp) throw missingTools(['yt-dlp'])
+    return {...bins, ytDlp: bins.ytDlp}
+  }
+
+  /**
+   * The tools there are, cached like `resolve()`: ffmpeg and ffprobe always,
+   * yt-dlp too unless it is optional (then it is there or undefined).
+   */
+  available(): Promise<AvailableBinaries> {
     this.#resolved ??= this.#resolve().catch((error: unknown) => {
       this.#resolved = undefined
       throw error
@@ -144,15 +177,15 @@ export class BinaryManager {
     this.#resolved = undefined
   }
 
-  async #resolve(): Promise<ResolvedBinaries> {
+  async #resolve(): Promise<AvailableBinaries> {
     const [ytDlp, ffmpeg, ffprobe] = await Promise.all([
       this.locate('yt-dlp'),
       this.locate('ffmpeg'),
       this.locate('ffprobe'),
     ])
-    if (!ytDlp || !ffmpeg || !ffprobe) {
-      const missing = [!ytDlp && 'yt-dlp', !ffmpeg && 'ffmpeg', !ffprobe && 'ffprobe'].filter(Boolean).join(', ')
-      throw new BinaryError(`Missing required tools: ${missing}. Run the setup (\`mdc setup\`) to install them.`)
+    const needYtDlp = this.#ytDlp === 'required'
+    if ((needYtDlp && !ytDlp) || !ffmpeg || !ffprobe) {
+      throw missingTools([needYtDlp && !ytDlp && 'yt-dlp', !ffmpeg && 'ffmpeg', !ffprobe && 'ffprobe'])
     }
     return {ytDlp, ffmpeg, ffprobe}
   }

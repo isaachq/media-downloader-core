@@ -301,27 +301,97 @@ export function readPostQuery(json: unknown): MetaPost {
   return readGraphNode(media)
 }
 
+const GONE = /Sorry, this page isn't available|Page Not Found|content isn't available/i
+/** The login wall / "wait a few minutes" page is the bare app shell: no post data, a title of just "Instagram". */
+const BARE_SHELL = /<title>\s*Instagram\s*<\/title>/
+
 /**
- * A post page: the v1 item the page embeds for its own player. A redirect to
- * the login page is a challenge (a browser, or a signed-in session, gets the
- * page); a "page isn't available" is a removed post.
+ * A post page: the v1 item the page embeds for its own player — as
+ * `xig_polaris_media.if_not_gated_logged_out` for a visitor without a session
+ * (yt-dlp's route since 2026-07), or `xdt_api__v1__media__shortcode__web_info`.
+ * A redirect to the login page, or the bare app shell, is a challenge (a
+ * browser, or a signed-in session, gets the page); a "page isn't available"
+ * is a removed post.
  */
 export function readPostPage(page: {readonly html: string; readonly url: string}): MetaPost {
   if (/\/accounts\/login/.test(page.url)) throw new MetaError('challenge', 'Instagram asked to log in.')
   const scripts = jsonScripts(page.html)
+  const polaris = dig(findWithKey(scripts, 'xig_polaris_media'), 'xig_polaris_media', 'if_not_gated_logged_out')
+  if (isObject(polaris)) return readV1Item(polaris)
   const info = findWithKey(scripts, 'xdt_api__v1__media__shortcode__web_info')
   const items = list(dig(info, 'xdt_api__v1__media__shortcode__web_info', 'items'))
   if (items.length > 0) return readV1Item(items[0])
-  if (/Sorry, this page isn't available|Page Not Found|content isn't available/i.test(page.html)) {
-    throw new MetaError('removed', 'This Instagram post no longer exists.')
-  }
+  if (GONE.test(page.html)) throw new MetaError('removed', 'This Instagram post no longer exists.')
   if (/\/challenge\/|checkpoint_required/.test(page.html)) {
     throw new MetaError('challenge', 'Instagram asks for a verification.')
   }
   if (scripts.length === 0 && /login/i.test(page.html) && page.html.length < 200_000) {
     throw new MetaError('challenge', 'Instagram asked to log in.')
   }
+  if (BARE_SHELL.test(page.html)) throw new MetaError('challenge', 'Instagram showed its login wall.')
   throw new MetaError('format-changed', 'Instagram post page without its media data.')
+}
+
+// ─── The anonymous routes ───────────────────────────────────────────────────
+
+const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
+
+/**
+ * The numeric media id (`pk`) the app API wants, from a link's shortcode: the
+ * code is the id in base 64 over Instagram's own alphabet. Very long codes
+ * (private posts) carry the owner's id in their last 28 characters.
+ */
+export function codeToPk(code: string): string {
+  let n = 0n
+  for (const ch of code.length > 28 ? code.slice(0, -28) : code) {
+    const digit = ALPHABET.indexOf(ch)
+    if (digit < 0) throw new MetaError('format-changed', `Unexpected character in the Instagram code ${code}.`)
+    n = n * 64n + BigInt(digit)
+  }
+  return n.toString()
+}
+
+/**
+ * The embed page (`/p/<code>/embed/captioned/`): its script hands the post to
+ * the embed as `"contextJSON":"<escaped json>"` → `gql_data.shortcode_media`
+ * (older embeds: `__additionalDataLoaded('extra', {...})`). A GraphQL node.
+ */
+export function readEmbedPage(page: {readonly html: string; readonly url: string}): MetaPost {
+  if (/\/accounts\/login|\/challenge\//.test(page.url)) {
+    throw new MetaError('challenge', 'Instagram sent the embed to its login page.')
+  }
+  let gql: unknown
+  try {
+    const escaped = /"contextJSON":"((?:[^"\\]|\\.)*)"/.exec(page.html)
+    if (escaped) gql = dig(JSON.parse(JSON.parse(`"${escaped[1]}"`) as string), 'gql_data')
+    else {
+      const extra = /__additionalDataLoaded\('extra',\s*(\{.*?\})\);\s*<\/script>/s.exec(page.html)
+      if (extra) gql = JSON.parse(extra[1]!)
+    }
+  } catch (error) {
+    throw new MetaError('format-changed', `Unreadable Instagram embed data: ${String(error)}`)
+  }
+  if (!isObject(gql)) {
+    if (GONE.test(page.html)) throw new MetaError('removed', 'This Instagram post no longer exists.')
+    if (/This Account is Private|private account/i.test(page.html)) {
+      throw new MetaError('private', 'This Instagram account is private.')
+    }
+    if (BARE_SHELL.test(page.html) || /\/accounts\/login|checkpoint_required|login_form/.test(page.html)) {
+      throw new MetaError('challenge', 'Instagram showed the embed its login wall.')
+    }
+    throw new MetaError('format-changed', 'Instagram embed without its post data.')
+  }
+  const node = 'shortcode_media' in gql ? gql['shortcode_media'] : gql['xdt_shortcode_media']
+  if (node === null) throw new MetaError('removed', 'This Instagram post no longer exists, or is private.')
+  return readGraphNode(node)
+}
+
+/** The app API's `media/<pk>/info/` answer: `{items: [item]}`. */
+export function readMediaInfo(json: unknown): MetaPost {
+  checkStatus(json)
+  const items = list(dig(json, 'items'))
+  if (items.length === 0) throw new MetaError('removed', 'This Instagram post no longer exists, or is private.')
+  return readV1Item(items[0])
 }
 
 /** `reels_media` → the stories of the asked reel (a user id or `highlight:<id>`), newest last as Instagram lists them. */

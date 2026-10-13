@@ -4,6 +4,7 @@ import * as path from 'node:path'
 import {setTimeout as sleep} from 'node:timers/promises'
 import {type Diagnosis, diagnose, type SetupResult, setup} from './binaries/doctor.js'
 import {
+  type AvailableBinaries,
   BinaryManager,
   defaultJsRuntime,
   type InstallOptions,
@@ -164,6 +165,8 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
   readonly #unsupportedUrlSource: ((url: URL) => MediaSource | undefined) | undefined
   /** Sources made that way which read something: by host (no `www.`), asked after #sources. */
   readonly #learned = new Map<string, MediaSource>()
+  /** `ytDlp: 'optional'` and none found (known once the tools are resolved): nothing to fall back to. */
+  #ytDlpMissing = false
   readonly #queue: PendingJournal<JobRequest>
   readonly #jobs = new Map<JobId, Job>()
   /** Terminal jobs in finishing order, for releasing the oldest ones. */
@@ -257,7 +260,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       ...(options.sources ?? []),
     ]
     this.#unsupportedUrlSource = options.unsupportedUrlSource
-    this.binaries = new BinaryManager(options.dataDir, options.binaries)
+    this.binaries = new BinaryManager(options.dataDir, options.binaries, undefined, {ytDlp: options.ytDlp})
     this.archive = new DownloadArchive(path.join(options.dataDir, 'archive.jsonl'))
     this.damaged = new DamagedRegistry(path.join(options.dataDir, 'damaged.json'))
     this.#queue = new PendingJournal(path.join(options.dataDir, 'pending.jsonl'), () => this.#pendingEntries())
@@ -425,11 +428,11 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
    * else the host's cookies file. Undefined when there is neither.
    */
   async #siteCookies(domains: readonly string[]): Promise<readonly CookieRecord[] | undefined> {
-    const bins = await this.binaries.resolve().catch(() => undefined)
+    const ytDlp = (await this.#tools().catch(() => undefined))?.ytDlp
     const jar =
-      (bins
+      (ytDlp
         ? await this.#browserCookies
-            .jar((browser, dest) => exportBrowserCookies({ytDlp: bins.ytDlp.exe, env: this.#env, browser, dest}))
+            .jar((browser, dest) => exportBrowserCookies({ytDlp: ytDlp.exe, env: this.#env, browser, dest}))
             .catch(error => {
               this.#log('warn', `browser cookies could not be read: ${toJobError(error).message}`)
               return undefined
@@ -531,6 +534,16 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     return this.binaries.resolve()
   }
 
+  /**
+   * The tools a job or a check needs: all three, or — with `ytDlp: 'optional'`
+   * — ffmpeg and ffprobe, and yt-dlp when there is one (`withYtDlp` where it runs).
+   */
+  async #tools(): Promise<AvailableBinaries> {
+    const bins = await this.binaries.available()
+    this.#ytDlpMissing = !bins.ytDlp
+    return bins
+  }
+
   /** Install a newer yt-dlp if one exists (checksum-verified). Call on startup. */
   async updateYtDlp(opts: InstallOptions = {}): Promise<UpdateResult> {
     const outcome = await this.binaries.updateYtDlp(opts)
@@ -588,6 +601,8 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     /** Why the native source handed the link to yt-dlp: said instead of yt-dlp's "Unsupported URL", when it can't either. */
     let sourceError: DownloadError | undefined
     try {
+      // a host where yt-dlp is optional: whether there is one decides who reads the link
+      if (this.binaries.ytDlpOptional) await this.#tools()
       const source = this.#sourceFor(url)
       if (source) {
         try {
@@ -599,11 +614,12 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
           })
         } catch (error) {
           if (!(error instanceof DownloadError) || !needsFallback(error.details)) throw error
+          if (this.#ytDlpMissing) throw sourceFailure(error.toJSON())
           sourceError = error
           this.#log('warn', `${error.message} — reading ${url} with yt-dlp instead`)
         }
       }
-      const bins = await this.binaries.resolve()
+      const bins = withYtDlp(await this.#tools())
       const youtube = isYouTubeUrl(url)
       if (youtube) {
         // a link pasted while YouTube requests wait (a pause, or a hold for the user) says so at once
@@ -675,7 +691,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     } = {},
   ): Promise<Map<string, ExtractResult>> {
     this.#assertOpen()
-    const bins = await this.binaries.resolve()
+    const tools = await this.#tools()
     const analysis = new AbortController()
     const forward = () => analysis.abort()
     // a signal aborted already never fires 'abort': a cancel that came first must count too
@@ -701,8 +717,12 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
             signal: analysis.signal,
             onResult: (url, result) => {
               if (!result.ok && needsFallback(result.error.details)) {
-                handBack.push(byUrl.get(url)!)
-                return
+                if (tools.ytDlp) {
+                  handBack.push(byUrl.get(url)!)
+                  return
+                }
+                // no yt-dlp to hand it to: the source's reason
+                result = {ok: false, error: sourceFailure(result.error).toJSON()}
               }
               results.set(url, result)
               opts.onResult?.(url, result)
@@ -724,6 +744,24 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       const elsewhere = new Map<MediaSource, {readonly host: string; readonly items: Array<(typeof items)[number]>}>()
       const runChunk = async (chunk: ReadonlyArray<(typeof items)[number]>) => {
         if (analysis.signal.aborted) return
+        if (!tools.ytDlp) {
+          // no yt-dlp: the source made for a url's host, when there is one, else the reason
+          const missing = noYtDlp().toJSON()
+          for (const item of chunk) {
+            const fallback = this.#fallbackFor(item.url)
+            if (fallback) {
+              const list = elsewhere.get(fallback.source)
+              if (list) list.items.push(item)
+              else elsewhere.set(fallback.source, {host: fallback.host, items: [item]})
+              continue
+            }
+            const result: ExtractResult = {ok: false, error: missing}
+            results.set(item.url, result)
+            opts.onResult?.(item.url, result)
+          }
+          return
+        }
+        const bins = withYtDlp(tools)
         // chunks are all YouTube or none (see below): one url tells
         const youtube = isYouTubeUrl(chunk[0]!.url)
         if (youtube && this.#youtube.blocked) {
@@ -827,8 +865,10 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
 
   /** The native source for a url, if any: a configured one, else one learned for its host. O(sources). */
   #sourceFor(url: string): MediaSource | undefined {
-    const source = this.#sources.find(source => source.available && source.handles(url)) ?? this.#learnedFor(url)
-    return source?.available ? source : undefined
+    // without yt-dlp there is no one to step aside for: a source that would is asked all the same
+    const ready = (source: MediaSource) => source.available || this.#ytDlpMissing
+    const source = this.#sources.find(source => ready(source) && source.handles(url)) ?? this.#learnedFor(url)
+    return source && ready(source) ? source : undefined
   }
 
   #learnedFor(url: string): MediaSource | undefined {
@@ -866,7 +906,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
    * and is broken: a validation failure, so a second one in a row marks it
    * damaged at the source instead of retrying it again and again.
    */
-  async #hasAudio(bins: ResolvedBinaries, file: string, signal: AbortSignal): Promise<boolean> {
+  async #hasAudio(bins: AvailableBinaries, file: string, signal: AbortSignal): Promise<boolean> {
     try {
       return summarizeProbe(await ffprobe(bins.ffprobe.exe, file, signal)).audio !== undefined
     } catch (error) {
@@ -1106,7 +1146,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       .filter((job): job is Job => job?.validationPending === true && job.filepath !== undefined)
     const result = {checked: 0, ok: 0, damaged: 0, failed: 0}
     if (jobs.length === 0) return result
-    const bins = await this.binaries.resolve()
+    const bins = await this.#tools()
     const level = this.#settings.validation === 'none' ? 'quick' : this.#settings.validation
     // biggest first, and the CPU budget shared by size: the largest file (the longest check) is not
     // left on one thread while small ones finish early — each worker keeps its share for its next file
@@ -1135,7 +1175,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
 
   async #checkOne(
     job: Job,
-    bins: ResolvedBinaries,
+    bins: AvailableBinaries,
     level: ValidationLevel,
     threads: number,
     signal: AbortSignal | undefined,
@@ -1257,7 +1297,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     let broken = 0
 
     try {
-      const bins = await this.binaries.resolve()
+      const bins = await this.#tools()
       const known = await this.damaged.find({url: request.url, extractor: request.extractor, mediaId: request.mediaId})
       if (known) {
         this.#log('warn', `damaged at the source (${known.reason}) — not downloaded again`, job)
@@ -1315,6 +1355,14 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
           if (infoJsonPath && strategy !== 'extractor-fallback') strategy = 'fresh-extraction'
           infoJsonPath = undefined
 
+          // a native source that can't read the site any more, and no yt-dlp to read it: the source's reason
+          if (needsFallback(failure.details) && !bins.ytDlp) {
+            job.endAttempt(jobError)
+            this.#log('error', `attempt ${attempt}/${job.maxAttempts}: ${failure.message} (no yt-dlp here)`, job, {
+              code: failure.code,
+            })
+            throw sourceFailure(jobError)
+          }
           // a native source that can't read the site any more: same request through yt-dlp
           if (needsFallback(failure.details) && strategy !== 'extractor-fallback' && counted < job.maxAttempts) {
             job.endAttempt(jobError, 0)
@@ -1425,7 +1473,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
   /** One attempt: download → convert → validate → finalize, each tracked as a step. */
   async #attempt(
     job: Job,
-    bins: ResolvedBinaries,
+    bins: AvailableBinaries,
     profile: FormatProfile,
     workDir: string,
     infoJsonPath: string | undefined,
@@ -1462,9 +1510,9 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
           onInfo,
           onProgress: progress => this.#update(job, {status: 'downloading', progress}),
         })
-      : await this.#runSetup(request.url, path.join(workDir, 'run'), bins, signal).then(run =>
+      : await this.#runSetup(request.url, path.join(workDir, 'run'), withYtDlp(bins), signal).then(run =>
           runYtDlp({
-            ytDlp: bins.ytDlp.exe,
+            ytDlp: withYtDlp(bins).ytDlp.exe,
             ffmpeg: bins.ffmpeg.exe,
             env: run.env,
             url: request.url,
@@ -1842,6 +1890,31 @@ export function relaxProfile(profile: FormatProfile): FormatProfile | undefined 
 export function retryDelay(attempt: number, max: number): number {
   const base = Math.min(max, 2000 * 2 ** (attempt - 1))
   return Math.round(base * (0.8 + Math.random() * 0.2))
+}
+
+/**
+ * The tools with yt-dlp, for a step that runs it. A host without yt-dlp
+ * (`ytDlp: 'optional'`) gets a clear 'binary-missing', not a failed spawn.
+ */
+function withYtDlp(bins: AvailableBinaries): ResolvedBinaries {
+  if (!bins.ytDlp) throw noYtDlp()
+  return {...bins, ytDlp: bins.ytDlp}
+}
+
+const noYtDlp = (): DownloadError =>
+  new DownloadError(
+    'binary-missing',
+    'yt-dlp is not available here: only the built-in extractors (TikTok, Instagram, Facebook…) read links.',
+    undefined,
+    {tool: 'yt-dlp'},
+  )
+
+/**
+ * A native source's failure that would have gone to yt-dlp, on a host
+ * without it: the source's own reason, to come back to later.
+ */
+function sourceFailure(error: JobError): DownloadError {
+  return new DownloadError('unavailable', error.message, error.details, error.params, error.hint ?? 'retry-later')
 }
 
 /** yt-dlp's "Unsupported URL" (no extractor, not even its generic one, reads the page). */

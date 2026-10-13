@@ -4,7 +4,7 @@ import {genericChoices} from '../../core/formats.js'
 import type {AnalysisResult, PlaylistAnalysis, VideoAnalysis} from '../../types.js'
 import type {BrowserAssist} from '../browser.js'
 import type {Fetch} from '../http.js'
-import {MetaClient, type SessionCookies} from '../meta/client.js'
+import {MetaClient, type SessionProvider} from '../meta/client.js'
 import {downloadPost} from '../meta/download.js'
 import {MetaError, toDownloadError} from '../meta/errors.js'
 import {type CursorPage, walkCursor} from '../meta/listing.js'
@@ -46,7 +46,7 @@ export type FacebookOptions = {
    * when something needs one — stories, and the listings Facebook keeps for
    * signed-in sessions — and again when they are old.
    */
-  readonly cookies?: (() => Promise<SessionCookies | undefined>) | undefined
+  readonly cookies?: SessionProvider | undefined
   /** The web client's query ids, should Facebook rotate them before a release does. */
   readonly queries?: Partial<FacebookQueries> | undefined
   readonly log?: ((level: 'info' | 'warn', message: string) => void) | undefined
@@ -232,9 +232,20 @@ export class FacebookSource implements MediaSource {
     if (!fresh && cached && Date.now() - cached.at < POST_FRESH_MS && downloadable(cached.post)) return cached.post
     const page =
       link.kind === 'video' ? videoUrl(this.#client.origin, link.id) : postUrl(this.#client.origin, link.id, link.page)
-    const post = await this.#client.page(page, p => readVideoPage(p, link.kind === 'video' ? link.id : undefined), {
-      signal,
-    })
+    // the user's session, when the host gives one: Facebook shows most videos to signed-in visitors only
+    await this.#client.loadCookies()
+    let post: MetaPost
+    try {
+      post = await this.#client.page(page, p => readVideoPage(p, link.kind === 'video' ? link.id : undefined), {
+        signal,
+      })
+    } catch (error) {
+      // "not found" to a signed-in session is not a question of signing in
+      if (error instanceof MetaError && error.problem === 'login-required' && this.#client.signedIn) {
+        throw new MetaError('removed', 'This Facebook video is no longer available (removed, private, or restricted).')
+      }
+      throw error
+    }
     // a post's video has its own id: remember it under both
     this.#remember(post)
     if (post.id !== link.id) this.#posts.set(link.id, {post, at: Date.now()})

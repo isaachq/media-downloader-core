@@ -4,16 +4,26 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import {after, before, describe, it} from 'node:test'
 import {parseNetscape, toNetscape} from '../src/core/cookies.js'
+import type {DownloadError} from '../src/core/errors.js'
 import {MediaDownloader} from '../src/downloader.js'
 import {BatchScheduler} from '../src/scheduler.js'
 import type {BrowserAssist} from '../src/sources/browser.js'
-import {checkStatus, readGraphNode, readPostPage, readV1Item} from '../src/sources/instagram/data.js'
+import {
+  checkStatus,
+  codeToPk,
+  readEmbedPage,
+  readGraphNode,
+  readMediaInfo,
+  readPostPage,
+  readV1Item,
+} from '../src/sources/instagram/data.js'
 import {isInstagramListing, parseInstagramLink} from '../src/sources/instagram/links.js'
-import type {InstagramOptions} from '../src/sources/instagram/source.js'
-import type {MetaError} from '../src/sources/meta/errors.js'
+import {type InstagramOptions, InstagramSource} from '../src/sources/instagram/source.js'
+import {MetaError} from '../src/sources/meta/errors.js'
 import {walkCursor} from '../src/sources/meta/listing.js'
 import {choicesOf, shapeOf, summaryOf, titleOf} from '../src/sources/meta/post.js'
 import {findAllWithKey, findWithKey, jsonScripts} from '../src/sources/meta/relay.js'
+import {SOURCE_BLOCKED} from '../src/sources/source.js'
 import {type FakeInstagram, SESSION_COOKIE, startFakeInstagram} from './helpers/fake-instagram.js'
 import {type FakeBinaries, writeFakes} from './helpers/fakes.js'
 
@@ -235,6 +245,173 @@ describe('Instagram data', () => {
   })
 })
 
+// The anonymous routes, from fixtures shaped like what the site answers today (the embed's
+// contextJSON, the page's data-sjs blobs, the app API's item) — ported from the Android host's
+// instagram-anon tests — and the wall each of them turns into when Instagram limits a network.
+describe('Instagram anonymous routes', () => {
+  const node = {
+    id: '3956405067326902270',
+    shortcode: 'Dbn-XJhk0_-',
+    is_video: true,
+    product_type: 'clips',
+    video_url: 'https://scontent.cdninstagram.com/v/t66/reel.mp4?x=1',
+    dimensions: {width: 720, height: 1280},
+    video_duration: 12.5,
+    has_audio: true,
+    display_url: 'https://scontent.cdninstagram.com/cover.jpg',
+    owner: {username: 'nasa', full_name: 'NASA'},
+    taken_at_timestamp: 1760000000,
+    edge_media_to_caption: {edges: [{node: {text: 'Earth from orbit #space #nasa\nmore'}}]},
+  }
+  const item = {
+    pk: '3956405067326902270',
+    code: 'Dbn-XJhk0_-',
+    media_type: 2,
+    product_type: 'clips',
+    video_duration: 12.5,
+    has_audio: true,
+    taken_at: 1760000000,
+    caption: {text: 'Earth from orbit'},
+    user: {username: 'nasa', full_name: 'NASA'},
+    image_versions2: {candidates: [{url: 'https://scontent.cdninstagram.com/cover.jpg'}]},
+    video_versions: [
+      {type: 101, width: 720, height: 1280, url: 'https://scontent.cdninstagram.com/v/hd.mp4'},
+      {type: 102, width: 480, height: 854, url: 'https://scontent.cdninstagram.com/v/sd.mp4'},
+      {type: 103, width: 480, height: 854, url: 'https://scontent.cdninstagram.com/v/sd.mp4'},
+    ],
+  }
+  const embedHtml = (gql: unknown) =>
+    `<!DOCTYPE html><html><head><title>Instagram</title></head><body><script>(function(){require("EmbedSimple").init(${JSON.stringify({contextJSON: JSON.stringify({gql_data: gql})})});})();</script></body></html>`
+  /** Instagram's wall: the whole app shell, a bare "Instagram" title, no post data. */
+  const wallHtml = `<!DOCTYPE html><html><head><title>Instagram</title></head><body><script data-sjs>{"require":[["ScheduledServerJS","handle",null,[{"__bbox":{"define":[["PolarisLoginPage",[],{},1]]}}]]]}</script>${'x'.repeat(2000)}</body></html>`
+  const embedUrl = 'https://www.instagram.com/p/Dbn-XJhk0_-/embed/captioned/'
+  const problemOf = (fn: () => unknown) => {
+    try {
+      fn()
+    } catch (error) {
+      return error instanceof MetaError ? error.problem : String(error)
+    }
+    return 'none'
+  }
+
+  it('shortcode → media id, the way the app API wants it', () => {
+    assert.equal(codeToPk('Dbn-XJhk0_-'), '3956405067326902270')
+    assert.match(codeToPk('CXFxcdXMxM3'), /^\d{16,20}$/)
+    assert.equal(
+      problemOf(() => codeToPk('bad code')),
+      'format-changed',
+    )
+  })
+
+  it('the embed page: contextJSON → the reel, its caption without trailing tags, one H.264 rendition', () => {
+    const post = readEmbedPage({html: embedHtml({shortcode_media: node}), url: embedUrl})
+    assert.equal(post.id, '3956405067326902270')
+    assert.equal(post.author, 'nasa')
+    assert.equal(titleOf(post, 'Instagram'), 'Earth from orbit')
+    const video = post.items[0]!
+    assert.equal(video.kind, 'video')
+    if (video.kind === 'video') {
+      assert.equal(video.duration, 12.5)
+      assert.deepEqual(video.renditions, [
+        {
+          codec: 'h264',
+          width: 720,
+          height: 1280,
+          resolution: 720,
+          bitrate: 0,
+          urls: ['https://scontent.cdninstagram.com/v/t66/reel.mp4?x=1'],
+        },
+      ])
+    }
+    assert.ok(
+      choicesOf(post).some(c => c.profile.kind === 'video' && c.profile.maxHeight === 720 && !c.requiresConversion),
+    )
+  })
+
+  it('the embed page: a carousel and a photo are read too; a gone post says so', () => {
+    const sidecar = readEmbedPage({
+      html: embedHtml({
+        shortcode_media: {
+          ...node,
+          edge_sidecar_to_children: {
+            edges: [{node}, {node: {...node, id: '2', is_video: false, video_url: undefined}}],
+          },
+        },
+      }),
+      url: embedUrl,
+    })
+    assert.equal(shapeOf(sidecar), 'carousel')
+    assert.equal(
+      shapeOf(
+        readEmbedPage({
+          html: embedHtml({shortcode_media: {...node, is_video: false, video_url: undefined}}),
+          url: embedUrl,
+        }),
+      ),
+      'photo',
+    )
+    assert.equal(
+      problemOf(() => readEmbedPage({html: embedHtml({shortcode_media: null}), url: embedUrl})),
+      'removed',
+    )
+  })
+
+  it('the wall: the login page, a login redirect, the bare app shell and "please wait" are walls, never "sign in"', () => {
+    assert.equal(
+      problemOf(() => readEmbedPage({html: wallHtml, url: embedUrl})),
+      'challenge',
+    )
+    assert.equal(
+      problemOf(() =>
+        readEmbedPage({html: '<html></html>', url: 'https://www.instagram.com/accounts/login/?next=/p/x/'}),
+      ),
+      'challenge',
+    )
+    assert.equal(
+      problemOf(() => readPostPage({html: wallHtml, url: 'https://www.instagram.com/p/x/'})),
+      'challenge',
+    )
+    assert.equal(
+      problemOf(() =>
+        readMediaInfo({
+          message: 'Please wait a few minutes before you try again.',
+          require_login: true,
+          status: 'fail',
+        }),
+      ),
+      'login-required',
+      'a wall to the anonymous routes (WALL_PROBLEMS), never reported as such on its own',
+    )
+  })
+
+  it('the post page: data-sjs blobs → xig_polaris_media.if_not_gated_logged_out (yt-dlp) or the shortcode web info', () => {
+    const polaris = `<html><head><title>NASA on Instagram</title></head><body><script data-sjs>${JSON.stringify({require: [['ScheduledServerJS', 'handle', null, [{__bbox: {require: [['RelayPrefetchedStreamCache', 'next', [], ['adp_x', {__bbox: {result: {data: {xig_polaris_media: {if_not_gated_logged_out: item}}}}}]]]}}]]]})}</script></body></html>`
+    const post = readPostPage({html: polaris, url: 'https://www.instagram.com/p/Dbn-XJhk0_-/'})
+    assert.equal(post.id, '3956405067326902270')
+    const video = post.items[0]!
+    assert.equal(video.kind === 'video' && video.renditions.length, 2, 'the same url is one rendition')
+    assert.equal(video.kind === 'video' && video.renditions[0]!.resolution, 720)
+    assert.equal(video.kind === 'video' && video.cover, 'https://scontent.cdninstagram.com/cover.jpg')
+    const webInfo = `<html><head><title>x</title></head><body><script data-sjs>${JSON.stringify({a: {b: {xdt_api__v1__media__shortcode__web_info: {items: [item]}}}})}</script></body></html>`
+    assert.equal(readPostPage({html: webInfo, url: 'u'}).code, 'Dbn-XJhk0_-')
+    const changed = '<html><head><title>x</title></head><body><script data-sjs>{"nothing":1}</script></body></html>'
+    assert.equal(
+      problemOf(() => readPostPage({html: changed, url: 'u'})),
+      'format-changed',
+    )
+  })
+
+  it('the app API: items[0] → the post, photos and carousels included; no items is a gone post', () => {
+    const post = readMediaInfo({items: [item], status: 'ok'})
+    assert.equal(post.caption, 'Earth from orbit')
+    assert.equal(shapeOf(readMediaInfo({items: [{...item, media_type: 8, carousel_media: [item, item]}]})), 'carousel')
+    assert.equal(
+      problemOf(() => readMediaInfo({items: []})),
+      'removed',
+    )
+  })
+})
+
 describe('Relay payloads', () => {
   it('finds JSON scripts and keys deep inside them, bounded, in page order', () => {
     const html = `<html><script>var x = 1</script><script type="application/json" data-sjs>{"a":{"b":[{"c":1},{"d":{"target":"first"}}]}}</script><script type="application/json" data-sjs>{"target":"second"}</script><script type="application/json">not json</script></html>`
@@ -363,7 +540,7 @@ const postUrl = (site: FakeInstagram, i = 0) => `${site.origin}/p/${site.codes[i
 const profileUrl = (site: FakeInstagram) => `${site.origin}/${site.user}/`
 
 describe('Instagram, end to end (local fake)', () => {
-  it('downloads one post as MP4: the post query, the HD encoding, the CDN Referer, a portable name', async () => {
+  it('downloads one post as MP4: the embed, the HD encoding, the CDN Referer, a portable name', async () => {
     const {site, scheduler, out} = await setup('single')
     const batch = scheduler.schedule({url: postUrl(site), profile: mp4, outDir: out})
     await scheduler.whenIdle()
@@ -373,9 +550,62 @@ describe('Instagram, end to end (local fake)', () => {
     assert.equal(files.length, 1)
     assert.match(files[0]!, /^Post-numero-1-con-acentos-\d+\.mp4$/)
     assert.equal((await fs.readFile(path.join(out, files[0]!), 'utf8')).slice(0, 1), 'h', 'the HD encoding')
-    assert.equal(site.hits.graphql, 1, 'one post query, reused by the download')
-    assert.equal(site.hits.page, 0, 'no page needed')
+    assert.equal(site.hits.embed, 1, 'one anonymous read, reused by the download')
+    assert.equal(site.hits.app + site.hits.graphql + site.hits.page, 0, 'nothing else needed')
     assert.equal(site.hits.refusedMedia, 0)
+  })
+
+  it('without the embed, the app API reads the post; without both, the web client query does', async () => {
+    // the embed retired, the app API answering: the post by its pk, asked as the app
+    const api = await startFakeInstagram({posts: 2, noEmbed: true})
+    cleanups.push(() => api.close())
+    const source = new InstagramSource({origin: api.origin, pacing: {spacingMs: 0, jitterMs: 0}})
+    const reel = await source.analyze(`${api.origin}/reel/${api.codes[1]}/`)
+    assert.equal(reel.kind === 'video' && reel.media.id, api.ids[1])
+    assert.deepEqual([api.hits.embed, api.hits.app, api.hits.graphql], [1, 1, 0])
+    // both retired: the web client's query, as before
+    const {site, engine} = await setup('routes', {posts: 2, noEmbed: true, noAppApi: true})
+    const result = await engine.analyze(postUrl(site))
+    assert.equal(result.kind, 'video')
+    assert.deepEqual([site.hits.embed, site.hits.app, site.hits.graphql], [1, 1, 1])
+  })
+
+  it('a carousel read from the embed keeps all its items; a gone post ends the search at once', async () => {
+    const {site, scheduler, engine, out} = await setup('embed-carousel', {
+      posts: 2,
+      carousels: [0],
+      mixedCarousels: true,
+    })
+    const batch = scheduler.schedule({url: postUrl(site), profile: mp4, outDir: out, slideshow: images})
+    await scheduler.whenIdle()
+    assert.equal(scheduler.batch(batch.id)?.status, 'completed', JSON.stringify(scheduler.batch(batch.id)?.error))
+    const folder = (await fs.readdir(out))[0]!
+    assert.deepEqual(await fs.readdir(path.join(out, folder)), ['01.jpg', '02.jpg', '03.mp4'])
+    assert.equal(site.hits.graphql, 0)
+    await assert.rejects(engine.analyze(`${site.origin}/p/GONE000000/`), (e: DownloadError) => e.hint === 'removed')
+    assert.equal(site.hits.graphql + site.hits.app, 0, 'the embed said it is gone: nothing else asked')
+  })
+
+  it('when every route gets the login wall, the error says the network is limited — not "sign in"', async () => {
+    const site = await startFakeInstagram({loginWall: true})
+    cleanups.push(() => site.close())
+    const logs: string[] = []
+    const source = new InstagramSource({
+      origin: site.origin,
+      pacing: {spacingMs: 0, jitterMs: 0},
+      log: (_, message) => logs.push(message),
+    })
+    await assert.rejects(source.analyze(postUrl(site)), (e: DownloadError) => {
+      assert.equal(e.hint, 'retry-later')
+      assert.equal(e.details, SOURCE_BLOCKED, 'yt-dlp may still get through, with cookies')
+      assert.match(e.message, /limiting this network/)
+      return true
+    })
+    assert.equal(site.hits.login, 2, 'the embed and the page were sent to the login page (the APIs answered 401)')
+    assert.ok(
+      logs.some(l => /every route got the wall/.test(l)),
+      logs.join('\n'),
+    )
   })
 
   it('backs up a whole profile: listed by cursor in pages of 12, videos as MP4, photos and carousels as folders', async () => {
@@ -447,7 +677,7 @@ describe('Instagram, end to end (local fake)', () => {
     const second = scheduler.schedule({url: postUrl(site, 1), profile: mp4, outDir: out})
     await scheduler.whenIdle()
     assert.equal(scheduler.batch(second.id)?.status, 'completed')
-    assert.equal(site.hits.login, 1, 'one login redirect, then hands off')
+    assert.equal(site.hits.login, 2, 'the embed and the page each got one login redirect, then hands off')
     assert.ok(engine.jobs().every(job => job.attempts.length === 1))
   })
 
@@ -550,7 +780,11 @@ describe('Instagram, end to end (local fake)', () => {
       cookies: [],
       userAgent: 'x',
     })
-    const {site, engine, scheduler, out} = await setup('captcha', {jsChallenge: true, captcha: true}, {browser})
+    const {site, engine, scheduler, out} = await setup(
+      'captcha',
+      {jsChallenge: true, captcha: true, noEmbed: true},
+      {browser},
+    )
     const batch = scheduler.schedule({url: postUrl(site), profile: mp4, outDir: out})
     await scheduler.whenIdle()
     assert.equal(scheduler.batch(batch.id)?.status, 'completed', 'yt-dlp took over')

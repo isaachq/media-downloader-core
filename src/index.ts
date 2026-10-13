@@ -11,6 +11,7 @@ export {
 } from './binaries/executable.js'
 export type {ManagedInstall, ManagedTool} from './binaries/managed.js'
 export {
+  type AvailableBinaries,
   BinaryManager,
   compareVersions,
   defaultJsRuntime,
@@ -22,6 +23,7 @@ export {
   type ToolName,
   type ToolSource,
   type UpdateResult,
+  type YtDlpPolicy,
 } from './binaries/manager.js'
 export {BinaryError, ffmpegRelease, type Release, ytDlpBuildFor, ytDlpRelease} from './binaries/sources.js'
 export {
@@ -117,7 +119,7 @@ export {
   InstagramSource,
 } from './sources/instagram/source.js'
 export {type FetchedMedia, fetchMedia, type MediaFetch} from './sources/media-fetch.js'
-export {MetaClient, type MetaClientOptions, type SessionCookies} from './sources/meta/client.js'
+export {MetaClient, type MetaClientOptions} from './sources/meta/client.js'
 export {MetaError, type MetaProblem} from './sources/meta/errors.js'
 export type {MetaMedia, MetaPost} from './sources/meta/post.js'
 export {Pacer, type PacerOptions} from './sources/pacer.js'
@@ -129,6 +131,7 @@ export {
   PlayerPageSource,
 } from './sources/player-page/source.js'
 export {type Rendition, rankRenditions, renditionChoices, type VideoCodec} from './sources/renditions.js'
+export type {SessionCookies, SessionProvider, SiteSession} from './sources/session.js'
 export type {ListingProgress, MediaSource, SourceDownload, SourceFile} from './sources/source.js'
 export {TikTokError, type TikTokProblem} from './sources/tiktok/errors.js'
 export {isTikTokProfile, parseTikTokLink, type TikTokLink} from './sources/tiktok/links.js'

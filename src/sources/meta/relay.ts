@@ -19,12 +19,13 @@ export const list = (value: unknown): unknown[] => (Array.isArray(value) ? value
 const SCRIPT_OPEN = '<script'
 const SCRIPT_CLOSE = '</script>'
 const JSON_TYPE = 'application/json'
+const SJS_MARK = 'data-sjs'
 
 /**
  * Every JSON script block of a page, parsed, in page order. Blocks that are
  * not JSON (or are empty) are skipped — a page carries other scripts too.
- * Only blocks whose tag says `application/json` are considered; `data-sjs`
- * is how both sites mark theirs, but the type is what makes them parseable.
+ * Only blocks whose tag says `application/json` or `data-sjs` (how both
+ * sites mark theirs, with or without the type) are considered.
  */
 export function jsonScripts(html: string): unknown[] {
   const found: unknown[] = []
@@ -35,7 +36,7 @@ export function jsonScripts(html: string): unknown[] {
     const tag = html.slice(at, tagEnd)
     const bodyEnd = html.indexOf(SCRIPT_CLOSE, tagEnd)
     if (bodyEnd === -1) break
-    if (tag.includes(JSON_TYPE)) {
+    if (tag.includes(JSON_TYPE) || tag.includes(SJS_MARK)) {
       const body = html.slice(tagEnd + 1, bodyEnd).trim()
       if (body.startsWith('{') || body.startsWith('[')) {
         try {

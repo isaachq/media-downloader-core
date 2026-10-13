@@ -18,6 +18,21 @@
 export const APP_ID = '936619743392459'
 export const ASBD_ID = '129477'
 
+/**
+ * The anonymous routes to one public post, tried before the web client's
+ * query (what yt-dlp, cobalt and gallery-dl read, October 2026):
+ *  - `/p/<code>/embed/captioned/`: the embed page, the post as `contextJSON`
+ *    → `gql_data.shortcode_media` (a GraphQL node);
+ *  - `<API_ORIGIN>/api/v1/media/<pk>/info/`: the Android app's API, which
+ *    answers anonymously for public posts when asked as the app (a v1 item).
+ */
+export const EMBED_PATH = (code: string): string => `/p/${code}/embed/captioned/`
+export const API_ORIGIN = 'https://i.instagram.com'
+export const MEDIA_INFO = (pk: string): string => `/api/v1/media/${pk}/info/`
+/** The Android app, as cobalt and gallery-dl present themselves to its API. */
+export const APP_USER_AGENT =
+  'Instagram 275.0.0.27.98 Android (33/13; 420dpi; 1080x2400; motorola; razr 50; razr50; qcom; en_US; 458229237)'
+
 /** `?username=<user>` → the account, its counts and its first posts. */
 export const PROFILE_INFO = '/api/v1/users/web_profile_info/'
 /** `?reel_ids=<user id>` (or `highlight:<id>`) → the current stories. Signed-in sessions only. */

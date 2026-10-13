@@ -1,5 +1,54 @@
 # Changelog
 
+## Library 1.11.0
+
+What the Android host did around the library, now in it: Instagram posts read
+without a session, TikTok sessions handed over like the others, Facebook's
+signed-in-only videos said as such, and hosts without yt-dlp.
+
+**Instagram: the anonymous routes first.** A post or reel is read first the
+way yt-dlp, cobalt and gallery-dl read a public one, one request each: the
+embed page (`/p/<code>/embed/captioned/`, its `contextJSON`) and the Android
+app's API (`i.instagram.com/api/v1/media/<pk>/info/`, asked as the app; the
+`pk` comes from the shortcode). Only then the web client's query, the post
+page (which now also reads `xig_polaris_media.if_not_gated_logged_out`, the
+logged-out data yt-dlp reads since July 2026), the browser and the session.
+Photos and carousels come through these routes too. A route that says the
+post is gone or private ends the search at once.
+
+**"This network", not "sign in".** When every route to a public post got
+Instagram's wall (a login page, 401 / 403 / 429, "please wait a few
+minutes"), the error is the new `MetaError('walled')`: hint `retry-later`,
+"Instagram is limiting this network right now…" — no longer the "login or
+verification page" message that read as a request to sign in. yt-dlp still
+gets the link where there is one.
+
+**`TikTokOptions.cookies`.** TikTok takes the user's session the way
+Instagram and Facebook do: `cookies: () => Promise<SessionCookies |
+undefined>`, asked for when the source starts reading and again every 6
+hours; pages, listings and media go with it. A host no longer wraps `fetch`
+to add it. All three sources also accept `{cookies, userAgent}` from the
+provider (`SiteSession`): the agent that earned an in-app sign-in goes with
+its cookies. The engine does not pass browser cookies to TikTok by default.
+
+**Facebook videos kept for signed-in visitors.** Since October 2026
+facebook.com serves a video page to a visitor without a session as its
+"video not found" root with the login form preloaded and no media at all
+(`VideoHomeVideoNotFoundRootQuery`). That is now `login-required` (hint
+`needs-sign-in`, "Facebook shows this video to signed-in accounts only"),
+not `format-changed`; to a signed-in session it is `removed`. A video page
+is now read with the user's session when the host gives one (it used to be
+loaded only for stories and listings).
+
+**`ytDlp: 'optional'`.** `DownloaderOptions.ytDlp: 'optional'` is for hosts
+without yt-dlp (a phone): ffmpeg and ffprobe are required, yt-dlp is used
+when there is one. Without it, a link a built-in extractor would hand to
+yt-dlp fails with that extractor's own reason (code `unavailable`, its hint
+or `retry-later`); a source that would step aside for a while is asked all
+the same; anything else that needs yt-dlp fails with `binary-missing`, never
+a failed spawn. New: `BinaryManager.available()`, `AvailableBinaries`,
+`YtDlpPolicy`. `resolve()` and `resolveBinaries()` still require all three.
+
 ## App 0.2.0-beta.10 · library 1.10.0
 
 Beta 10: Instagram and Facebook in the app, one site per run, and the

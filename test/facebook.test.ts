@@ -3,6 +3,7 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import {after, before, describe, it} from 'node:test'
+import type {DownloadError} from '../src/core/errors.js'
 import {MediaDownloader} from '../src/downloader.js'
 import {BatchScheduler} from '../src/scheduler.js'
 import type {BrowserAssist} from '../src/sources/browser.js'
@@ -303,6 +304,18 @@ describe('Facebook, end to end (local fake)', () => {
       ['primary', 'extractor-fallback'],
       'yt-dlp handles DASH',
     )
+  })
+
+  it('a video Facebook keeps for signed-in visitors says "sign in", not "the page changed"; with a session it downloads', async () => {
+    const {site, engine} = await setup('signed-only', {videos: 1, videosSignedInOnly: true})
+    await assert.rejects(engine.analyze(watchUrl(site)), (e: DownloadError) => {
+      assert.equal(e.hint, 'needs-sign-in')
+      assert.match(e.message, /signed-in accounts only/)
+      return true
+    })
+    const signed = await setup('signed-only-session', {videos: 1, videosSignedInOnly: true}, {signedIn: true})
+    const result = await signed.engine.analyze(watchUrl(signed.site))
+    assert.equal(result.kind, 'video', 'the session went with the video page')
   })
 
   it('retries refusals natively after the shared cool-down', async () => {

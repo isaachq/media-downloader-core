@@ -14,7 +14,7 @@ import {isTikTokProfile, parseTikTokLink} from '../src/sources/tiktok/links.js'
 import {walkProfile} from '../src/sources/tiktok/profile.js'
 import {rankRenditions} from '../src/sources/tiktok/renditions.js'
 import {slideshowArgs, slideshowFrame, slideshowOptions} from '../src/sources/tiktok/slideshow.js'
-import {titleOf} from '../src/sources/tiktok/source.js'
+import {TikTokSource, titleOf} from '../src/sources/tiktok/source.js'
 import {type FakeTikTok, startFakeTikTok} from './helpers/fake-tiktok.js'
 import {type FakeBinaries, writeFakes} from './helpers/fakes.js'
 
@@ -468,6 +468,49 @@ describe('TikTok, end to end (local fake)', () => {
       site.hits.list - listCalls <= 2,
       `continued below the known posts (${site.hits.list - listCalls} pages), not from the start`,
     )
+  })
+
+  it('takes the host’s session like Instagram and Facebook: its cookies and agent on every request, asked once', async () => {
+    const site = await startFakeTikTok({posts: 2})
+    cleanups.push(() => site.close())
+    const host = new URL(site.origin).hostname
+    const sent: Array<{url: string; cookie: string; agent: string}> = []
+    let asked = 0
+    const source = new TikTokSource({
+      origin: site.origin,
+      pacing: {spacingMs: 0, jitterMs: 0},
+      fetch: (input, init) => {
+        const headers = new Headers(init?.headers)
+        sent.push({url: input, cookie: headers.get('cookie') ?? '', agent: headers.get('user-agent') ?? ''})
+        return fetch(input, init)
+      },
+      cookies: async () => {
+        asked++
+        return {cookies: [{name: 'sessionid', value: 'tt-session', domain: `.${host}`}], userAgent: 'WebView/1'}
+      },
+    })
+    assert.equal((await source.analyze(videoUrl(site, 0))).kind, 'video')
+    assert.equal((await source.analyze(videoUrl(site, 1))).kind, 'video')
+    assert.equal(asked, 1, 'asked once, kept for 6 hours')
+    assert.ok(sent.length >= 2)
+    assert.ok(
+      sent.every(r => r.cookie.includes('sessionid=tt-session') && r.agent === 'WebView/1'),
+      JSON.stringify(sent),
+    )
+    // the plain form (cookies only) keeps the source's own agent
+    const plain = new TikTokSource({
+      origin: site.origin,
+      pacing: {spacingMs: 0, jitterMs: 0},
+      fetch: (input, init) => {
+        const headers = new Headers(init?.headers)
+        sent.push({url: input, cookie: headers.get('cookie') ?? '', agent: headers.get('user-agent') ?? ''})
+        return fetch(input, init)
+      },
+      cookies: async () => [{name: 'sessionid', value: 'plain', domain: host}],
+    })
+    sent.length = 0
+    await plain.analyze(videoUrl(site, 0))
+    assert.ok(sent[0]!.cookie.includes('sessionid=plain') && sent[0]!.agent.startsWith('Mozilla/5.0'))
   })
 
   it('resolves short links', async () => {

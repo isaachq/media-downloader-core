@@ -18,6 +18,12 @@ export type MetaProblem =
   | 'refused'
   /** The site answers only to a signed-in session (stories, a listing): not retried. */
   | 'login-required'
+  /**
+   * Every way of reading a public post got a login page, a 403 / 429 or
+   * "please wait a few minutes": the site is limiting this network, not
+   * asking this user to sign in. Reported as such (wait, or another network).
+   */
+  | 'walled'
   | 'private'
   /** Deleted post or account, a short link that leads to the home page, an expired story. */
   | 'removed'
@@ -49,6 +55,7 @@ const HINTS: Readonly<Partial<Record<MetaProblem, FailureHint>>> = {
   'no-media': 'format-unavailable',
   challenge: 'retry-later',
   refused: 'retry-later',
+  walled: 'retry-later',
 }
 
 /** The site's problems in the engine's terms (codes drive retries, hints drive the UI). */
@@ -65,8 +72,9 @@ export function toDownloadError(error: unknown, site: string): DownloadError {
     case 'no-media':
       return new DownloadError('unavailable', error.message, undefined, undefined, HINTS[error.problem])
     case 'challenge':
+    case 'walled':
       // yt-dlp takes over for a while (with the user's cookies it may get further)
-      return new DownloadError('network', error.message, SOURCE_BLOCKED, undefined, 'retry-later')
+      return new DownloadError('network', error.message, SOURCE_BLOCKED, undefined, HINTS[error.problem])
     case 'refused':
       return new DownloadError('network', error.message, undefined, undefined, 'retry-later')
     case 'format-changed':

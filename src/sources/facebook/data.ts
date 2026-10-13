@@ -188,6 +188,14 @@ export function readVideoPage(page: {readonly html: string; readonly url: string
   const nodes = videoNodes(jsonScripts(page.html))
   const chosen = (id && nodes.get(id)) || [...nodes.values()].find(node => renditionsOf(node).length > 0)
   if (!chosen) {
+    // the page Facebook serves a visitor it won't show the video to: the "video not found" root with
+    // its login form preloaded, no media anywhere (October 2026: every video page, without a session)
+    if (/VideoHomeVideoNotFoundRootQuery/.test(page.html)) {
+      throw new MetaError(
+        'login-required',
+        'Facebook shows this video to signed-in accounts only: use a signed-in Facebook session (cookies).',
+      )
+    }
     if (nodes.size === 0 && /login/i.test(page.html) && page.html.length < 300_000) {
       throw new MetaError('challenge', 'Facebook asked to log in.')
     }

@@ -5,6 +5,7 @@
 // for signed-in sessions only, login walls, rate limits ("please wait a few
 // minutes"), rotated query ids, carousels and photos, media CDN with a Referer.
 import * as http from 'node:http'
+import {codeToPk} from '../../src/sources/instagram/data.js'
 import {listenLocal} from './listen.js'
 
 export type FakeInstagramConfig = {
@@ -21,6 +22,10 @@ export type FakeInstagramConfig = {
   readonly stories?: ReadonlyArray<'video' | 'image'>
   /** Pages redirect to the login page and the API answers 401 unless the session is signed in. */
   readonly loginWall?: boolean
+  /** The embed page answers 404, as if Instagram retired it. */
+  readonly noEmbed?: boolean
+  /** The app's media info API answers 404, as if Instagram retired it. */
+  readonly noAppApi?: boolean
   /** The first N page / API answers are rate limited ("please wait a few minutes"). */
   readonly refusals?: number
   /** Every page and API answer is 403 (a client the site won't serve). */
@@ -46,7 +51,18 @@ export type FakeInstagram = {
   readonly codes: readonly string[]
   readonly storyIds: readonly string[]
   readonly hits: Record<
-    'page' | 'profile' | 'graphql' | 'feed' | 'stories' | 'media' | 'refusedMedia' | 'login' | 'refused' | 'short',
+    | 'page'
+    | 'embed'
+    | 'app'
+    | 'profile'
+    | 'graphql'
+    | 'feed'
+    | 'stories'
+    | 'media'
+    | 'refusedMedia'
+    | 'login'
+    | 'refused'
+    | 'short',
     number
   >
   close(): Promise<void>
@@ -65,6 +81,8 @@ export async function startFakeInstagram(config: FakeInstagramConfig = {}): Prom
   const storyIds = (config.stories ?? []).map((_, i) => String(3_600_000_000_000_000_000n + BigInt(i + 1)))
   const hits = {
     page: 0,
+    embed: 0,
+    app: 0,
     profile: 0,
     graphql: 0,
     feed: 0,
@@ -242,6 +260,16 @@ export async function startFakeInstagram(config: FakeInstagramConfig = {}): Prom
 
     if (isApi && req.headers['x-ig-app-id'] !== '936619743392459') return send(400, 'missing app id')
 
+    // the app's own API, asked as the app: /api/v1/media/<pk>/info/
+    if (parts[0] === 'api' && parts[2] === 'media' && parts[4] === 'info') {
+      hits.app++
+      if (config.noAppApi) return send(404, 'not found')
+      if (!String(req.headers['user-agent']).startsWith('Instagram '))
+        return json(400, {message: 'useragent mismatch', status: 'fail'})
+      const index = codes.findIndex(code => codeToPk(code) === parts[3])
+      if (index === -1) return json(400, {message: 'Media not found or unavailable', status: 'fail'})
+      return json(200, {items: [v1(index)], num_results: 1, status: 'ok'})
+    }
     if (parts[0] === 'api' && parts[3] === 'web_profile_info') {
       hits.profile++
       if (url.searchParams.get('username') !== user) return json(404, {message: 'Not Found', status: 'fail'})
@@ -342,6 +370,18 @@ export async function startFakeInstagram(config: FakeInstagramConfig = {}): Prom
       return
     }
 
+    // the embed page: the post as the embed's contextJSON (a GraphQL node)
+    if (parts[0] === 'p' && parts[2] === 'embed') {
+      hits.embed++
+      if (config.noEmbed) return send(404, 'not found')
+      const index = codes.indexOf(parts[1] ?? '')
+      const context = JSON.stringify({gql_data: {shortcode_media: index === -1 ? null : node(index)}})
+      return send(
+        200,
+        `<!DOCTYPE html><html><head><title>Instagram</title></head><body><script>(function(){require("EmbedSimple").init(${JSON.stringify({contextJSON: context})});})();</script></body></html>`,
+        {'Content-Type': 'text/html', 'Set-Cookie': 'csrftoken=csrf-1; Path=/'},
+      )
+    }
     if (parts[0] === 'p' || parts[0] === 'reel') {
       hits.page++
       const index = codes.indexOf(parts[1] ?? '')

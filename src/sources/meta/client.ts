@@ -1,7 +1,7 @@
-import type {CookieRecord} from '../../core/cookies.js'
 import type {BrowserAssist} from '../browser.js'
 import {type Fetch, HttpSession} from '../http.js'
 import {Pacer, type PacerOptions} from '../pacer.js'
+import {HostSession, type SessionCookies, type SessionProvider, type SiteSession} from '../session.js'
 import {MetaError} from './errors.js'
 
 /**
@@ -15,7 +15,7 @@ import {MetaError} from './errors.js'
  * Exactly TikTokSource's plumbing, lifted out so the two sources share it
  * instead of each carrying its own copy.
  */
-export type SessionCookies = ReadonlyArray<CookieRecord>
+export type {SessionCookies, SessionProvider, SiteSession}
 
 export type MetaClientOptions = {
   /** Shown in messages ("Instagram answered…"). */
@@ -31,7 +31,7 @@ export type MetaClientOptions = {
    * for when a request needs a signed-in session and again when they are old.
    * Undefined: no session; the request fails with 'login-required'.
    */
-  readonly cookies?: (() => Promise<SessionCookies | undefined>) | undefined
+  readonly cookies?: SessionProvider | undefined
   readonly log?: ((level: 'info' | 'warn', message: string) => void) | undefined
   readonly now?: (() => number) | undefined
 }
@@ -40,8 +40,6 @@ export type MetaClientOptions = {
 export const READ_ATTEMPTS = 3
 /** After a verification page, the site's urls go to yt-dlp for this long (a circuit breaker). */
 export const BLOCKED_MS = 10 * 60_000
-/** Cookies the host hands over are asked for again after this long (a browser may have signed out). */
-const COOKIES_FRESH_MS = 6 * 60 * 60_000
 
 /** What a login wall or a checkpoint page carries, on either site. */
 const WALL = /\/accounts\/login|\/login\.php|\/checkpoint\/|\/challenge\/|checkpoint_required|login_form/
@@ -90,12 +88,10 @@ export class MetaClient {
   readonly #browser: BrowserAssist | undefined
   /** One browser page at a time: each is a full page load. */
   readonly #browserTurns = new Pacer({concurrency: 1, spacingMs: 0, jitterMs: 0})
-  readonly #cookies: (() => Promise<SessionCookies | undefined>) | undefined
+  readonly #host: HostSession
   readonly #log: (level: 'info' | 'warn', message: string) => void
   readonly #now: () => number
   #blockedUntil = 0
-  #cookiesAt: number | undefined
-  #loading: Promise<void> | undefined
 
   constructor(options: MetaClientOptions) {
     this.site = options.site
@@ -105,9 +101,15 @@ export class MetaClient {
     this.pacer = new Pacer(options.pacing)
     this.#sessionCookie = options.sessionCookie
     this.#browser = options.browser
-    this.#cookies = options.cookies
     this.#log = options.log ?? (() => {})
     this.#now = options.now ?? Date.now
+    this.#host = new HostSession({
+      site: this.site,
+      provider: options.cookies,
+      session: this.session,
+      log: this.#log,
+      now: this.#now,
+    })
   }
 
   /** False while the site is blocking this source: its urls go to yt-dlp meanwhile. */
@@ -129,13 +131,9 @@ export class MetaClient {
     return this.session.cookie(this.host, name)
   }
 
-  /** Use these cookies from now on (a signed-in session the host obtained). */
-  adoptCookies(cookies: SessionCookies): void {
-    this.session.adopt({
-      userAgent: this.session.userAgent,
-      cookies: cookies.map(c => ({name: c.name, value: c.value, domain: c.domain})),
-    })
-    this.#cookiesAt = this.#now()
+  /** Use these cookies (and the agent that earned them, when given) from now on: a session the host obtained. */
+  adoptCookies(session: SiteSession): void {
+    this.#host.adopt(session)
   }
 
   /**
@@ -153,31 +151,14 @@ export class MetaClient {
     }
   }
 
-  /**
-   * Load the host's cookies if they were never loaded or are old. Concurrent
-   * callers share one load. None is not remembered: the user may sign in or
-   * pick a browser later, and asking again is cheap (the host caches its jar).
-   * A host that fails to read them leaves the session as it is.
-   */
+  /** Load the host's cookies if they were never loaded or are old (see HostSession). */
   async loadCookies(): Promise<void> {
-    if (!this.#cookies) return
-    if (this.#cookiesAt !== undefined && this.#now() - this.#cookiesAt < COOKIES_FRESH_MS) return
-    this.#loading ??= this.#cookies()
-      .then(
-        cookies => {
-          if (cookies) this.adoptCookies(cookies)
-        },
-        error => this.#log('warn', `${this.site}: the session cookies could not be read: ${String(error)}`),
-      )
-      .finally(() => {
-        this.#loading = undefined
-      })
-    await this.#loading
+    await this.#host.load()
   }
 
   /** Forget the host's cookies (they stopped working): asked for again next time. */
   forgetCookies(): void {
-    this.#cookiesAt = undefined
+    this.#host.forget()
     this.session.reset()
   }
 

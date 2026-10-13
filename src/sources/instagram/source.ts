@@ -3,17 +3,20 @@ import {DownloadError} from '../../core/errors.js'
 import {genericChoices} from '../../core/formats.js'
 import type {AnalysisResult, PlaylistAnalysis, VideoAnalysis} from '../../types.js'
 import type {BrowserAssist} from '../browser.js'
-import type {Fetch} from '../http.js'
-import {MetaClient, type SessionCookies} from '../meta/client.js'
+import {type Fetch, HttpSession} from '../http.js'
+import {MetaClient, type PageRead, type SessionProvider} from '../meta/client.js'
 import {downloadPost} from '../meta/download.js'
-import {MetaError, toDownloadError} from '../meta/errors.js'
+import {MetaError, type MetaProblem, toDownloadError} from '../meta/errors.js'
 import {type CursorPage, walkCursor} from '../meta/listing.js'
-import {choicesOf, type MetaPost, shapeOf, summaryOf} from '../meta/post.js'
+import {choicesOf, type MetaPost, shapeOf, summaryOf, videosOf} from '../meta/post.js'
 import type {PacerOptions} from '../pacer.js'
 import type {ListingProgress, MediaSource, SourceDownload, SourceFile} from '../source.js'
 import {
+  codeToPk,
   type InstagramAccount,
   PUBLIC_ORIGIN,
+  readEmbedPage,
+  readMediaInfo,
   readPostPage,
   readPostQuery,
   readProfileInfo,
@@ -21,11 +24,15 @@ import {
   readTimelinePage,
 } from './data.js'
 import {
+  API_ORIGIN,
   APP_ID,
+  APP_USER_AGENT,
   ASBD_ID,
   DEFAULT_QUERIES,
+  EMBED_PATH,
   GRAPHQL,
   type InstagramQueries,
+  MEDIA_INFO,
   PAGE_SIZE,
   PROFILE_INFO,
   REELS_MEDIA,
@@ -40,6 +47,8 @@ export type InstagramOptions = {
   readonly pacing?: PacerOptions | undefined
   /** Tests: serve "Instagram" from another origin. */
   readonly origin?: string | undefined
+  /** Tests: serve the app API (i.instagram.com) from another origin. Default: `origin` when that is set. */
+  readonly apiOrigin?: string | undefined
   readonly fetch?: Fetch | undefined
   /** A real browser (the host app's) for pages Instagram only serves after its own check has run. */
   readonly browser?: BrowserAssist | undefined
@@ -49,7 +58,7 @@ export type InstagramOptions = {
    * follows — and again when they are old. The engine passes the browser
    * cookies it already reads for yt-dlp.
    */
-  readonly cookies?: (() => Promise<SessionCookies | undefined>) | undefined
+  readonly cookies?: SessionProvider | undefined
   /** The web client's query ids, should Instagram rotate them before a release does. */
   readonly queries?: Partial<InstagramQueries> | undefined
   /** Where the source reports what it did (the engine's log). */
@@ -66,6 +75,11 @@ const LISTING_FRESH_MS = 15 * 60_000
 const STORIES_FRESH_MS = 5 * 60_000
 /** Profiles are listed this many posts at a time, each chunk kept as soon as it is in. */
 export const PROFILE_CHUNK = 500
+/** One try per anonymous route, not much patience: the web client's query follows. */
+const ANONYMOUS_TIMEOUT_MS = 15_000
+/** What the user reads when every route to a public post got Instagram's wall. */
+export const WALLED_MESSAGE =
+  'Instagram is limiting this network right now: every way of reading the post got its login page. Wait a few minutes or try another network; a signed-in session also gets through.'
 
 type Cached = {readonly post: MetaPost; readonly at: number}
 type KeptListing = {posts: MetaPost[]; cursor: string | undefined; complete: boolean; at: number}
@@ -94,6 +108,9 @@ export class InstagramSource implements MediaSource {
   /** reel id (user id, highlight:<id>) → its stories. */
   readonly #stories = new Map<string, {posts: MetaPost[]; title?: string | undefined; at: number}>()
   readonly #log: (level: 'info' | 'warn', message: string) => void
+  /** The anonymous routes' own session: never the user's cookies, only what those routes hand out. */
+  readonly #anonymous: HttpSession
+  readonly #apiOrigin: string
 
   constructor(options: InstagramOptions = {}) {
     this.#client = new MetaClient({
@@ -109,6 +126,8 @@ export class InstagramSource implements MediaSource {
     this.#maxProfileItems = Math.max(1, options.maxProfileItems ?? INSTAGRAM_PROFILE_DEFAULT_ITEMS)
     this.#queries = {...DEFAULT_QUERIES, ...options.queries}
     this.#log = options.log ?? (() => {})
+    this.#anonymous = new HttpSession({fetch: options.fetch, timeoutMs: ANONYMOUS_TIMEOUT_MS})
+    this.#apiOrigin = (options.apiOrigin ?? options.origin ?? API_ORIGIN).replace(/\/$/, '')
   }
 
   get available(): boolean {
@@ -246,19 +265,45 @@ export class InstagramSource implements MediaSource {
   // ─── posts ───────────────────────────────────────────────────────────────
 
   /**
-   * One post by shortcode: the web client's query first (JSON, answers
-   * without a session for public posts), the post page when the query no
-   * longer answers — a page a browser or a signed-in session can get.
+   * One post by shortcode: the anonymous routes first (the embed page, the
+   * app's API — one request each, what a public post needs), then the web
+   * client's query (JSON, answers without a session for public posts), then
+   * the post page — a page a browser or a signed-in session can get. When
+   * the anonymous routes were walled and the rest fails too, the error says
+   * Instagram is limiting this network ('walled'), not "sign in".
    */
   async #readPost(code: string, signal?: AbortSignal, fresh = false): Promise<MetaPost> {
     const id = this.#byCode.get(code)
     const cached = id ? this.#posts.get(id) : undefined
     if (!fresh && cached && Date.now() - cached.at < POST_FRESH_MS && shapeOf(cached.post) !== 'empty')
       return cached.post
+    const anonymous = await this.#readAnonymously(code, signal)
+    let post = anonymous.post
+    if (!post) {
+      this.#log(
+        'info',
+        `Instagram: ${code} not readable anonymously (${anonymous.failures.join('; ')}) — asking the web client's query`,
+      )
+      try {
+        post = await this.#readSigned(code, signal)
+      } catch (error) {
+        // a page without its data, after walls on the anonymous routes, is the wall in another shape
+        const wall =
+          error instanceof MetaError && (WALL_PROBLEMS.has(error.problem) || error.problem === 'format-changed')
+        if (!anonymous.walled || signal?.aborted || !wall) throw error
+        this.#log('warn', `Instagram: ${code}: every route got the wall (then ${error.message})`)
+        throw new MetaError('walled', WALLED_MESSAGE)
+      }
+    }
+    this.#remember(post)
+    return post
+  }
+
+  /** The web client's query, then the post page (through the browser on a challenge). */
+  async #readSigned(code: string, signal?: AbortSignal): Promise<MetaPost> {
     const page = postUrl(this.#client.origin, code)
-    let post: MetaPost
     try {
-      post = await this.#graphql(
+      return await this.#graphql(
         this.#queries.post,
         {shortcode: code, fetch_tagged_user_count: null, hoisted_comment_id: null, hoisted_reply_id: null},
         readPostQuery,
@@ -269,10 +314,93 @@ export class InstagramSource implements MediaSource {
       if (!(error instanceof MetaError) || (error.problem !== 'format-changed' && error.problem !== 'login-required'))
         throw error
       this.#log('info', `Instagram: the post query did not answer for ${code} (${error.message}) — reading its page`)
-      post = await this.#client.page(page, readPostPage, {signal})
+      return await this.#client.page(page, readPostPage, {signal})
     }
-    this.#remember(post)
-    return post
+  }
+
+  /**
+   * The anonymous routes, cheapest first, one request each (no retries: the
+   * web client's query follows). A route that says the post is gone or
+   * private ends the search — the others would say the same. A wall (login
+   * page, 401 / 403 / 429, "please wait a few minutes") or a changed page
+   * moves on to the next. No post: what each route said, and whether any was
+   * walled.
+   */
+  async #readAnonymously(
+    code: string,
+    signal?: AbortSignal,
+  ): Promise<{readonly post?: MetaPost; readonly walled: boolean; readonly failures: readonly string[]}> {
+    const origin = this.#client.origin
+    const routes: ReadonlyArray<readonly [string, () => Promise<MetaPost>]> = [
+      [
+        'embed',
+        async () =>
+          readEmbedPage(
+            await this.#anonymousGet(
+              `${origin}${EMBED_PATH(code)}`,
+              {Accept: 'text/html,application/xhtml+xml', Referer: `${origin}/`},
+              signal,
+            ),
+          ),
+      ],
+      [
+        'app API',
+        async () => {
+          const answer = await this.#anonymousGet(
+            `${this.#apiOrigin}${MEDIA_INFO(codeToPk(code))}`,
+            {
+              'User-Agent': APP_USER_AGENT,
+              Accept: '*/*',
+              'X-IG-App-ID': APP_ID,
+              'X-IG-App-Locale': 'en_US',
+              'X-IG-Device-Locale': 'en_US',
+              'X-IG-Mapped-Locale': 'en_US',
+              'X-FB-HTTP-Engine': 'Liger',
+            },
+            signal,
+          )
+          let json: unknown
+          try {
+            json = JSON.parse(answer.html)
+          } catch {
+            if (/\/accounts\/login|checkpoint_required|login_form/.test(answer.html)) {
+              throw new MetaError('challenge', 'Instagram API answered with its login page.')
+            }
+            throw new MetaError('format-changed', 'Instagram API answered something that is not JSON.')
+          }
+          return readMediaInfo(json)
+        },
+      ],
+    ]
+    let walled = false
+    const failures: string[] = []
+    for (const [route, read] of routes) {
+      if (signal?.aborted) break
+      try {
+        const post = await read()
+        if (!usable(post)) throw new MetaError('format-changed', 'the post came without its media links')
+        this.#log('info', `Instagram: ${code} read anonymously (${route})`)
+        return {post, walled, failures}
+      } catch (error) {
+        if (signal?.aborted) throw error
+        if (error instanceof MetaError && (error.problem === 'removed' || error.problem === 'private')) throw error
+        if (error instanceof MetaError && WALL_PROBLEMS.has(error.problem)) walled = true
+        failures.push(`${route}: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
+    return {walled, failures}
+  }
+
+  /** One GET of an anonymous route, paced with the rest of instagram.com. 401 / 403 / 429 are the wall. */
+  async #anonymousGet(url: string, headers: Readonly<Record<string, string>>, signal?: AbortSignal): Promise<PageRead> {
+    const response = await this.#client.pacer.run(() => this.#anonymous.get(url, {headers, signal}), signal)
+    const html = await response.text()
+    if (response.status === 401 || response.status === 403 || response.status === 429) {
+      throw new MetaError('refused', `Instagram answered HTTP ${response.status}.`)
+    }
+    // a 404 here may be the route, not the post: the web client's query tells
+    if (!response.ok) throw new MetaError('format-changed', `Instagram answered HTTP ${response.status}.`)
+    return {html, url: response.url || url, status: response.status}
   }
 
   async #check(url: string, signal?: AbortSignal): Promise<ExtractResult> {
@@ -540,6 +668,13 @@ export class InstagramSource implements MediaSource {
     })
   }
 }
+
+/** What a login wall, a refusal or "please wait a few minutes" turns into on the way here. */
+const WALL_PROBLEMS: ReadonlySet<MetaProblem> = new Set(['challenge', 'login-required', 'refused', 'walled'])
+
+/** Something to download, with a link for every video in it. */
+const usable = (post: MetaPost): boolean =>
+  shapeOf(post) !== 'empty' && videosOf(post).every(video => video.renditions.length > 0)
 
 /** A story by id among a reel's items; gone (expired) when it isn't there. */
 function storyItem(posts: readonly MetaPost[], id: string): MetaPost {

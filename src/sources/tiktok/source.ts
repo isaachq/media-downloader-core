@@ -8,6 +8,7 @@ import type {BrowserAssist} from '../browser.js'
 import {type Fetch, HttpSession} from '../http.js'
 import {fetchMedia} from '../media-fetch.js'
 import {Pacer, type PacerOptions} from '../pacer.js'
+import {HostSession, type SessionProvider} from '../session.js'
 import {
   type ListingProgress,
   type MediaSource,
@@ -36,6 +37,13 @@ export type TikTokOptions = {
    * check has run in a browser. Without one, such pages hand TikTok to yt-dlp.
    */
   readonly browser?: BrowserAssist | undefined
+  /**
+   * The user's TikTok session (cookies, and the agent that earned them when
+   * the host knows it), as Instagram and Facebook take it: asked for when the
+   * source starts reading and again every 6 hours. Pages, listings and media
+   * then go with it. Without one TikTok is read as a visitor.
+   */
+  readonly cookies?: SessionProvider | undefined
   /** Where the source reports what it did (the engine's log). */
   readonly log?: ((level: 'info' | 'warn', message: string) => void) | undefined
 }
@@ -81,6 +89,7 @@ export class TikTokSource implements MediaSource {
   readonly #browser: BrowserAssist | undefined
   /** One browser page at a time: each is a full page load. */
   readonly #browserTurns = new Pacer({concurrency: 1, spacingMs: 0, jitterMs: 0})
+  readonly #host: HostSession
 
   constructor(options: TikTokOptions = {}) {
     this.#origin = (options.origin ?? 'https://www.tiktok.com').replace(/\/$/, '')
@@ -90,6 +99,7 @@ export class TikTokSource implements MediaSource {
     this.#pacer = new Pacer(options.pacing)
     this.#browser = options.browser
     this.#log = options.log ?? (() => {})
+    this.#host = new HostSession({site: this.name, provider: options.cookies, session: this.#session, log: this.#log})
   }
 
   get available(): boolean {
@@ -305,6 +315,8 @@ export class TikTokSource implements MediaSource {
 
   /** Short links are redirects: follow one hop; landing on the home page means the post is gone. */
   async #resolve(url: string, signal?: AbortSignal) {
+    // every read starts here: the host's session (when it gives one) goes with it
+    await this.#host.load()
     const link = parseTikTokLink(url, this.#originHost)
     if (!link)
       throw new DownloadError(

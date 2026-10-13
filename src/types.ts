@@ -1,3 +1,4 @@
+import type {YtDlpPolicy} from './binaries/manager.js'
 import type {FileNameStyle} from './core/files.js'
 import type {FacebookOptions} from './sources/facebook/source.js'
 import type {InstagramOptions} from './sources/instagram/source.js'
@@ -633,6 +634,14 @@ export type DownloaderOptions = {
    * live. In Electron: `app.getPath('userData')`.
    */
   readonly dataDir: string
+  /**
+   * 'required' (default): yt-dlp, ffmpeg and ffprobe must all be there.
+   * 'optional': a host without yt-dlp (a phone): links are read by the
+   * built-in extractors only; where one would hand a link to yt-dlp, its own
+   * reason comes back (hint 'retry-later' unless it has one), and anything
+   * else that needs yt-dlp fails with 'binary-missing'.
+   */
+  readonly ytDlp?: YtDlpPolicy | undefined
   /**
    * Simultaneous jobs. Clamped to [1, ⌊logical CPUs / 2⌋] so the machine
    * stays responsive. Defaults to the maximum.

@@ -15,6 +15,11 @@ export type FakeFacebookConfig = {
   readonly stories?: ReadonlyArray<'video' | 'image'>
   /** Pages redirect to the login page unless the session is signed in. */
   readonly loginWall?: boolean
+  /**
+   * Video pages, to a visitor without a session, are the "video not found" root with the login
+   * form preloaded and no media (what facebook.com serves since October 2026).
+   */
+  readonly videosSignedInOnly?: boolean
   /** The pagination query answers 400 (the site stopped accepting the request as built). */
   readonly badRequest?: boolean
   /** The first N page answers are refused (429). */
@@ -226,6 +231,20 @@ export async function startFakeFacebook(config: FakeFacebookConfig = {}): Promis
             : undefined
     if (videoId !== undefined) {
       hits.video++
+      if (config.videosSignedInOnly && !signedIn) {
+        return html(
+          sjs({
+            preloaders: [
+              {queryName: 'useCometLogInFormQuery', preloaderID: 'adp_useCometLogInFormQueryRelayPreloader_1'},
+              {
+                queryName: 'VideoHomeVideoNotFoundRootQuery',
+                preloaderID: 'adp_VideoHomeVideoNotFoundRootQueryRelayPreloader_2',
+              },
+            ],
+            route: {params: {video_id: videoId, fbid: videoId}},
+          }),
+        )
+      }
       const index = ids.indexOf(videoId ?? '')
       if (index === -1) return html("<html><body>This content isn't available right now</body></html>")
       return html(sjs({video: mediaNode(index)}, {node: infoNode(index)}), {'Set-Cookie': 'datr=d-1; Path=/'})

@@ -4,8 +4,10 @@
 // docs/screenshots/finished.png and report.png (real files, really verified).
 //
 //   npm run build && MDC_DATA_DIR=<folder with tools from `mdc setup`> node scripts/record-demo.cjs [url]
+//   npm run build && MDC_BINARIES='{"ytDlp":…,"ffmpeg":…,"ffprobe":…}' node scripts/record-demo.cjs [url]
 //
-// Needs network access. The download goes to a temporary folder that is removed afterwards.
+// Needs network access. The download goes to a temporary folder that is removed afterwards; with
+// MDC_BINARIES the data folder is a fresh temporary one too, so no other file shows up in Finished.
 const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
@@ -29,14 +31,25 @@ function ffmpegPath(dataDir) {
 }
 
 async function main() {
-  const dataDir = process.env.MDC_DATA_DIR
-  if (!dataDir) throw new Error('Set MDC_DATA_DIR to a data folder with the tools installed (mdc setup --data-dir …)')
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'mdc-demo-'))
+  const dataDir = process.env.MDC_BINARIES ? path.join(work, 'data') : process.env.MDC_DATA_DIR
+  if (!dataDir) throw new Error('Set MDC_DATA_DIR to a data folder with the tools installed (mdc setup --data-dir …), or MDC_BINARIES')
+  fs.mkdirSync(dataDir, {recursive: true})
   const outDir = path.join(work, 'Downloads')
   fs.mkdirSync(outDir)
   fs.writeFileSync(
     path.join(dataDir, 'settings.json'),
-    JSON.stringify({language: 'en', theme: 'light', format: 'mp4', quality: 'best', validation: 'full', downloadDir: outDir, tourDone: true}),
+    JSON.stringify({
+      language: 'en',
+      theme: 'light',
+      mode: 'web',
+      format: 'mp4',
+      quality: 'best',
+      validation: 'full',
+      downloadDir: outDir,
+      tourDone: true,
+      autoUpdate: false,
+    }),
   )
 
   // frames come from Chromium's screencast (Playwright's recordVideo stalls Electron's first window)
@@ -44,6 +57,7 @@ async function main() {
   fs.mkdirSync(framesDir)
   const frames = []
   const app = await electron.launch({args: [APP_DIR], env: {...process.env, MDC_DATA_DIR: dataDir}})
+  const binaries = process.env.MDC_BINARIES ? JSON.parse(process.env.MDC_BINARIES) : undefined
   try {
     const page = await app.firstWindow()
     await page.waitForSelector('[data-testid="theme-mode"]', {state: 'attached', timeout: 60_000})
@@ -62,7 +76,7 @@ async function main() {
     await input.click()
     await input.pressSequentially(URL, {delay: 35})
     await page.waitForTimeout(500)
-    await page.getByRole('button', {name: /download|schedule/i}).first().click()
+    await page.locator('[data-tour="download"]').click()
 
     const card = page.getByTestId('batch-card').first()
     await card.waitFor()
@@ -113,7 +127,7 @@ async function main() {
   const files = fs.readdirSync(outDir, {recursive: true})
   console.log('downloaded:', files)
   // two-pass palette: small file, clean colors
-  execFileSync(ffmpegPath(dataDir), [
+  execFileSync(binaries?.ffmpeg ?? ffmpegPath(dataDir), [
     '-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', concat,
     '-vf', 'fps=12,scale=960:-2:flags=lanczos,split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle',
     '-loop', '0', OUTPUT,

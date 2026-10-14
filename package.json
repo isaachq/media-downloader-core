@@ -34,8 +34,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "vite --host 0.0.0.0 --port 3000",
-    "build": "tsup --config tsup.config.ts && vite build",
+    "build": "tsup --config tsup.config.ts",
     "build:watch": "tsup --config tsup.config.ts --watch",
     "test": "tsx --test test/*.test.ts",
     "typecheck": "tsc -p . --noEmit",
@@ -54,8 +53,6 @@
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
     "@types/node": "22.20.5",
-    "@types/react": "^19.3.0",
-    "@types/react-dom": "^19.3.0",
     "tsup": "8.5.1",
     "tsx": "4.23.15",
     "typescript": "5.9.3"
@@ -75,13 +72,5 @@
     "ffmpeg",
     "electron",
     "typescript"
-  ],
-  "dependencies": {
-    "@ant-design/icons": "^6.3.4",
-    "@vitejs/plugin-react": "^6.1.2",
-    "antd": "^6.6.6",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
-    "vite": "^8.3.4"
-  }
+  ]
 }

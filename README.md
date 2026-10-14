@@ -820,7 +820,7 @@ See [CHANGELOG.md](CHANGELOG.md).
 
 ## Privacy & Data Safety
 
-Media Downloader Core collects zero personal data, includes zero telemetry or trackers, and stores all user data strictly on the local device. See [PRIVACY.md](PRIVACY.md) for our full Privacy Policy, Data Safety disclosure, and intellectual property disclaimers.
+Media Downloader Core collects zero personal data, includes zero telemetry or trackers, and stores all user data strictly on the local device. See [PRIVACY.md](PRIVACY.md) (English) or [PRIVACY_ES.md](PRIVACY_ES.md) (Español) for our full Privacy Policy, Data Safety disclosure, and intellectual property disclaimers.
 
 ## License
 

@@ -4,6 +4,7 @@
 **Project:** Media Downloader Core & Media Downloader Core for Android  
 **Maintainer:** isaachq (`isaac.hernandez.qz@gmail.com`)  
 **Repository:** [https://github.com/isaachq/media-downloader-core](https://github.com/isaachq/media-downloader-core)  
+**Language:** English | *Leer en [Español](PRIVACY_ES.md)*  
 
 ---
 

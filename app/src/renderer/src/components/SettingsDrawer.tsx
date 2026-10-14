@@ -5,6 +5,7 @@ import {
   Divider,
   Drawer,
   Empty,
+  Flex,
   Form,
   Input,
   InputNumber,
@@ -16,6 +17,7 @@ import {
   Space,
   Switch,
   Table,
+  Tag,
   Typography,
 } from 'antd'
 import type {DamagedEntry, ValidationLevel} from 'media-downloader-core'
@@ -76,6 +78,35 @@ export function SettingsDrawer({open, onClose, onDoctor, onReinstall}: Props) {
     <Drawer title={t('settings.title')} open={open} onClose={onClose} size={480} destroyOnHidden>
       {restartNeeded ? <Alert type="info" showIcon title={t('settings.restart')} className="restart-alert" /> : null}
       <Form layout="vertical">
+        <div
+          style={{
+            padding: '12px 14px',
+            marginBottom: 16,
+            borderRadius: 8,
+            border: '1px solid var(--ant-color-border-secondary, rgba(5, 5, 5, 0.06))',
+            background: 'var(--ant-color-fill-quaternary, rgba(0, 0, 0, 0.02))',
+          }}
+        >
+          <Typography.Text strong style={{display: 'block', marginBottom: 8}}>
+            Entorno y Recursos
+          </Typography.Text>
+          <Space orientation="vertical" size={4} style={{width: '100%'}}>
+            <Flex justify="space-between" align="center">
+              <Typography.Text type="secondary">Versión Core:</Typography.Text>
+              <Tag color="blue">{info.version}</Tag>
+            </Flex>
+            <Flex justify="space-between" align="center">
+              <Typography.Text type="secondary">Concurrencia:</Typography.Text>
+              <Typography.Text code>
+                {cap} hilos / {info.cpus} CPUs
+              </Typography.Text>
+            </Flex>
+            <Flex justify="space-between" align="center">
+              <Typography.Text type="secondary">Plataforma:</Typography.Text>
+              <Typography.Text>{info.platform}</Typography.Text>
+            </Flex>
+          </Space>
+        </div>
         <Divider titlePlacement="start">{t('settings.mode')}</Divider>
         <Form.Item extra={t('settings.modeHelp')} data-testid="settings-mode">
           <Radio.Group

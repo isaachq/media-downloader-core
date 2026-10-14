@@ -143,6 +143,7 @@ export class TaskPool<K = string> {
     this.#head = node
     this.#tail ??= node
     this.#queued.set(key, node)
+    this.#drain()
     return true
   }
 
@@ -222,7 +223,8 @@ export class TaskPool<K = string> {
       this.#running.set(node.key, node.weight)
       this.#used += node.weight
       // tasks handle their own errors; the catch only protects the pool
-      taskRun()
+      Promise.resolve()
+        .then(() => taskRun())
         .catch(() => {})
         .finally(() => {
           this.#running.delete(node.key)

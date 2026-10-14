@@ -1,4 +1,4 @@
-import {type ChildProcess, spawn} from 'node:child_process'
+import {type ChildProcess, spawn, spawnSync} from 'node:child_process'
 import {deferred} from './deferred.js'
 
 const IS_WINDOWS = process.platform === 'win32'
@@ -99,8 +99,41 @@ let exitHookInstalled = false
 function installExitHook(): void {
   if (exitHookInstalled) return
   exitHookInstalled = true
-  process.once('exit', () => {
-    for (const child of live) killTree(child, 'SIGKILL')
+
+  const killAllSync = () => {
+    for (const child of live) {
+      const pid = child.pid
+      if (pid === undefined || child.exitCode !== null || child.signalCode !== null) continue
+      try {
+        child.stdin?.destroy()
+      } catch {}
+      if (IS_WINDOWS) {
+        try {
+          spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], {windowsHide: true, stdio: 'ignore'})
+        } catch {}
+        try {
+          child.kill('SIGKILL')
+        } catch {}
+      } else {
+        try {
+          process.kill(-pid, 'SIGKILL')
+        } catch {
+          try {
+            child.kill('SIGKILL')
+          } catch {}
+        }
+      }
+    }
+  }
+
+  process.once('exit', killAllSync)
+  process.once('SIGINT', () => {
+    killAllSync()
+    process.exit(130)
+  })
+  process.once('SIGTERM', () => {
+    killAllSync()
+    process.exit(143)
   })
 }
 
@@ -177,10 +210,12 @@ export function run(cmd: string, args: readonly string[], opts: RunOptions = {})
           killTree(child)
         }, opts.timeoutMs)
 
+  let exitWatchdog: NodeJS.Timeout | undefined
   const cleanup = () => {
     live.delete(child)
     opts.signal?.removeEventListener('abort', onAbort)
     if (timer) clearTimeout(timer)
+    if (exitWatchdog) clearTimeout(exitWatchdog)
     if (child.stdout) {
       child.stdout.removeAllListeners()
       child.stdout.destroy()
@@ -223,13 +258,13 @@ export function run(cmd: string, args: readonly string[], opts: RunOptions = {})
   child.once('exit', code => {
     // Give stdio streams a short window to emit 'close'. If an unclosed inherited
     // descriptor keeps pipes open, destroy streams and settle to prevent hangs.
-    const watchdog = setTimeout(() => {
+    exitWatchdog = setTimeout(() => {
       child.stdout?.destroy()
       child.stderr?.destroy()
       child.stdin?.destroy()
       finish(code)
     }, 150)
-    watchdog.unref()
+    exitWatchdog.unref()
   })
 
   child.once('close', code => {
@@ -261,7 +296,12 @@ export function killTree(child: ChildProcess, signal: NodeJS.Signals = 'SIGTERM'
     try {
       spawn('taskkill', ['/pid', String(pid), '/T', '/F'], {windowsHide: true, stdio: 'ignore'}).unref()
     } catch {
-      child.kill()
+      // Ignore
+    }
+    try {
+      child.kill('SIGKILL')
+    } catch {
+      // Ignore
     }
     return
   }

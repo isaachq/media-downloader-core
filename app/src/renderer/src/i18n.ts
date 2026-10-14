@@ -107,6 +107,7 @@ const en = {
   'finished.verify': 'Check again',
   'finished.verifySelected': 'Check selected ({count})',
   'finished.verifying': 'Checking files… {done} of {total}',
+  'finished.checking': 'Checking…',
   'finished.verifyResult':
     'Checked {checked}: {ok} intact · {missing} missing · {changed} changed size · {corrupted} damaged',
   'finished.remove': 'Remove from list ({count})',
@@ -738,6 +739,7 @@ const es: Record<MessageKey, string> = {
   'finished.verify': 'Revisar de nuevo',
   'finished.verifySelected': 'Revisar seleccionados ({count})',
   'finished.verifying': 'Revisando archivos… {done} de {total}',
+  'finished.checking': 'Verificando…',
   'finished.verifyResult':
     'Revisados {checked}: {ok} intactos · {missing} no encontrados · {changed} cambiaron de tamaño · {corrupted} dañados',
   'finished.remove': 'Quitar de la lista ({count})',

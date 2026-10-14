@@ -21,6 +21,7 @@ import {
   type FailedRetry,
   type FinishedEntry,
   type FinishedGroup,
+  type FinishedIntegrity,
   type FinishedPage,
   type FinishedQuery,
   type FinishedTarget,
@@ -159,8 +160,18 @@ export function createWebBridge(): MdcApi {
   let syncs: SubscriptionView[] = loadStorage(STORAGE_KEY_SYNCS, [])
   let logs: LogEntry[] = loadStorage(STORAGE_KEY_LOGS, [])
 
+  let logSaveTimer: ReturnType<typeof setTimeout> | null = null
+  const scheduleSaveLogs = () => {
+    if (logSaveTimer) return
+    logSaveTimer = setTimeout(() => {
+      logSaveTimer = null
+      saveStorage(STORAGE_KEY_LOGS, logs)
+    }, 400)
+  }
+
   const log = (level: LogEntry['level'], message: string, extra?: Record<string, unknown>) => {
     const entry: LogEntry = {
+      sessionId: 'web-session',
       time: Date.now(),
       level,
       message,
@@ -168,7 +179,7 @@ export function createWebBridge(): MdcApi {
     }
     logs.push(entry)
     if (logs.length > 500) logs = logs.slice(-400)
-    saveStorage(STORAGE_KEY_LOGS, logs)
+    scheduleSaveLogs()
     emitEvents({logs: [entry]})
   }
 
@@ -259,7 +270,7 @@ export function createWebBridge(): MdcApi {
         } else if (stepIndex !== -1 && stepIndex < currentJob.steps.length - 1) {
           // Advance to next step (download -> convert -> validate -> finalize)
           const newSteps = currentJob.steps.map((step, idx) => {
-            if (idx === stepIndex) return {...step, state: 'done' as const}
+            if (idx === stepIndex) return {...step, state: 'success' as const}
             if (idx === stepIndex + 1) return {...step, state: 'in-progress' as const}
             return step
           })
@@ -274,11 +285,11 @@ export function createWebBridge(): MdcApi {
           })
         } else {
           // Job complete!
-          const finishedSteps = currentJob.steps.map(s => ({...s, state: 'done' as const}))
+          const finishedSteps = currentJob.steps.map(s => ({...s, state: 'success' as const}))
           const completedJob: JobSnapshot = {
             ...currentJob,
             status: 'completed',
-            outcome: 'succeeded',
+            outcome: 'success',
             progress: {fraction: 1, speed: 0, eta: 0},
             steps: finishedSteps,
           }
@@ -304,14 +315,20 @@ export function createWebBridge(): MdcApi {
           saveStorage(STORAGE_KEY_FINISHED, finishedEntries)
           log('info', `Completed download: ${finishedEntry.title}`, {jobId: currentJob.id})
 
-          // Update parent batch
+          // Update parent batch in O(J) single-pass
           if (currentJob.batchId) {
             const batch = batches.get(currentJob.batchId)
             if (batch) {
-              const bJobs = Array.from(jobs.values()).filter(j => j.batchId === batch.id)
-              const succeeded = bJobs.filter(j => j.status === 'completed').length
-              const running = bJobs.filter(j => j.status === 'downloading').length
-              const queued = bJobs.filter(j => j.status === 'queued').length
+              let succeeded = 0
+              let running = 0
+              let queued = 0
+              for (const j of jobs.values()) {
+                if (j.batchId === batch.id) {
+                  if (j.status === 'completed') succeeded++
+                  else if (j.status === 'downloading') running++
+                  else if (j.status === 'queued') queued++
+                }
+              }
               const allDone = running === 0 && queued === 0
 
               const updatedBatch: BatchSnapshot = {
@@ -406,9 +423,12 @@ export function createWebBridge(): MdcApi {
         const count = Math.min(maxItems, 8)
         const entries = Array.from({length: count}, (_, i) => ({
           id: `entry-${i + 1}`,
+          index: i + 1,
           title: `${title} - Episode ${i + 1}`,
           duration: 120 + i * 45,
           url: `${clean}#item${i + 1}`,
+          extractor: 'web',
+          isLive: false,
         }))
 
         return {
@@ -540,12 +560,15 @@ export function createWebBridge(): MdcApi {
       if (batch) {
         const updated: BatchSnapshot = {...batch, status: 'cancelled'}
         batches.set(batchId, updated)
+        const updatedJobs: JobSnapshot[] = []
         for (const j of jobs.values()) {
           if (j.batchId === batchId && (j.status === 'downloading' || j.status === 'queued')) {
-            jobs.set(j.id, {...j, status: 'cancelled', outcome: 'cancelled'})
+            const updatedJob: JobSnapshot = {...j, status: 'cancelled', outcome: 'failed'}
+            jobs.set(j.id, updatedJob)
+            updatedJobs.push(updatedJob)
           }
         }
-        emitEvents({batches: [updated], jobs: Array.from(jobs.values()).filter(j => j.batchId === batchId)})
+        emitEvents({batches: [updated], jobs: updatedJobs})
         log('info', `Batch ${batchId} cancelled`)
       }
     },
@@ -553,7 +576,7 @@ export function createWebBridge(): MdcApi {
     async cancelJob(jobId: JobId): Promise<void> {
       const job = jobs.get(jobId)
       if (job) {
-        const updated: JobSnapshot = {...job, status: 'cancelled', outcome: 'cancelled'}
+        const updated: JobSnapshot = {...job, status: 'cancelled', outcome: 'failed'}
         jobs.set(jobId, updated)
         emitEvents({jobs: [updated]})
         log('info', `Job ${jobId} cancelled`)
@@ -817,7 +840,8 @@ export function createWebBridge(): MdcApi {
 
     async removeFinished(keys: readonly string[]): Promise<number> {
       const before = finishedEntries.length
-      finishedEntries = finishedEntries.filter(e => !keys.includes(e.key))
+      const keySet = new Set(keys)
+      finishedEntries = finishedEntries.filter(e => !keySet.has(e.key))
       saveStorage(STORAGE_KEY_FINISHED, finishedEntries)
       return before - finishedEntries.length
     },

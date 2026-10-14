@@ -1254,7 +1254,8 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     await this.#queue.freeze()
     for (const analysis of this.#analyses) analysis.abort()
     for (const job of this.#jobs.values()) job.controller?.abort()
-    await this.#pool.whenIdle()
+    await Promise.race([this.#pool.whenIdle(), new Promise<void>(resolve => setTimeout(resolve, 3000).unref())])
+    this.#pool.clear()
     this.#log('debug', 'engine disposed')
     // cleanup is best effort: one failing step (e.g. an unreadable folder) must not skip the others
     this.#attestation?.close()

@@ -1,6 +1,7 @@
 import {
   ClearOutlined,
   ClockCircleOutlined,
+  DatabaseOutlined,
   FolderOpenOutlined,
   RedoOutlined,
   SafetyCertificateOutlined,
@@ -94,8 +95,18 @@ function BatchItems({batchId}: {readonly batchId: BatchId}) {
       columns={[
         {title: '#', dataIndex: 'index', width: 60},
         {title: t('job.title'), key: 'title', ellipsis: true, render: (_, item) => item.title ?? item.url},
-        {title: '⏱', key: 'duration', width: 80, render: (_, item) => clock(item.duration)},
-        {title: '⛁', key: 'size', width: 100, render: (_, item) => bytes(item.estimatedBytes, settings.language)},
+        {
+          title: <ClockCircleOutlined aria-label="Duration" />,
+          key: 'duration',
+          width: 80,
+          render: (_, item) => clock(item.duration),
+        },
+        {
+          title: <DatabaseOutlined aria-label="Size" />,
+          key: 'size',
+          width: 100,
+          render: (_, item) => bytes(item.estimatedBytes, settings.language),
+        },
         {
           title: t('job.status'),
           key: 'state',
@@ -247,7 +258,12 @@ const BatchCard = memo(function BatchCard({batch}: {readonly batch: BatchSnapsho
                 {t('tabs.jobs')}
               </Button>
               {jobs.succeeded > 0 ? (
-                <Button size="small" onClick={() => showBatch('finished', batch.id)} data-testid="batch-show-finished">
+                <Button
+                  size="small"
+                  type={finished ? 'primary' : 'default'}
+                  onClick={() => showBatch('finished', batch.id)}
+                  data-testid="batch-show-finished"
+                >
                   {t('tabs.finished')}
                 </Button>
               ) : null}

@@ -32,6 +32,7 @@ type Task = {
   readonly resolve: (digest: string) => void
   readonly reject: (error: Error) => void
   readonly signal?: AbortSignal | undefined
+  aborted?: boolean
 }
 
 type Slot = {
@@ -71,7 +72,17 @@ export class HashPool {
     if (this.#closed) return Promise.reject(new Error('HashPool is closed.'))
     if (signal?.aborted) return Promise.reject(cancelledError())
     const {promise, resolve, reject} = deferred<Sha256Hex>()
-    this.#queue.push({id: this.#nextId++, file, resolve, reject, signal})
+    const task: Task = {id: this.#nextId++, file, resolve, reject, signal}
+    if (signal) {
+      const onQueueAbort = () => {
+        if (!task.aborted) {
+          task.aborted = true
+          task.reject(cancelledError())
+        }
+      }
+      signal.addEventListener('abort', onQueueAbort, {once: true})
+    }
+    this.#queue.push(task)
     this.#dispatch()
     return promise
   }
@@ -87,8 +98,13 @@ export class HashPool {
     const pending = this.#queue.slice(this.#headIndex)
     this.#queue = []
     this.#headIndex = 0
-    for (const task of pending) task.reject(new Error('HashPool closed.'))
-    await Promise.all([...this.#slots].map(slot => this.#retire(slot, new Error('HashPool closed.'))))
+    for (const task of pending) {
+      if (!task.aborted) {
+        task.aborted = true
+        task.reject(new Error('HashPool closed.'))
+      }
+    }
+    await Promise.allSettled([...this.#slots].map(slot => this.#retire(slot, new Error('HashPool closed.'))))
   }
 
   get workerCount(): number {
@@ -104,10 +120,13 @@ export class HashPool {
   #dispatch(): void {
     while (this.#headIndex < this.#queue.length) {
       const task = this.#queue[this.#headIndex]!
-      if (task.signal?.aborted) {
+      if (task.aborted || task.signal?.aborted) {
         this.#headIndex++
         this.#compactQueueIfNeeded()
-        task.reject(cancelledError())
+        if (!task.aborted) {
+          task.aborted = true
+          task.reject(cancelledError())
+        }
         continue
       }
       const slot = this.#idleSlot() ?? (this.#slots.size < this.size ? this.#spawn() : undefined)
@@ -152,6 +171,13 @@ export class HashPool {
   }
 
   #start(slot: Slot, task: Task): void {
+    if (task.aborted || task.signal?.aborted) {
+      if (!task.aborted) {
+        task.aborted = true
+        task.reject(cancelledError())
+      }
+      return
+    }
     if (slot.idleTimer) clearTimeout(slot.idleTimer)
     slot.idleTimer = undefined
     slot.task = task
@@ -168,8 +194,11 @@ export class HashPool {
     const task = slot.task
     if (!task || task.id !== reply.id) return
     this.#release(slot)
-    if (reply.digest) task.resolve(reply.digest)
-    else task.reject(new Error(reply.error ?? 'Hashing failed.'))
+    if (!task.aborted) {
+      task.aborted = true
+      if (reply.digest) task.resolve(reply.digest)
+      else task.reject(new Error(reply.error ?? 'Hashing failed.'))
+    }
     slot.idleTimer = setTimeout(() => void this.#retire(slot), this.idleMs)
     slot.idleTimer.unref()
     this.#dispatch()
@@ -186,11 +215,15 @@ export class HashPool {
   async #retire(slot: Slot, error?: Error): Promise<void> {
     if (!this.#slots.delete(slot)) return
     if (slot.idleTimer) clearTimeout(slot.idleTimer)
+    slot.idleTimer = undefined
     const task = slot.task
     this.#release(slot)
-    if (task) task.reject(error ?? new Error('Hash worker retired.'))
+    if (task && !task.aborted) {
+      task.aborted = true
+      task.reject(error ?? new Error('Hash worker retired.'))
+    }
     slot.worker.removeAllListeners()
-    await slot.worker.terminate()
+    await slot.worker.terminate().catch(() => {})
     if (!this.#closed) this.#dispatch()
   }
 }

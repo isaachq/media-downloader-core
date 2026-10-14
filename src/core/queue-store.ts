@@ -55,6 +55,7 @@ export class QueueStore<T> {
 
   async load(): Promise<readonly T[]> {
     try {
+      await this.#writing
       const parsed = JSON.parse(await fs.readFile(this.file, 'utf8')) as Partial<StoreFile<T>>
       return Array.isArray(parsed.requests) ? parsed.requests : []
     } catch {
@@ -86,6 +87,8 @@ export class PendingJournal<T> {
   #lines = 0
   #frozen = false
   #compactScheduled = false
+  #compactPromise: Promise<void> | undefined
+  #compactSeq = 0
   /** Ids put and not deleted — an O(1) live count for the compaction threshold. */
   readonly #liveIds = new Set<string>()
 
@@ -155,7 +158,15 @@ export class PendingJournal<T> {
    * Time Complexity: O(N) where N is number of live entries.
    * Space Complexity: O(COMPACT_SLICE) buffered string chunk in memory.
    */
-  async compact(): Promise<void> {
+  compact(): Promise<void> {
+    if (this.#compactPromise) return this.#compactPromise
+    this.#compactPromise = this.#doCompact().finally(() => {
+      this.#compactPromise = undefined
+    })
+    return this.#compactPromise
+  }
+
+  async #doCompact(): Promise<void> {
     await this.#writePromise
     if (this.#frozen) return
     await this.#handle?.close()
@@ -163,7 +174,7 @@ export class PendingJournal<T> {
     this.#opening = undefined
     const entries = this.live()
     await fs.mkdir(path.dirname(this.file), {recursive: true})
-    const tmp = `${this.file}.${process.pid}.compact`
+    const tmp = `${this.file}.${process.pid}.${++this.#compactSeq}.compact`
     const out = createWriteStream(tmp)
     try {
       for (let i = 0; i < entries.length; i += COMPACT_SLICE) {
@@ -192,7 +203,10 @@ export class PendingJournal<T> {
    * shutdown keeps the pending set as it was.
    */
   async freeze(): Promise<void> {
-    await this.#writePromise
+    while (this.#writing || this.#buffer.length > 0) {
+      await this.#writePromise
+    }
+    if (this.#compactPromise) await this.#compactPromise
     if (!this.#frozen && this.#lines > this.#liveIds.size * 2 + 1000) await this.compact()
     this.#frozen = true
     await this.#handle?.close()

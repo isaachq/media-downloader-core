@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2aa8e0"/>
+      <stop offset="1" stop-color="#0b5f8a"/>
+    </linearGradient>
+    <linearGradient id="hill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#bfe6f6"/>
+      <stop offset="1" stop-color="#7fcbec"/>
+    </linearGradient>
+    <clipPath id="tile"><rect x="64" y="64" width="896" height="896" rx="200"/></clipPath>
+  </defs>
+  <rect x="64" y="64" width="896" height="896" rx="200" fill="url(#bg)"/>
+  <g clip-path="url(#tile)">
+    <path d="M0 780 L300 520 L420 630 L620 410 L1024 760 V1024 H0Z" fill="url(#hill)" opacity="0.55"/>
+  </g>
+  <path d="M620 410 L670 460 L640 455 L620 478 L598 452 L570 458Z" fill="#ffffff" opacity="0.9"/>
+  <g fill="#ffffff">
+    <rect x="452" y="200" width="120" height="300" rx="28"/>
+    <path d="M332 470 H692 L512 680Z" stroke="#ffffff" stroke-width="24" stroke-linejoin="round"/>
+    <rect x="312" y="736" width="400" height="64" rx="32"/>
+  </g>
+</svg>

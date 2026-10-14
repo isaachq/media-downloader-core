@@ -111,6 +111,7 @@ export {
   FacebookSource,
 } from './sources/facebook/source.js'
 export {HttpSession} from './sources/http.js'
+export {codeToPk, pkToCode} from './sources/instagram/data.js'
 export type {InstagramQueries} from './sources/instagram/endpoints.js'
 export {type InstagramLink, isInstagramListing, parseInstagramLink} from './sources/instagram/links.js'
 export {

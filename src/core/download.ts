@@ -130,11 +130,23 @@ type PartState = {downloaded: number; total: number | undefined}
  * video and audio as separate files one after the other; weighting by bytes
  * keeps the bar moving forward instead of jumping back to 0 for the audio.
  */
+/**
+ * Turns per-file progress into one job-level fraction. yt-dlp downloads
+ * video and audio as separate files one after the other; weighting by bytes
+ * keeps the bar moving forward instead of jumping back to 0 for the audio.
+ */
 export class ProgressTracker {
   readonly #parts = new Map<string, PartState>()
+  readonly #partIndices = new Map<string, number>()
   readonly #order: string[] = []
   #estimates: Array<number | undefined> = []
 
+  /**
+   * Sets byte estimates for each part from metadata.
+   *
+   * Time Complexity: O(C) where C is part count (typically 1-3).
+   * Space Complexity: O(C) storage.
+   */
   setEstimates(info: DownloadedInfo): void {
     const exact = info.partSizes ?? []
     const approx = info.partSizesApprox ?? []
@@ -147,6 +159,12 @@ export class ProgressTracker {
     return Math.max(1, this.#estimates.length, this.#order.length)
   }
 
+  /**
+   * Processes a raw progress event from yt-dlp.
+   *
+   * Time Complexity: O(P) where P <= 3 is the small fixed parts count. Part index lookup is O(1).
+   * Space Complexity: O(1) job progress object allocation.
+   */
   update(raw: RawProgress): JobProgress {
     const key = raw.file ?? '?'
     let part = this.#parts.get(key)
@@ -154,6 +172,7 @@ export class ProgressTracker {
       part = {downloaded: 0, total: undefined}
       this.#parts.set(key, part)
       this.#order.push(key)
+      this.#partIndices.set(key, this.#order.length)
     }
     part.downloaded = raw.downloaded ?? part.downloaded
     part.total = raw.total ?? raw.estimate ?? part.total
@@ -177,7 +196,7 @@ export class ProgressTracker {
       totalBytes: known && total > 0 ? total : undefined,
       speed: raw.speed ?? undefined,
       eta: raw.eta ?? undefined,
-      part: this.#order.indexOf(key) + 1,
+      part: this.#partIndices.get(key) ?? 1,
       totalParts: this.totalParts,
       fragmentIndex: raw.fragment ?? undefined,
       fragmentCount: raw.fragments ?? undefined,
@@ -218,6 +237,12 @@ class StallWatchdog {
     return this.#controller.signal
   }
 
+  /**
+   * Re-arms the stall timer on each line of output.
+   *
+   * Time Complexity: O(1).
+   * Space Complexity: O(1).
+   */
   feed(): void {
     if (this.timeoutMs <= 0) return
     if (this.#timer) this.#timer.refresh()
@@ -226,6 +251,7 @@ class StallWatchdog {
         this.stalled = true
         this.#controller.abort()
       }, this.timeoutMs)
+      this.#timer.unref()
     }
   }
 

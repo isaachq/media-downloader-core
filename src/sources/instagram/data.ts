@@ -148,6 +148,13 @@ export function readV1Item(raw: unknown, opts: {readonly story?: boolean | undef
 
 // ─── GraphQL nodes ──────────────────────────────────────────────────────────
 
+/**
+ * Extracts media representations from a GraphQL node.
+ * Supports single images, videos with multi-quality renditions, and carousels.
+ *
+ * Time Complexity: O(R log R + C log C) where R is video resources and C is display candidates.
+ * Space Complexity: O(R + C) for extracted renditions and URLs.
+ */
 function mediaOfNode(node: Json): MetaMedia | undefined {
   const id = text(node['id']) ?? ''
   const width = num(dig(node, 'dimensions', 'width')) ?? 0
@@ -155,32 +162,65 @@ function mediaOfNode(node: Json): MetaMedia | undefined {
   const display = text(node['display_url'])
   const resources = list(node['display_resources'])
     .filter(isObject)
-    .map(r => text(r['src']))
-    .filter((u): u is string => u !== undefined)
-  const urls = [...new Set([display, ...resources.reverse()].filter((u): u is string => u !== undefined))]
-  if (node['is_video'] === true || text(node['video_url'])) {
-    const video = text(node['video_url'])
-    const video1: MetaVideo = {
+    .map(r => ({
+      src: text(r['src']),
+      width: num(r['config_width']) ?? 0,
+      height: num(r['config_height']) ?? 0,
+    }))
+    .filter((r): r is {src: string; width: number; height: number} => r.src !== undefined)
+    .sort((a, b) => b.width * b.height - a.width * a.height)
+  const resourceUrls = resources.map(r => r.src)
+  const urls = [...new Set([display, ...resourceUrls].filter((u): u is string => u !== undefined))]
+
+  const isVideo = node['is_video'] === true || Boolean(text(node['video_url']))
+  if (isVideo) {
+    const directVideo = text(node['video_url'])
+    const renditions: Rendition[] = []
+    const seenUrls = new Set<string>()
+
+    if (directVideo) {
+      seenUrls.add(directVideo)
+      renditions.push({
+        codec: 'h264',
+        width,
+        height,
+        resolution: Math.min(width, height) || Math.max(width, height),
+        bitrate: 0,
+        urls: [directVideo],
+      })
+    }
+
+    const rawResources = list(node['video_resources'] ?? node['video_versions'])
+    for (const r of rawResources) {
+      if (!isObject(r)) continue
+      const src = text(r['src'] ?? r['url'])
+      if (!src || seenUrls.has(src)) continue
+      seenUrls.add(src)
+      const resWidth = num(r['config_width'] ?? r['width']) ?? width
+      const resHeight = num(r['config_height'] ?? r['height']) ?? height
+      renditions.push({
+        codec: 'h264',
+        width: resWidth,
+        height: resHeight,
+        resolution: Math.min(resWidth, resHeight) || Math.max(resWidth, resHeight),
+        bitrate: num(r['bandwidth']) ?? 0,
+        urls: [src],
+      })
+    }
+
+    // Sort descending by resolution and bitrate (Instaloader quality ranking)
+    renditions.sort((a, b) => b.resolution * (b.bitrate || 1) - a.resolution * (a.bitrate || 1))
+
+    const videoMedia: MetaVideo = {
       kind: 'video',
       id,
-      renditions: video
-        ? [
-            {
-              codec: 'h264',
-              width,
-              height,
-              resolution: Math.min(width, height) || Math.max(width, height),
-              bitrate: 0,
-              urls: [video],
-            },
-          ]
-        : [],
+      renditions,
       duration: num(node['video_duration']) || undefined,
-      width,
-      height,
+      width: width || renditions[0]?.width || 0,
+      height: height || renditions[0]?.height || 0,
       cover: display ?? text(node['thumbnail_src']),
     }
-    return video1
+    return videoMedia
   }
   if (urls.length === 0) return undefined
   return {kind: 'image', id, urls, width, height}
@@ -340,6 +380,9 @@ const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789
  * The numeric media id (`pk`) the app API wants, from a link's shortcode: the
  * code is the id in base 64 over Instagram's own alphabet. Very long codes
  * (private posts) carry the owner's id in their last 28 characters.
+ *
+ * Time Complexity: O(K) where K is the code length (typically <= 35).
+ * Space Complexity: O(1) auxiliary space.
  */
 export function codeToPk(code: string): string {
   let n = 0n
@@ -349,6 +392,24 @@ export function codeToPk(code: string): string {
     n = n * 64n + BigInt(digit)
   }
   return n.toString()
+}
+
+/**
+ * Converts a numeric media PK back to an Instagram shortcode (Instaloader bi-directional mapping).
+ *
+ * Time Complexity: O(log_64(PK)) operations.
+ * Space Complexity: O(log_64(PK)) string allocation.
+ */
+export function pkToCode(pk: string | bigint): string {
+  let n = typeof pk === 'bigint' ? pk : BigInt(pk)
+  if (n === 0n) return ALPHABET[0]!
+  let code = ''
+  while (n > 0n) {
+    const rem = Number(n % 64n)
+    code = ALPHABET[rem]! + code
+    n = n / 64n
+  }
+  return code
 }
 
 /**
@@ -392,6 +453,35 @@ export function readMediaInfo(json: unknown): MetaPost {
   const items = list(dig(json, 'items'))
   if (items.length === 0) throw new MetaError('removed', 'This Instagram post no longer exists, or is private.')
   return readV1Item(items[0])
+}
+
+/**
+ * Reads the web JSON info endpoint (?__a=1&__d=dis) used by Instaloader.
+ * Supports both v1 items format and GraphQL shortcode_media format.
+ *
+ * Time Complexity: O(M) where M is the media components (images, video versions, carousel children).
+ * Space Complexity: O(M) for the extracted MetaPost representation.
+ */
+export function readWebInfo(json: unknown): MetaPost {
+  checkStatus(json)
+  if (!isObject(json)) throw new MetaError('format-changed', 'Instagram web info answered with invalid payload.')
+
+  // v1 items format
+  const items = list(dig(json, 'items'))
+  if (items.length > 0 && isObject(items[0])) {
+    return readV1Item(items[0])
+  }
+
+  // GraphQL shortcode_media format
+  const graphNode = dig(json, 'graphql', 'shortcode_media') ?? dig(json, 'data', 'xdt_shortcode_media')
+  if (isObject(graphNode)) {
+    return readGraphNode(graphNode)
+  }
+
+  if (items.length === 0 && !graphNode) {
+    throw new MetaError('removed', 'This Instagram post no longer exists, or is private.')
+  }
+  throw new MetaError('format-changed', 'Instagram web info without recognized media payload.')
 }
 
 /** `reels_media` → the stories of the asked reel (a user id or `highlight:<id>`), newest last as Instagram lists them. */

@@ -80,7 +80,9 @@ type JournalRecord<T> =
 export class PendingJournal<T> {
   #handle: FileHandle | undefined
   #opening: Promise<void> | undefined
-  #writes: Promise<void> = Promise.resolve()
+  #buffer: string[] = []
+  #writing = false
+  #writePromise: Promise<void> = Promise.resolve()
   #lines = 0
   #frozen = false
   #compactScheduled = false
@@ -93,38 +95,54 @@ export class PendingJournal<T> {
     private readonly live: () => ReadonlyArray<readonly [id: string, value: T]>,
   ) {}
 
+  /**
+   * Appends an entry in O(1) amortized time by batching into an in-memory buffer.
+   */
   put(id: string, value: T): void {
     this.#liveIds.add(id)
     this.#append({op: 'put', id, value})
   }
 
+  /**
+   * Removes an entry in O(1) amortized time.
+   */
   delete(id: string): void {
     if (!this.#liveIds.delete(id)) return
     this.#append({op: 'del', id})
   }
 
-  /** Replay the journal: the entries that were pending, in insertion order. */
+  /**
+   * Replay the journal: the entries that were pending, in insertion order.
+   *
+   * Time Complexity: O(L) where L is the total journal line count.
+   * Space Complexity: O(E) where E is the unique live entries map.
+   */
   async load(): Promise<T[]> {
     const live = new Map<string, T>()
-    let lines: AsyncIterable<string>
+    let stream: ReturnType<typeof createReadStream> | undefined
+    let rl: ReturnType<typeof createInterface> | undefined
     try {
       await fs.access(this.file)
-      lines = createInterface({
-        input: createReadStream(this.file, {encoding: 'utf8'}),
+      stream = createReadStream(this.file, {encoding: 'utf8'})
+      rl = createInterface({
+        input: stream,
         crlfDelay: Number.POSITIVE_INFINITY,
       })
+      for await (const line of rl) {
+        if (line.length === 0) continue
+        try {
+          const record = JSON.parse(line) as JournalRecord<T>
+          if (record.op === 'put') live.set(record.id, record.value)
+          else live.delete(record.id)
+        } catch {
+          // torn last line from a crash
+        }
+      }
     } catch {
       return []
-    }
-    for await (const line of lines) {
-      if (line.length === 0) continue
-      try {
-        const record = JSON.parse(line) as JournalRecord<T>
-        if (record.op === 'put') live.set(record.id, record.value)
-        else live.delete(record.id)
-      } catch {
-        // torn last line from a crash
-      }
+    } finally {
+      rl?.close()
+      stream?.destroy()
     }
     return [...live.values()]
   }
@@ -133,17 +151,21 @@ export class PendingJournal<T> {
    * Rewrite the file with only the live entries: streamed to a temp file in
    * slices with event-loop yields (no multi-MB string, no long block), then
    * renamed over the journal atomically.
+   *
+   * Time Complexity: O(N) where N is number of live entries.
+   * Space Complexity: O(COMPACT_SLICE) buffered string chunk in memory.
    */
-  compact(): Promise<void> {
-    const write = this.#writes.then(async () => {
-      if (this.#frozen) return
-      await this.#handle?.close()
-      this.#handle = undefined
-      this.#opening = undefined
-      const entries = this.live()
-      await fs.mkdir(path.dirname(this.file), {recursive: true})
-      const tmp = `${this.file}.${process.pid}.compact`
-      const out = createWriteStream(tmp)
+  async compact(): Promise<void> {
+    await this.#writePromise
+    if (this.#frozen) return
+    await this.#handle?.close()
+    this.#handle = undefined
+    this.#opening = undefined
+    const entries = this.live()
+    await fs.mkdir(path.dirname(this.file), {recursive: true})
+    const tmp = `${this.file}.${process.pid}.compact`
+    const out = createWriteStream(tmp)
+    try {
       for (let i = 0; i < entries.length; i += COMPACT_SLICE) {
         let chunk = ''
         for (const [id, value] of entries.slice(i, i + COMPACT_SLICE)) {
@@ -157,9 +179,11 @@ export class PendingJournal<T> {
       )
       await renameRetrying(tmp, this.file)
       this.#lines = entries.length
-    })
-    this.#writes = write.catch(() => {})
-    return write
+    } catch (error) {
+      out.destroy()
+      await fs.rm(tmp, {force: true}).catch(() => {})
+      throw error
+    }
   }
 
   /**
@@ -168,7 +192,7 @@ export class PendingJournal<T> {
    * shutdown keeps the pending set as it was.
    */
   async freeze(): Promise<void> {
-    await this.#writes
+    await this.#writePromise
     if (!this.#frozen && this.#lines > this.#liveIds.size * 2 + 1000) await this.compact()
     this.#frozen = true
     await this.#handle?.close()
@@ -177,27 +201,43 @@ export class PendingJournal<T> {
 
   #append(record: JournalRecord<T>): void {
     if (this.#frozen) return
-    const line = `${JSON.stringify(record)}\n`
-    this.#writes = this.#writes
-      .then(async () => {
-        if (this.#frozen) return
+    this.#buffer.push(`${JSON.stringify(record)}\n`)
+    this.#scheduleFlush()
+  }
+
+  #scheduleFlush(): void {
+    if (this.#writing || this.#buffer.length === 0) return
+    this.#writing = true
+    this.#writePromise = this.#flushLoop().finally(() => {
+      this.#writing = false
+      if (this.#buffer.length > 0 && !this.#frozen) {
+        this.#scheduleFlush()
+      }
+    })
+  }
+
+  async #flushLoop(): Promise<void> {
+    while (this.#buffer.length > 0 && !this.#frozen) {
+      const chunk = this.#buffer.join('')
+      const count = this.#buffer.length
+      this.#buffer = []
+      try {
         this.#opening ??= fs.mkdir(path.dirname(this.file), {recursive: true}).then(async () => {
           this.#handle = await fs.open(this.file, 'a')
         })
         await this.#opening
-        await this.#handle?.write(line)
-        this.#lines++
+        await this.#handle?.write(chunk)
+        this.#lines += count
+      } catch {
+        // Disk error: handled gracefully
+      }
+    }
+
+    if (!this.#frozen && !this.#compactScheduled && this.#lines > this.#liveIds.size * 2 + 1000) {
+      this.#compactScheduled = true
+      void this.compact().finally(() => {
+        this.#compactScheduled = false
       })
-      .catch(() => {})
-      .then(() => {
-        // amortized O(1): compact once superseded lines dominate. Scheduled as a
-        // LATER link of the chain and not awaited here — awaiting it from inside
-        // the chain would deadlock (it queues behind this very link).
-        if (this.#frozen || this.#compactScheduled || this.#lines <= this.#liveIds.size * 2 + 1000) return
-        this.#compactScheduled = true
-        void this.compact().finally(() => {
-          this.#compactScheduled = false
-        })
-      })
+    }
   }
 }

@@ -22,6 +22,7 @@ import {
   readProfileInfo,
   readReelsMedia,
   readTimelinePage,
+  readWebInfo,
 } from './data.js'
 import {
   API_ORIGIN,
@@ -37,6 +38,7 @@ import {
   PROFILE_INFO,
   REELS_MEDIA,
   USER_FEED,
+  WEB_INFO,
 } from './endpoints.js'
 import {highlightUrl, type InstagramLink, parseInstagramLink, postUrl, profileUrl, storiesUrl} from './links.js'
 
@@ -299,7 +301,13 @@ export class InstagramSource implements MediaSource {
     return post
   }
 
-  /** The web client's query, then the post page (through the browser on a challenge). */
+  /**
+   * The web client's Relay query, then the Instaloader-style web JSON info (?__a=1&__d=dis),
+   * then the post page (through the browser on a challenge).
+   *
+   * Time Complexity: O(Q) where Q is the response payload size.
+   * Space Complexity: O(Q) memory for parsed MetaPost.
+   */
   async #readSigned(code: string, signal?: AbortSignal): Promise<MetaPost> {
     const page = postUrl(this.#client.origin, code)
     try {
@@ -313,7 +321,24 @@ export class InstagramSource implements MediaSource {
     } catch (error) {
       if (!(error instanceof MetaError) || (error.problem !== 'format-changed' && error.problem !== 'login-required'))
         throw error
-      this.#log('info', `Instagram: the post query did not answer for ${code} (${error.message}) — reading its page`)
+      this.#log('info', `Instagram: the post query did not answer for ${code} (${error.message}) — trying web info`)
+      // Try Instaloader's web JSON info endpoint (?__a=1&__d=dis) on real Instagram before falling back to full HTML parsing
+      if (this.#client.origin.includes('instagram.com')) {
+        try {
+          const webInfoUrl = `${this.#client.origin}${WEB_INFO(code)}`
+          return await this.#client.json(webInfoUrl, readWebInfo, {
+            signal,
+            headers: {
+              'X-IG-App-ID': APP_ID,
+              'X-ASBD-ID': ASBD_ID,
+              'X-Requested-With': 'XMLHttpRequest',
+            },
+          })
+        } catch {
+          // Fall back to reading the HTML page (or through browser on challenge)
+        }
+      }
+      this.#log('info', `Instagram: reading page for ${code}`)
       return await this.#client.page(page, readPostPage, {signal})
     }
   }
@@ -325,6 +350,9 @@ export class InstagramSource implements MediaSource {
    * page, 401 / 403 / 429, "please wait a few minutes") or a changed page
    * moves on to the next. No post: what each route said, and whether any was
    * walled.
+   *
+   * Time Complexity: O(R) where R <= 2 routes are attempted.
+   * Space Complexity: O(1) beyond response data.
    */
   async #readAnonymously(
     code: string,

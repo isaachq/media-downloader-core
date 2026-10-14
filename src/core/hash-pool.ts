@@ -11,10 +11,16 @@ const {createHash} = require('node:crypto')
 const {createReadStream} = require('node:fs')
 parentPort.on('message', ({id, file}) => {
   const hash = createHash('sha256')
-  createReadStream(file, {highWaterMark: 1 << 20})
-    .on('data', chunk => hash.update(chunk))
-    .on('error', error => parentPort.postMessage({id, error: error.message}))
-    .on('end', () => parentPort.postMessage({id, digest: hash.digest('hex')}))
+  const stream = createReadStream(file, {highWaterMark: 1 << 20})
+  stream.on('data', chunk => hash.update(chunk))
+  stream.on('error', error => {
+    stream.destroy()
+    parentPort.postMessage({id, error: error.message})
+  })
+  stream.on('end', () => {
+    stream.destroy()
+    parentPort.postMessage({id, digest: hash.digest('hex')})
+  })
 })
 `
 
@@ -46,6 +52,7 @@ type Slot = {
 export class HashPool {
   #slots = new Set<Slot>()
   #queue: Task[] = []
+  #headIndex = 0
   #nextId = 1
   #closed = false
 
@@ -54,6 +61,12 @@ export class HashPool {
     private readonly idleMs = 30_000,
   ) {}
 
+  /**
+   * Dispatches or queues a SHA-256 computation on a worker thread.
+   *
+   * Time Complexity: O(1) amortized enqueue.
+   * Space Complexity: O(1) task structure allocation.
+   */
   sha256(file: string, signal?: AbortSignal): Promise<Sha256Hex> {
     if (this.#closed) return Promise.reject(new Error('HashPool is closed.'))
     if (signal?.aborted) return Promise.reject(cancelledError())
@@ -63,10 +76,18 @@ export class HashPool {
     return promise
   }
 
-  /** Terminate all workers; pending tasks are rejected. */
+  /**
+   * Terminate all workers; pending tasks are rejected.
+   *
+   * Time Complexity: O(T + W) where T is pending tasks and W is active workers.
+   * Space Complexity: O(1) auxiliary space.
+   */
   async close(): Promise<void> {
     this.#closed = true
-    for (const task of this.#queue.splice(0)) task.reject(new Error('HashPool closed.'))
+    const pending = this.#queue.slice(this.#headIndex)
+    this.#queue = []
+    this.#headIndex = 0
+    for (const task of pending) task.reject(new Error('HashPool closed.'))
     await Promise.all([...this.#slots].map(slot => this.#retire(slot, new Error('HashPool closed.'))))
   }
 
@@ -74,18 +95,33 @@ export class HashPool {
     return this.#slots.size
   }
 
+  /**
+   * Dispatches queued tasks to idle or freshly spawned worker slots.
+   *
+   * Time Complexity: O(1) amortized per task dispatch (avoids O(N) array shifts).
+   * Space Complexity: O(1) auxiliary space.
+   */
   #dispatch(): void {
-    while (this.#queue.length > 0) {
-      const task = this.#queue[0]!
+    while (this.#headIndex < this.#queue.length) {
+      const task = this.#queue[this.#headIndex]!
       if (task.signal?.aborted) {
-        this.#queue.shift()
+        this.#headIndex++
+        this.#compactQueueIfNeeded()
         task.reject(cancelledError())
         continue
       }
       const slot = this.#idleSlot() ?? (this.#slots.size < this.size ? this.#spawn() : undefined)
       if (!slot) return
-      this.#queue.shift()
+      this.#headIndex++
+      this.#compactQueueIfNeeded()
       this.#start(slot, task)
+    }
+  }
+
+  #compactQueueIfNeeded(): void {
+    if (this.#headIndex > 64 && this.#headIndex * 2 >= this.#queue.length) {
+      this.#queue = this.#queue.slice(this.#headIndex)
+      this.#headIndex = 0
     }
   }
 
@@ -100,7 +136,14 @@ export class HashPool {
     worker.on('message', (reply: Reply) => this.#settle(slot, reply))
     worker.on('error', error => void this.#retire(slot, error))
     worker.on('exit', () => {
-      if (this.#slots.delete(slot)) slot.task?.reject(new Error('Hash worker exited unexpectedly.'))
+      if (this.#slots.delete(slot)) {
+        if (slot.idleTimer) clearTimeout(slot.idleTimer)
+        slot.idleTimer = undefined
+        const task = slot.task
+        this.#release(slot)
+        if (task) task.reject(new Error('Hash worker exited unexpectedly.'))
+        if (!this.#closed) this.#dispatch()
+      }
     })
     // idle workers never keep the host alive (set after the listeners, which re-ref the channel)
     worker.unref()
@@ -146,6 +189,7 @@ export class HashPool {
     const task = slot.task
     this.#release(slot)
     if (task) task.reject(error ?? new Error('Hash worker retired.'))
+    slot.worker.removeAllListeners()
     await slot.worker.terminate()
     if (!this.#closed) this.#dispatch()
   }

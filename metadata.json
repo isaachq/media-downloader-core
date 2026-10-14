@@ -1,0 +1,6 @@
+{
+  "name": "Media Download Core",
+  "description": "Desktop & web media downloader and playlist archiver with verified downloads, format profiles, and integrity validation.",
+  "permissions": [],
+  "capabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

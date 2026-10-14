@@ -78,6 +78,7 @@ export async function ensureContainer(opts: ConvertOptions): Promise<string> {
     ['-y'],
     ['-v', 'error'],
     ['-threads', String(Math.max(1, opts.threads))],
+    ['-fflags', '+genpts'],
     ['-i', opts.input],
     ['-map', '0:V:0'],
     ['-map', '0:a:0?'],
@@ -85,6 +86,7 @@ export async function ensureContainer(opts: ConvertOptions): Promise<string> {
     ...(mismatch.video ? VIDEO_ENCODERS[container] : [['-c:v', 'copy'] as const]),
     ...(mismatch.audio ? AUDIO_ENCODERS[container] : [['-c:a', 'copy'] as const]),
     container === 'mp4' && ['-movflags', '+faststart'],
+    ['-avoid_negative_ts', 'make_zero'],
     ['-progress', 'pipe:1'],
     ['-nostats'],
   ])

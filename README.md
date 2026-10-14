@@ -818,6 +818,10 @@ npm run demo -- "https://www.youtube.com/watch?v=jNQXAC9IVRw" 0   # download cho
 
 See [CHANGELOG.md](CHANGELOG.md).
 
+## Privacy & Data Safety
+
+Media Downloader Core collects zero personal data, includes zero telemetry or trackers, and stores all user data strictly on the local device. See [PRIVACY.md](PRIVACY.md) for our full Privacy Policy, Data Safety disclosure, and intellectual property disclaimers.
+
 ## License
 
 [PolyForm Noncommercial 1.0.0](LICENSE) — free for learning, personal and other
@@ -829,3 +833,4 @@ Required Notice: Copyright (c) 2026 isaachq <isaac.hernandez.qz@gmail.com> (http
 ```
 
 For commercial licensing, contact isaac.hernandez.qz@gmail.com.
+

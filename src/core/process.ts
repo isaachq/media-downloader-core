@@ -1,8 +1,8 @@
-import {type ChildProcess, spawn} from 'node:child_process'
+import {type ChildProcess, spawn, spawnSync} from 'node:child_process'
 import {deferred} from './deferred.js'
 
 const IS_WINDOWS = process.platform === 'win32'
-const KILL_GRACE_MS = 3000
+const KILL_GRACE_MS = 1000
 
 /**
  * Environment for yt-dlp (a Python program): force UTF-8 so paths with
@@ -99,15 +99,48 @@ let exitHookInstalled = false
 function installExitHook(): void {
   if (exitHookInstalled) return
   exitHookInstalled = true
-  process.once('exit', () => {
-    for (const child of live) killTree(child, 'SIGKILL')
+
+  const killAllSync = () => {
+    for (const child of live) {
+      const pid = child.pid
+      if (pid === undefined || child.exitCode !== null || child.signalCode !== null) continue
+      try {
+        child.stdin?.destroy()
+      } catch {}
+      if (IS_WINDOWS) {
+        try {
+          spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], {windowsHide: true, stdio: 'ignore'})
+        } catch {}
+        try {
+          child.kill('SIGKILL')
+        } catch {}
+      } else {
+        try {
+          process.kill(-pid, 'SIGKILL')
+        } catch {
+          try {
+            child.kill('SIGKILL')
+          } catch {}
+        }
+      }
+    }
+  }
+
+  process.once('exit', killAllSync)
+  process.once('SIGINT', () => {
+    killAllSync()
+    process.exit(130)
+  })
+  process.once('SIGTERM', () => {
+    killAllSync()
+    process.exit(143)
   })
 }
 
 /**
- * Spawn a binary and wait for it. Never rejects because of a non-zero exit
- * code — callers classify failures from `code` / `stderr`. Rejects only when
- * the binary cannot be started at all (ENOENT, EACCES…).
+ * Spawn a binary and wait for it.
+ * Time complexity: O(M) where M is stdout/stderr data bytes.
+ * Space complexity: O(min(M, maxStdoutBytes) + stderrTail).
  */
 export function run(cmd: string, args: readonly string[], opts: RunOptions = {}): Promise<RunResult> {
   if (opts.signal?.aborted) {
@@ -177,17 +210,31 @@ export function run(cmd: string, args: readonly string[], opts: RunOptions = {})
           killTree(child)
         }, opts.timeoutMs)
 
+  let exitWatchdog: NodeJS.Timeout | undefined
   const cleanup = () => {
     live.delete(child)
     opts.signal?.removeEventListener('abort', onAbort)
     if (timer) clearTimeout(timer)
+    if (exitWatchdog) clearTimeout(exitWatchdog)
+    if (child.stdout) {
+      child.stdout.removeAllListeners()
+      child.stdout.destroy()
+    }
+    if (child.stderr) {
+      child.stderr.removeAllListeners()
+      child.stderr.destroy()
+    }
+    if (child.stdin) {
+      child.stdin.removeAllListeners()
+      child.stdin.destroy()
+    }
+    child.removeAllListeners()
   }
 
-  child.once('error', error => {
-    cleanup()
-    reject(error)
-  })
-  child.once('close', code => {
+  let settled = false
+  const finish = (code: number | null) => {
+    if (settled) return
+    settled = true
     cleanup()
     lines?.flush()
     resolve({
@@ -198,24 +245,63 @@ export function run(cmd: string, args: readonly string[], opts: RunOptions = {})
       timedOut,
       outputLimitExceeded,
     })
+  }
+
+  child.once('error', error => {
+    if (settled) return
+    settled = true
+    cleanup()
+    reject(error)
+  })
+
+  // When child exits, ensure streams are drained and closed promptly
+  child.once('exit', code => {
+    // Give stdio streams a short window to emit 'close'. If an unclosed inherited
+    // descriptor keeps pipes open, destroy streams and settle to prevent hangs.
+    exitWatchdog = setTimeout(() => {
+      child.stdout?.destroy()
+      child.stderr?.destroy()
+      child.stdin?.destroy()
+      finish(code)
+    }, 150)
+    exitWatchdog.unref()
+  })
+
+  child.once('close', code => {
+    finish(code)
   })
   return promise
 }
 
 /**
- * Kill a process and all of its descendants. A plain `child.kill()` leaves
- * the ffmpeg that yt-dlp spawned running — on Windows always, on POSIX
+ * Kill a process and all of its descendants in O(1) time. A plain `child.kill()`
+ * leaves the ffmpeg that yt-dlp spawned running — on Windows always, on POSIX
  * unless the whole process group is signalled.
+ *
+ * Time Complexity: O(1) signal dispatch.
+ * Space Complexity: O(1) auxiliary space.
  */
 export function killTree(child: ChildProcess, signal: NodeJS.Signals = 'SIGTERM'): void {
   const pid = child.pid
   if (pid === undefined || child.exitCode !== null || child.signalCode !== null) return
 
+  try {
+    // Close stdin to signal EOF, but preserve stdout/stderr to capture final error diagnostics
+    child.stdin?.destroy()
+  } catch {
+    // Ignore stream destruction errors
+  }
+
   if (IS_WINDOWS) {
     try {
       spawn('taskkill', ['/pid', String(pid), '/T', '/F'], {windowsHide: true, stdio: 'ignore'}).unref()
     } catch {
-      child.kill()
+      // Ignore
+    }
+    try {
+      child.kill('SIGKILL')
+    } catch {
+      // Ignore
     }
     return
   }

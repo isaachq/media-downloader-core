@@ -233,10 +233,16 @@ export class Job {
     return this.#snapshot
   }
 
-  /** Drop everything that holds resources: pending timers and the abort controller. */
+  /**
+   * Drop everything that holds resources: pending timers, snapshot references, and the abort controller.
+   *
+   * Time Complexity: O(1).
+   * Space Complexity: O(1).
+   */
   release(): void {
     if (this.emitTimer) clearTimeout(this.emitTimer)
     this.emitTimer = undefined
     this.controller = undefined
+    this.#snapshot = undefined
   }
 }

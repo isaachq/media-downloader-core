@@ -5,7 +5,7 @@ import {
   RedoOutlined,
   StopOutlined,
 } from '@ant-design/icons'
-import {Button, Empty, Progress, Space, Table, Tag, Tooltip, Typography} from 'antd'
+import {Alert, Button, Empty, Progress, Segmented, Space, Table, Tag, Tooltip, Typography} from 'antd'
 import type {ColumnsType} from 'antd/es/table'
 import type {JobSnapshot} from 'media-downloader-core'
 import {useMemo, useState} from 'react'
@@ -13,8 +13,8 @@ import {api} from '../api'
 import {useApp} from '../context'
 import {clock, rate} from '../format'
 import {type MessageKey, useT} from '../i18n'
-import {useStore} from '../store'
-import {BatchFilter} from './BatchFilter'
+import {useStore, WORKING} from '../store'
+import {BatchFilter, useShowBatch} from './BatchFilter'
 import {IntegrityTag, StatusTag, StepTrack} from './JobParts'
 
 const TIER_COLOR = {normal: 'default', long: 'gold', heavy: 'volcano'} as const
@@ -63,6 +63,31 @@ export function JobTable({
       .sort((a, b) => rank(a.job) - rank(b.job) || (rank(a.job) === 2 ? b.order - a.order : a.order - b.order))
       .map(({job}) => job)
   }, [version, batchId])
+
+  const [statusFilter, setStatusFilter] = useState<'all' | 'working' | 'queued' | 'completed' | 'failed'>('all')
+
+  const counts = useMemo(() => {
+    let working = 0
+    let queued = 0
+    let completed = 0
+    let failed = 0
+    for (const job of rows) {
+      if (WORKING.has(job.status)) working++
+      else if (job.status === 'queued') queued++
+      else if (job.status === 'completed' || job.status === 'skipped') completed++
+      else if (job.status === 'failed') failed++
+    }
+    return {working, queued, completed, failed}
+  }, [rows])
+
+  const filteredRows = useMemo(() => {
+    if (statusFilter === 'all') return rows
+    if (statusFilter === 'working') return rows.filter(job => WORKING.has(job.status))
+    if (statusFilter === 'queued') return rows.filter(job => job.status === 'queued')
+    if (statusFilter === 'completed') return rows.filter(job => job.status === 'completed' || job.status === 'skipped')
+    if (statusFilter === 'failed') return rows.filter(job => job.status === 'failed')
+    return rows
+  }, [rows, statusFilter])
 
   const columns: ColumnsType<JobSnapshot> = [
     {
@@ -162,6 +187,8 @@ export function JobTable({
     },
   ]
 
+  const showBatch = useShowBatch()
+
   const togglePause = async () => {
     if (paused) await api().resume()
     else await api().pause()
@@ -170,8 +197,20 @@ export function JobTable({
 
   return (
     <Space orientation="vertical" className="full">
-      <Space wrap>
+      <Space wrap align="center">
         {onBatch ? <BatchFilter value={batchId} options={options} onChange={onBatch} /> : null}
+        <Segmented
+          size="small"
+          value={statusFilter}
+          onChange={val => setStatusFilter(val as typeof statusFilter)}
+          options={[
+            {label: `Todos (${rows.length})`, value: 'all'},
+            {label: `En curso (${counts.working})`, value: 'working'},
+            {label: `En cola (${counts.queued})`, value: 'queued'},
+            {label: `Completados (${counts.completed})`, value: 'completed'},
+            {label: `Errores (${counts.failed})`, value: 'failed'},
+          ]}
+        />
         <Button icon={paused ? <PlayCircleOutlined /> : <PauseCircleOutlined />} onClick={() => void togglePause()}>
           {paused ? t('job.resume') : t('job.pause')}
         </Button>
@@ -184,11 +223,27 @@ export function JobTable({
           {t('job.clearFinished')}
         </Button>
       </Space>
+      {rows.length > 0 && counts.working === 0 && counts.queued === 0 && counts.completed > 0 ? (
+        <Alert
+          type="success"
+          showIcon
+          title={
+            batchId
+              ? `${t('batch.status.completed')} (${counts.completed})`
+              : `${t('batch.status.completed')}: ${counts.completed} ${t('tabs.finished').toLowerCase()}`
+          }
+          action={
+            <Button size="small" type="primary" onClick={() => showBatch('finished', batchId ?? '')}>
+              {t('tabs.finished')}
+            </Button>
+          }
+        />
+      ) : null}
       <Table<JobSnapshot>
         size="small"
         rowKey="id"
         columns={columns}
-        dataSource={rows}
+        dataSource={filteredRows}
         pagination={false}
         virtual={rows.length > 100}
         scroll={{y: 420, x: 960}}

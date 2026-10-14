@@ -37,7 +37,7 @@ export function clampConcurrency(
 
 type Node<K> = {
   readonly key: K
-  readonly run: () => Promise<void>
+  run?: (() => Promise<void>) | undefined
   /** Capacity units this task occupies while running (1 = one normal job). */
   readonly weight: number
   prev: Node<K> | undefined
@@ -111,16 +111,27 @@ export class TaskPool<K = string> {
     this.#drain()
   }
 
-  /** Drop a task that hasn't started. False if it is running or unknown. */
+  /**
+   * Drop a task that hasn't started. False if it is running or unknown.
+   *
+   * Time Complexity: O(1).
+   * Space Complexity: O(1).
+   */
   remove(key: K): boolean {
     const node = this.#queued.get(key)
     if (!node) return false
+    node.run = undefined
     this.#unlink(node)
     this.#checkIdle()
     return true
   }
 
-  /** Move a queued task to the front. */
+  /**
+   * Move a queued task to the front.
+   *
+   * Time Complexity: O(1).
+   * Space Complexity: O(1).
+   */
   prioritize(key: K): boolean {
     const node = this.#queued.get(key)
     if (!node) return false
@@ -132,6 +143,7 @@ export class TaskPool<K = string> {
     this.#head = node
     this.#tail ??= node
     this.#queued.set(key, node)
+    this.#drain()
     return true
   }
 
@@ -154,9 +166,19 @@ export class TaskPool<K = string> {
     this.#drain()
   }
 
-  /** Drop every queued task; returns their keys. */
+  /**
+   * Drop every queued task and immediately release task closures; returns their keys.
+   *
+   * Time Complexity: O(Q) where Q is the number of queued tasks.
+   * Space Complexity: O(Q) for the returned array of keys.
+   */
   clear(): K[] {
     const keys = [...this.#queued.keys()]
+    for (const node of this.#queued.values()) {
+      node.run = undefined
+      node.prev = undefined
+      node.next = undefined
+    }
     this.#queued.clear()
     this.#head = undefined
     this.#tail = undefined
@@ -194,12 +216,15 @@ export class TaskPool<K = string> {
     while (!this.#paused && this.#head) {
       const node = this.#head
       if (this.#running.size > 0 && this.#used + node.weight > this.#limit + 1e-9) break
+      const taskRun = node.run
+      node.run = undefined // Immediately release task function reference to free memory
       this.#unlink(node)
+      if (!taskRun) continue
       this.#running.set(node.key, node.weight)
       this.#used += node.weight
       // tasks handle their own errors; the catch only protects the pool
-      node
-        .run()
+      Promise.resolve()
+        .then(() => taskRun())
         .catch(() => {})
         .finally(() => {
           this.#running.delete(node.key)

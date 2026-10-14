@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self' 'unsafe-inline' data: blob: https:; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https: blob:; font-src 'self' data: https:; connect-src 'self' https: wss: ws:;"
+    />
+    <title>Media Download Core</title>
+    <meta name="description" content="Desktop & web media downloader and playlist archiver with verified downloads, format profiles, and integrity validation." />
+    <meta property="og:title" content="Media Download Core" />
+    <meta property="og:description" content="Desktop & web media downloader and playlist archiver with verified downloads, format profiles, and integrity validation." />
+    <link rel="icon" type="image/svg+xml" href="/app/build/icon.svg" />
+    <style>
+      html, body { margin: 0; background: #eef6fb; }
+      @media (prefers-color-scheme: dark) { html, body { background: #0b1420; color: #e6edf3; } }
+      .pre-boot { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+        font: 600 20px Inter, system-ui, -apple-system, 'Segoe UI', sans-serif; }
+      .pre-boot-bar { width: 260px; height: 6px; border-radius: 3px; background: rgba(19, 168, 224, 0.18); overflow: hidden; }
+      .pre-boot-bar::after { content: ''; display: block; width: 40%; height: 100%; border-radius: 3px; background: #13a8e0;
+        animation: pre-boot 1.1s ease-in-out infinite; }
+      @keyframes pre-boot { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+    </style>
+  </head>
+  <body>
+    <div id="root"><div class="pre-boot">Media Download Core<div class="pre-boot-bar"></div></div></div>
+    <script type="module" src="/app/src/renderer/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,5 +1,5 @@
 import {CloudDownloadOutlined, FolderOpenOutlined, ScheduleOutlined, SnippetsOutlined} from '@ant-design/icons'
-import {App as AntApp, Button, Card, Col, Form, Input, Row, Select, Space, Typography} from 'antd'
+import {App as AntApp, Button, Card, Col, Form, Input, Row, Select, Space, Tag, Typography} from 'antd'
 import {type DragEvent, useRef, useState} from 'react'
 import {
   AUDIO_FORMATS,
@@ -269,11 +269,62 @@ export function DownloadBar() {
             </Button>
           </Space.Compact>
         </Form.Item>
+        {valid &&
+          (() => {
+            const isYouTube = otherMode === 'web' && /youtube\.com|youtu\.be/i.test(url)
+            const tagColor = isYouTube
+              ? 'red'
+              : otherMode === 'tiktok'
+                ? 'cyan'
+                : otherMode === 'instagram'
+                  ? 'purple'
+                  : 'blue'
+            const tagLabel = isYouTube ? 'YOUTUBE' : otherMode ? otherMode.toUpperCase() : 'URL'
+            return (
+              <div style={{marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap'}}>
+                <Tag color={tagColor}>{tagLabel}</Tag>
+                {/playlist|\/sets\/|\/album\//i.test(url) && <Tag color="gold">Lista / Playlist</Tag>}
+                {/@[\w.-]+/.test(url) && <Tag color="geekblue">Perfil</Tag>}
+              </div>
+            )
+          })()}
+        <div style={{marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap'}}>
+          <Typography.Text type="secondary" style={{fontSize: 12}}>
+            Presets:
+          </Typography.Text>
+          <Space size={6} wrap>
+            <Button
+              size="small"
+              disabled={busy}
+              type={settings.format === 'mp4' && settings.quality === 'best' ? 'primary' : 'default'}
+              onClick={() => void updateSettings({format: 'mp4', quality: 'best'})}
+            >
+              Máxima calidad
+            </Button>
+            <Button
+              size="small"
+              disabled={busy}
+              type={settings.format === 'mp3' ? 'primary' : 'default'}
+              onClick={() => void updateSettings({format: 'mp3'})}
+            >
+              Solo audio (MP3)
+            </Button>
+            <Button
+              size="small"
+              disabled={busy}
+              type={settings.format === 'mp4' && settings.quality === '720' ? 'primary' : 'default'}
+              onClick={() => void updateSettings({format: 'mp4', quality: '720'})}
+            >
+              Equilibrado (720p)
+            </Button>
+          </Space>
+        </div>
         <Row gutter={12} align="bottom" data-tour="options">
           <Col xs={24} md={8}>
             <Form.Item label={t('download.format')}>
               <Select
                 aria-label={t('download.format')}
+                disabled={busy}
                 value={settings.format}
                 options={formatOptions}
                 onChange={(value: Format) => void updateSettings({format: value})}
@@ -285,7 +336,7 @@ export function DownloadBar() {
               <Select
                 aria-label={t('download.quality')}
                 value={audio ? 'best' : settings.quality}
-                disabled={audio}
+                disabled={audio || busy}
                 options={audio ? [{value: 'best', label: t('download.qualityAudio')}] : qualityOptions}
                 onChange={(value: Quality) => void updateSettings({quality: value})}
               />
@@ -300,7 +351,7 @@ export function DownloadBar() {
                   aria-label={t('download.folder')}
                   title={settings.downloadDir}
                 />
-                <Button icon={<FolderOpenOutlined />} onClick={() => void chooseFolder()}>
+                <Button disabled={busy} icon={<FolderOpenOutlined />} onClick={() => void chooseFolder()}>
                   {t('download.change')}
                 </Button>
               </Space.Compact>

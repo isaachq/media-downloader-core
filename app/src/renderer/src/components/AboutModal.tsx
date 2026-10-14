@@ -24,53 +24,98 @@ export function AboutModal({open, onClose}: {readonly open: boolean; readonly on
     <Modal
       open={open}
       title={t('about.title')}
+      width={740}
       onCancel={onClose}
       footer={<Button onClick={onClose}>{t('common.close')}</Button>}
     >
-      <Typography.Title level={4}>Media Download Core</Typography.Title>
-      <Typography.Paragraph>{t('about.description')}</Typography.Paragraph>
-      <Descriptions size="small" column={1}>
-        <Descriptions.Item label="Version">{info.version}</Descriptions.Item>
+      <Typography.Title level={4} style={{marginTop: 0, marginBottom: 4}}>
+        Media Download Core
+      </Typography.Title>
+      <Typography.Paragraph type="secondary" style={{marginBottom: 16}}>
+        {t('about.description')}
+      </Typography.Paragraph>
+
+      <Descriptions size="small" column={{xs: 1, sm: 2, md: 3}} style={{marginBottom: 16}}>
+        <Descriptions.Item label="Version">
+          <Typography.Text strong>{info.version}</Typography.Text>
+        </Descriptions.Item>
         <Descriptions.Item label={t('update.label')}>
           <UpdateCheck />
         </Descriptions.Item>
         <Descriptions.Item label="Platform">{`${info.platform} · ${info.cpus} CPUs`}</Descriptions.Item>
-        <Descriptions.Item label="Session">
+        <Descriptions.Item label="Session" span={3}>
           <Typography.Text code copyable>
             {info.sessionId}
           </Typography.Text>
         </Descriptions.Item>
       </Descriptions>
-      <div className="about-star" data-testid="about-star">
-        <Typography.Paragraph>
-          <StarFilled className="star" /> {t('about.star')}
-        </Typography.Paragraph>
-        <Button icon={<GithubOutlined />} href={REPO} target="_blank">
-          {t('about.starButton')}
-        </Button>
-        <Typography.Paragraph type="secondary" className="about-repo">
-          <Typography.Link href={REPO} target="_blank">
-            {REPO.replace('https://', '')}
-          </Typography.Link>
-        </Typography.Paragraph>
+
+      <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16}}>
+        <div
+          style={{
+            border: '1px solid var(--ant-color-border-secondary, rgba(5, 5, 5, 0.06))',
+            borderRadius: 8,
+            padding: 16,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+          }}
+        >
+          <div>
+            <Typography.Paragraph strong style={{marginBottom: 8}}>
+              <HeartFilled style={{color: 'var(--bad)'}} /> {t('about.thanks')}
+            </Typography.Paragraph>
+            <Typography.Paragraph type="secondary" style={{marginBottom: 16}}>
+              {t('about.antd')}
+            </Typography.Paragraph>
+          </div>
+          <div className="about-star" data-testid="about-star" style={{margin: 0}}>
+            <Typography.Paragraph style={{marginBottom: 8}}>
+              <StarFilled className="star" /> {t('about.star')}
+            </Typography.Paragraph>
+            <Button icon={<GithubOutlined />} href={REPO} target="_blank" block type="primary" ghost>
+              {t('about.starButton')}
+            </Button>
+            <Typography.Paragraph type="secondary" className="about-repo" style={{textAlign: 'center', marginTop: 8}}>
+              <Typography.Link href={REPO} target="_blank">
+                {REPO.replace('https://', '')}
+              </Typography.Link>
+            </Typography.Paragraph>
+          </div>
+        </div>
+
+        <div
+          style={{
+            border: '1px solid var(--ant-color-border-secondary, rgba(5, 5, 5, 0.06))',
+            borderRadius: 8,
+            padding: 16,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+          }}
+        >
+          <div>
+            <Typography.Paragraph strong style={{marginBottom: 8}}>
+              Open-Source Credits
+            </Typography.Paragraph>
+            <Rows
+              items={CREDITS}
+              rowKey={([name]) => name}
+              render={([name, license, url]) => (
+                <>
+                  <Typography.Link href={url} target="_blank">
+                    {name}
+                  </Typography.Link>
+                  <Typography.Text type="secondary">{license}</Typography.Text>
+                </>
+              )}
+            />
+          </div>
+          <Typography.Paragraph type="secondary" style={{margin: '12px 0 0', fontSize: 12}}>
+            {t('about.license')}
+          </Typography.Paragraph>
+        </div>
       </div>
-      <Typography.Paragraph strong>
-        <HeartFilled style={{color: 'var(--bad)'}} /> {t('about.thanks')}
-      </Typography.Paragraph>
-      <Typography.Paragraph>{t('about.antd')}</Typography.Paragraph>
-      <Rows
-        items={CREDITS}
-        rowKey={([name]) => name}
-        render={([name, license, url]) => (
-          <>
-            <Typography.Link href={url} target="_blank">
-              {name}
-            </Typography.Link>
-            <Typography.Text type="secondary">{license}</Typography.Text>
-          </>
-        )}
-      />
-      <Typography.Paragraph type="secondary">{t('about.license')}</Typography.Paragraph>
     </Modal>
   )
 }

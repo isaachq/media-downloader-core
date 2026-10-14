@@ -1,5 +1,21 @@
 # Changelog
 
+## App 0.2.0-beta.12 · library 1.12.0
+
+Beta 12: Big O performance optimizations, robust process tree cleanup, and UI/UX refinements. In the core library: guaranteed synchronous cleanup of child processes (eliminating zombie yt-dlp and ffmpeg processes on Windows and POSIX), immediate O(1) hash pool aborts, mutex-protected queue compaction, and fail-safe concurrency slots. In the app: real-time SHA-256 verification progress card with per-file status badges, single reactive toast notification, batch completion alert with 1-click navigation to Finished files, presets with busy guards, and a horizontal 2-column About modal. All emoticons and raw emojis have been replaced across the UI with clean Ant Design vector icons.
+
+**Child process tree termination.** On Windows, exiting or cancelling a download now forcibly terminates the entire process tree using `taskkill /pid <pid> /T /F` synchronously, preventing orphaned background worker processes from locking files or consuming CPU. On POSIX platforms, `SIGKILL` is sent to the process group. Watchdog timers are unref'd to prevent event loop hanging.
+
+**O(1) HashPool aborts.** Cancelled verification tasks in `HashPool` immediately detach and abort before dispatching to worker threads, saving CPU cycles when batches or jobs are cancelled mid-flight.
+
+**QueueStore atomic synchronization.** `QueueStore.load()` now awaits any pending in-flight debounced writes, avoiding race conditions during shutdown or rapid consecutive reload sequences. `PendingJournal` uses sequence counters and promises to prevent file compaction collisions.
+
+**Real-time verification progress card & live tags.** When checking files in the Finished tab, the app displays a dedicated `<Progress status="active" />` card with total counts (`Verificando integridad SHA-256: X de Y`), row-level spinning badges (`<Tag color="processing"><SyncOutlined spin /> Verificando...</Tag>`), and an in-place updating singleton notification toast to avoid toast spam across large playlists.
+
+**Batch completion alert & navigation.** When all jobs in a batch complete, `JobTable` renders a clean success `<Alert>` with a direct action button to switch to `Finished`. In `BatchList`, the `Finished` button is highlighted as primary for completed batches. Native and in-app completion notifications now include a direct action button.
+
+**Horizontal About modal & clean icon design.** The About dialog is redesigned into a balanced horizontal two-column layout separating community acknowledgments from open-source project credits. All emoticons and emoji characters across headers and lists have been replaced with vector SVG icons (`@ant-design/icons`).
+
 ## App 0.2.0-beta.11 · library 1.11.0
 
 Beta 11: Instagram reels without a session the way the apps that "just work"

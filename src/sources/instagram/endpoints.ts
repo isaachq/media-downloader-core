@@ -20,13 +20,20 @@ export const ASBD_ID = '129477'
 
 /**
  * The anonymous routes to one public post, tried before the web client's
- * query (what yt-dlp, cobalt and gallery-dl read, October 2026):
+ * query (what yt-dlp, cobalt, gallery-dl, and Instaloader read):
  *  - `/p/<code>/embed/captioned/`: the embed page, the post as `contextJSON`
  *    → `gql_data.shortcode_media` (a GraphQL node);
+ *  - `/p/<code>/?__a=1&__d=dis`: the web JSON info endpoint (Instaloader route)
+ *    which returns either v1 items or GraphQL shortcode_media directly;
  *  - `<API_ORIGIN>/api/v1/media/<pk>/info/`: the Android app's API, which
  *    answers anonymously for public posts when asked as the app (a v1 item).
+ *
+ * Time Complexity: O(1) string construction.
+ * Space Complexity: O(1) allocation.
  */
 export const EMBED_PATH = (code: string): string => `/p/${code}/embed/captioned/`
+export const WEB_INFO = (code: string): string => `/p/${code}/?__a=1&__d=dis`
+export const REEL_INFO = (code: string): string => `/reel/${code}/?__a=1&__d=dis`
 export const API_ORIGIN = 'https://i.instagram.com'
 export const MEDIA_INFO = (pk: string): string => `/api/v1/media/${pk}/info/`
 /** The Android app, as cobalt and gallery-dl present themselves to its API. */
@@ -37,6 +44,8 @@ export const APP_USER_AGENT =
 export const PROFILE_INFO = '/api/v1/users/web_profile_info/'
 /** `?reel_ids=<user id>` (or `highlight:<id>`) → the current stories. Signed-in sessions only. */
 export const REELS_MEDIA = '/api/v1/feed/reels_media/'
+/** Highlights tray: lists all highlights of a user. Signed-in sessions only. */
+export const HIGHLIGHTS_TRAY = (userId: string): string => `/api/v1/highlights/${userId}/highlights_tray/`
 /** `/api/v1/feed/user/<user id>/?count=12&max_id=<cursor>` → a page of posts. Signed-in sessions only. */
 export const USER_FEED = '/api/v1/feed/user/'
 /** `POST doc_id=…&variables=…` → a Relay query result. */

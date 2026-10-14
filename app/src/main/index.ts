@@ -337,7 +337,19 @@ function createWindow(): void {
   window.once('ready-to-show', () => {
     if (bounds.maximized) window?.maximize()
     window?.show()
+    window?.focus()
+    window?.setAlwaysOnTop(true)
+    window?.setAlwaysOnTop(false)
   })
+  setTimeout(() => {
+    if (window && !window.isVisible()) {
+      if (bounds.maximized) window.maximize()
+      window.show()
+      window.focus()
+      window.setAlwaysOnTop(true)
+      window.setAlwaysOnTop(false)
+    }
+  }, 1000).unref()
   // remember size and position for the next launch (normal bounds even when maximized)
   // the hidden TikTok reader must never keep the app alive on its own
   window.on('closed', () => {
@@ -1080,11 +1092,19 @@ else {
     tiktokBrowser.close()
     youtube.close()
     for (const browser of [...playerBrowsers, ...metaBrowsers]) browser.close()
+
+    // Safety watchdog: ensure Electron never gets stuck in the background as a zombie process
+    const forceExitTimer = setTimeout(() => {
+      app.exit(0)
+    }, 4000)
+    forceExitTimer.unref()
+
     // saves pending batches and jobs, stops processes, keeps partial downloads for next launch
     void scheduler
       .dispose()
       .then(() => engine.dispose())
       .finally(() => {
+        clearTimeout(forceExitTimer)
         coalescer.dispose()
         app.quit()
       })

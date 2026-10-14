@@ -1,8 +1,8 @@
-import {App as AntApp, ConfigProvider, Layout, Tabs, Typography, theme} from 'antd'
+import {App as AntApp, Button, ConfigProvider, Layout, Tabs, Typography, theme} from 'antd'
 import enUS from 'antd/locale/en_US'
 import esES from 'antd/locale/es_ES'
 import type {BatchSnapshot, Diagnosis} from 'media-downloader-core'
-import {useCallback, useEffect, useMemo, useRef, useState} from 'react'
+import {type ReactNode, useCallback, useEffect, useMemo, useRef, useState} from 'react'
 import {type AppInfo, type AppSettings, pickLanguage} from '../../shared/contract'
 import {api} from './api'
 import {BOOT_PHASES, type BootPhase, type BootProgress, bootErrorMessage, retrying} from './boot'
@@ -50,20 +50,20 @@ function useSystemDark(): boolean {
 function useNotify() {
   const {notification} = AntApp.useApp()
   return useCallback(
-    (kind: 'success' | 'warning' | 'error', title: string, description: string) => {
+    (kind: 'success' | 'warning' | 'error', title: string, description: string, actions?: ReactNode) => {
       if (!document.hasFocus() && typeof window.Notification === 'function') {
         const shown = new window.Notification(title, {body: description})
         shown.onclick = () => void api().focusWindow()
         return
       }
-      notification[kind]({title, description})
+      notification[kind]({title, description, actions})
     },
     [notification],
   )
 }
 
 /** Batch-finished notifications: fired once, on the transition into a final status. */
-function useBatchNotifications(t: Translate, settings: AppSettings) {
+function useBatchNotifications(t: Translate, settings: AppSettings, onShowFinished?: (batchId: string) => void) {
   const notify = useNotify()
   const seen = useRef(new Map<string, BatchSnapshot['status']>())
   return useCallback(
@@ -90,11 +90,16 @@ function useBatchNotifications(t: Translate, settings: AppSettings) {
               succeeded: batch.jobs.succeeded,
               total,
             }),
+            onShowFinished && batch.jobs.succeeded > 0 ? (
+              <Button size="small" type="primary" onClick={() => onShowFinished(batch.id)}>
+                {t('tabs.finished')}
+              </Button>
+            ) : undefined,
           )
         }
       }
     },
-    [settings.notifications, settings.validation, notify, t],
+    [settings.notifications, settings.validation, notify, t, onShowFinished],
   )
 }
 
@@ -136,7 +141,6 @@ function Shell({
   readonly target: AppStore
 }) {
   const t = useMemo(() => translator(settings.language), [settings.language])
-  const notify = useBatchNotifications(t, settings)
   const [panel, setPanel] = useState<'logs' | 'settings' | 'about' | 'report' | 'failed' | undefined>()
   const [tab, setTab] = useState<MainTab>('batches')
   // the first-steps guide: once on the first launch, then from Header → Guide
@@ -156,6 +160,8 @@ function Shell({
     // from the top of the window (Sync Up), bring the tabs into view
     document.querySelector('.main-tabs')?.scrollIntoView?.({behavior: 'smooth', block: 'start'})
   }, [])
+  const onShowFinished = useCallback((batchId: string) => showBatch('finished', batchId), [showBatch])
+  const notify = useBatchNotifications(t, settings, onShowFinished)
   const [diagnosis, setDiagnosis] = useState(initialDiagnosis)
   const [setup, setSetup] = useState<{open: boolean; force: boolean}>({open: !initialDiagnosis.ready, force: false})
 

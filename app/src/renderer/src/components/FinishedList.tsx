@@ -1,5 +1,6 @@
 import {
   ClearOutlined,
+  ClockCircleOutlined,
   CloseCircleFilled,
   CopyOutlined,
   DeleteOutlined,
@@ -8,8 +9,23 @@ import {
   PlayCircleOutlined,
   SafetyCertificateOutlined,
   SearchOutlined,
+  SyncOutlined,
 } from '@ant-design/icons'
-import {App as AntApp, Button, Empty, Flex, Input, Popconfirm, Space, Table, Tag, Tooltip, Typography} from 'antd'
+import {
+  App as AntApp,
+  Button,
+  Card,
+  Empty,
+  Flex,
+  Input,
+  Popconfirm,
+  Progress,
+  Space,
+  Table,
+  Tag,
+  Tooltip,
+  Typography,
+} from 'antd'
 import {useCallback, useEffect, useRef, useState} from 'react'
 import {
   FINISHED_INTEGRITY,
@@ -35,8 +51,15 @@ const LIVE_MS = 2000
 const SEARCH_MS = 250
 
 /** A finished file: verified (a check ran), not checked (checksum only), checksum (older record), or gone / changed on disk. */
-function FileTag({entry}: {readonly entry: FinishedEntry}) {
+function FileTag({entry, isChecking}: {readonly entry: FinishedEntry; readonly isChecking?: boolean}) {
   const t = useT()
+  if (isChecking) {
+    return (
+      <Tag color="processing" icon={<SyncOutlined spin />} data-testid="finished-validating">
+        {t('finished.checking')}
+      </Tag>
+    )
+  }
   // damaged at the source: kept, never downloaded again — why, on hover
   if (entry.damaged) {
     return (
@@ -173,7 +196,18 @@ export function FinishedList({
     setPage(1)
     setSelected([])
   }, [batchId])
-  useEffect(() => api().onVerifyProgress(setChecking), [])
+  useEffect(
+    () =>
+      api().onVerifyProgress(progress => {
+        setChecking(progress)
+        void message.loading({
+          content: t('finished.verifying', {done: progress.done, total: progress.total}),
+          key: 'verify-progress',
+          duration: 0,
+        })
+      }),
+    [t, message],
+  )
 
   /** What the filters show (words, batch, header filters). */
   const shown = () => ({
@@ -188,15 +222,23 @@ export function FinishedList({
   const filtered = integrity.length > 0 || size.length > 0
 
   const verify = async () => {
-    setChecking({done: 0, total: selected.length || data?.total || 0})
+    const totalCount = selected.length || data?.total || 0
+    setChecking({done: 0, total: totalCount})
+    void message.loading({
+      content: t('finished.verifying', {done: 0, total: totalCount}),
+      key: 'verify-progress',
+      duration: 0,
+    })
     try {
       const summary = await api().verifyFinished(scope())
       const text = t('finished.verifyResult', {...summary})
+      message.destroy('verify-progress')
       if (summary.missing + summary.changed + summary.corrupted > 0)
         modal.warning({title: t('finished.verify'), content: text})
-      else void message.success(text)
+      else void message.success({content: text, key: 'verify-progress', duration: 4})
       void load(true)
     } finally {
+      message.destroy('verify-progress')
       setChecking(undefined)
     }
   }
@@ -296,6 +338,34 @@ export function FinishedList({
           </Typography.Text>
         ) : null}
       </Flex>
+      {checking ? (
+        <Card
+          size="small"
+          style={{
+            background: 'var(--ant-color-fill-quaternary, rgba(0, 0, 0, 0.02))',
+            border: '1px solid var(--ant-color-primary-border, #91caff)',
+            borderRadius: 8,
+          }}
+        >
+          <Flex justify="space-between" align="center" style={{marginBottom: 6}}>
+            <Space size={8}>
+              <SyncOutlined spin style={{color: 'var(--ant-color-primary)'}} />
+              <Typography.Text strong>
+                {t('finished.verifying', {done: checking.done, total: checking.total})}
+              </Typography.Text>
+            </Space>
+            <Typography.Text type="secondary" className="mono">
+              {Math.round((checking.done / Math.max(1, checking.total)) * 100)}%
+            </Typography.Text>
+          </Flex>
+          <Progress
+            percent={Math.round((checking.done / Math.max(1, checking.total)) * 100)}
+            status="active"
+            size="small"
+            showInfo={false}
+          />
+        </Card>
+      ) : null}
       {data && data.total > 0 ? (
         <Typography.Text type="secondary" data-testid="finished-summary">
           {t(data.total === 1 ? 'finished.summaryOne' : 'finished.summary', {
@@ -371,7 +441,13 @@ export function FinishedList({
             sortOrder: sort === 'newest' ? 'descend' : sort === 'oldest' ? 'ascend' : null,
             render: (_, entry) => moment(entry.completedAt, lang),
           },
-          {title: '⏱', key: 'length', width: 80, align: 'right', render: (_, entry) => clock(entry.duration)},
+          {
+            title: <ClockCircleOutlined aria-label="Duration" />,
+            key: 'length',
+            width: 80,
+            align: 'right',
+            render: (_, entry) => clock(entry.duration),
+          },
           {
             title: t('finished.col.size'),
             key: 'size',
@@ -393,7 +469,10 @@ export function FinishedList({
               value: state,
             })),
             filteredValue: [...integrity],
-            render: (_, entry) => <FileTag entry={entry} />,
+            render: (_, entry) => {
+              const isEntryChecking = Boolean(checking && (selected.length === 0 || selected.includes(entry.key)))
+              return <FileTag entry={entry} isChecking={isEntryChecking} />
+            },
           },
           {
             title: t('job.actions'),

@@ -1254,7 +1254,8 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     await this.#queue.freeze()
     for (const analysis of this.#analyses) analysis.abort()
     for (const job of this.#jobs.values()) job.controller?.abort()
-    await this.#pool.whenIdle()
+    await Promise.race([this.#pool.whenIdle(), new Promise<void>(resolve => setTimeout(resolve, 3000).unref())])
+    this.#pool.clear()
     this.#log('debug', 'engine disposed')
     // cleanup is best effort: one failing step (e.g. an unreadable folder) must not skip the others
     this.#attestation?.close()
@@ -1266,6 +1267,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       fs.rm(this.#cacheDir, {recursive: true, force: true}),
     ])
     for (const job of this.#jobs.values()) job.release()
+    for (const job of this.#awaitingCheck.values()) job.release()
     this.#jobs.clear()
     this.#finished.clear()
     this.#awaitingCheck.clear()
@@ -1806,6 +1808,9 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
    * Keep memory flat over long sessions: forget the oldest finished jobs
    * beyond the limit. The Set is insertion-ordered, so the oldest is its
    * first value: O(1) per finished job.
+   *
+   * Time Complexity: O(1) amortized per finished job eviction.
+   * Space Complexity: O(1) auxiliary space.
    */
   #releaseOldFinished(): void {
     while (this.#finished.size > this.#settings.retainFinishedJobs) {
@@ -1813,16 +1818,30 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       this.#finished.delete(oldest)
       const job = this.#jobs.get(oldest)
       if (job?.validationPending) this.#awaitingCheck.set(oldest, job)
+      else job?.release()
       this.#jobs.delete(oldest)
     }
   }
 
+  /**
+   * Drops a job from memory and releases all held timers/controllers.
+   *
+   * Time Complexity: O(1).
+   * Space Complexity: O(1).
+   */
   #forget(id: JobId): void {
+    const job = this.#jobs.get(id)
+    job?.release()
     this.#jobs.delete(id)
     this.#finished.delete(id)
   }
 
-  /** Status changes go out at once; progress at most every `progressIntervalMs` per job. */
+  /**
+   * Status changes go out at once; progress at most every `progressIntervalMs` per job.
+   *
+   * Time Complexity: O(1) per emission check.
+   * Space Complexity: O(1) auxiliary space.
+   */
   #emit(job: Job, force: boolean): void {
     const wait = this.#settings.progressIntervalMs - (Date.now() - job.lastEmit)
     if (force || wait <= 0) {
@@ -1835,6 +1854,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
         job.emitTimer = undefined
         if (!job.terminal) this.#emit(job, true)
       }, wait)
+      job.emitTimer.unref()
     }
   }
 

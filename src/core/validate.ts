@@ -291,9 +291,17 @@ async function readThrough(opts: ValidateOptions, total: number) {
   if (result.aborted) throw cancelledError()
 
   const issues: ValidationIssue[] = []
-  const errors = lastLines(result.stderr, 5)
+  const rawStderr = lastLines(result.stderr, 5)
+  const errors = rawStderr
+    .split('\n')
+    .filter(line => !line.startsWith('[null @'))
+    .join('\n')
+    .trim()
+
   if (result.code !== 0) {
-    issues.push(issue('decode-failed', `Decoding failed: ${errors || `ffmpeg exit ${result.code}`}`, {details: errors}))
+    issues.push(
+      issue('decode-failed', `Decoding failed: ${rawStderr || `ffmpeg exit ${result.code}`}`, {details: rawStderr}),
+    )
   } else if (errors) {
     issues.push(issue('decode-errors', `Decoder reported errors: ${errors}`, {details: errors}))
   }

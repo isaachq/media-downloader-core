@@ -11,11 +11,13 @@ import type {BrowserAssist} from '../src/sources/browser.js'
 import {
   checkStatus,
   codeToPk,
+  pkToCode,
   readEmbedPage,
   readGraphNode,
   readMediaInfo,
   readPostPage,
   readV1Item,
+  readWebInfo,
 } from '../src/sources/instagram/data.js'
 import {isInstagramListing, parseInstagramLink} from '../src/sources/instagram/links.js'
 import {type InstagramOptions, InstagramSource} from '../src/sources/instagram/source.js'
@@ -294,13 +296,49 @@ describe('Instagram anonymous routes', () => {
     return 'none'
   }
 
-  it('shortcode → media id, the way the app API wants it', () => {
+  it('shortcode ↔ media id bi-directional conversion', () => {
     assert.equal(codeToPk('Dbn-XJhk0_-'), '3956405067326902270')
+    assert.equal(pkToCode('3956405067326902270'), 'Dbn-XJhk0_-')
+    assert.equal(pkToCode(3956405067326902270n), 'Dbn-XJhk0_-')
+    assert.equal(pkToCode('1'), 'B')
+    assert.equal(codeToPk('B'), '1')
     assert.match(codeToPk('CXFxcdXMxM3'), /^\d{16,20}$/)
     assert.equal(
       problemOf(() => codeToPk('bad code')),
       'format-changed',
     )
+  })
+
+  it('web info parser handles items (v1) and shortcode_media (GraphQL) structures', () => {
+    const webV1 = readWebInfo({
+      items: [
+        {
+          pk: '100',
+          code: 'WEBV1',
+          media_type: 1,
+          taken_at: 1_700_000_000,
+          user: {username: 'webuser'},
+          image_versions2: {candidates: [{url: 'https://cdn/web.jpg', width: 1080, height: 1080}]},
+        },
+      ],
+    })
+    assert.equal(webV1.id, '100')
+    assert.equal(webV1.author, 'webuser')
+
+    const webGql = readWebInfo({
+      graphql: {
+        shortcode_media: {
+          id: '101',
+          shortcode: 'WEBGQL',
+          taken_at_timestamp: 1_700_000_000,
+          owner: {username: 'gqluser'},
+          display_url: 'https://cdn/gql.jpg',
+          dimensions: {width: 1080, height: 1080},
+        },
+      },
+    })
+    assert.equal(webGql.id, '101')
+    assert.equal(webGql.author, 'gqluser')
   })
 
   it('the embed page: contextJSON → the reel, its caption without trailing tags, one H.264 rendition', () => {

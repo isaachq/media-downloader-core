@@ -16,7 +16,13 @@ import {type ArchiveEntry, archiveKey, DownloadArchive} from './core/archive.js'
 import {ensureContainer, extractAudio, type MediaTags, writeTags} from './core/convert.js'
 import {BrowserCookies, type CookieRecord, exportBrowserCookies, jarCopy, parseNetscape} from './core/cookies.js'
 import {jobTier, peakBytes, TIER_WEIGHT} from './core/cost.js'
-import {type DamagedEntry, type DamagedLookup, DamagedRegistry, isSourceDamage} from './core/damaged.js'
+import {
+  type DamagedEntry,
+  type DamagedLookup,
+  DamagedRegistry,
+  isSourceDamage,
+  isTransformationDefect,
+} from './core/damaged.js'
 import {type DownloadedInfo, runYtDlp} from './core/download.js'
 import {cancelledError, DownloadError, isRetryable, toJobError} from './core/errors.js'
 import {
@@ -1334,6 +1340,16 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
 
           // the file came down whole and is broken: once more from scratch to be sure, then it is the source
           const issues = failure.code === 'validation' ? issueCodes(failure.params?.['issues']) : []
+          if (isTransformationDefect(issues)) {
+            job.endAttempt(jobError)
+            this.#log(
+              'error',
+              `attempt ${attempt}/${job.maxAttempts}: deterministic format defect (${failure.message}) — not retrying download`,
+              job,
+              {code: failure.code},
+            )
+            throw failure
+          }
           if (isSourceDamage(issues) && ++broken >= 2) {
             const reason = failure.message.replace(/^The file failed validation: /, '')
             await this.damaged.add({
@@ -1551,9 +1567,13 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
         ffprobe: bins.ffprobe.exe,
         input: file,
         container: profile.container,
+        maxHeight: profile.maxHeight,
         expectAudio,
         threads: this.#cpuShare(job),
         signal,
+        onKind: kind => {
+          if (kind !== 'none') this.#log('info', `${kind}ing ${profile.container.toUpperCase()}`, job)
+        },
         onStart: () => this.#update(job, {status: 'converting', progress: {fraction: 0}}, true),
         onProgress: fraction => this.#update(job, {status: 'converting', progress: {fraction}}),
       })
@@ -1563,6 +1583,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     } else if (source) {
       // native sources deliver video: the soundtrack is extracted (and tagged) here
       this.#step(job, 'convert')
+      this.#log('info', `extracting ${profile.container.toUpperCase()}`, job)
       this.#update(job, {status: 'converting', progress: {fraction: 0}}, true)
       file = await extractAudio({
         ffmpeg: bins.ffmpeg.exe,
@@ -1595,6 +1616,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
           file,
           rules: rulesFor(profile),
           level: later ? 'none' : this.#settings.validation,
+          maxHeight: profile.kind === 'video' ? profile.maxHeight : undefined,
           expectedDuration: info.duration ?? request.duration,
           expectAudio,
           threads: this.#cpuShare(job),

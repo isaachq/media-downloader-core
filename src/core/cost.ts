@@ -1,4 +1,4 @@
-import type {FormatChoice, FormatProfile, JobTier} from '../types.js'
+import type {FormatChoice, FormatProfile, JobTier, ProcessingKind} from '../types.js'
 
 /**
  * How much of the ⌊CPUs/2⌋ capacity a job occupies while it runs. A pool of
@@ -12,6 +12,7 @@ export type CostInput = {
   /** Seconds. */
   readonly duration?: number | undefined
   readonly requiresConversion?: boolean | undefined
+  readonly processingKind?: ProcessingKind | undefined
 }
 
 /**
@@ -19,7 +20,7 @@ export type CostInput = {
  *   normal — under `longMinutes` (default 30), or any audio download;
  *   long   — a video of `longMinutes` or more: big files, long validation;
  *   heavy  — a long video that is also 1440p+ (or uncapped) or needs a local
- *            conversion: CPU-bound for minutes to hours.
+ *            transcoding conversion: CPU-bound for minutes to hours.
  * Audio stays normal: even a 2-hour podcast is ~100 MB and decodes in seconds.
  */
 export function jobTier(input: CostInput, longMinutes = 30): JobTier {
@@ -27,7 +28,9 @@ export function jobTier(input: CostInput, longMinutes = 30): JobTier {
   const long = (input.duration ?? 0) >= longMinutes * 60
   if (!long) return 'normal'
   const height = input.profile.maxHeight ?? Number.POSITIVE_INFINITY
-  return input.requiresConversion || height >= 1440 ? 'heavy' : 'long'
+  const isHeavyConversion =
+    input.processingKind !== undefined ? input.processingKind === 'transcode' : (input.requiresConversion ?? false)
+  return isHeavyConversion || height >= 1440 ? 'heavy' : 'long'
 }
 
 /**

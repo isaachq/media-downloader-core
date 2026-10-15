@@ -124,6 +124,8 @@ export type ValidateOptions = {
   readonly file: string
   readonly rules: CodecRules
   readonly level: ValidationLevel
+  /** Maximum acceptable vertical resolution / short side (e.g. 1080). */
+  readonly maxHeight?: number | undefined
   /** Duration announced by the site, in seconds. */
   readonly expectedDuration?: number | undefined
   /** Whether the source had audio — some clips (GIF-like posts) legitimately don't. */
@@ -212,6 +214,16 @@ function structuralIssues(summary: ProbeSummary, opts: ValidateOptions): Validat
   const videoCodec = summary.video?.codec_name ?? 'unknown'
   const audioCodec = summary.audio?.codec_name ?? 'unknown'
 
+  const ext = path.extname(opts.file).slice(1).toLowerCase()
+  if (ext && ext !== opts.rules.ext) {
+    issues.push(
+      issue('unexpected-container', `File extension .${ext} does not match expected .${opts.rules.ext}.`, {
+        extension: ext,
+        expected: opts.rules.ext,
+      }),
+    )
+  }
+
   if (m.container) {
     issues.push(
       issue('unexpected-container', `Unexpected container: ${summary.container}.`, {container: summary.container}),
@@ -233,6 +245,20 @@ function structuralIssues(summary: ProbeSummary, opts: ValidateOptions): Validat
     issues.push(
       issue('unexpected-audio-codec', `Audio codec ${audioCodec} does not match the profile.`, {codec: audioCodec}),
     )
+  }
+
+  if (opts.maxHeight !== undefined && summary.video) {
+    const w = summary.video.width ?? 0
+    const h = summary.video.height ?? 0
+    const res = w > 0 && h > 0 ? Math.min(w, h) : h
+    if (res > opts.maxHeight) {
+      issues.push(
+        issue('resolution-exceeded', `Resolution ${res}p exceeds the maximum allowed height (${opts.maxHeight}p).`, {
+          actual: res,
+          maxHeight: opts.maxHeight,
+        }),
+      )
+    }
   }
 
   const actual = summary.duration
@@ -294,7 +320,7 @@ async function readThrough(opts: ValidateOptions, total: number) {
   const rawStderr = lastLines(result.stderr, 5)
   const errors = rawStderr
     .split('\n')
-    .filter(line => !line.startsWith('[null @'))
+    .filter(line => !isBenignStderrLine(line))
     .join('\n')
     .trim()
 
@@ -306,6 +332,16 @@ async function readThrough(opts: ValidateOptions, total: number) {
     issues.push(issue('decode-errors', `Decoder reported errors: ${errors}`, {details: errors}))
   }
   return {reached, issues}
+}
+
+function isBenignStderrLine(line: string): boolean {
+  const trimmed = line.trim()
+  if (!trimmed) return true
+  if (trimmed.startsWith('[null @')) return true
+  // FFmpeg's Matroska/WebM demuxer passes extradata or trailing discard padding to the Opus decoder,
+  // which logs this parser warning even when the stream is completely valid and 100% decoded.
+  if (/^\[opus\s*@\s*0x?[0-9a-fA-F]+\]\s*Error parsing Opus packet header\./i.test(trimmed)) return true
+  return false
 }
 
 /**

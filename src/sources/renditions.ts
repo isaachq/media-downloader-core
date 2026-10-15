@@ -1,4 +1,4 @@
-import type {AudioContainer, FormatChoice, FormatProfile, VideoContainer} from '../types.js'
+import type {AudioContainer, FormatChoice, FormatProfile, ProcessingKind, VideoContainer} from '../types.js'
 
 /**
  * Encodings of one video as native sources see them — a few progressive MP4
@@ -68,7 +68,8 @@ export function audioChoices(duration: number | undefined): FormatChoice[] {
         profile: {kind: 'audio', container},
         label: `Audio · ${container.toUpperCase()}`,
         estimatedBytes: duration ? Math.ceil((AUDIO_RATE[container] * duration) / 8) : undefined,
-        requiresConversion: false,
+        requiresConversion: true,
+        processingKind: 'extract',
       }) satisfies FormatChoice,
   )
 }
@@ -84,12 +85,18 @@ export function renditionChoices(renditions: readonly Rendition[], duration: num
     resolutions.map(resolution => {
       const profile: FormatProfile = {kind: 'video', container, maxHeight: resolution}
       const best = rankRenditions(renditions, profile)[0]
+      const kind: ProcessingKind =
+        container === 'webm' || (container === 'mp4' && best?.codec !== 'h264')
+          ? 'transcode'
+          : container === 'mkv'
+            ? 'remux'
+            : 'none'
       return {
         profile,
         label: `${resolution}p · ${container.toUpperCase()}${best?.codec === 'h265' ? ' · H.265' : ''}`,
         estimatedBytes: best?.bytes,
-        // webm always transcodes (VP9 / Opus); mp4 only when no H.264 fits the cap
-        requiresConversion: container === 'webm' || (container === 'mp4' && best?.codec !== 'h264'),
+        requiresConversion: kind !== 'none',
+        processingKind: kind,
       } satisfies FormatChoice
     }),
   )

@@ -1,5 +1,16 @@
 # Changelog
-
+ 
+## Library 1.13.0
+ 
+Version 1.13.0 addresses format regression defects, introduces comprehensive 26-profile format guarantees, explicit processing kinds, resolution downscaling, and fail-fast handling for transformation defects:
+ 
+- **MKV conversion & remuxing:** Requests for MKV output (e.g. `video:mkv:360`) are now guaranteed to produce real Matroska container files (`.mkv`). Source MP4/WebM streams are remuxed with stream copy (`-c copy`) when codecs are compliant, avoiding unnecessary generational loss. Primary streams are explicitly mapped (`-map 0:V:0 -map 0:a? -map 0:s?`), preventing attached picture covers from being promoted to primary video.
+- **Explicit `ProcessingKind`:** Added `ProcessingKind = 'none' | 'remux' | 'transcode' | 'extract'`. Native renditions and player-page sources declare accurate processing kinds, distinguishing I/O-bound stream copy remuxing from CPU-intensive video/audio transcoding in cost calculations, job tiering, and disk space estimation.
+- **Resolution downscaling contract:** When a requested resolution cap (`maxHeight`) cannot be fulfilled natively by the remote source, the smallest stream above the cap is downloaded and downscaled locally via FFmpeg (`scale=-2:targetShort` for landscape, `scale=targetShort:-2` for portrait), guaranteeing `height <= maxHeight` while preserving aspect ratio, even dimensions, and orientation without artificial upscaling.
+- **Deterministic defect classification:** Added `isTransformationDefect()` to classify post-conversion container, codec, or resolution mismatches as deterministic defects rather than transient network errors or source media corruption. Failed conversions fail immediately with structured issues, completely eliminating wasteful retry storms that re-download the same identical source.
+- **Opus audio extraction optimization:** `extractAudio` stream-copies Opus bitstreams directly when extracting from Opus audio sources, eliminating re-encoding loss.
+- **Full 26-profile conformance test suite:** Introduced synthetic media lab generator (`test/helpers/media-lab.ts`) and data-driven 26-profile conformance suite (`test/conformance-26.test.ts`) validating container, codec, resolution cap, and full bitstream integrity across all MP4, WebM, MKV, and audio targets.
+ 
 ## App 0.2.0-beta.12 · library 1.12.0
 
 Beta 12: Big O performance optimizations, robust process tree cleanup, and UI/UX refinements. In the core library: guaranteed synchronous cleanup of child processes (eliminating zombie yt-dlp and ffmpeg processes on Windows and POSIX), immediate O(1) hash pool aborts, mutex-protected queue compaction, and fail-safe concurrency slots. In the app: real-time SHA-256 verification progress card with per-file status badges, single reactive toast notification, batch completion alert with 1-click navigation to Finished files, presets with busy guards, and a horizontal 2-column About modal. All emoticons and raw emojis have been replaced across the UI with clean Ant Design vector icons.

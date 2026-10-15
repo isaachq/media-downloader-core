@@ -566,7 +566,7 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
       ...facts,
       requiresConversion,
       estimatedBytes: estimateBytes(profile, analysis.choices, duration),
-      tier: jobTier({profile, duration, requiresConversion}, this.#longMinutes),
+      tier: jobTier({profile, duration, requiresConversion, processingKind: choice?.processingKind}, this.#longMinutes),
     })
   }
 

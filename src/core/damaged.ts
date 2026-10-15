@@ -36,6 +36,24 @@ export const SOURCE_DAMAGE: ReadonlySet<ValidationIssueCode> = new Set<Validatio
 export const isSourceDamage = (issues: readonly ValidationIssueCode[]): boolean =>
   issues.length > 0 && issues.some(code => SOURCE_DAMAGE.has(code))
 
+/**
+ * Issues that indicate deterministic conversion / format / resolution contract
+ * defects rather than source corruption: retrying a download will never fix them.
+ */
+export const TRANSFORMATION_DEFECTS: ReadonlySet<ValidationIssueCode> = new Set<ValidationIssueCode>([
+  'unexpected-container',
+  'unexpected-video',
+  'unexpected-video-codec',
+  'unexpected-audio-codec',
+  'resolution-exceeded',
+  'missing-video',
+  'missing-audio',
+])
+
+/** Whether these validation issues represent a deterministic transformation defect. */
+export const isTransformationDefect = (issues: readonly ValidationIssueCode[]): boolean =>
+  issues.length > 0 && issues.some(code => TRANSFORMATION_DEFECTS.has(code)) && !isSourceDamage(issues)
+
 const mediaKey = (extractor: string, mediaId: string): string => `${extractor.toLowerCase()}:${mediaId}`
 const urlKey = (url: string): string => `url:${url}`
 

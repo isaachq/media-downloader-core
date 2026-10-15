@@ -1,6 +1,6 @@
 {
   "name": "media-downloader-core",
-  "version": "1.12.0",
+  "version": "1.13.0",
   "description": "Download engine for heavy workloads (many videos, huge playlists): yt-dlp + ffmpeg on a CPUs/2 worker pool, O(1) hot paths, codec-guaranteed formats and full integrity validation.",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -63,7 +63,9 @@
     "url": "git+https://github.com/isaachq/media-downloader-core.git"
   },
   "homepage": "https://github.com/isaachq/media-downloader-core#readme",
-  "bugs": "https://github.com/isaachq/media-downloader-core/issues",
+  "bugs": {
+    "url": "https://github.com/isaachq/media-downloader-core/issues"
+  },
   "keywords": [
     "media-backup",
     "playlist-archiver",
@@ -72,5 +74,53 @@
     "ffmpeg",
     "electron",
     "typescript"
-  ]
+  ],
+  "directories": {
+    "doc": "docs",
+    "example": "examples",
+    "test": "test"
+  },
+  "dependencies": {
+    "acorn": "^8.19.0",
+    "any-promise": "^1.3.0",
+    "bundle-require": "^5.1.0",
+    "cac": "^6.7.14",
+    "chokidar": "^4.0.3",
+    "commander": "^4.1.1",
+    "confbox": "^0.1.8",
+    "consola": "^3.4.2",
+    "debug": "^4.4.3",
+    "esbuild": "^0.27.7",
+    "fdir": "^6.5.0",
+    "fix-dts-default-cjs-exports": "^1.0.1",
+    "joycon": "^3.1.1",
+    "lilconfig": "^3.1.3",
+    "lines-and-columns": "^1.2.4",
+    "load-tsconfig": "^0.2.5",
+    "magic-string": "^0.30.21",
+    "media-downloader-core": "file:media-downloader-core-1.13.0.tgz",
+    "mlly": "^1.8.2",
+    "ms": "^2.1.3",
+    "mz": "^2.7.0",
+    "object-assign": "^4.1.1",
+    "pathe": "^2.0.3",
+    "picocolors": "^1.1.1",
+    "picomatch": "^4.0.7",
+    "pirates": "^4.0.7",
+    "pkg-types": "^1.3.1",
+    "postcss-load-config": "^6.0.1",
+    "readdirp": "^4.1.2",
+    "resolve-from": "^5.0.0",
+    "rollup": "^4.64.5",
+    "source-map": "^0.7.6",
+    "sucrase": "^3.35.1",
+    "thenify": "^3.3.1",
+    "thenify-all": "^1.6.0",
+    "tinyexec": "^0.3.2",
+    "tinyglobby": "^0.2.17",
+    "tree-kill": "^1.2.2",
+    "ts-interface-checker": "^0.1.13",
+    "ufo": "^1.6.4",
+    "undici-types": "^6.21.0"
+  }
 }

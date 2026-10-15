@@ -88,21 +88,19 @@ export function SettingsDrawer({open, onClose, onDoctor, onReinstall}: Props) {
           }}
         >
           <Typography.Text strong style={{display: 'block', marginBottom: 8}}>
-            Entorno y Recursos
+            {t('settings.env')}
           </Typography.Text>
           <Space orientation="vertical" size={4} style={{width: '100%'}}>
             <Flex justify="space-between" align="center">
-              <Typography.Text type="secondary">Versión Core:</Typography.Text>
+              <Typography.Text type="secondary">{t('settings.env.version')}</Typography.Text>
               <Tag color="blue">{info.version}</Tag>
             </Flex>
             <Flex justify="space-between" align="center">
-              <Typography.Text type="secondary">Concurrencia:</Typography.Text>
-              <Typography.Text code>
-                {cap} hilos / {info.cpus} CPUs
-              </Typography.Text>
+              <Typography.Text type="secondary">{t('settings.env.concurrency')}</Typography.Text>
+              <Typography.Text code>{t('settings.env.threads', {cap, cpus: info.cpus})}</Typography.Text>
             </Flex>
             <Flex justify="space-between" align="center">
-              <Typography.Text type="secondary">Plataforma:</Typography.Text>
+              <Typography.Text type="secondary">{t('settings.env.platform')}</Typography.Text>
               <Typography.Text>{info.platform}</Typography.Text>
             </Flex>
           </Space>

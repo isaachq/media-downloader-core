@@ -34,11 +34,15 @@ export type FakeBinaries = {
  * Cookies: '--cookies-from-browser B --cookies F … mdc:cookies' exports a jar (B starting "unreadable"
  * fails like a browser yt-dlp can't read); every export is counted in F's folder (exports.log).
  * A run is signed in with --cookies-from-browser, or --cookies naming a jar with a SID cookie.
+ * Real media (the nightly matrix, with the real ffmpeg beside this fake): MDC_FAKE_MEDIA_VIDEO
+ * is copied as the video download, MDC_FAKE_MEDIA_AUDIO as the audio one — converted to the
+ * --audio-format asked with MDC_FAKE_FFMPEG when that is set, as yt-dlp's postprocessor would.
  */
 const FAKE_YTDLP = `
 const fs = require('node:fs')
 const path = require('node:path')
 const args = process.argv.slice(2)
+const DURATION = Number(process.env.MDC_FAKE_MEDIA_DURATION) || 10
 if (args[0] === '--version') { console.log('2099.01.01'); process.exit(0) }
 
 if (args.includes('--cookies-from-browser') && args[args.length - 1] === 'mdc:cookies') {
@@ -109,11 +113,11 @@ if (args.includes('--dump-single-json')) {
       : ['e1', 'e2', 'e3']
     const passOn = ['dur', 'size'].map(k => [k, new URL(url).searchParams.get(k)]).filter(([, v]) => v).map(([k, v]) => k + '=' + v).join('&')
     const end = args.includes('--playlist-end') ? Number(args[args.indexOf('--playlist-end') + 1]) : ids.length
-    const entries = ids.slice(0, end).map(e => ({_type: 'url', id: e, url: 'https://fake.test/' + e + (passOn ? '?' + passOn : ''), title: 'Entry ' + e, duration: 10, ie_key: 'Fake'}))
+    const entries = ids.slice(0, end).map(e => ({_type: 'url', id: e, url: 'https://fake.test/' + e + (passOn ? '?' + passOn : ''), title: 'Entry ' + e, duration: DURATION, ie_key: 'Fake'}))
     console.log(JSON.stringify({_type: 'playlist', id: 'PL1', title: 'Fake List', extractor_key: 'Fake', entries}))
   } else {
     const video = {format_id: '137', ext: 'mp4', vcodec: 'avc1.640028', acodec: 'none', height: 1080, tbr: 4000, filesize: 5000}
-    console.log(JSON.stringify({id, title: 'Title ' + id, extractor_key: 'Fake', duration: 10, webpage_url: url, formats: [audio, video]}))
+    console.log(JSON.stringify({id, title: 'Title ' + id, extractor_key: 'Fake', duration: DURATION, webpage_url: url, formats: [audio, video]}))
   }
   return
 }
@@ -140,16 +144,34 @@ fs.writeFileSync(counter, String(attempts))
 if (url.includes('flaky') && attempts === 1) { console.error('ERROR: Unable to download webpage: timed out'); process.exit(1) }
 if (refused(url, id, attempts === 1)) { console.error('ERROR: [youtube] ' + id + ': Sign in to confirm you\u2019re not a bot. Use --cookies-from-browser or --cookies for the authentication.'); process.exit(1) }
 const dated = url.includes('dated-day') ? {uploadDate: '20240305'} : url.includes('dated-time') ? {publishedAt: 1_700_000_000, uploadDate: '20231114'} : {}
-console.log('__MDC_INFO__' + JSON.stringify({id, title: 'Title ' + id, duration: 10, extractor: 'Fake', formatId: '140', acodec: 'mp4a.40.2', filesize: 1000, ...dated}))
+console.log('__MDC_INFO__' + JSON.stringify({id, title: 'Title ' + id, duration: DURATION, extractor: 'Fake', formatId: '140', acodec: 'mp4a.40.2', filesize: 1000, ...dated}))
 let sent = 0
 const timer = setInterval(() => {
   sent += 250
   console.log('__MDC_PROGRESS__' + JSON.stringify({status: 'downloading', downloaded: sent, total: 1000, file: 'x.m4a'}))
   if (sent >= 1000) {
     clearInterval(timer)
-    const file = path.join(home, 'Title ' + id + ' [' + id + '].' + ext)
-    fs.writeFileSync(file, 'fake audio ' + id)
-    console.log('__MDC_DONE__' + JSON.stringify({filepath: file}))
+    const realVideo = process.env.MDC_FAKE_MEDIA_VIDEO
+    const realAudio = process.env.MDC_FAKE_MEDIA_AUDIO
+    if (ext === 'mp4' && realVideo) {
+      const file = path.join(home, 'Title ' + id + ' [' + id + '].mp4')
+      fs.copyFileSync(realVideo, file)
+      console.log('__MDC_DONE__' + JSON.stringify({filepath: file}))
+    } else if (ext === 'm4a' && realAudio) {
+      const wanted = args.includes('--audio-format') ? args[args.indexOf('--audio-format') + 1] : 'm4a'
+      const file = path.join(home, 'Title ' + id + ' [' + id + '].' + wanted)
+      const ffmpeg = process.env.MDC_FAKE_FFMPEG
+      if (wanted === 'm4a' || !ffmpeg) fs.copyFileSync(realAudio, file)
+      else {
+        const codec = {mp3: 'libmp3lame', opus: 'libopus', flac: 'flac', wav: 'pcm_s16le'}[wanted] || 'copy'
+        require('node:child_process').execFileSync(ffmpeg, ['-hide_banner', '-v', 'error', '-y', '-i', realAudio, '-vn', '-c:a', codec, file])
+      }
+      console.log('__MDC_DONE__' + JSON.stringify({filepath: file}))
+    } else {
+      const file = path.join(home, 'Title ' + id + ' [' + id + '].' + ext)
+      fs.writeFileSync(file, 'fake audio ' + id)
+      console.log('__MDC_DONE__' + JSON.stringify({filepath: file}))
+    }
   }
 }, delay / 4)
 `

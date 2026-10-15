@@ -96,7 +96,7 @@ export function AboutModal({open, onClose}: {readonly open: boolean; readonly on
         >
           <div>
             <Typography.Paragraph strong style={{marginBottom: 8}}>
-              Open-Source Credits
+              {t('about.credits')}
             </Typography.Paragraph>
             <Rows
               items={CREDITS}

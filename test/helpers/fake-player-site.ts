@@ -6,6 +6,7 @@
 import * as http from 'node:http'
 import type {MediaResolver} from '../../src/sources/browser.js'
 import {listenLocal} from './listen.js'
+import {type RealMedia, serveReal} from './real-media.js'
 
 export type FakePlayerSiteConfig = {
   /** Search results in all. */
@@ -16,6 +17,8 @@ export type FakePlayerSiteConfig = {
   /** Video ids whose page redirects home (removed). */
   readonly removed?: readonly string[]
   readonly mediaBytes?: number
+  /** Real files to serve as the media (the nightly matrix); synthetic bytes without it. */
+  readonly media?: RealMedia | undefined
   /** Video ids whose media file is served whole but broken (ffprobe: "moov atom not found"). */
   readonly brokenMedia?: readonly string[]
   /** What a page past the last one answers: the last page again (default), no results, or 404. */
@@ -95,7 +98,7 @@ export async function startFakePlayerSite(config: FakePlayerSiteConfig = {}): Pr
   const videoPage = (id: string) => `<!DOCTYPE html><html><head>
     <meta property="og:title" content="Clip ${id} &amp; more">
     <meta property="og:image" content="${origin}/thumbs/${id}.jpg">
-    <script>var video_duration = "61.5"; var video_id = "${id}";</script>
+    <script>var video_duration = "${config.media?.duration ?? 61.5}"; var video_id = "${id}";</script>
     <title>Clip ${id} - Fake</title></head><body>
     <script>let files = '{"files":[${heights.map(h => `{"src":"opaque","label":"${h}p", "res":"${h}"}`).join(',')}]}'</script>
     <video id="video" preload="auto" controls></video></body></html>`
@@ -138,6 +141,15 @@ export async function startFakePlayerSite(config: FakePlayerSiteConfig = {}): Pr
       if (!heights.includes(height)) return send(404, 'no')
       if (!(req.headers.referer ?? '').startsWith(origin)) return send(403, 'forbidden')
       const mediaId = /\/(\d+)_\d+p\.mp4$/.exec(url.pathname)?.[1] ?? ''
+      if (config.media?.video) {
+        const best = Math.max(...heights)
+        const file = height === best ? (config.media.hd ?? config.media.video) : config.media.video
+        const real = serveReal(file, 'video/mp4', req.headers.range)
+        return send(real.status, real.body, {
+          ...Object.fromEntries(Object.entries(real.headers).map(([k, v]) => [k, String(v)])),
+          'Last-Modified': new Date(PUBLISHED * 1000).toUTCString(),
+        })
+      }
       const body = Buffer.alloc(size, String(height % 10))
       if (config.brokenMedia?.includes(mediaId)) body.write('nomoov')
       const modified = {'Last-Modified': new Date(PUBLISHED * 1000).toUTCString(), 'Accept-Ranges': 'bytes'}

@@ -5,14 +5,20 @@ import * as path from 'node:path'
 import {after, before, describe, it} from 'node:test'
 import {ensureContainer, extractAudio} from '../src/core/convert.js'
 import {rulesFor} from '../src/core/formats.js'
-import {validateFile} from '../src/core/validate.js'
-import type {FormatProfile, ProcessingKind} from '../src/types.js'
-import {MediaLab} from './helpers/media-lab.js'
+import {run} from '../src/core/process.js'
+import {ffprobe, summarizeProbe, validateFile} from '../src/core/validate.js'
+import type {FormatProfile, ProcessingKind, VideoContainer} from '../src/types.js'
+import {type FixtureName, MediaLab} from './helpers/media-lab.js'
 
 let tmpDir = ''
 let lab: MediaLab
 const ffmpegExe = {command: 'ffmpeg', args: []}
 const ffprobeExe = {command: 'ffprobe', args: []}
+// real media only: without ffmpeg on the PATH the suite is skipped, as the integrity suite is
+const available = await run('ffmpeg', ['-version']).then(
+  result => result.code === 0,
+  () => false,
+)
 
 before(async () => {
   tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdc-conformance-'))
@@ -245,7 +251,7 @@ const CASES: readonly ConformanceCase[] = [
   },
 ]
 
-describe('26-Profile Conformance Suite', () => {
+describe('26-Profile Conformance Suite', {skip: !available && 'ffmpeg not installed'}, () => {
   for (const c of CASES) {
     it(`validates ${c.id}: container, codecs, resolution cap and full integrity`, async () => {
       const caseDir = path.join(tmpDir, c.id)
@@ -366,6 +372,94 @@ describe('26-Profile Conformance Suite', () => {
       assert.equal(report.video, undefined)
       assert.ok(report.audio)
       await fs.rm(output, {force: true})
+    }
+  })
+})
+
+// Plan §6: the transformation paths a real site exercises, by the shape of what it serves —
+// an H.265 phone upload, 10-bit HEVC, VP9 and AV1 WebM, a silent clip, a portrait video, one
+// rotated by metadata, variable frame rate — each asked as the three containers under a cap.
+const SOURCES: readonly FixtureName[] = [
+  'mp4-h265-aac-720',
+  'mp4-h265-10bit-720',
+  'webm-vp9-opus-720',
+  'webm-av1-opus-720',
+  'video-silent-720',
+  'video-vertical-9-16',
+  'video-metadata-rotated',
+  'video-vfr',
+]
+const CONTAINERS: readonly VideoContainer[] = ['mp4', 'webm', 'mkv']
+const CAP = 480
+
+describe('source shapes × containers', {skip: !available && 'ffmpeg not installed'}, () => {
+  for (const source of SOURCES) {
+    for (const container of CONTAINERS) {
+      it(`${source} → ${container} ≤ ${CAP}p: the promised container, codecs and cap, fully decodable`, async () => {
+        const caseDir = path.join(tmpDir, `${source}-${container}`)
+        await fs.mkdir(caseDir, {recursive: true})
+        const fixture = await lab.fixture(source)
+        const input = path.join(caseDir, `input${path.extname(fixture)}`)
+        await fs.copyFile(fixture, input)
+        const before = summarizeProbe(await ffprobe(ffprobeExe, input))
+        const hasAudio = before.audio !== undefined
+        let kind: ProcessingKind | undefined
+        const out = await ensureContainer({
+          ffmpeg: ffmpegExe,
+          ffprobe: ffprobeExe,
+          input,
+          container,
+          maxHeight: CAP,
+          expectAudio: hasAudio,
+          threads: 2,
+          onKind: k => {
+            kind = k
+          },
+        })
+        assert.ok(kind, 'the processing kind is reported')
+        assert.equal(path.extname(out).slice(1), rulesFor({kind: 'video', container}).ext)
+        const report = await validateFile({
+          ffmpeg: ffmpegExe,
+          ffprobe: ffprobeExe,
+          file: out,
+          rules: rulesFor({kind: 'video', container}),
+          level: 'full',
+          maxHeight: CAP,
+          expectAudio: hasAudio,
+          threads: 2,
+        })
+        assert.equal(report.ok, true, `${source} → ${container}: ${report.issues.map(i => i.message).join('; ')}`)
+        assert.ok(report.video, 'a video track')
+        assert.equal(report.audio !== undefined, hasAudio, 'audio only where the source had it')
+        const short = Math.min(report.video?.width ?? 0, report.video?.height ?? 0)
+        assert.ok(short > 0 && short <= CAP, `short side ${short} within ${CAP}`)
+        // a source already under the cap is never upscaled
+        const sourceShort = Math.min(before.video?.width ?? 0, before.video?.height ?? 0)
+        if (sourceShort <= CAP) assert.equal(short, sourceShort, 'no upscaling')
+        await fs.rm(caseDir, {recursive: true, force: true})
+      })
+    }
+  }
+
+  it('the five audio profiles from an H.265 phone upload (AAC soundtrack)', async () => {
+    const audioDir = path.join(tmpDir, 'audio-from-hevc')
+    await fs.mkdir(audioDir, {recursive: true})
+    const fixture = await lab.fixture('mp4-h265-aac-720')
+    for (const container of ['m4a', 'mp3', 'opus', 'flac', 'wav'] as const) {
+      const input = path.join(audioDir, `input-${container}.mp4`)
+      await fs.copyFile(fixture, input)
+      const out = await extractAudio({ffmpeg: ffmpegExe, ffprobe: ffprobeExe, input, container, threads: 2})
+      const report = await validateFile({
+        ffmpeg: ffmpegExe,
+        ffprobe: ffprobeExe,
+        file: out,
+        rules: rulesFor({kind: 'audio', container}),
+        level: 'full',
+        expectAudio: true,
+        threads: 2,
+      })
+      assert.equal(report.ok, true, `${container}: ${report.issues.map(i => i.message).join('; ')}`)
+      assert.equal(report.video, undefined)
     }
   })
 })

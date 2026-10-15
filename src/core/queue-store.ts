@@ -89,6 +89,12 @@ export class PendingJournal<T> {
   #compactScheduled = false
   #compactPromise: Promise<void> | undefined
   #compactSeq = 0
+  /**
+   * One holder of the file at a time: an append (a flushed chunk) or a
+   * compaction. Without it a chunk flushed while compacting reopens the old
+   * file, and the rename of the compacted one over it drops those lines.
+   */
+  #lock: Promise<void> = Promise.resolve()
   /** Ids put and not deleted — an O(1) live count for the compaction threshold. */
   readonly #liveIds = new Set<string>()
 
@@ -166,8 +172,21 @@ export class PendingJournal<T> {
     return this.#compactPromise
   }
 
-  async #doCompact(): Promise<void> {
-    await this.#writePromise
+  /** Run `fn` once every earlier holder is done; the lock is never left held by a failure. */
+  #withLock<R>(fn: () => Promise<R>): Promise<R> {
+    const run = this.#lock.then(fn)
+    this.#lock = run.then(
+      () => {},
+      () => {},
+    )
+    return run
+  }
+
+  #doCompact(): Promise<void> {
+    return this.#withLock(() => this.#compactLocked())
+  }
+
+  async #compactLocked(): Promise<void> {
     if (this.#frozen) return
     await this.#handle?.close()
     this.#handle = undefined
@@ -209,8 +228,10 @@ export class PendingJournal<T> {
     if (this.#compactPromise) await this.#compactPromise
     if (!this.#frozen && this.#lines > this.#liveIds.size * 2 + 1000) await this.compact()
     this.#frozen = true
-    await this.#handle?.close()
-    this.#handle = undefined
+    await this.#withLock(async () => {
+      await this.#handle?.close()
+      this.#handle = undefined
+    })
   }
 
   #append(record: JournalRecord<T>): void {
@@ -236,14 +257,17 @@ export class PendingJournal<T> {
       const count = this.#buffer.length
       this.#buffer = []
       try {
-        this.#opening ??= fs.mkdir(path.dirname(this.file), {recursive: true}).then(async () => {
-          this.#handle = await fs.open(this.file, 'a')
+        await this.#withLock(async () => {
+          if (this.#frozen) return
+          this.#opening ??= fs.mkdir(path.dirname(this.file), {recursive: true}).then(async () => {
+            this.#handle = await fs.open(this.file, 'a')
+          })
+          await this.#opening
+          await this.#handle?.write(chunk)
+          this.#lines += count
         })
-        await this.#opening
-        await this.#handle?.write(chunk)
-        this.#lines += count
       } catch {
-        // Disk error: handled gracefully
+        // a disk error loses this chunk, never the engine: the next restore replays what was written
       }
     }
 

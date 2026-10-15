@@ -283,14 +283,14 @@ export function DownloadBar() {
             return (
               <div style={{marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap'}}>
                 <Tag color={tagColor}>{tagLabel}</Tag>
-                {/playlist|\/sets\/|\/album\//i.test(url) && <Tag color="gold">Lista / Playlist</Tag>}
-                {/@[\w.-]+/.test(url) && <Tag color="geekblue">Perfil</Tag>}
+                {/playlist|\/sets\/|\/album\//i.test(url) && <Tag color="gold">{t('download.tag.list')}</Tag>}
+                {/@[\w.-]+/.test(url) && <Tag color="geekblue">{t('download.tag.profile')}</Tag>}
               </div>
             )
           })()}
         <div style={{marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap'}}>
           <Typography.Text type="secondary" style={{fontSize: 12}}>
-            Presets:
+            {t('download.presets')}
           </Typography.Text>
           <Space size={6} wrap>
             <Button
@@ -299,7 +299,7 @@ export function DownloadBar() {
               type={settings.format === 'mp4' && settings.quality === 'best' ? 'primary' : 'default'}
               onClick={() => void updateSettings({format: 'mp4', quality: 'best'})}
             >
-              Máxima calidad
+              {t('download.preset.best')}
             </Button>
             <Button
               size="small"
@@ -307,7 +307,7 @@ export function DownloadBar() {
               type={settings.format === 'mp3' ? 'primary' : 'default'}
               onClick={() => void updateSettings({format: 'mp3'})}
             >
-              Solo audio (MP3)
+              {t('download.preset.audio')}
             </Button>
             <Button
               size="small"
@@ -315,7 +315,7 @@ export function DownloadBar() {
               type={settings.format === 'mp4' && settings.quality === '720' ? 'primary' : 'default'}
               onClick={() => void updateSettings({format: 'mp4', quality: '720'})}
             >
-              Equilibrado (720p)
+              {t('download.preset.balanced')}
             </Button>
           </Space>
         </div>

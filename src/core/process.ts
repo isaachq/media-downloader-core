@@ -3,6 +3,8 @@ import {deferred} from './deferred.js'
 
 const IS_WINDOWS = process.platform === 'win32'
 const KILL_GRACE_MS = 1000
+/** After the child exited: how long its pipes may stay silent before the result is settled without 'close'. */
+const EXIT_DRAIN_MS = 2000
 
 /**
  * Environment for yt-dlp (a Python program): force UTF-8 so paths with
@@ -126,15 +128,10 @@ function installExitHook(): void {
     }
   }
 
+  // 'exit' only: signals belong to the host (the CLI disposes the engine on
+  // Ctrl+C and exits itself; Electron has its own quit sequence). A library
+  // handler calling process.exit() would cut those short.
   process.once('exit', killAllSync)
-  process.once('SIGINT', () => {
-    killAllSync()
-    process.exit(130)
-  })
-  process.once('SIGTERM', () => {
-    killAllSync()
-    process.exit(143)
-  })
 }
 
 /**
@@ -254,17 +251,22 @@ export function run(cmd: string, args: readonly string[], opts: RunOptions = {})
     reject(error)
   })
 
-  // When child exits, ensure streams are drained and closed promptly
+  // Once the child exited, 'close' follows when its pipes are drained. A
+  // grandchild that inherited them (ffmpeg under yt-dlp) can hold them open
+  // after that, so a watchdog settles with what was read — but only once the
+  // pipes went quiet: every chunk that still arrives re-arms it, so a large
+  // stdout (a playlist's JSON) read slowly under load is never cut short.
   child.once('exit', code => {
-    // Give stdio streams a short window to emit 'close'. If an unclosed inherited
-    // descriptor keeps pipes open, destroy streams and settle to prevent hangs.
     exitWatchdog = setTimeout(() => {
       child.stdout?.destroy()
       child.stderr?.destroy()
       child.stdin?.destroy()
       finish(code)
-    }, 150)
+    }, EXIT_DRAIN_MS)
     exitWatchdog.unref()
+    const rearm = () => exitWatchdog?.refresh()
+    child.stdout?.on('data', rearm)
+    child.stderr?.on('data', rearm)
   })
 
   child.once('close', code => {
@@ -293,15 +295,25 @@ export function killTree(child: ChildProcess, signal: NodeJS.Signals = 'SIGTERM'
   }
 
   if (IS_WINDOWS) {
-    try {
-      spawn('taskkill', ['/pid', String(pid), '/T', '/F'], {windowsHide: true, stdio: 'ignore'}).unref()
-    } catch {
-      // Ignore
+    // taskkill /T walks the tree from this pid: the parent must still be alive
+    // when it looks, or its children are orphaned (and keep writing their
+    // files). So the direct kill is the fallback, once taskkill is done or
+    // could not run — never first.
+    const direct = () => {
+      if (child.exitCode !== null || child.signalCode !== null) return
+      try {
+        child.kill('SIGKILL')
+      } catch {
+        // already gone
+      }
     }
     try {
-      child.kill('SIGKILL')
+      const killer = spawn('taskkill', ['/pid', String(pid), '/T', '/F'], {windowsHide: true, stdio: 'ignore'})
+      killer.once('error', direct)
+      killer.once('exit', direct)
+      killer.unref()
     } catch {
-      // Ignore
+      direct()
     }
     return
   }

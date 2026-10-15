@@ -1,0 +1,50 @@
+name: Nightly matrix
+
+# The format regression plan's nightly run: every source family × the 26 profiles,
+# slideshows and bundles, on real media with the real ffmpeg (test/matrix.test.ts),
+# plus the conformance and resilience suites. Results: a JUnit file and the ffprobe
+# manifest of every output, kept as an artifact for 30 days.
+on:
+  schedule:
+    - cron: '20 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  matrix:
+    name: matrix (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install ffmpeg (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Install ffmpeg (Windows)
+        if: runner.os == 'Windows'
+        run: choco install ffmpeg -y --no-progress
+      - run: npm ci
+      - name: Matrix, conformance and resilience (JUnit + manifest)
+        env:
+          MDC_MATRIX: '1'
+          MDC_REPORT_DIR: reports
+        run: >
+          npx tsx --test --test-concurrency=1
+          --test-reporter=spec --test-reporter-destination=stdout
+          --test-reporter=junit --test-reporter-destination=reports/junit.xml
+          test/matrix.test.ts test/conformance-26.test.ts test/resilience.test.ts
+      - name: Keep the reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: matrix-${{ matrix.os }}
+          path: reports/
+          retention-days: 30
+          if-no-files-found: warn

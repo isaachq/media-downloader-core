@@ -11,7 +11,7 @@ import type {
 } from '../types.js'
 import {toArgv} from './argv.js'
 import {cancelledError} from './errors.js'
-import {type CodecRules, codecAllowed} from './formats.js'
+import {type CodecRules, codecAllowed, isBundleVideo} from './formats.js'
 import {ffmpegProgressReader, lastLines} from './process.js'
 
 type ProbeStream = {
@@ -354,6 +354,20 @@ export async function validateBundle(opts: {
   readonly dir: string
   readonly level: ValidationLevel
   readonly signal?: AbortSignal | undefined
+  /**
+   * The profile's rules for the bundle's videos (a carousel asked as a video
+   * profile): each is checked like a single file — container, codecs, cap,
+   * and at 'full' a complete decode. Pictures are only probed. Without rules
+   * every file is only probed (a folder of pictures, a slideshow's images).
+   */
+  readonly video?:
+    | {
+        readonly ffmpeg: Executable
+        readonly rules: CodecRules
+        readonly maxHeight?: number | undefined
+        readonly threads: number
+      }
+    | undefined
 }): Promise<ValidationReport> {
   const names = (await fs.readdir(opts.dir).catch(() => [] as string[])).sort()
   const issues: ValidationIssue[] = []
@@ -371,6 +385,21 @@ export async function validateBundle(opts: {
         continue
       }
       if (opts.level === 'none') continue
+      if (opts.video && isBundleVideo(file)) {
+        const report = await validateFile({
+          ffmpeg: opts.video.ffmpeg,
+          ffprobe: opts.ffprobe,
+          file,
+          rules: opts.video.rules,
+          level: opts.level,
+          maxHeight: opts.video.maxHeight,
+          expectAudio: false,
+          threads: opts.video.threads,
+          signal: opts.signal,
+        })
+        for (const one of report.issues) issues.push({...one, message: `${names[i]}: ${one.message}`})
+        continue
+      }
       try {
         const summary = summarizeProbe(await ffprobe(opts.ffprobe, file, opts.signal))
         if (!summary.video && !summary.audio)

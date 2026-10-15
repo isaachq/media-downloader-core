@@ -13,18 +13,8 @@ import {useApp} from '../context'
 import {rate} from '../format'
 import {useT} from '../i18n'
 import {modeName} from '../mode'
-import {type AppStore, useStoreValue, WORKING} from '../store'
+import {useStoreValue} from '../store'
 import {Banner} from './Banner'
-
-const aggregateSpeed = (store: AppStore): number => {
-  let speed = 0
-  for (const job of store.jobs.values()) {
-    if (WORKING.has(job.status) && job.progress.speed && job.progress.speed > 0) {
-      speed += job.progress.speed
-    }
-  }
-  return speed
-}
 
 type Props = {
   readonly onLogs: () => void
@@ -37,7 +27,7 @@ type Props = {
 export function Header({onLogs, onSettings, onAbout, onReport, onGuide}: Props) {
   const t = useT()
   const {info, settings, updateSettings, dark} = useApp()
-  const liveSpeed = useStoreValue(aggregateSpeed)
+  const liveSpeed = useStoreValue(store => store.speed)
   return (
     <Banner dark={dark}>
       <div className="header-row">
@@ -66,7 +56,7 @@ export function Header({onLogs, onSettings, onAbout, onReport, onGuide}: Props) 
         </div>
         <Space wrap className="header-actions" align="center">
           {liveSpeed > 0 ? (
-            <Tooltip title={`Velocidad: ${rate(liveSpeed, settings.language)}`}>
+            <Tooltip title={t('header.speed', {rate: rate(liveSpeed, settings.language)})}>
               <Badge status="processing" data-testid="header-speed" style={{marginRight: 8, cursor: 'default'}} />
             </Tooltip>
           ) : null}

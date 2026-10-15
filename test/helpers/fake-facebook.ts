@@ -7,6 +7,7 @@
 // removed videos, DASH-only videos, a CDN that wants a Referer.
 import * as http from 'node:http'
 import {listenLocal} from './listen.js'
+import {type RealMedia, serveReal} from './real-media.js'
 
 export type FakeFacebookConfig = {
   readonly page?: string
@@ -31,6 +32,8 @@ export type FakeFacebookConfig = {
   /** Videos per listing page. Default 8. */
   readonly pageSize?: number
   readonly mediaBytes?: number
+  /** Real files to serve as the media (the nightly matrix); synthetic bytes without it. */
+  readonly media?: RealMedia | undefined
 }
 
 export type FakeFacebook = {
@@ -80,7 +83,7 @@ export async function startFakeFacebook(config: FakeFacebookConfig = {}): Promis
       },
       original_width: 1280,
       original_height: 720,
-      playable_duration_in_ms: 61_500,
+      playable_duration_in_ms: (config.media?.duration ?? 61.5) * 1000,
       thumbnailImage: {uri: `${origin}/thumb/${id}.jpg`},
     }
   }
@@ -100,7 +103,7 @@ export async function startFakeFacebook(config: FakeFacebookConfig = {}): Promis
     id: ids[index]!,
     url: `${origin}/${page}/videos/${ids[index]}/`,
     title: {text: `Video número ${index + 1} con acentos 🎬 #fb`},
-    playable_duration_in_ms: 61_500,
+    playable_duration_in_ms: (config.media?.duration ?? 61.5) * 1000,
     publish_time: BASE_TIME - index * 3600,
     thumbnailImage: {uri: `${origin}/thumb/${ids[index]}.jpg`},
     owner: owner(),
@@ -178,7 +181,18 @@ export async function startFakeFacebook(config: FakeFacebookConfig = {}): Promis
         hits.refusedMedia++
         return send(403, 'forbidden')
       }
-      if (parts[0] !== 'media') return send(200, Buffer.from(`JPEG ${parts[1]}`), {'Content-Type': 'image/jpeg'})
+      if (parts[0] !== 'media') {
+        if (config.media?.image) {
+          const real = serveReal(config.media.image, 'image/jpeg', req.headers.range)
+          return send(real.status, real.body, real.headers)
+        }
+        return send(200, Buffer.from(`JPEG ${parts[1]}`), {'Content-Type': 'image/jpeg'})
+      }
+      if (config.media?.video) {
+        const file = parts[2]?.startsWith('hd') ? (config.media.hd ?? config.media.video) : config.media.video
+        const real = serveReal(file, 'video/mp4', req.headers.range)
+        return send(real.status, real.body, real.headers)
+      }
       const body = Buffer.alloc(size, parts[2]?.startsWith('hd') ? 'h' : '4')
       const range = /^bytes=(\d+)-$/.exec(req.headers.range ?? '')
       if (range) {

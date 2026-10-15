@@ -54,6 +54,29 @@ export const TRANSFORMATION_DEFECTS: ReadonlySet<ValidationIssueCode> = new Set<
 export const isTransformationDefect = (issues: readonly ValidationIssueCode[]): boolean =>
   issues.length > 0 && issues.some(code => TRANSFORMATION_DEFECTS.has(code)) && !isSourceDamage(issues)
 
+/** What the file that failed its check was: as the site served it, or what a conversion here made of it. */
+export type CheckedStage = 'downloaded' | 'converted'
+
+/**
+ * The verdict on a failed check, by its issues and by what was checked:
+ *   defect — deterministic: a wrong container, codec or resolution, or
+ *            anything wrong with a file *this* conversion produced (the same
+ *            download would only give the same file: never retried);
+ *   damage — the file as the site served it is broken: confirmed once more,
+ *            then marked damaged at the source;
+ *   other  — nothing the check can tell apart (a plain retry).
+ */
+export function checkVerdict(
+  issues: readonly ValidationIssueCode[],
+  stage: CheckedStage,
+): 'defect' | 'damage' | 'other' {
+  if (isTransformationDefect(issues)) return 'defect'
+  if (!isSourceDamage(issues)) return 'other'
+  // ffmpeg returned 0 and wrote a file that does not decode or ends early: the conversion,
+  // not the source — downloading the source again would feed the same conversion
+  return stage === 'converted' ? 'defect' : 'damage'
+}
+
 const mediaKey = (extractor: string, mediaId: string): string => `${extractor.toLowerCase()}:${mediaId}`
 const urlKey = (url: string): string => `url:${url}`
 

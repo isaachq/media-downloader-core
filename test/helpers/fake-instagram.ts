@@ -7,6 +7,7 @@
 import * as http from 'node:http'
 import {codeToPk} from '../../src/sources/instagram/data.js'
 import {listenLocal} from './listen.js'
+import {type RealMedia, serveReal} from './real-media.js'
 
 export type FakeInstagramConfig = {
   readonly user?: string
@@ -37,6 +38,8 @@ export type FakeInstagramConfig = {
   /** With jsChallenge: even browsers get the checkpoint. */
   readonly captcha?: boolean
   readonly mediaBytes?: number
+  /** Real files to serve as the media (the nightly matrix); synthetic bytes without it. */
+  readonly media?: RealMedia | undefined
   /** Posts the account counts but never lists. */
   readonly unlisted?: number
   /** The 2nd listing page repeats the 1st (cursor stall). */
@@ -128,7 +131,15 @@ export async function startFakeInstagram(config: FakeInstagramConfig = {}): Prom
         {pk: `${id}1`, media_type: 1, ...image(id, 1)},
         {pk: `${id}2`, media_type: 1, ...image(id, 2, 1080, 1080)},
         ...(config.mixedCarousels
-          ? [{pk: `${id}3`, media_type: 2, video_versions: videoVersions(id), video_duration: 7.5, ...image(id, 3)}]
+          ? [
+              {
+                pk: `${id}3`,
+                media_type: 2,
+                video_versions: videoVersions(id),
+                video_duration: config.media?.duration ?? 7.5,
+                ...image(id, 3),
+              },
+            ]
           : [{pk: `${id}3`, media_type: 1, ...image(id, 3)}]),
       ]
       return {...base, media_type: 8, carousel_media: children}
@@ -138,7 +149,7 @@ export async function startFakeInstagram(config: FakeInstagramConfig = {}): Prom
       ...base,
       media_type: 2,
       video_versions: videoVersions(id),
-      video_duration: 12.3,
+      video_duration: config.media?.duration ?? 12.3,
       ...image(id, 0, 1080, 1920),
     }
   }
@@ -223,7 +234,16 @@ export async function startFakeInstagram(config: FakeInstagramConfig = {}): Prom
         return send(403, 'forbidden')
       }
       if (parts[0] === 'image') {
+        if (config.media?.image) {
+          const real = serveReal(config.media.image, 'image/jpeg', req.headers.range)
+          return send(real.status, real.body, real.headers)
+        }
         return send(200, Buffer.from(`JPEG ${parts[1]} ${parts[2]}`), {'Content-Type': 'image/jpeg'})
+      }
+      if (config.media?.video) {
+        const file = parts[2] === 'hd.mp4' ? (config.media.hd ?? config.media.video) : config.media.video
+        const real = serveReal(file, 'video/mp4', req.headers.range)
+        return send(real.status, real.body, real.headers)
       }
       // content tells the encodings apart: "h" HD, "4" SD
       const body = Buffer.alloc(size, parts[2] === 'hd.mp4' ? 'h' : '4')

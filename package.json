@@ -1,6 +1,6 @@
 {
   "name": "media-downloader-core",
-  "version": "1.13.1",
+  "version": "1.14.0",
   "description": "Download engine for heavy workloads (many videos, huge playlists): yt-dlp + ffmpeg on a CPUs/2 worker pool, O(1) hot paths, codec-guaranteed formats and full integrity validation.",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -36,7 +36,7 @@
   "scripts": {
     "build": "tsup --config tsup.config.ts",
     "build:watch": "tsup --config tsup.config.ts --watch",
-    "test": "tsx --test test/*.test.ts",
+    "test": "tsx --test --test-concurrency=4 test/*.test.ts",
     "typecheck": "tsc -p . --noEmit",
     "lint": "biome check .",
     "format": "biome check --write .",
@@ -47,7 +47,8 @@
     "mdc": "tsx src/cli/bin.ts",
     "bench": "node --expose-gc --import tsx scripts/batch-bench.ts",
     "bench:archive": "node --expose-gc --import tsx scripts/archive-bench.ts",
-    "perf": "tsx scripts/perf.ts"
+    "perf": "tsx scripts/perf.ts",
+    "pack:check": "node scripts/pack-check.mjs"
   },
   "license": "PolyForm-Noncommercial-1.0.0",
   "devDependencies": {

@@ -1,4 +1,103 @@
 # Changelog
+
+## App 0.2.0-beta.14 · library 1.14.0
+
+Beta 14: hardening after beta 13. Found by reviewing beta 10 → 13 and running the suites: no behaviour the
+user asked for changes; what changes is what happens at the edges — a
+cancel on Windows, Ctrl+C in the CLI, a long batch compacting its journal,
+a check of a long history, a large playlist read under load — and the
+strings the beta 12 screens had in one language only.
+
+**Library**
+
+- **Windows: a cancel kills the whole tree.** `killTree` terminated the
+  parent (yt-dlp) at once and ran `taskkill /T` beside it; `taskkill` walks
+  the tree from a live parent, so it found nothing and the ffmpeg under it
+  went on writing. Now `taskkill` goes first and the direct kill is the
+  fallback once it is done or could not run.
+- **The host's signals are its own.** The library no longer installs
+  `SIGINT` / `SIGTERM` handlers that call `process.exit()`: they cut short
+  the CLI's own Ctrl+C sequence (dispose the engine, freeze the journal,
+  then exit) and Electron's quit. The `exit` hook that kills live children
+  stays.
+- **A large stdout is never cut short.** After a child exited, its result
+  was settled 150 ms later whether or not its pipes were drained — a
+  playlist's JSON read slowly under load could be truncated. The watchdog
+  now waits 2 s of silence and every chunk still arriving re-arms it.
+- **Pending journal: appends during a compaction are kept.** A chunk flushed
+  while compacting reopened the old file, which the compacted one was then
+  renamed over — those jobs were gone on the next launch. Appends and
+  compaction now take turns on one lock.
+- **Hash pool: no listener left per file.** A check of a long history hands
+  one signal to every file; each queued file left its abort listener on it
+  until the check ended (a warning past ten, memory over thousands). The
+  listener is removed once the file starts or ends.
+- **Subtitle streams only into MKV.** The remux mapped `0:s?` for every
+  container; ffmpeg refuses to copy text subtitles into mp4 / webm, and the
+  job failed as "could not convert". They are mapped for Matroska only.
+- **Tests.** The 26-profile conformance and characterization suites skip
+  without ffmpeg (as the integrity suite does) instead of failing; `npm test`
+  runs at most four files at once, so the real transcodes do not starve
+  the timed scenarios. New regression tests for the journal race, the
+  shared-signal listeners, the large stdout and the kill order (a child with
+  a detached grandchild, as yt-dlp with its ffmpeg).
+- **Format plan, the next gates.** Beside the 26 profiles, every shape a
+  site serves — H.265 and 10-bit HEVC, VP9 and AV1 WebM, a silent clip, a
+  portrait video, one rotated by metadata, variable frame rate — asked as
+  mp4, webm and mkv under a cap (24 cases), and the five audio profiles from
+  an AAC soundtrack. A conversion-resilience suite: a cancel in the middle
+  of a transcode or an extraction leaves nothing behind, a valid file under
+  a false extension is a deterministic defect (and the remux makes it
+  real), the right container with the wrong codec is transcoded, a cap
+  above the source never upscales, a silent source asked for audio is
+  "unavailable". CI runs the library on Node 20, 22 and 24, and packs the
+  tarball into an empty project to load it as ESM and CJS
+  (`npm run pack:check`).
+- **A broken conversion is a defect, not a damaged source.** When the file
+  that fails its check is what a conversion here produced (ffmpeg said 0 and
+  wrote something that does not decode, or ends early), the job fails at
+  once: downloading the source again would only feed the same conversion.
+  Source damage is still what it was — a file as the site served it,
+  confirmed once more, then marked (`checkVerdict`, `stage` on the
+  validation error).
+- **Bundles follow the profile.** A carousel with a video, asked as a video
+  profile, used to come back as the folder the site served; now each clip of
+  the folder is made to match the profile (container, codecs, cap) under its
+  own name and checked with the profile's rules — its pictures as they came
+  (`convertBundle`, `validateBundle({video})`). A slideshow was already a
+  video in any container; a silent one asked for audio is "unavailable".
+- **The nightly matrix.** `test/matrix.test.ts` (`MDC_MATRIX=1`): the whole
+  engine on every source family — yt-dlp, TikTok, Instagram, Facebook, a
+  player page — each serving the same real clip through its local fake, ×
+  the 26 profiles, in one attempt each, nothing left in the work folder;
+  plus a slideshow with and without a soundtrack in every container and a
+  carousel with a video. Every output is probed and the probes written as a
+  JSON manifest beside a JUnit file; `.github/workflows/nightly.yml` runs it
+  every night on Ubuntu and Windows and keeps the reports. The fakes serve
+  real media on request (`media: {video, image, sound, duration}`), the fake
+  yt-dlp copies `MDC_FAKE_MEDIA_VIDEO` / `_AUDIO` and converts audio with
+  `MDC_FAKE_FFMPEG`. `docs/FORMAT-REGRESSION-PLAN.md`: every box but Android.
+
+**App**
+
+- Every string of the beta 12 screens goes through the dictionary: presets,
+  link tags, the Downloads filter, the environment card in Settings, the
+  speed tooltip and the About credits read in the chosen language (they
+  were Spanish or English only).
+- The in-browser demo bridge (sample data, ~950 lines) is loaded only
+  outside Electron, on demand: it is no longer part of the desktop bundle,
+  and a desktop window whose preload failed shows the error instead of
+  sample files.
+- The window is shown and focused without the always-on-top flip, which
+  stole focus on every launch and flashed over full-screen apps on macOS.
+- The force-quit watchdog gives the shutdown 10 s (was 4 s): the engine's
+  own dispose already gives up on its pool after 3 s, so the pending
+  journal always has its time to freeze.
+- The header's speed badge read every job on every store change (O(jobs),
+  up to 10×/s); the store now keeps the sum per change, O(1), as it does
+  the counts. The Downloads table derives its rows, its filter counts and
+  the filtered rows in one pass instead of three.
+
  
 ## App 0.2.0-beta.13 · library 1.13.1
 

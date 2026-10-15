@@ -33,6 +33,8 @@ type Task = {
   readonly reject: (error: Error) => void
   readonly signal?: AbortSignal | undefined
   aborted?: boolean
+  /** Drops the listener a queued task keeps on its signal (removed once it starts or ends). */
+  offAbort?: (() => void) | undefined
 }
 
 type Slot = {
@@ -81,6 +83,9 @@ export class HashPool {
         }
       }
       signal.addEventListener('abort', onQueueAbort, {once: true})
+      // one signal is shared by every file of a check: without this, each
+      // finished file would leave its listener behind until the check ends
+      task.offAbort = () => signal.removeEventListener('abort', onQueueAbort)
     }
     this.#queue.push(task)
     this.#dispatch()
@@ -99,6 +104,7 @@ export class HashPool {
     this.#queue = []
     this.#headIndex = 0
     for (const task of pending) {
+      task.offAbort?.()
       if (!task.aborted) {
         task.aborted = true
         task.reject(new Error('HashPool closed.'))
@@ -123,6 +129,7 @@ export class HashPool {
       if (task.aborted || task.signal?.aborted) {
         this.#headIndex++
         this.#compactQueueIfNeeded()
+        task.offAbort?.()
         if (!task.aborted) {
           task.aborted = true
           task.reject(cancelledError())
@@ -171,6 +178,7 @@ export class HashPool {
   }
 
   #start(slot: Slot, task: Task): void {
+    task.offAbort?.() // from here the slot's own listener covers the task
     if (task.aborted || task.signal?.aborted) {
       if (!task.aborted) {
         task.aborted = true

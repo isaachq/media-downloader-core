@@ -45,6 +45,36 @@ the ⌊CPUs/2⌋ pool and verified file by file.
 
 ![Paste a link, download it as MP4, check its integrity report, find it in Finished, open the run report](docs/demo.gif)
 
+### What's new in beta 14 (library 1.14.0)
+
+Hardening after beta 13 — nothing you asked for changes; the edges do:
+
+- **A cancel on Windows kills the whole tree** — the ffmpeg under yt-dlp used to outlive a cancel and keep writing its file. Covered by a test with a detached grandchild.
+- **Ctrl+C in the CLI runs its own shutdown** — the library no longer installs signal handlers that cut it (or Electron's quit) short.
+- **Nothing lost at the edges** — a large playlist's JSON read slowly under load is never truncated; jobs appended while the pending journal compacts are kept; a check of a long history leaves no listener per file; subtitle streams go only into MKV (ffmpeg refuses them in mp4/webm).
+- **Every screen in both languages** — the beta 12 presets, filters, environment card, speed tooltip and credits follow the chosen language.
+- **A lighter desktop bundle** — the in-browser demo is loaded only outside Electron; the window is shown and focused without an always-on-top flip.
+- **Format plan, closed** — 24 source-shape × container cases (H.265, 10-bit, VP9, AV1, silent, portrait, rotated, VFR), a conversion-resilience suite, Node 20/22/24 and a packed-tarball check in CI, and a nightly matrix: every source family × the 26 profiles on real media with the real ffmpeg, slideshows and carousels included, with an ffprobe manifest and a JUnit file kept per run. A carousel's clips now follow the requested profile; its pictures stay as they came. [The plan](docs/FORMAT-REGRESSION-PLAN.md).
+
+### What's new in beta 13 (library 1.13.1)
+
+- **MKV means Matroska** — `video:mkv:*` always produces a real `.mkv`: MP4/WebM sources are remuxed with stream copy (no generational loss); only what must change is re-encoded. Attached covers are never promoted to the video track.
+- **A quality is a hard cap** — when no rendition fits under the cap, the smallest above it is downloaded and downscaled locally, keeping aspect, orientation and even dimensions; never upscaled.
+- **Deterministic defects fail at once** — a wrong container, codec or resolution after a conversion is not retried (the same source would give the same file); source damage is still confirmed twice and marked.
+- **26-profile conformance suite** — real ffmpeg on synthetic clips: container, codecs, cap and full decode for every MP4, WebM, MKV and audio profile; Opus is stream-copied where the source is Opus.
+
+### What's new in beta 12 (library 1.12.0)
+
+- **No process left behind** — on exit or cancel the whole child tree is terminated (Windows `taskkill /T`, POSIX process groups); watchdog timers never keep the app alive.
+- **O(1) cancels and queue compaction under a lock** — cancelled checks never reach a worker; the pending journal compacts without racing its own writes.
+- **Live verification feedback** — a progress card and per-row badges while Finished files are checked, one toast updated in place, a success alert with a jump to Finished when a batch completes, presets with busy guards, a two-column About.
+
+### What's new in beta 11 (library 1.11.0)
+
+- **Instagram without a session** — public posts and reels are read the way the apps that "just work" read them (embed page, then the mobile API), before any signed-in route.
+- **"This network", not "sign in"** — when every route hits Instagram's wall the error says the network is being limited (try later) instead of asking you to sign in; Facebook videos kept for signed-in visitors say so.
+- **TikTok sessions like the others** — the app's signed-in session goes to TikTok the same way it does to Instagram and Facebook; hosts without yt-dlp (`ytDlp: 'optional'`) get the built-in extractors' own reasons.
+
 ### What's new in beta 10 (library 1.10.0)
 
 - **Instagram and Facebook, built in** — paste a post, a reel, a whole profile, its stories or a highlight (Instagram), or a video, a reel, a page's videos or its stories (Facebook), and the library reads them itself: the same pool, pacing, retries, conversion, integrity checks and naming as TikTok. Photos and carousels become an MP4 or a folder of pictures, your choice. Stories need your own signed-in session (the browser cookies the app already uses). [How it works](#instagram-and-facebook-built-in-extractors).
@@ -677,6 +707,16 @@ it doesn't fit, the batch stops **before downloading anything**:
 (`diskCheck: 'block' | 'warn' | 'off'`). Each job re-checks its own peak
 before it starts.
 
+### The nightly matrix
+
+`npm test` runs on fakes and finishes in under a minute. The matrix runs the whole engine on real media — every source family (yt-dlp, TikTok, Instagram, Facebook, a player page) serving the same real clip through its local fake, × the 26 profiles, plus slideshows and a carousel — with the real ffmpeg, about 80 s:
+
+```bash
+MDC_MATRIX=1 npx tsx --test test/matrix.test.ts
+```
+
+Every output is probed and the probes land in `reports/matrix-<date>.json`; `.github/workflows/nightly.yml` runs it every night on Ubuntu and Windows with a JUnit file beside the manifest, kept as an artifact for 30 days.
+
 ### Complexity of the hot paths
 
 | Operation | Cost | How |
@@ -689,7 +729,9 @@ before it starts.
 | Choose formats for a video | O(formats) | catalog indexed in one pass |
 | Release finished jobs | O(1) amortized | insertion-ordered set, oldest first |
 | Enqueue a 5,000-item batch | O(n), sliced | 250 jobs per event-loop turn — the UI thread never stalls |
-| SHA-256 of finished files | off the main thread | worker-thread pool, idle workers exit |
+| SHA-256 of finished files | off the main thread | worker-thread pool, idle workers exit; a shared cancel signal carries no listener per file |
+| Cancel / exit → child processes | O(1) per child | the whole tree (Windows `taskkill /T` before the parent; POSIX process group), stdout drained before the result settles |
+| Pending journal compaction | O(live), streamed | appends and the compaction take turns on one lock: nothing written while compacting is lost |
 
 ## Memory and resource discipline
 

@@ -5,6 +5,7 @@
 // short links, and encodings the extractor should skip.
 import * as http from 'node:http'
 import {listenLocal} from './listen.js'
+import {type RealMedia, serveReal} from './real-media.js'
 
 export type FakeTikTokConfig = {
   readonly user?: string
@@ -31,6 +32,8 @@ export type FakeTikTokConfig = {
   /** The H.264 encoding of every post has no sound. */
   readonly silentH264?: boolean
   readonly mediaBytes?: number
+  /** Real files to serve as the media (the nightly matrix); synthetic bytes without it. */
+  readonly media?: RealMedia | undefined
   /**
    * Posts (by index, 0 = newest) that are photo posts — slideshows of 3 images
    * (1080 × 1440 JPEGs) over a soundtrack; those listed in `silentSlides` have none.
@@ -93,7 +96,13 @@ export async function startFakeTikTok(config: FakeTikTokConfig = {}): Promise<Fa
             },
           })),
         },
-        music: silent ? {title: 'none'} : {playUrl: `${origin}/sound/${id}.mp3`, title: 'original sound', duration: 42},
+        music: silent
+          ? {title: 'none'}
+          : {
+              playUrl: `${origin}/sound/${id}.mp3`,
+              title: 'original sound',
+              duration: config.media?.soundDuration ?? 42,
+            },
       }
     }
     return {
@@ -103,7 +112,7 @@ export async function startFakeTikTok(config: FakeTikTokConfig = {}): Promise<Fa
       isPinnedItem: pinned || undefined,
       author: {uniqueId: user, nickname: 'Fake User'},
       video: {
-        duration: 10,
+        duration: config.media?.duration ?? 10,
         width: 720,
         height: 1280,
         cover: `${origin}/cover/${id}.jpg`,
@@ -197,10 +206,18 @@ export async function startFakeTikTok(config: FakeTikTokConfig = {}): Promise<Fa
     if (parts[0] === 'image') {
       hits.media++
       if (parts[2]?.includes('-down')) return send(404, 'gone')
+      if (config.media?.image) {
+        const real = serveReal(config.media.image, 'image/jpeg', req.headers.range)
+        return send(real.status, real.body, real.headers)
+      }
       return send(200, Buffer.from(`JPEG ${parts[1]} ${parts[2]}`), {'Content-Type': 'image/jpeg'})
     }
     if (parts[0] === 'sound') {
       hits.media++
+      if (config.media?.sound) {
+        const real = serveReal(config.media.sound, 'audio/mpeg', req.headers.range)
+        return send(real.status, real.body, real.headers)
+      }
       return send(200, Buffer.from(`MP3 ${parts[1]}`), {'Content-Type': 'audio/mpeg'})
     }
     if (parts[0] === 'media') {
@@ -212,6 +229,11 @@ export async function startFakeTikTok(config: FakeTikTokConfig = {}): Promise<Fa
         return send(403, 'forbidden')
       }
       if (parts[2] === 'vvc.mp4') return send(404, 'no')
+      if (config.media?.video) {
+        const file = parts[2] === 'h265.mp4' ? (config.media.hd ?? config.media.video) : config.media.video
+        const real = serveReal(file, 'video/mp4', req.headers.range)
+        return send(real.status, real.body, real.headers)
+      }
       const silent = config.silentH264 && parts[2] === 'h264.mp4'
       // content tells the encodings apart: "4" H.264, "5" H.265, "s" silent
       const body = Buffer.alloc(size, silent ? 's' : parts[2] === 'h265.mp4' ? '5' : '4')

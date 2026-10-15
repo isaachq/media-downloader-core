@@ -85,6 +85,15 @@ export const QUALITIES: readonly Quality[] = ['best', '2160', '1440', '1080', '7
 export const isAudioFormat = (format: Format): format is AudioContainer =>
   (AUDIO_FORMATS as readonly string[]).includes(format)
 
+export function toProfile(input: {readonly format: Format; readonly quality?: Quality | undefined}): FormatProfile {
+  if (isAudioFormat(input.format)) return {kind: 'audio', container: input.format}
+  return {
+    kind: 'video',
+    container: input.format,
+    ...(input.quality && input.quality !== 'best' ? {maxHeight: Number(input.quality)} : {}),
+  }
+}
+
 export type AppSettings = {
   readonly language: Language
   readonly theme: ThemeMode

@@ -13,15 +13,16 @@ import {
 } from './binaries/manager.js'
 import {analyze, assertHttpUrl, type ExtractResult, extractMany, isYouTubeUrl} from './core/analyze.js'
 import {type ArchiveEntry, archiveKey, DownloadArchive} from './core/archive.js'
-import {ensureContainer, extractAudio, type MediaTags, writeTags} from './core/convert.js'
+import {convertBundle, ensureContainer, extractAudio, type MediaTags, writeTags} from './core/convert.js'
 import {BrowserCookies, type CookieRecord, exportBrowserCookies, jarCopy, parseNetscape} from './core/cookies.js'
 import {jobTier, peakBytes, TIER_WEIGHT} from './core/cost.js'
 import {
+  type CheckedStage,
+  checkVerdict,
   type DamagedEntry,
   type DamagedLookup,
   DamagedRegistry,
   isSourceDamage,
-  isTransformationDefect,
 } from './core/damaged.js'
 import {type DownloadedInfo, runYtDlp} from './core/download.js'
 import {cancelledError, DownloadError, isRetryable, toJobError} from './core/errors.js'
@@ -1340,7 +1341,9 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
 
           // the file came down whole and is broken: once more from scratch to be sure, then it is the source
           const issues = failure.code === 'validation' ? issueCodes(failure.params?.['issues']) : []
-          if (isTransformationDefect(issues)) {
+          const stage: CheckedStage = failure.params?.['stage'] === 'converted' ? 'converted' : 'downloaded'
+          const verdict = checkVerdict(issues, stage)
+          if (verdict === 'defect') {
             job.endAttempt(jobError)
             this.#log(
               'error',
@@ -1350,7 +1353,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
             )
             throw failure
           }
-          if (isSourceDamage(issues) && ++broken >= 2) {
+          if (verdict === 'damage' && ++broken >= 2) {
             const reason = failure.message.replace(/^The file failed validation: /, '')
             await this.damaged.add({
               url: request.url,
@@ -1559,7 +1562,23 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     const bundle = 'bundle' in downloaded && downloaded.bundle === true
     if (bundle) {
       this.#step(job, 'convert')
-      this.#stepDone(job, 'convert', 'skipped') // a folder of images is kept as it is
+      if (profile.kind === 'video') {
+        // a carousel with videos: each clip made to match the profile, its pictures kept as they are
+        this.#update(job, {status: 'converting', progress: {fraction: 0}}, true)
+        const converted = await convertBundle({
+          ffmpeg: bins.ffmpeg.exe,
+          ffprobe: bins.ffprobe.exe,
+          dir: file,
+          container: profile.container,
+          maxHeight: profile.maxHeight,
+          threads: this.#cpuShare(job),
+          signal,
+          onProgress: fraction => this.#update(job, {status: 'converting', progress: {fraction}}),
+        })
+        if (converted > 0)
+          this.#log('info', `${converted} clip(s) of the bundle made ${profile.container.toUpperCase()}`, job)
+        this.#stepDone(job, 'convert', converted > 0 ? 'success' : 'skipped')
+      } else this.#stepDone(job, 'convert', 'skipped') // a folder of images is kept as it is
     } else if (profile.kind === 'video') {
       this.#step(job, 'convert')
       file = await ensureContainer({
@@ -1609,7 +1628,20 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     this.#step(job, 'validate')
     this.#update(job, {status: 'validating', progress: {fraction: 0}}, true)
     let report = bundle
-      ? await validateBundle({ffprobe: bins.ffprobe.exe, dir: file, level: this.#settings.validation, signal})
+      ? await validateBundle({
+          ffprobe: bins.ffprobe.exe,
+          dir: file,
+          level: this.#settings.validation,
+          signal,
+          ...(profile.kind === 'video' && {
+            video: {
+              ffmpeg: bins.ffmpeg.exe,
+              rules: rulesFor(profile),
+              maxHeight: profile.maxHeight,
+              threads: this.#cpuShare(job),
+            },
+          }),
+        })
       : await validateFile({
           ffmpeg: bins.ffmpeg.exe,
           ffprobe: bins.ffprobe.exe,
@@ -1629,7 +1661,11 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
         'validation',
         `The file failed validation: ${report.issues.map(i => i.message).join(' ')}`,
         undefined,
-        {issues: report.issues.map(i => i.code).join(',')},
+        {
+          issues: report.issues.map(i => i.code).join(','),
+          // what failed: the file as served, or what a conversion here made of it (see checkVerdict)
+          stage: file === downloaded.filepath ? 'downloaded' : 'converted',
+        },
       )
     }
     if (later) {

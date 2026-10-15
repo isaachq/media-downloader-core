@@ -27,6 +27,14 @@ export type CodecRules = {
 }
 
 export const VIDEO_CONTAINERS: readonly VideoContainer[] = ['mp4', 'webm', 'mkv']
+
+/** Files of a bundle (a carousel's folder) that are videos — converted and checked as such; pictures are kept as they are. */
+const BUNDLE_VIDEO_EXTENSIONS: ReadonlySet<string> = new Set(['mp4', 'm4v', 'mov', 'webm', 'mkv'])
+
+export const isBundleVideo = (file: string): boolean => {
+  const dot = file.lastIndexOf('.')
+  return dot !== -1 && BUNDLE_VIDEO_EXTENSIONS.has(file.slice(dot + 1).toLowerCase())
+}
 export const AUDIO_CONTAINERS: readonly AudioContainer[] = ['m4a', 'mp3', 'opus', 'flac', 'wav']
 
 export const VIDEO_RULES: Readonly<Record<VideoContainer, CodecRules>> = {

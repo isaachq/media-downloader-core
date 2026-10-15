@@ -52,8 +52,31 @@ strings the beta 12 screens had in one language only.
   above the source never upscales, a silent source asked for audio is
   "unavailable". CI runs the library on Node 20, 22 and 24, and packs the
   tarball into an empty project to load it as ESM and CJS
-  (`npm run pack:check`). `docs/FORMAT-REGRESSION-PLAN.md` has its boxes
-  ticked and what stays open (slideshows and bundles, the nightly matrix).
+  (`npm run pack:check`).
+- **A broken conversion is a defect, not a damaged source.** When the file
+  that fails its check is what a conversion here produced (ffmpeg said 0 and
+  wrote something that does not decode, or ends early), the job fails at
+  once: downloading the source again would only feed the same conversion.
+  Source damage is still what it was — a file as the site served it,
+  confirmed once more, then marked (`checkVerdict`, `stage` on the
+  validation error).
+- **Bundles follow the profile.** A carousel with a video, asked as a video
+  profile, used to come back as the folder the site served; now each clip of
+  the folder is made to match the profile (container, codecs, cap) under its
+  own name and checked with the profile's rules — its pictures as they came
+  (`convertBundle`, `validateBundle({video})`). A slideshow was already a
+  video in any container; a silent one asked for audio is "unavailable".
+- **The nightly matrix.** `test/matrix.test.ts` (`MDC_MATRIX=1`): the whole
+  engine on every source family — yt-dlp, TikTok, Instagram, Facebook, a
+  player page — each serving the same real clip through its local fake, ×
+  the 26 profiles, in one attempt each, nothing left in the work folder;
+  plus a slideshow with and without a soundtrack in every container and a
+  carousel with a video. Every output is probed and the probes written as a
+  JSON manifest beside a JUnit file; `.github/workflows/nightly.yml` runs it
+  every night on Ubuntu and Windows and keeps the reports. The fakes serve
+  real media on request (`media: {video, image, sound, duration}`), the fake
+  yt-dlp copies `MDC_FAKE_MEDIA_VIDEO` / `_AUDIO` and converts audio with
+  `MDC_FAKE_FFMPEG`. `docs/FORMAT-REGRESSION-PLAN.md`: every box but Android.
 
 **App**
 

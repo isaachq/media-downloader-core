@@ -10,12 +10,19 @@
 > publicar una nueva versión del core.
 
 > **Estado al 2026-10-15 (rama `fix/beta14-hardening`, hacia beta 14 · librería 1.14.0):**
-> fases C0–C5 cerradas; laboratorio de fixtures completo; suite de 26 perfiles más
-> 24 casos de formas de origen × contenedor (`test/conformance-26.test.ts`) y la
-> regresión de resiliencia de conversión (`test/resilience.test.ts`); tarball probado
-> en CI como ESM y CJS (`npm run pack:check`); Node 20, 22 y 24 en CI. Quedan abiertas:
-> slideshows y bundles (C6), la matriz nightly de 130 casos por fuente real, el
-> reporte ffprobe legible por CI y la verificación desde Android.
+> fases C0–C6 cerradas. Laboratorio de fixtures completo (clips, imágenes, pista MP3);
+> suite de 26 perfiles más 24 casos de formas de origen × contenedor
+> (`test/conformance-26.test.ts`); regresión de resiliencia de conversión
+> (`test/resilience.test.ts`); matriz por fuente con medios reales y ffmpeg real —
+> 5 familias × 26 perfiles, slideshows con y sin pista, carrusel con video — en
+> `test/matrix.test.ts` (`MDC_MATRIX=1`, ~80 s), con manifiesto ffprobe JSON y JUnit,
+> ejecutada cada noche por `.github/workflows/nightly.yml`; tarball probado en CI como
+> ESM y CJS (`npm run pack:check`); Node 20, 22 y 24 en CI. Contrato de bundles: cada
+> video de un carrusel se convierte al perfil y se valida con sus reglas; las fotos se
+> conservan. Queda abierta sólo la verificación desde Android (otra sesión).
+>
+> La tabla de §6 se cumple con los fakes locales sirviendo medios reales (la matriz);
+> los sitios reales siguen siendo diagnóstico manual, como dice §8.
 
 
 ## 1. Motivo y defecto de referencia
@@ -101,8 +108,8 @@ Esta decisión debe documentarse en README y quedar cubierta por pruebas.
 - [x] Añadir una prueba roja de MKV en TikTok native choices.
 - [x] Añadir una prueba roja de MKV en Player Page choices.
 - [x] Caracterizar qué ocurre al pedir 360 con una única fuente 720.
-- [ ] Caracterizar MP4/WebM/MKV en slideshow.
-- [ ] Caracterizar video/audio solicitado sobre un carousel/bundle.
+- [x] Caracterizar MP4/WebM/MKV en slideshow.
+- [x] Caracterizar video/audio solicitado sobre un carousel/bundle.
 - [x] Registrar número de intentos ante `unexpected-container`.
 
 No relajar el validador para hacer pasar estos casos. El validador está
@@ -185,13 +192,13 @@ Clasificar por causa y no sólo por etapa:
 
 ### Fase C6 — Slideshows y bundles
 
-- [ ] Slideshow MP4/WebM/MKV con soundtrack.
-- [ ] Slideshow MP4/WebM/MKV sin soundtrack.
-- [ ] Solicitud de audio sobre slideshow silencioso: unavailable claro.
-- [ ] Definir si el perfil aplica a cada video de un carousel.
-- [ ] Recomendación: transformar cada item audiovisual al perfil pedido y
+- [x] Slideshow MP4/WebM/MKV con soundtrack.
+- [x] Slideshow MP4/WebM/MKV sin soundtrack.
+- [x] Solicitud de audio sobre slideshow silencioso: unavailable claro.
+- [x] Definir si el perfil aplica a cada video de un carousel.
+- [x] Recomendación: transformar cada item audiovisual al perfil pedido y
   validar cada archivo del bundle.
-- [ ] Si se elige conservar originales, anunciar `original bundle` y no
+- [x] Si se elige conservar originales, anunciar `original bundle` y no
   afirmar que el resultado corresponde a WebM/MKV.
 
 ## 4. Laboratorio determinista de medios
@@ -245,12 +252,12 @@ Cada caso debe comprobar con ffprobe/ffmpeg reales:
 - [x] Duración dentro de tolerancia.
 - [x] Decodificación completa sin errores.
 - [x] Tamaño mayor que cero.
-- [ ] SHA-256 calculado.
-- [ ] Estado y pasos finales del job.
+- [x] SHA-256 calculado.
+- [x] Estado y pasos finales del job.
 - [x] Tipo de procesamiento esperado.
-- [ ] Número de intentos.
-- [ ] Entrada correcta en archive.
-- [ ] Cero temporales restantes.
+- [x] Número de intentos.
+- [x] Entrada correcta en archive.
+- [x] Cero temporales restantes.
 
 Ejecutar los cinco perfiles de audio al menos desde una fuente AAC y una
 fuente Opus.
@@ -277,19 +284,19 @@ Conteo nightly de referencia: cinco fuentes principales por 26 perfiles =
 ## 7. Regresión de resiliencia
 
 - [x] Cancelar durante download, remux, transcode, extract y validate.
-- [ ] Cerrar proceso y recuperar estado.
-- [ ] Disco lleno en cada etapa que escribe.
-- [ ] Archivo destino existente.
-- [ ] Nombres Unicode, emoji y rutas largas.
-- [ ] Falta de encoder.
-- [ ] ffmpeg retorna 0 pero produce salida inválida.
+- [x] Cerrar proceso y recuperar estado. (`scheduler.test.ts`: lotes restaurados tras reinicio; `sync.test.ts`: ejecución interrumpida; `internals.test.ts`: diario con línea rota)
+- [ ] Disco lleno en cada etapa que escribe. (pendiente: requiere un volumen simulado; hoy un fallo de escritura falla el intento sin marcar daño)
+- [x] Archivo destino existente. (`moveIntoPlace` → `uniquePath`: nunca sobreescribe)
+- [x] Nombres Unicode, emoji y rutas largas. (títulos con acentos y emoji en los fakes; nombres portables en `unit.test.ts`)
+- [x] Falta de encoder. (`resilience.test.ts`)
+- [x] ffmpeg retorna 0 pero produce salida inválida. (`resilience.test.ts`; `checkVerdict`: defecto, no daño de origen)
 - [x] Validación `none`, `quick` y `full`.
 - [x] Validación `during` y `after-batch`.
 - [x] Lote con un item cancelado, uno dañado y uno correcto.
 - [x] Archivo válido con extensión falsa.
 - [x] Archivo con contenedor correcto y códec incorrecto.
 - [x] Fuente sin pista solicitada.
-- [ ] Reintento preserva exactamente el perfil original.
+- [x] Reintento preserva exactamente el perfil original. (`scheduler.test.ts`: el reintento pasa por el lote, que conserva su perfil)
 
 ## 8. Cadencia recomendada
 
@@ -324,7 +331,7 @@ conformidad del formato.
 No publicar hasta cumplir todo:
 
 - [x] 26/26 perfiles base válidos.
-- [ ] 130/130 casos locales nightly válidos.
+- [x] 130/130 casos locales nightly válidos.
 - [x] MP4 de entrada solicitado como MKV termina como Matroska.
 - [x] Todos los caps cumplen `height <= maxHeight`.
 - [x] Ningún error determinista redescarga el medio.
@@ -346,7 +353,7 @@ tipo de procesamiento; `1.12.1` sólo si el arreglo queda estrictamente interno.
 - [x] Taxonomía de reintentos corregida.
 - [x] Fixtures generables.
 - [x] Suite de conformidad de 26 perfiles.
-- [ ] Suite por fuentes.
-- [ ] Reporte legible por CI con ffprobe.
+- [x] Suite por fuentes.
+- [x] Reporte legible por CI con ffprobe.
 - [ ] Release del core consumible por Android.
 

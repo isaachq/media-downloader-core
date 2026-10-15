@@ -7,7 +7,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import {after, before, describe, it} from 'node:test'
 import {ensureContainer, extractAudio} from '../src/core/convert.js'
-import {isTransformationDefect} from '../src/core/damaged.js'
+import {checkVerdict, isTransformationDefect} from '../src/core/damaged.js'
 import {DownloadError} from '../src/core/errors.js'
 import {VIDEO_RULES} from '../src/core/formats.js'
 import {run} from '../src/core/process.js'
@@ -43,6 +43,13 @@ async function copyOf(name: Parameters<MediaLab['fixture']>[0], as: string): Pro
 }
 
 const cancelled = (error: unknown) => error instanceof DownloadError && error.code === 'cancelled'
+
+/** An ffmpeg stand-in: a node script that answers every call the way `body` says (the real ffprobe beside it). */
+async function scriptedFfmpeg(name: string, body: string): Promise<{command: string; args: string[]}> {
+  const file = path.join(dir, `${name}.cjs`)
+  await fs.writeFile(file, body)
+  return {command: process.execPath, args: [file]}
+}
 
 describe('conversion resilience', {skip: !available && 'ffmpeg not installed'}, () => {
   it('a cancel during a transcode rejects as cancelled and leaves no output behind', async () => {
@@ -185,6 +192,69 @@ describe('conversion resilience', {skip: !available && 'ffmpeg not installed'}, 
     })
     assert.equal(kind, 'none')
     assert.equal(out, file)
+  })
+
+  it('a missing encoder fails the conversion at once, not retryable, nothing left behind', async () => {
+    // an ffmpeg built without libx264: the same source would fail the same way every time
+    const {file, folder} = await copyOf('webm-vp9-opus-720', 'clip.webm')
+    const noEncoder = await scriptedFfmpeg(
+      'no-encoder',
+      'console.error("Unknown encoder \'libx264\'"); process.exit(1)',
+    )
+    await assert.rejects(
+      ensureContainer({
+        ffmpeg: noEncoder,
+        ffprobe: ffprobeExe,
+        input: file,
+        container: 'mp4',
+        expectAudio: true,
+        threads: 2,
+      }),
+      (error: unknown) =>
+        error instanceof DownloadError && error.code === 'conversion' && /libx264/.test(error.details ?? ''),
+    )
+    assert.deepEqual(await fs.readdir(folder), ['clip.webm'])
+  })
+
+  it('an ffmpeg that returns 0 but writes an unreadable file: the check catches it, and it is a defect, not source damage', async () => {
+    const {file} = await copyOf('webm-vp9-opus-720', 'clip.webm')
+    const liar = await scriptedFfmpeg(
+      'liar',
+      "const out = process.argv[process.argv.length - 1]; require('node:fs').writeFileSync(out, 'not a video at all'); process.exit(0)",
+    )
+    const out = await ensureContainer({
+      ffmpeg: liar,
+      ffprobe: ffprobeExe,
+      input: file,
+      container: 'mp4',
+      expectAudio: true,
+      threads: 2,
+    })
+    assert.equal(path.extname(out), '.mp4')
+    const report = await validateFile({
+      ffmpeg,
+      ffprobe: ffprobeExe,
+      file: out,
+      rules: VIDEO_RULES.mp4,
+      level: 'full',
+      expectAudio: true,
+      threads: 2,
+    })
+    assert.equal(report.ok, false, 'the validator is the oracle: ffmpeg saying 0 is not enough')
+    const codes = report.issues.map(issue => issue.code)
+    // the same issues on a file as the site served it mean a damaged source; on a converted one, a defect
+    assert.equal(checkVerdict(codes, 'downloaded'), 'damage')
+    assert.equal(checkVerdict(codes, 'converted'), 'defect')
+  })
+
+  it('the verdict on a failed check: container, codec and cap are defects; a torn download is damage', () => {
+    assert.equal(checkVerdict(['unexpected-container'], 'downloaded'), 'defect')
+    assert.equal(checkVerdict(['resolution-exceeded'], 'converted'), 'defect')
+    assert.equal(checkVerdict(['decode-failed'], 'downloaded'), 'damage')
+    assert.equal(checkVerdict(['duration-mismatch'], 'downloaded'), 'damage')
+    assert.equal(checkVerdict(['duration-mismatch'], 'converted'), 'defect')
+    assert.equal(checkVerdict(['unknown-duration'], 'downloaded'), 'other')
+    assert.equal(checkVerdict([], 'converted'), 'other')
   })
 
   it('a silent source asked for audio fails as unavailable, not as a conversion error', async () => {

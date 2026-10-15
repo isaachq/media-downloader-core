@@ -4,7 +4,7 @@ import {type Executable, invoke} from '../binaries/executable.js'
 import type {AudioContainer, ProcessingKind, VideoContainer} from '../types.js'
 import {type Option, toArgv} from './argv.js'
 import {cancelledError, DownloadError} from './errors.js'
-import {VIDEO_RULES} from './formats.js'
+import {isBundleVideo, VIDEO_RULES} from './formats.js'
 import {ffmpegProgressReader, lastLines} from './process.js'
 import {codecMismatch, ffprobe, summarizeProbe} from './validate.js'
 
@@ -156,6 +156,51 @@ export async function ensureContainer(opts: ConvertOptions): Promise<string> {
   }
   await fs.rm(opts.input, {force: true})
   return output
+}
+
+// ─── A bundle's videos (a carousel kept as a folder) ───────────────────────
+
+/**
+ * A carousel downloaded as a folder: each of its videos made to match the
+ * profile (container, codecs, resolution cap), in place and under its own
+ * name; its pictures untouched. Returns how many were converted — 0 when
+ * every video already complied, as the plan's "original bundle".
+ */
+export async function convertBundle(opts: {
+  readonly ffmpeg: Executable
+  readonly ffprobe: Executable
+  readonly dir: string
+  readonly container: VideoContainer
+  readonly maxHeight?: number | undefined
+  readonly threads: number
+  readonly signal?: AbortSignal | undefined
+  readonly onProgress?: ((fraction: number) => void) | undefined
+}): Promise<number> {
+  const names = (await fs.readdir(opts.dir)).filter(isBundleVideo).sort()
+  let converted = 0
+  for (const [index, name] of names.entries()) {
+    const input = path.join(opts.dir, name)
+    const output = await ensureContainer({
+      ffmpeg: opts.ffmpeg,
+      ffprobe: opts.ffprobe,
+      input,
+      container: opts.container,
+      maxHeight: opts.maxHeight,
+      // a carousel's clip may well be silent: no stream is demanded, only what is there must comply
+      expectAudio: false,
+      threads: opts.threads,
+      signal: opts.signal,
+      onProgress: fraction => opts.onProgress?.((index + fraction) / names.length),
+    })
+    if (output !== input) {
+      converted++
+      // `<stem>.converted.<ext>` → `<stem>.<ext>`: the item keeps its place in the carousel's order
+      const stem = path.basename(name, path.extname(name))
+      await fs.rename(output, path.join(opts.dir, `${stem}${path.extname(output)}`))
+    }
+    opts.onProgress?.((index + 1) / names.length)
+  }
+  return converted
 }
 
 // ─── Audio from a video (sources that only deliver video files) ────────────

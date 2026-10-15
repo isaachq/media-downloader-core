@@ -54,7 +54,7 @@ Hardening after beta 13 — nothing you asked for changes; the edges do:
 - **Nothing lost at the edges** — a large playlist's JSON read slowly under load is never truncated; jobs appended while the pending journal compacts are kept; a check of a long history leaves no listener per file; subtitle streams go only into MKV (ffmpeg refuses them in mp4/webm).
 - **Every screen in both languages** — the beta 12 presets, filters, environment card, speed tooltip and credits follow the chosen language.
 - **A lighter desktop bundle** — the in-browser demo is loaded only outside Electron; the window is shown and focused without an always-on-top flip.
-- **Format plan, further** — 24 source-shape × container cases (H.265, 10-bit, VP9, AV1, silent, portrait, rotated, VFR), a conversion-resilience suite, Node 20/22/24 and a packed-tarball check in CI. [The plan](docs/FORMAT-REGRESSION-PLAN.md).
+- **Format plan, closed** — 24 source-shape × container cases (H.265, 10-bit, VP9, AV1, silent, portrait, rotated, VFR), a conversion-resilience suite, Node 20/22/24 and a packed-tarball check in CI, and a nightly matrix: every source family × the 26 profiles on real media with the real ffmpeg, slideshows and carousels included, with an ffprobe manifest and a JUnit file kept per run. A carousel's clips now follow the requested profile; its pictures stay as they came. [The plan](docs/FORMAT-REGRESSION-PLAN.md).
 
 ### What's new in beta 13 (library 1.13.1)
 
@@ -706,6 +706,16 @@ it doesn't fit, the batch stops **before downloading anything**:
 `Not enough disk space: the batch needs 48.2 GB and ~/Videos has 31.0 GB free`
 (`diskCheck: 'block' | 'warn' | 'off'`). Each job re-checks its own peak
 before it starts.
+
+### The nightly matrix
+
+`npm test` runs on fakes and finishes in under a minute. The matrix runs the whole engine on real media — every source family (yt-dlp, TikTok, Instagram, Facebook, a player page) serving the same real clip through its local fake, × the 26 profiles, plus slideshows and a carousel — with the real ffmpeg, about 80 s:
+
+```bash
+MDC_MATRIX=1 npx tsx --test test/matrix.test.ts
+```
+
+Every output is probed and the probes land in `reports/matrix-<date>.json`; `.github/workflows/nightly.yml` runs it every night on Ubuntu and Windows with a JUnit file beside the manifest, kept as an artifact for 30 days.
 
 ### Complexity of the hot paths
 

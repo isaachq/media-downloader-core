@@ -23,6 +23,9 @@ export type FixtureName =
   | 'truncated-mp4'
   | 'corrupted-middle-mp4'
   | 'duration-mismatch-mp4'
+  | 'image-portrait-jpg'
+  | 'image-landscape-jpg'
+  | 'audio-mp3-6s'
 
 const DIMENSIONS: Readonly<Record<string, {readonly w: number; readonly h: number}>> = {
   '2160': {w: 3840, h: 2160},
@@ -69,10 +72,22 @@ export class MediaLab {
     if (name === 'audio-aac-m4a') return 'm4a'
     if (name === 'audio-opus') return 'opus'
     if (name === 'audio-mp3-cover-art') return 'mp3'
+    if (name === 'audio-mp3-6s') return 'mp3'
+    if (name.startsWith('image-')) return 'jpg'
     return 'mp4'
   }
 
   async #generate(name: FixtureName, out: string): Promise<void> {
+    // pictures (a slideshow's images, a carousel's photos) and a soundtrack
+    if (name === 'image-portrait-jpg' || name === 'image-landscape-jpg') {
+      const size = name === 'image-portrait-jpg' ? '1080x1440' : '1280x720'
+      runFfmpegSync(['-f', 'lavfi', '-i', `testsrc=duration=1:size=${size}:rate=1`, '-frames:v', '1', '-q:v', '4', out])
+      return
+    }
+    if (name === 'audio-mp3-6s') {
+      runFfmpegSync(['-f', 'lavfi', '-i', 'sine=duration=6:frequency=330', '-c:a', 'libmp3lame', '-q:a', '5', out])
+      return
+    }
     // Standard MP4 H.264 + AAC at various resolutions
     const resMatch = /^mp4-h264-aac-(\d+)$/.exec(name)
     if (resMatch) {

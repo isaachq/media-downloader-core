@@ -7,3 +7,6 @@ dist/
 .perf/
 .env
 .dev.*
+
+# nightly matrix reports (JUnit, ffprobe manifests)
+reports/

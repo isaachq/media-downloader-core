@@ -3,7 +3,6 @@ import type {
   BatchSnapshot,
   DamagedEntry,
   Diagnosis,
-  FormatProfile,
   InstallProgress,
   JobId,
   JobSnapshot,
@@ -26,7 +25,6 @@ import {
   type FinishedQuery,
   type FinishedTarget,
   type Format,
-  isAudioFormat,
   type MdcApi,
   type OpenTarget,
   type Preview,
@@ -36,6 +34,7 @@ import {
   type SyncCheck,
   type SyncFolder,
   type SyncInput,
+  toProfile,
   type UpdateState,
   type VerifySummary,
   type YouTubeState,
@@ -361,13 +360,10 @@ export function createWebBridge(): MdcApi {
     }, 250)
   }
 
-  const profileOf = (format: Format): FormatProfile =>
-    isAudioFormat(format) ? {kind: 'audio', container: format} : {kind: 'video', container: format}
-
   return {
     async info(): Promise<AppInfo> {
       return {
-        version: '1.12.0',
+        version: '1.13.0',
         platform: 'web',
         cpus: typeof navigator !== 'undefined' ? navigator.hardwareConcurrency || 8 : 8,
         maxConcurrency: 4,
@@ -489,7 +485,7 @@ export function createWebBridge(): MdcApi {
       const batch: BatchSnapshot = {
         id: batchId,
         url: input.url,
-        profile: profileOf(input.format),
+        profile: toProfile(input),
         outDir: input.outDir || settings.downloadDir,
         status: 'running',
         kind: count > 1 ? 'playlist' : 'video',
@@ -509,7 +505,7 @@ export function createWebBridge(): MdcApi {
           id: jobId,
           batchId,
           url: input.url,
-          profile: profileOf(input.format),
+          profile: toProfile(input),
           status: 'downloading',
           outcome: 'in-progress',
           tier: 'normal',
@@ -739,7 +735,7 @@ export function createWebBridge(): MdcApi {
         user,
         url: `https://www.tiktok.com/@${user}`,
         folder: input.folder || settings.downloadDir,
-        profile: profileOf(input.format ?? 'mp4'),
+        profile: toProfile({format: input.format ?? 'mp4', quality: 'best'}),
         schedule: input.schedule,
         createdAt: Date.now(),
         runs: [],

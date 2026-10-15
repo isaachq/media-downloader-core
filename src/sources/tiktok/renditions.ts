@@ -48,6 +48,7 @@ export function imagesChoices(
         label: `Slideshow · ${container.toUpperCase()}`,
         estimatedBytes: Math.ceil((SLIDESHOW_RATE * seconds) / 8),
         requiresConversion: true,
+        processingKind: 'transcode',
       }) satisfies FormatChoice,
   )
   return hasSound ? [...video, ...audioChoices(soundDuration)] : video

@@ -1,6 +1,6 @@
 {
   "name": "media-downloader-core",
-  "version": "1.12.0",
+  "version": "1.13.0",
   "description": "Download engine for heavy workloads (many videos, huge playlists): yt-dlp + ffmpeg on a CPUs/2 worker pool, O(1) hot paths, codec-guaranteed formats and full integrity validation.",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -63,7 +63,9 @@
     "url": "git+https://github.com/isaachq/media-downloader-core.git"
   },
   "homepage": "https://github.com/isaachq/media-downloader-core#readme",
-  "bugs": "https://github.com/isaachq/media-downloader-core/issues",
+  "bugs": {
+    "url": "https://github.com/isaachq/media-downloader-core/issues"
+  },
   "keywords": [
     "media-backup",
     "playlist-archiver",

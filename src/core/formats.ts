@@ -1,4 +1,12 @@
-import type {AudioContainer, AudioProfile, FormatChoice, FormatProfile, VideoContainer, VideoProfile} from '../types.js'
+import type {
+  AudioContainer,
+  AudioProfile,
+  FormatChoice,
+  FormatProfile,
+  ProcessingKind,
+  VideoContainer,
+  VideoProfile,
+} from '../types.js'
 import {formatBytes} from '../util/units.js'
 import {type Option, toArgv} from './argv.js'
 
@@ -288,22 +296,26 @@ function pick(
   return any && {format: any, native: false}
 }
 
-const choice = (profile: FormatProfile, requiresConversion: boolean, estimatedBytes?: number): FormatChoice => ({
+const choice = (
+  profile: FormatProfile,
+  requiresConversion: boolean,
+  estimatedBytes?: number,
+  processingKind?: ProcessingKind,
+): FormatChoice => ({
   profile,
   label: `${profileLabel(profile)}${estimatedBytes ? ` · ~${formatBytes(estimatedBytes)}` : ''}`,
   estimatedBytes,
   requiresConversion,
+  processingKind: processingKind ?? (requiresConversion ? 'transcode' : 'none'),
 })
 
 /** Profiles for a playlist — the formats of each entry are unknown until it downloads. */
 export function genericChoices(): FormatChoice[] {
-  // YouTube serves H.264 up to 1080p; a higher mp4 would always mean transcoding
-  const heightsFor = (container: VideoContainer) =>
-    container === 'mp4' ? PLAYLIST_HEIGHTS.filter(h => h <= 1080) : PLAYLIST_HEIGHTS
+  const heights = [undefined, ...PLAYLIST_HEIGHTS]
   const video = VIDEO_CONTAINERS.flatMap(container =>
-    heightsFor(container).map(maxHeight => choice({kind: 'video', container, maxHeight}, false)),
+    heights.map(maxHeight => choice({kind: 'video', container, maxHeight}, false, undefined, 'none')),
   )
-  const audio = AUDIO_CONTAINERS.map(container => choice({kind: 'audio', container}, false))
+  const audio = AUDIO_CONTAINERS.map(container => choice({kind: 'audio', container}, false, undefined, 'none'))
   return [...video, ...audio]
 }
 
@@ -326,7 +338,13 @@ function videoChoice(
   // estimate only when the video size is known — the audio alone would mislead
   const videoBytes = sizeOf(video.format, duration)
   const bytes = videoBytes === undefined ? undefined : videoBytes + (sizeOf(audio?.format, duration) ?? 0)
-  return choice({kind: 'video', container, maxHeight: height}, !video.native || !audioNative, bytes)
+  const requiresConversion = !video.native || !audioNative
+  return choice(
+    {kind: 'video', container, maxHeight: height},
+    requiresConversion,
+    bytes,
+    requiresConversion ? 'transcode' : 'none',
+  )
 }
 
 function audioChoice(catalog: FormatCatalog, container: AudioContainer, duration: number | undefined): FormatChoice {
@@ -336,7 +354,13 @@ function audioChoice(catalog: FormatCatalog, container: AudioContainer, duration
   const copyable = container === 'm4a' || container === 'opus'
   const encoded = ENCODED_AUDIO_BITRATE[container]
   const bytes = encoded ? duration && Math.ceil((encoded * duration) / 8) : sizeOf(source?.format, duration)
-  return choice({kind: 'audio', container}, copyable && !source?.native, bytes || undefined)
+  const requiresConversion = Boolean(copyable && !source?.native)
+  return choice(
+    {kind: 'audio', container},
+    requiresConversion,
+    bytes || undefined,
+    requiresConversion ? 'transcode' : 'none',
+  )
 }
 
 /**

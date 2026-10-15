@@ -3,7 +3,6 @@ import type {
   BatchSnapshot,
   DamagedEntry,
   Diagnosis,
-  FormatProfile,
   InstallProgress,
   JobId,
   JobSnapshot,
@@ -25,8 +24,6 @@ import {
   type FinishedPage,
   type FinishedQuery,
   type FinishedTarget,
-  type Format,
-  isAudioFormat,
   type MdcApi,
   type OpenTarget,
   type Preview,
@@ -35,13 +32,11 @@ import {
   type SyncCheck,
   type SyncFolder,
   type SyncInput,
+  toProfile,
   type UpdateState,
   type VerifySummary,
   type YouTubeState,
 } from '../../../shared/contract'
-
-const profileOf = (format: Format): FormatProfile =>
-  isAudioFormat(format) ? {kind: 'audio', container: format} : {kind: 'video', container: format}
 
 export const INFO: AppInfo = {
   version: '0.1.0-test',
@@ -197,7 +192,7 @@ export class FakeApi implements MdcApi {
     for (const listener of this.#analyzeListeners) listener(progress)
   }
   schedule = vi.fn(async (input: ScheduleInput) =>
-    batch({url: input.url, status: 'scheduled', kind: undefined, title: undefined}),
+    batch({url: input.url, status: 'scheduled', profile: toProfile(input), kind: undefined, title: undefined}),
   )
   state: MdcApi['state']
   items = vi.fn(async () => this.itemsPage)
@@ -268,7 +263,7 @@ export class FakeApi implements MdcApi {
       user,
       url: `https://www.tiktok.com/@${user}`,
       folder: input.folder,
-      profile: profileOf(input.format ?? this.syncFolderResult.format ?? 'mp4'),
+      profile: toProfile({format: input.format ?? this.syncFolderResult.format ?? 'mp4', quality: 'best'}),
       schedule: input.schedule,
       createdAt: Date.now(),
       runs: [],

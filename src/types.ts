@@ -15,6 +15,9 @@ import type {YouTubeAccess} from './youtube/gate.js'
 // format id. That is what makes playlists work: every entry exposes different
 // formats, but the same profile resolves correctly for each one.
 
+/** How a file is processed locally to reach the requested profile. */
+export type ProcessingKind = 'none' | 'remux' | 'transcode' | 'extract'
+
 /** mp4 = H.264 + AAC (plays everywhere) · webm = VP9/AV1 + Opus · mkv = best streams, any codec. */
 export type VideoContainer = 'mp4' | 'webm' | 'mkv'
 /** m4a (AAC) and opus are stream-copied when the source already uses that codec. */
@@ -52,6 +55,8 @@ export type FormatChoice = {
    * converted locally after downloading (slower, uses CPU).
    */
   readonly requiresConversion: boolean
+  /** Exact kind of local processing required. */
+  readonly processingKind?: ProcessingKind | undefined
 }
 
 export type MediaSummary = {
@@ -186,6 +191,7 @@ export type ValidationIssueCode =
   | 'unexpected-video'
   | 'unexpected-video-codec'
   | 'unexpected-audio-codec'
+  | 'resolution-exceeded'
   | 'unknown-duration'
   | 'duration-mismatch'
   | 'decode-failed'

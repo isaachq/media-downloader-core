@@ -44,3 +44,56 @@ describe('the mode a link belongs to', () => {
     expect(platformOf('not a link')).toBeUndefined()
   })
 })
+
+describe('format profiles & 26-profile contract', () => {
+  it('defines the expected format lists and qualities', async () => {
+    const {AUDIO_FORMATS, QUALITIES, VIDEO_FORMATS} = await import('./contract')
+    expect(VIDEO_FORMATS).toEqual(['mp4', 'webm', 'mkv'])
+    expect(AUDIO_FORMATS).toEqual(['m4a', 'mp3', 'opus', 'flac', 'wav'])
+    expect(QUALITIES).toEqual(['best', '2160', '1440', '1080', '720', '480', '360'])
+  })
+
+  it('correctly discriminates audio vs video formats with isAudioFormat', async () => {
+    const {isAudioFormat} = await import('./contract')
+    expect(isAudioFormat('mp4')).toBe(false)
+    expect(isAudioFormat('webm')).toBe(false)
+    expect(isAudioFormat('mkv')).toBe(false)
+    expect(isAudioFormat('m4a')).toBe(true)
+    expect(isAudioFormat('mp3')).toBe(true)
+    expect(isAudioFormat('opus')).toBe(true)
+    expect(isAudioFormat('flac')).toBe(true)
+    expect(isAudioFormat('wav')).toBe(true)
+  })
+
+  it('generates all 21 video profiles and 5 audio profiles (26 total) via toProfile', async () => {
+    const {AUDIO_FORMATS, QUALITIES, toProfile, VIDEO_FORMATS} = await import('./contract')
+
+    // 21 video profiles
+    for (const container of VIDEO_FORMATS) {
+      for (const quality of QUALITIES) {
+        const profile = toProfile({format: container, quality})
+        expect(profile.kind).toBe('video')
+        if (profile.kind === 'video') {
+          expect(profile.container).toBe(container)
+          if (quality === 'best') {
+            expect(profile.maxHeight).toBeUndefined()
+          } else {
+            expect(profile.maxHeight).toBe(Number(quality))
+          }
+        }
+      }
+    }
+
+    // 5 audio profiles
+    for (const container of AUDIO_FORMATS) {
+      for (const quality of QUALITIES) {
+        // audio format must ignore quality
+        const profile = toProfile({format: container, quality})
+        expect(profile.kind).toBe('audio')
+        if (profile.kind === 'audio') {
+          expect(profile.container).toBe(container)
+        }
+      }
+    }
+  })
+})

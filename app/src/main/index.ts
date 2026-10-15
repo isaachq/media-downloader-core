@@ -8,7 +8,6 @@ import {
   type BatchTarget,
   type BinaryPaths,
   type Diagnosis,
-  type FormatProfile,
   folderFormat,
   isTikTokProfile,
   isYouTubeMix,
@@ -40,7 +39,6 @@ import {
   type FinishedPage,
   type FinishedQuery,
   type FinishedSort,
-  isAudioFormat,
   MODE_MISMATCH,
   type Preview,
   platformOf,
@@ -54,6 +52,7 @@ import {
   type SyncCheck,
   type SyncFolder,
   type SyncInput,
+  toProfile,
   type VerifySummary,
 } from '../shared/contract'
 import {EventCoalescer} from './events'
@@ -177,11 +176,6 @@ let coalescer: EventCoalescer
 
 function send(channel: string, payload: unknown): void {
   if (window && !window.isDestroyed()) window.webContents.send(channel, payload)
-}
-
-function toProfile(input: ScheduleInput): FormatProfile {
-  if (isAudioFormat(input.format)) return {kind: 'audio', container: input.format}
-  return {kind: 'video', container: input.format, ...(input.quality !== 'best' && {maxHeight: Number(input.quality)})}
 }
 
 /**

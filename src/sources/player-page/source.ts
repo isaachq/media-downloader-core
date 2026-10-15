@@ -10,6 +10,7 @@ import type {
   FormatProfile,
   MediaSummary,
   PlaylistAnalysis,
+  ProcessingKind,
   VideoAnalysis,
   VideoContainer,
 } from '../../types.js'
@@ -526,11 +527,13 @@ export function playerChoices(page: Pick<VideoPage, 'heights' | 'duration'>): Fo
   const video = containers.flatMap(container =>
     heights.map(height => {
       const profile: FormatProfile = {kind: 'video', container, maxHeight: height}
+      const kind: ProcessingKind = container === 'webm' ? 'transcode' : container === 'mkv' ? 'remux' : 'none'
       return {
         profile,
         label: `${height}p · ${container.toUpperCase()}`,
         estimatedBytes: estimateBytes(profile, [], page.duration),
-        requiresConversion: container === 'webm',
+        requiresConversion: kind !== 'none',
+        processingKind: kind,
       } satisfies FormatChoice
     }),
   )
@@ -542,7 +545,8 @@ export function playerChoices(page: Pick<VideoPage, 'heights' | 'duration'>): Fo
         profile: {kind: 'audio', container},
         label: `Audio · ${container.toUpperCase()}`,
         estimatedBytes: smallest,
-        requiresConversion: false,
+        requiresConversion: true,
+        processingKind: 'extract',
       }) satisfies FormatChoice,
   )
   return [...video, ...audio]

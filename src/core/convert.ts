@@ -1,16 +1,14 @@
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import {type Executable, invoke} from '../binaries/executable.js'
-import type {AudioContainer, VideoContainer} from '../types.js'
+import type {AudioContainer, ProcessingKind, VideoContainer} from '../types.js'
 import {type Option, toArgv} from './argv.js'
 import {cancelledError, DownloadError} from './errors.js'
 import {VIDEO_RULES} from './formats.js'
 import {ffmpegProgressReader, lastLines} from './process.js'
 import {codecMismatch, ffprobe, summarizeProbe} from './validate.js'
 
-type Transcodable = Exclude<VideoContainer, 'mkv'>
-
-const VIDEO_ENCODERS: Readonly<Record<Transcodable, readonly Option[]>> = {
+const VIDEO_ENCODERS: Readonly<Record<VideoContainer, readonly Option[]>> = {
   // 8-bit 4:2:0 High profile: what every hardware decoder (phones, TVs, QuickTime) accepts
   mp4: [
     ['-c:v', 'libx264'],
@@ -27,9 +25,15 @@ const VIDEO_ENCODERS: Readonly<Record<Transcodable, readonly Option[]>> = {
     ['-cpu-used', '8'],
     ['-row-mt', '1'],
   ],
+  mkv: [
+    ['-c:v', 'libx264'],
+    ['-preset', 'veryfast'],
+    ['-crf', '20'],
+    ['-pix_fmt', 'yuv420p'],
+  ],
 }
 
-const AUDIO_ENCODERS: Readonly<Record<Transcodable, readonly Option[]>> = {
+const AUDIO_ENCODERS: Readonly<Record<VideoContainer, readonly Option[]>> = {
   mp4: [
     ['-c:a', 'aac'],
     ['-b:a', '192k'],
@@ -38,6 +42,7 @@ const AUDIO_ENCODERS: Readonly<Record<Transcodable, readonly Option[]>> = {
     ['-c:a', 'libopus'],
     ['-b:a', '160k'],
   ],
+  mkv: [['-c:a', 'copy']],
 }
 
 export type ConvertOptions = {
@@ -45,33 +50,68 @@ export type ConvertOptions = {
   readonly ffprobe: Executable
   readonly input: string
   readonly container: VideoContainer
+  readonly maxHeight?: number | undefined
   readonly expectAudio: boolean
   readonly threads: number
   readonly signal?: AbortSignal | undefined
   /** Called only when a conversion is actually needed. */
   readonly onStart?: (() => void) | undefined
   readonly onProgress?: ((fraction: number) => void) | undefined
+  readonly onKind?: ((kind: ProcessingKind) => void) | undefined
 }
 
 /**
- * Make a downloaded video match exactly the container and codecs its
- * profile promises. Compliant streams are copied bit for bit; only the
- * offending stream is re-encoded. Returns the path of the compliant file —
- * the input itself when nothing had to change.
+ * Make a downloaded video match exactly the container, codecs and resolution
+ * cap its profile promises. Compliant streams are copied bit for bit; only
+ * offending streams or streams needing downscaling are re-encoded.
+ * Returns the path of the compliant file — the input itself when nothing had to change.
  */
 export async function ensureContainer(opts: ConvertOptions): Promise<string> {
-  if (opts.container === 'mkv') return opts.input // mkv holds any codec
-  const container: Transcodable = opts.container
-
+  const container = opts.container
   const rules = VIDEO_RULES[container]
   const summary = summarizeProbe(await ffprobe(opts.ffprobe, opts.input, opts.signal))
   const mismatch = codecMismatch(summary, rules, opts.expectAudio)
+  const rightContainer = summary.container.split(',').some(name => rules.formatNames.includes(name))
   const rightExtension = path.extname(opts.input).slice(1).toLowerCase() === rules.ext
-  if (!mismatch.video && !mismatch.audio && !mismatch.container && rightExtension) return opts.input
 
+  const currentWidth = summary.video?.width ?? 0
+  const currentHeight = summary.video?.height ?? 0
+  const currentRes = currentWidth > 0 && currentHeight > 0 ? Math.min(currentWidth, currentHeight) : currentHeight
+  const exceedsMaxHeight = opts.maxHeight !== undefined && currentRes > 0 && currentRes > opts.maxHeight
+
+  // If already fully compliant in container, extension, codecs and resolution: untouched.
+  if (!mismatch.video && !mismatch.audio && rightContainer && rightExtension && !exceedsMaxHeight) {
+    opts.onKind?.('none')
+    return opts.input
+  }
+
+  // Determine processing kind: transcode if video/audio must be re-encoded or scaled down, else remux.
+  const needsVideoTranscode = mismatch.video || exceedsMaxHeight
+  const needsAudioTranscode = mismatch.audio
+  const kind: ProcessingKind = needsVideoTranscode || needsAudioTranscode ? 'transcode' : 'remux'
+  opts.onKind?.(kind)
   opts.onStart?.()
+
   const stem = path.basename(opts.input, path.extname(opts.input))
   const output = path.join(path.dirname(opts.input), `${stem}.converted.${rules.ext}`)
+
+  // Scale filter when height exceeds cap, or ensure even dimensions for encoder
+  let videoFilter: Option[] = []
+  if (exceedsMaxHeight && opts.maxHeight) {
+    let targetShort = Math.min(opts.maxHeight, currentRes)
+    if (targetShort % 2 !== 0) targetShort -= 1
+    const filter = currentWidth >= currentHeight ? `scale=-2:${targetShort}` : `scale=${targetShort}:-2`
+    videoFilter = [['-vf', filter]]
+  } else if (needsVideoTranscode) {
+    videoFilter = [['-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2']]
+  }
+
+  const videoArgs: readonly Option[] = needsVideoTranscode
+    ? [...VIDEO_ENCODERS[container], ...videoFilter]
+    : [['-c:v', 'copy']]
+
+  const audioArgs: readonly Option[] = needsAudioTranscode ? AUDIO_ENCODERS[container] : [['-c:a', 'copy']]
+
   const argv = toArgv([
     ['-hide_banner'],
     ['-nostdin'],
@@ -81,10 +121,11 @@ export async function ensureContainer(opts: ConvertOptions): Promise<string> {
     ['-fflags', '+genpts'],
     ['-i', opts.input],
     ['-map', '0:V:0'],
-    ['-map', '0:a:0?'],
+    ['-map', '0:a?'],
+    ['-map', '0:s?'],
     ['-map_metadata', '0'],
-    ...(mismatch.video ? VIDEO_ENCODERS[container] : [['-c:v', 'copy'] as const]),
-    ...(mismatch.audio ? AUDIO_ENCODERS[container] : [['-c:a', 'copy'] as const]),
+    ...videoArgs,
+    ...audioArgs,
     container === 'mp4' && ['-movflags', '+faststart'],
     ['-avoid_negative_ts', 'make_zero'],
     ['-progress', 'pipe:1'],
@@ -175,12 +216,26 @@ export async function extractAudio(opts: {
   readonly onProgress?: ((fraction: number) => void) | undefined
 }): Promise<string> {
   const summary = summarizeProbe(await ffprobe(opts.ffprobe, opts.input, opts.signal))
-  if (!summary.audio) throw new DownloadError('conversion', 'The downloaded file has no sound to extract.')
+  if (!summary.audio) {
+    throw new DownloadError(
+      'unavailable',
+      'The downloaded file has no sound to extract.',
+      undefined,
+      undefined,
+      'format-unavailable',
+    )
+  }
   const target = AUDIO_TARGETS[opts.container]
-  const args =
-    opts.container === 'm4a' && summary.audio.codec_name !== 'aac'
-      ? [['-c:a', 'aac'] as Option, ['-b:a', '192k'] as Option, ['-movflags', '+faststart'] as Option]
-      : target.args
+  let args = target.args
+  if (opts.container === 'm4a' && summary.audio.codec_name !== 'aac') {
+    args = [
+      ['-c:a', 'aac'],
+      ['-b:a', '192k'],
+      ['-movflags', '+faststart'],
+    ]
+  } else if (opts.container === 'opus' && summary.audio.codec_name === 'opus') {
+    args = [['-c:a', 'copy']]
+  }
   const stem = path.basename(opts.input, path.extname(opts.input))
   const output = path.join(path.dirname(opts.input), `${stem}.audio.${target.ext}`)
   await runFfmpeg(opts, output, [['-map', '0:a:0'], ['-vn'], ['-sn'], ...args, ...tagArgs(opts.tags)], summary.duration)

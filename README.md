@@ -704,20 +704,34 @@ before it starts.
 
 ## Format profiles
 
-| Profile | Container | Video | Audio | Notes |
-|---|---|---|---|---|
-| `{kind: 'video', container: 'mp4'}` | MP4 | **H.264** | **AAC** | Plays everywhere. YouTube serves H.264 up to 1080p; above that `requiresConversion: true`. |
-| `{kind: 'video', container: 'webm'}` | WebM | VP9 / AV1 / VP8 | Opus / Vorbis | YouTube's native best quality (4K/8K), no conversion. |
-| `{kind: 'video', container: 'mkv'}` | MKV | any | any | Best streams, untouched. |
-| `{kind: 'audio', container: 'm4a'}` | M4A | – | AAC | Stream copy when the source is AAC. |
-| `{kind: 'audio', container: 'opus'}` | Ogg | – | Opus | Stream copy when the source is Opus. |
-| `{kind: 'audio', container: 'mp3'}` | MP3 | – | MP3 | VBR V0 by default (`quality: '0'`) or a bitrate (`'192K'`). |
-| `{kind: 'audio', container: 'flac' \| 'wav'}` | FLAC / WAV | – | FLAC / PCM | Lossless container; the source is still lossy. |
+The core supports **26 base format profiles** across MP4, WebM, MKV, and audio containers:
 
-`maxHeight` caps the resolution. For a single video, `analyze()` returns the
-real choices with size estimates; for a playlist, generic profiles that are
-resolved per entry at download time. When a site lacks the target codecs,
-only the offending stream is re-encoded locally.
+| Family | Profiles | Target Codecs & Muxing | Notes |
+|---|---|---|---|
+| **MP4** | Best, 2160, 1440, 1080, 720, 480, 360 | Video: **H.264** · Audio: **AAC** | Maximum device compatibility (iOS, Android, macOS, Windows, TV). |
+| **WebM** | Best, 2160, 1440, 1080, 720, 480, 360 | Video: **VP9** (or AV1/VP8) · Audio: **Opus** | Native high-efficiency open formats. |
+| **MKV** | Best, 2160, 1440, 1080, 720, 480, 360 | Video: Preserved / H.264 · Audio: Preserved | Matroska container guaranteed. Stream-copied when source is compliant. |
+| **Audio** | M4A, MP3, Opus, FLAC, WAV | M4A (AAC), MP3 (MP3), Opus (Opus), FLAC (lossless), WAV (PCM) | Video tracks and cover art stripped from stream; cover art kept as attached pic. |
+
+### Processing kinds & execution planning
+
+Each choice internally declares its `ProcessingKind`:
+- `'none'`: The downloaded media already matches the required container, codecs, and resolution. Moved directly.
+- `'remux'`: Fast stream copy (`-c copy`) without generational loss when codecs are compliant but the container differs (e.g. MP4/WebM to MKV). I/O-bound.
+- `'transcode'`: Audio or video re-encoding required (e.g. resolution downscaling, codec conversion). CPU-bound.
+- `'extract'`: Audio track extraction from a video source into a dedicated audio container.
+
+### Resolution cap contract
+
+- `maxHeight` acts as a strict upper bound cap (`height <= maxHeight`).
+- `Best` (omitted `maxHeight`) preserves the highest resolution available without artificial upscaling.
+- If a source stream exceeds `maxHeight`, the engine downloads the closest stream above the cap and scales it down locally using FFmpeg, preserving aspect ratio, orientation, SAR/DAR, and even dimension constraints (`scale=-2:targetShort` / `scale=targetShort:-2`).
+- If the source resolution is smaller than `maxHeight`, it is preserved as-is without upscaling.
+
+### Deterministic defect protection
+
+Post-conversion validation distinguishes between genuine source damage (`damaged-source`) and deterministic transformation defects (e.g. `unexpected-container`, `unexpected-video-codec`, `resolution-exceeded`). Transformation defects fail immediately with actionable diagnostic hints, preventing wasteful retry storms against unchangeable outputs.
+
 
 ## Integrity validation
 

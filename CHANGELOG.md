@@ -1,8 +1,8 @@
 # Changelog
  
-## Library 1.13.0
- 
-Version 1.13.0 addresses format regression defects, introduces comprehensive 26-profile format guarantees, explicit processing kinds, resolution downscaling, and fail-fast handling for transformation defects:
+## App 0.2.0-beta.13 · library 1.13.0
+
+Beta 13: Core format regression fixes, guaranteed Matroska container remuxing, 26 format and quality profiles conformance matrix, deterministic transformation defect classification, and full UI test coverage. Version 1.13.0 addresses format regression defects, introduces comprehensive 26-profile format guarantees, explicit processing kinds, resolution downscaling, and fail-fast handling for transformation defects:
  
 - **MKV conversion & remuxing:** Requests for MKV output (e.g. `video:mkv:360`) are now guaranteed to produce real Matroska container files (`.mkv`). Source MP4/WebM streams are remuxed with stream copy (`-c copy`) when codecs are compliant, avoiding unnecessary generational loss. Primary streams are explicitly mapped (`-map 0:V:0 -map 0:a? -map 0:s?`), preventing attached picture covers from being promoted to primary video.
 - **Explicit `ProcessingKind`:** Added `ProcessingKind = 'none' | 'remux' | 'transcode' | 'extract'`. Native renditions and player-page sources declare accurate processing kinds, distinguishing I/O-bound stream copy remuxing from CPU-intensive video/audio transcoding in cost calculations, job tiering, and disk space estimation.

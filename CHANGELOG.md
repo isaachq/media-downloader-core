@@ -38,7 +38,7 @@ strings the beta 12 screens had in one language only.
 - **Tests.** The 26-profile conformance and characterization suites skip
   without ffmpeg (as the integrity suite does) instead of failing; `npm test`
   runs at most four files at once, so the real transcodes do not starve
-  the timed scenarios. New regression tests for the three fixes above.
+  the timed scenarios. New regression tests for the journal race, the shared-signal listeners, the large stdout and the kill order (a child with a detached grandchild, as yt-dlp with its ffmpeg).
 
 **App**
 

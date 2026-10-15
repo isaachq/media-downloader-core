@@ -66,6 +66,44 @@ describe('run', () => {
   })
 })
 
+describe('killTree', () => {
+  it('a cancel reaches the grandchild: the ffmpeg a yt-dlp spawned never outlives it', async () => {
+    // a child that starts a grandchild, tells its pid and idles — like yt-dlp with its ffmpeg.
+    // Regression (Windows): the parent was killed first, so `taskkill /T` found no tree and
+    // the grandchild went on writing its file. On Windows the grandchild is detached: Node
+    // puts its own children in a job that dies with it, which a Python yt-dlp never does for
+    // its ffmpeg — detached, it is only the tree walk that can reach it, as in the real case
+    const script = [
+      "const {spawn} = require('node:child_process')",
+      "const g = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {stdio: 'ignore', detached: process.platform === 'win32'})",
+      "process.stdout.write(String(g.pid) + '\\n')",
+      'setInterval(() => {}, 1000)',
+    ].join(';')
+    const controller = new AbortController()
+    let grandchild = 0
+    const result = await run(process.execPath, ['-e', script], {
+      signal: controller.signal,
+      onStdoutLine: line => {
+        grandchild = Number(line)
+        controller.abort()
+      },
+    })
+    assert.equal(result.aborted, true)
+    assert.ok(grandchild > 0, 'the grandchild pid was reported')
+    const alive = (pid: number) => {
+      try {
+        process.kill(pid, 0)
+        return true
+      } catch {
+        return false
+      }
+    }
+    const deadline = Date.now() + 5000
+    while (alive(grandchild) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50))
+    assert.equal(alive(grandchild), false, `grandchild ${grandchild} survived the cancel`)
+  })
+})
+
 describe('LineSplitter', () => {
   it('reassembles lines split across chunks and strips \\r', () => {
     const received: string[] = []

@@ -66,7 +66,7 @@ export function Header({onLogs, onSettings, onAbout, onReport, onGuide}: Props) 
         </div>
         <Space wrap className="header-actions" align="center">
           {liveSpeed > 0 ? (
-            <Tooltip title={`Velocidad: ${rate(liveSpeed, settings.language)}`}>
+            <Tooltip title={t('header.speed', {rate: rate(liveSpeed, settings.language)})}>
               <Badge status="processing" data-testid="header-speed" style={{marginRight: 8, cursor: 'default'}} />
             </Tooltip>
           ) : null}

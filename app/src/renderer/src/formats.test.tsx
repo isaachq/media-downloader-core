@@ -109,7 +109,7 @@ describe('UI Format & Quality Matrix (All 26 Profiles)', () => {
       const {user} = await mount(api)
 
       // Click "Solo audio (MP3)" button
-      const mp3Button = screen.getByRole('button', {name: /Solo audio \(MP3\)/i})
+      const mp3Button = screen.getByRole('button', {name: /Audio only \(MP3\)|Solo audio \(MP3\)/i})
       await user.click(mp3Button)
 
       await waitFor(() => {
@@ -127,7 +127,7 @@ describe('UI Format & Quality Matrix (All 26 Profiles)', () => {
       })
       const {user} = await mount(api)
 
-      const balancedButton = screen.getByRole('button', {name: /Equilibrado \(720p\)/i})
+      const balancedButton = screen.getByRole('button', {name: /Balanced \(720p\)|Equilibrado \(720p\)/i})
       await user.click(balancedButton)
 
       await waitFor(() => {

@@ -36,7 +36,7 @@
   "scripts": {
     "build": "tsup --config tsup.config.ts",
     "build:watch": "tsup --config tsup.config.ts --watch",
-    "test": "tsx --test test/*.test.ts",
+    "test": "tsx --test --test-concurrency=4 test/*.test.ts",
     "typecheck": "tsc -p . --noEmit",
     "lint": "biome check .",
     "format": "biome check --write .",

@@ -328,22 +328,18 @@ function createWindow(): void {
       nodeIntegration: false,
     },
   })
-  window.once('ready-to-show', () => {
-    if (bounds.maximized) window?.maximize()
-    window?.show()
-    window?.focus()
-    window?.setAlwaysOnTop(true)
-    window?.setAlwaysOnTop(false)
-  })
-  setTimeout(() => {
-    if (window && !window.isVisible()) {
-      if (bounds.maximized) window.maximize()
-      window.show()
-      window.focus()
-      window.setAlwaysOnTop(true)
-      window.setAlwaysOnTop(false)
-    }
-  }, 1000).unref()
+  // shown once the first paint is ready; if that event never comes (seen on
+  // some Windows machines), a second later all the same. Shown and focused,
+  // never forced on top: an always-on-top flip steals focus from whatever
+  // the user is doing and flashes over full-screen apps on macOS
+  const reveal = () => {
+    if (!window || window.isVisible()) return
+    if (bounds.maximized) window.maximize()
+    window.show()
+    window.focus()
+  }
+  window.once('ready-to-show', reveal)
+  setTimeout(reveal, 1000).unref()
   // remember size and position for the next launch (normal bounds even when maximized)
   // the hidden TikTok reader must never keep the app alive on its own
   window.on('closed', () => {
@@ -1087,10 +1083,13 @@ else {
     youtube.close()
     for (const browser of [...playerBrowsers, ...metaBrowsers]) browser.close()
 
-    // Safety watchdog: ensure Electron never gets stuck in the background as a zombie process
+    // a shutdown that hangs (a tool that ignores its kill, a browser that
+    // never closes) must not leave the app running in the background: the
+    // engine's own dispose gives up on its pool after 3 s, so this fires only
+    // past that, after the pending journal had its time to freeze
     const forceExitTimer = setTimeout(() => {
       app.exit(0)
-    }, 4000)
+    }, 10_000)
     forceExitTimer.unref()
 
     // saves pending batches and jobs, stops processes, keeps partial downloads for next launch

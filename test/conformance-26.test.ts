@@ -5,6 +5,7 @@ import * as path from 'node:path'
 import {after, before, describe, it} from 'node:test'
 import {ensureContainer, extractAudio} from '../src/core/convert.js'
 import {rulesFor} from '../src/core/formats.js'
+import {run} from '../src/core/process.js'
 import {validateFile} from '../src/core/validate.js'
 import type {FormatProfile, ProcessingKind} from '../src/types.js'
 import {MediaLab} from './helpers/media-lab.js'
@@ -13,6 +14,11 @@ let tmpDir = ''
 let lab: MediaLab
 const ffmpegExe = {command: 'ffmpeg', args: []}
 const ffprobeExe = {command: 'ffprobe', args: []}
+// real media only: without ffmpeg on the PATH the suite is skipped, as the integrity suite is
+const available = await run('ffmpeg', ['-version']).then(
+  result => result.code === 0,
+  () => false,
+)
 
 before(async () => {
   tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdc-conformance-'))
@@ -245,7 +251,7 @@ const CASES: readonly ConformanceCase[] = [
   },
 ]
 
-describe('26-Profile Conformance Suite', () => {
+describe('26-Profile Conformance Suite', {skip: !available && 'ffmpeg not installed'}, () => {
   for (const c of CASES) {
     it(`validates ${c.id}: container, codecs, resolution cap and full integrity`, async () => {
       const caseDir = path.join(tmpDir, c.id)

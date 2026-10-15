@@ -122,7 +122,9 @@ export async function ensureContainer(opts: ConvertOptions): Promise<string> {
     ['-i', opts.input],
     ['-map', '0:V:0'],
     ['-map', '0:a?'],
-    ['-map', '0:s?'],
+    // subtitles ride along only where any text codec can (Matroska); an mp4
+    // or webm would need them re-encoded, and ffmpeg refuses the copy outright
+    container === 'mkv' && ['-map', '0:s?'],
     ['-map_metadata', '0'],
     ...videoArgs,
     ...audioArgs,

@@ -1,5 +1,6 @@
 import {strict as assert} from 'node:assert'
 import {createHash} from 'node:crypto'
+import {getEventListeners} from 'node:events'
 import {rmSync} from 'node:fs'
 import * as fs from 'node:fs/promises'
 import * as http from 'node:http'
@@ -47,6 +48,21 @@ describe('extractMany', () => {
     )
     assert.equal(results.size, 3)
     for (const url of urls) assert.equal(results.get(url)?.ok, true)
+  })
+})
+
+describe('run', () => {
+  it('returns the whole of a large stdout written just before the child exits', async () => {
+    // a playlist's JSON is written in one go and the process ends at once: nothing of it
+    // may be cut off by the settle-after-exit watchdog, however slowly the pipe is read
+    const size = 6 * 1024 * 1024
+    const result = await run(process.execPath, [
+      '-e',
+      `process.stdout.write('x'.repeat(${size}) + '\\nEND\\n', () => process.exit(0))`,
+    ])
+    assert.equal(result.code, 0)
+    assert.equal(result.stdout.length, size + 5)
+    assert.ok(result.stdout.endsWith('END\n'))
   })
 })
 
@@ -179,6 +195,17 @@ describe('HashPool', () => {
     assert.equal(result.code, 0, result.stderr)
     assert.match(result.stdout.trim(), /^[a-f0-9]{64}$/)
     assert.ok(Date.now() - started < 15_000, 'process waited for the idle worker timeout')
+  })
+
+  it('leaves nothing on a signal shared by many files once each is hashed', async () => {
+    // one check of a long history hands the same signal to every file: a listener left
+    // per file would pile up until the check ends (and warn past ten)
+    const controller = new AbortController()
+    const pool = new HashPool(1)
+    const file = path.join(dir, 'blob1.bin')
+    await Promise.all(Array.from({length: 12}, () => pool.sha256(file, controller.signal)))
+    assert.equal(getEventListeners(controller.signal, 'abort').length, 0)
+    await pool.close()
   })
 
   it('rejects missing files and aborted requests', async () => {
@@ -367,6 +394,34 @@ describe('PendingJournal', () => {
     assert.ok(lines < 2100, `journal should have been compacted (${lines} lines)`)
     const replayed = await new PendingJournal<number>(file, () => []).load()
     assert.deepEqual(replayed, [...live.values()])
+  })
+
+  it('keeps the entries appended while it compacts', async () => {
+    // regression: a chunk flushed during a compaction reopened the old file, and the
+    // compacted one renamed over it dropped those lines — a restart lost those jobs
+    const file = path.join(dir, 'racing.jsonl')
+    const live = new Map<string, number>()
+    let snapshots = 0
+    const journal = new PendingJournal<number>(file, () => {
+      snapshots++
+      return [...live.entries()]
+    })
+    for (let i = 0; i < 1500; i++) {
+      live.set(`a${i}`, i)
+      journal.put(`a${i}`, i)
+    }
+    const compaction = journal.compact()
+    // the entries put once the compaction took its snapshot, while it still writes
+    while (snapshots === 0) await new Promise(resolve => setImmediate(resolve))
+    for (let i = 0; i < 20; i++) {
+      live.set(`b${i}`, i)
+      journal.put(`b${i}`, i)
+      await new Promise(resolve => setImmediate(resolve))
+    }
+    await compaction
+    await journal.freeze()
+    const replayed = await new PendingJournal<number>(file, () => []).load()
+    assert.equal(replayed.length, live.size)
   })
 
   it('ignores a torn last line after a crash', async () => {

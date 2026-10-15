@@ -204,11 +204,11 @@ export function JobTable({
           value={statusFilter}
           onChange={val => setStatusFilter(val as typeof statusFilter)}
           options={[
-            {label: `Todos (${rows.length})`, value: 'all'},
-            {label: `En curso (${counts.working})`, value: 'working'},
-            {label: `En cola (${counts.queued})`, value: 'queued'},
-            {label: `Completados (${counts.completed})`, value: 'completed'},
-            {label: `Errores (${counts.failed})`, value: 'failed'},
+            {label: t('job.filter.all', {count: rows.length}), value: 'all'},
+            {label: t('job.filter.working', {count: counts.working}), value: 'working'},
+            {label: t('job.filter.queued', {count: counts.queued}), value: 'queued'},
+            {label: t('job.filter.completed', {count: counts.completed}), value: 'completed'},
+            {label: t('job.filter.failed', {count: counts.failed}), value: 'failed'},
           ]}
         />
         <Button icon={paused ? <PlayCircleOutlined /> : <PauseCircleOutlined />} onClick={() => void togglePause()}>

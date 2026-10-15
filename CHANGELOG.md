@@ -1,4 +1,61 @@
 # Changelog
+
+## Unreleased · hardening after beta 13
+
+Found by reviewing beta 10 → 13 and running the suites: no behaviour the
+user asked for changes; what changes is what happens at the edges — a
+cancel on Windows, Ctrl+C in the CLI, a long batch compacting its journal,
+a check of a long history, a large playlist read under load — and the
+strings the beta 12 screens had in one language only.
+
+**Library**
+
+- **Windows: a cancel kills the whole tree.** `killTree` terminated the
+  parent (yt-dlp) at once and ran `taskkill /T` beside it; `taskkill` walks
+  the tree from a live parent, so it found nothing and the ffmpeg under it
+  went on writing. Now `taskkill` goes first and the direct kill is the
+  fallback once it is done or could not run.
+- **The host's signals are its own.** The library no longer installs
+  `SIGINT` / `SIGTERM` handlers that call `process.exit()`: they cut short
+  the CLI's own Ctrl+C sequence (dispose the engine, freeze the journal,
+  then exit) and Electron's quit. The `exit` hook that kills live children
+  stays.
+- **A large stdout is never cut short.** After a child exited, its result
+  was settled 150 ms later whether or not its pipes were drained — a
+  playlist's JSON read slowly under load could be truncated. The watchdog
+  now waits 2 s of silence and every chunk still arriving re-arms it.
+- **Pending journal: appends during a compaction are kept.** A chunk flushed
+  while compacting reopened the old file, which the compacted one was then
+  renamed over — those jobs were gone on the next launch. Appends and
+  compaction now take turns on one lock.
+- **Hash pool: no listener left per file.** A check of a long history hands
+  one signal to every file; each queued file left its abort listener on it
+  until the check ended (a warning past ten, memory over thousands). The
+  listener is removed once the file starts or ends.
+- **Subtitle streams only into MKV.** The remux mapped `0:s?` for every
+  container; ffmpeg refuses to copy text subtitles into mp4 / webm, and the
+  job failed as "could not convert". They are mapped for Matroska only.
+- **Tests.** The 26-profile conformance and characterization suites skip
+  without ffmpeg (as the integrity suite does) instead of failing; `npm test`
+  runs at most four files at once, so the real transcodes do not starve
+  the timed scenarios. New regression tests for the three fixes above.
+
+**App**
+
+- Every string of the beta 12 screens goes through the dictionary: presets,
+  link tags, the Downloads filter, the environment card in Settings, the
+  speed tooltip and the About credits read in the chosen language (they
+  were Spanish or English only).
+- The in-browser demo bridge (sample data, ~950 lines) is loaded only
+  outside Electron, on demand: it is no longer part of the desktop bundle,
+  and a desktop window whose preload failed shows the error instead of
+  sample files.
+- The window is shown and focused without the always-on-top flip, which
+  stole focus on every launch and flashed over full-screen apps on macOS.
+- The force-quit watchdog gives the shutdown 10 s (was 4 s): the engine's
+  own dispose already gives up on its pool after 3 s, so the pending
+  journal always has its time to freeze.
+
  
 ## App 0.2.0-beta.13 · library 1.13.1
 

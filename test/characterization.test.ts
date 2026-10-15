@@ -5,6 +5,7 @@ import * as path from 'node:path'
 import {after, before, describe, it} from 'node:test'
 import {ensureContainer} from '../src/core/convert.js'
 import {genericChoices} from '../src/core/formats.js'
+import {run} from '../src/core/process.js'
 import {ffprobe, summarizeProbe} from '../src/core/validate.js'
 import {playerChoices} from '../src/sources/player-page/source.js'
 import {renditionChoices} from '../src/sources/renditions.js'
@@ -12,6 +13,11 @@ import {renditionChoices} from '../src/sources/renditions.js'
 let dir = ''
 const ffmpegExe = {command: 'ffmpeg', args: []}
 const ffprobeExe = {command: 'ffprobe', args: []}
+// real media only: without ffmpeg on the PATH the suite is skipped, as the integrity suite is
+const available = await run('ffmpeg', ['-version']).then(
+  result => result.code === 0,
+  () => false,
+)
 
 before(async () => {
   dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdc-char-'))
@@ -21,7 +27,7 @@ after(async () => {
   await fs.rm(dir, {recursive: true, force: true})
 })
 
-describe('Phase C0 Characterization', () => {
+describe('Phase C0 Characterization', {skip: !available && 'ffmpeg not installed'}, () => {
   it('characterizes MKV conversion bug: ensureContainer currently returns input MP4 unchanged', async () => {
     // Create a real MP4 clip
     const mp4Input = path.join(dir, 'source.mp4')

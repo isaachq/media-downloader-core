@@ -7,7 +7,8 @@ on:
 
 jobs:
   check:
-    name: ${{ matrix.os }} · node ${{ matrix.node }}
+    # the Node 22 runs keep their old names: branch protection requires them by name
+    name: ${{ matrix.node == 22 && matrix.os || format('{0} · node {1}', matrix.os, matrix.node) }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

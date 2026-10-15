@@ -10,8 +10,17 @@ import * as path from 'node:path'
 import {fileURLToPath} from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-// npm through this very node, no shell: the same command on Windows and POSIX, nothing concatenated
-const npmCli = path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js')
+// npm through this very node, no shell: the same command on Windows and POSIX, nothing concatenated.
+// Under `npm run` npm says where it is; otherwise it sits beside node (Windows) or under lib/ (POSIX).
+const npmCli = [
+  process.env.npm_execpath,
+  path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+  path.join(path.dirname(process.execPath), '..', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+].find(candidate => candidate && fs.existsSync(candidate))
+if (!npmCli) {
+  console.error('npm-cli.js not found beside this node; run through `npm run pack:check`')
+  process.exit(1)
+}
 const sh = (args, cwd) =>
   execFileSync(process.execPath, [npmCli, ...args], {cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit']})
 

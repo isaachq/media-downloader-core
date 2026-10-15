@@ -338,7 +338,7 @@ export class MediaLab {
         'lavfi',
         '-i',
         'sine=duration=1:frequency=440',
-        '-vsync',
+        '-fps_mode',
         'vfr',
         '-c:v',
         'libx264',

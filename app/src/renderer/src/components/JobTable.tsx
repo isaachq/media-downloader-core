@@ -29,6 +29,17 @@ function rank(job: JobSnapshot): number {
  * One row per download thread. Virtualized: thousands of rows render only
  * what's on screen; rows come from the store, updated ≤ 10×/s.
  */
+type StatusFilter = 'all' | 'working' | 'queued' | 'completed' | 'failed'
+
+/** The filter bucket a job falls in; cancelled jobs are in none (only "all" shows them). */
+const bucketOf = (job: JobSnapshot): Exclude<StatusFilter, 'all'> | undefined => {
+  if (WORKING.has(job.status)) return 'working'
+  if (job.status === 'queued') return 'queued'
+  if (job.status === 'completed' || job.status === 'skipped') return 'completed'
+  if (job.status === 'failed') return 'failed'
+  return undefined
+}
+
 export function JobTable({
   batchId,
   onBatch,
@@ -55,39 +66,27 @@ export function JobTable({
     [version, t],
   )
 
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+
+  // one pass over the jobs per store change: the rows of this batch, their counts per filter
+  // and the rows the filter keeps — O(jobs), not three times that
   // biome-ignore lint/correctness/useExhaustiveDependencies: recompute when the store changes
-  const rows = useMemo(() => {
-    const list = batchId ? [...store.jobs.values()].filter(job => job.batchId === batchId) : [...store.jobs.values()]
-    return list
-      .map((job, order) => ({job, order}))
+  const {total, counts, filteredRows} = useMemo(() => {
+    const counts = {working: 0, queued: 0, completed: 0, failed: 0}
+    const picked: Array<{job: JobSnapshot; order: number}> = []
+    let order = 0
+    for (const job of store.jobs.values()) {
+      if (batchId && job.batchId !== batchId) continue
+      const bucket = bucketOf(job)
+      if (bucket) counts[bucket]++
+      if (statusFilter === 'all' || bucket === statusFilter) picked.push({job, order})
+      order++
+    }
+    const sorted = picked
       .sort((a, b) => rank(a.job) - rank(b.job) || (rank(a.job) === 2 ? b.order - a.order : a.order - b.order))
       .map(({job}) => job)
-  }, [version, batchId])
-
-  const [statusFilter, setStatusFilter] = useState<'all' | 'working' | 'queued' | 'completed' | 'failed'>('all')
-
-  const counts = useMemo(() => {
-    let working = 0
-    let queued = 0
-    let completed = 0
-    let failed = 0
-    for (const job of rows) {
-      if (WORKING.has(job.status)) working++
-      else if (job.status === 'queued') queued++
-      else if (job.status === 'completed' || job.status === 'skipped') completed++
-      else if (job.status === 'failed') failed++
-    }
-    return {working, queued, completed, failed}
-  }, [rows])
-
-  const filteredRows = useMemo(() => {
-    if (statusFilter === 'all') return rows
-    if (statusFilter === 'working') return rows.filter(job => WORKING.has(job.status))
-    if (statusFilter === 'queued') return rows.filter(job => job.status === 'queued')
-    if (statusFilter === 'completed') return rows.filter(job => job.status === 'completed' || job.status === 'skipped')
-    if (statusFilter === 'failed') return rows.filter(job => job.status === 'failed')
-    return rows
-  }, [rows, statusFilter])
+    return {total: order, counts, filteredRows: sorted}
+  }, [version, batchId, statusFilter])
 
   const columns: ColumnsType<JobSnapshot> = [
     {
@@ -204,7 +203,7 @@ export function JobTable({
           value={statusFilter}
           onChange={val => setStatusFilter(val as typeof statusFilter)}
           options={[
-            {label: t('job.filter.all', {count: rows.length}), value: 'all'},
+            {label: t('job.filter.all', {count: total}), value: 'all'},
             {label: t('job.filter.working', {count: counts.working}), value: 'working'},
             {label: t('job.filter.queued', {count: counts.queued}), value: 'queued'},
             {label: t('job.filter.completed', {count: counts.completed}), value: 'completed'},
@@ -223,7 +222,7 @@ export function JobTable({
           {t('job.clearFinished')}
         </Button>
       </Space>
-      {rows.length > 0 && counts.working === 0 && counts.queued === 0 && counts.completed > 0 ? (
+      {total > 0 && counts.working === 0 && counts.queued === 0 && counts.completed > 0 ? (
         <Alert
           type="success"
           showIcon
@@ -245,7 +244,7 @@ export function JobTable({
         columns={columns}
         dataSource={filteredRows}
         pagination={false}
-        virtual={rows.length > 100}
+        virtual={filteredRows.length > 100}
         scroll={{y: 420, x: 960}}
         locale={{emptyText: <Empty description={t('job.empty')} />}}
         rowClassName={job => `job-row job-${job.outcome}`}

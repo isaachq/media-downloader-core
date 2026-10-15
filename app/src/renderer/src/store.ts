@@ -96,6 +96,8 @@ export class AppStore {
   #used = 0
   #finishedBytes = 0
   #counts: JobCounts | undefined
+  /** Bytes per second of every working job, summed as each job reports — O(1) per change. */
+  #speed = 0
 
   get version(): number {
     return this.#version
@@ -113,6 +115,11 @@ export class AppStore {
    * until a job changes status: progress events alone leave it untouched, so
    * whatever shows only counts doesn't re-render 10×/s.
    */
+  /** The downloads' combined speed (B/s): a sum kept per change, never a scan of the jobs. */
+  get speed(): number {
+    return this.#speed
+  }
+
   get counts(): JobCounts {
     if (!this.#counts) {
       const total = zero()
@@ -206,10 +213,18 @@ export class AppStore {
     if (before?.status !== job.status) this.#counts = undefined
     if (before) {
       this.#live[before.status]--
-      if (WORKING.has(before.status)) this.#used -= before.weight
+      if (WORKING.has(before.status)) {
+        this.#used -= before.weight
+        this.#speed -= before.progress.speed ?? 0
+      }
     }
     this.#live[job.status]++
-    if (WORKING.has(job.status)) this.#used += job.weight
+    if (WORKING.has(job.status)) {
+      this.#used += job.weight
+      this.#speed += job.progress.speed ?? 0
+    }
+    // a sum of floats drifts; once nothing works it is exactly nothing
+    if (this.#used === 0) this.#speed = 0
     if (job.status === 'completed' && before?.status !== 'completed') {
       this.#finishedBytes += job.validation?.sizeBytes ?? job.progress.totalBytes ?? 0
     }

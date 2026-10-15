@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased · hardening after beta 13
+## App 0.2.0-beta.14 · library 1.14.0
 
-Found by reviewing beta 10 → 13 and running the suites: no behaviour the
+Beta 14: hardening after beta 13. Found by reviewing beta 10 → 13 and running the suites: no behaviour the
 user asked for changes; what changes is what happens at the edges — a
 cancel on Windows, Ctrl+C in the CLI, a long batch compacting its journal,
 a check of a long history, a large playlist read under load — and the
@@ -38,7 +38,22 @@ strings the beta 12 screens had in one language only.
 - **Tests.** The 26-profile conformance and characterization suites skip
   without ffmpeg (as the integrity suite does) instead of failing; `npm test`
   runs at most four files at once, so the real transcodes do not starve
-  the timed scenarios. New regression tests for the journal race, the shared-signal listeners, the large stdout and the kill order (a child with a detached grandchild, as yt-dlp with its ffmpeg).
+  the timed scenarios. New regression tests for the journal race, the
+  shared-signal listeners, the large stdout and the kill order (a child with
+  a detached grandchild, as yt-dlp with its ffmpeg).
+- **Format plan, the next gates.** Beside the 26 profiles, every shape a
+  site serves — H.265 and 10-bit HEVC, VP9 and AV1 WebM, a silent clip, a
+  portrait video, one rotated by metadata, variable frame rate — asked as
+  mp4, webm and mkv under a cap (24 cases), and the five audio profiles from
+  an AAC soundtrack. A conversion-resilience suite: a cancel in the middle
+  of a transcode or an extraction leaves nothing behind, a valid file under
+  a false extension is a deterministic defect (and the remux makes it
+  real), the right container with the wrong codec is transcoded, a cap
+  above the source never upscales, a silent source asked for audio is
+  "unavailable". CI runs the library on Node 20, 22 and 24, and packs the
+  tarball into an empty project to load it as ESM and CJS
+  (`npm run pack:check`). `docs/FORMAT-REGRESSION-PLAN.md` has its boxes
+  ticked and what stays open (slideshows and bundles, the nightly matrix).
 
 **App**
 
@@ -55,6 +70,10 @@ strings the beta 12 screens had in one language only.
 - The force-quit watchdog gives the shutdown 10 s (was 4 s): the engine's
   own dispose already gives up on its pool after 3 s, so the pending
   journal always has its time to freeze.
+- The header's speed badge read every job on every store change (O(jobs),
+  up to 10×/s); the store now keeps the sum per change, O(1), as it does
+  the counts. The Downloads table derives its rows, its filter counts and
+  the filtered rows in one pass instead of three.
 
  
 ## App 0.2.0-beta.13 · library 1.13.1

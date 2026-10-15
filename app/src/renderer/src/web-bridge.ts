@@ -363,7 +363,7 @@ export function createWebBridge(): MdcApi {
   return {
     async info(): Promise<AppInfo> {
       return {
-        version: '1.13.0',
+        version: '1.14.0',
         platform: 'web',
         cpus: typeof navigator !== 'undefined' ? navigator.hardwareConcurrency || 8 : 8,
         maxConcurrency: 4,

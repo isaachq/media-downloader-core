@@ -7,17 +7,24 @@ on:
 
 jobs:
   check:
-    name: ${{ matrix.os }}
+    name: ${{ matrix.os }} · node ${{ matrix.node }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
+        node: [22]
+        include:
+          # the engine's supported range (engines.node >= 20): oldest and newest LTS, on one OS each
+          - os: ubuntu-latest
+            node: 20
+          - os: ubuntu-latest
+            node: 24
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ matrix.node }}
           cache: npm
 
       # ffmpeg/ffprobe enable the integrity test suite (it is skipped without them)
@@ -36,6 +43,8 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+      # the package as a consumer gets it: packed, installed in an empty project, loaded as ESM and CJS
+      - run: npm run pack:check
 
       # the real thing: download, checksum-verify and test yt-dlp + ffmpeg, then diagnose
       - name: mdc setup (real install)

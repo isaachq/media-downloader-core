@@ -9,6 +9,15 @@
 > contenedor, los códecs, la resolución y el archivo prometidos antes de
 > publicar una nueva versión del core.
 
+> **Estado al 2026-10-15 (rama `fix/beta14-hardening`, hacia beta 14 · librería 1.14.0):**
+> fases C0–C5 cerradas; laboratorio de fixtures completo; suite de 26 perfiles más
+> 24 casos de formas de origen × contenedor (`test/conformance-26.test.ts`) y la
+> regresión de resiliencia de conversión (`test/resilience.test.ts`); tarball probado
+> en CI como ESM y CJS (`npm run pack:check`); Node 20, 22 y 24 en CI. Quedan abiertas:
+> slideshows y bundles (C6), la matriz nightly de 130 casos por fuente real, el
+> reporte ffprobe legible por CI y la verificación desde Android.
+
+
 ## 1. Motivo y defecto de referencia
 
 El caso que originó este plan fue una descarga TikTok solicitada como
@@ -87,14 +96,14 @@ Esta decisión debe documentarse en README y quedar cubierta por pruebas.
 
 ### Fase C0 — Caracterización antes de modificar
 
-- [ ] Añadir una prueba roja que reproduzca MP4 de entrada → MKV solicitado.
-- [ ] Confirmar que la salida actual mantiene contenedor MP4.
-- [ ] Añadir una prueba roja de MKV en TikTok native choices.
-- [ ] Añadir una prueba roja de MKV en Player Page choices.
-- [ ] Caracterizar qué ocurre al pedir 360 con una única fuente 720.
+- [x] Añadir una prueba roja que reproduzca MP4 de entrada → MKV solicitado.
+- [x] Confirmar que la salida actual mantiene contenedor MP4.
+- [x] Añadir una prueba roja de MKV en TikTok native choices.
+- [x] Añadir una prueba roja de MKV en Player Page choices.
+- [x] Caracterizar qué ocurre al pedir 360 con una única fuente 720.
 - [ ] Caracterizar MP4/WebM/MKV en slideshow.
 - [ ] Caracterizar video/audio solicitado sobre un carousel/bundle.
-- [ ] Registrar número de intentos ante `unexpected-container`.
+- [x] Registrar número de intentos ante `unexpected-container`.
 
 No relajar el validador para hacer pasar estos casos. El validador está
 detectando correctamente la salida incorrecta.
@@ -109,49 +118,49 @@ type ProcessingKind = 'none' | 'remux' | 'transcode' | 'extract'
 
 Tareas:
 
-- [ ] Calcular el tipo desde perfil, rendition y streams reales.
-- [ ] Mantener `requiresConversion` como valor derivado si forma parte de la
+- [x] Calcular el tipo desde perfil, rendition y streams reales.
+- [x] Mantener `requiresConversion` como valor derivado si forma parte de la
   API pública.
-- [ ] Usar el tipo para estimación de disco, tier del job y logging.
-- [ ] Diferenciar en trazas `remuxing`, `transcoding` y `extracting` aunque la
+- [x] Usar el tipo para estimación de disco, tier del job y logging.
+- [x] Diferenciar en trazas `remuxing`, `transcoding` y `extracting` aunque la
   API pública conserve el paso genérico `convert`.
-- [ ] Revisar `src/core/cost.ts`, `src/scheduler.ts`, `src/downloader.ts`,
+- [x] Revisar `src/core/cost.ts`, `src/scheduler.ts`, `src/downloader.ts`,
   `src/sources/renditions.ts`, `src/sources/player-page/source.ts` y choices
   de audio.
 
 ### Fase C2 — MKV correcto
 
-- [ ] Probar el contenedor real antes de devolver la entrada.
-- [ ] Si la entrada ya es Matroska y no requiere escala, conservarla.
-- [ ] Para MP4/WebM → MKV ejecutar remux con mapeo explícito de streams y
+- [x] Probar el contenedor real antes de devolver la entrada.
+- [x] Si la entrada ya es Matroska y no requiere escala, conservarla.
+- [x] Para MP4/WebM → MKV ejecutar remux con mapeo explícito de streams y
   `-c copy`.
-- [ ] Si además se necesita reducir resolución, transcodificar video y decidir
+- [x] Si además se necesita reducir resolución, transcodificar video y decidir
   la política de audio por compatibilidad.
-- [ ] Preservar metadata útil, capítulos y subtítulos compatibles.
-- [ ] No incorporar thumbnails como pista de video reproducible.
-- [ ] Escribir a temporal y reemplazar sólo después de ffmpeg + validación.
-- [ ] Limpiar entrada y temporales en éxito, error y cancelación.
+- [x] Preservar metadata útil, capítulos y subtítulos compatibles.
+- [x] No incorporar thumbnails como pista de video reproducible.
+- [x] Escribir a temporal y reemplazar sólo después de ffmpeg + validación.
+- [x] Limpiar entrada y temporales en éxito, error y cancelación.
 
 ### Fase C3 — Resoluciones
 
-- [ ] Hacer cumplir el cap en fuentes nativas, Player Page y yt-dlp.
-- [ ] No escalar hacia arriba.
-- [ ] Probar landscape, portrait, rotación metadata y dimensiones impares.
-- [ ] Confirmar que Best no queda limitado accidentalmente a 1080.
-- [ ] Revisar `genericChoices`: hoy MP4 no anuncia todas las alturas que la
+- [x] Hacer cumplir el cap en fuentes nativas, Player Page y yt-dlp.
+- [x] No escalar hacia arriba.
+- [x] Probar landscape, portrait, rotación metadata y dimensiones impares.
+- [x] Confirmar que Best no queda limitado accidentalmente a 1080.
+- [x] Revisar `genericChoices`: hoy MP4 no anuncia todas las alturas que la
   aplicación móvil permite seleccionar.
 
 ### Fase C4 — Audio
 
-- [ ] M4A: copiar AAC cuando sea seguro; convertir otros códecs a AAC.
-- [ ] MP3: codificar a MP3 y eliminar toda pista de video.
-- [ ] Opus: copiar Opus compatible o codificar a Opus.
-- [ ] FLAC: codificar lossless desde la fuente decodificada.
-- [ ] WAV: producir PCM con parámetros documentados.
-- [ ] Conservar tags soportados.
-- [ ] Tratar cover art como imagen adjunta, no como video principal.
-- [ ] Definir respuesta para fuentes sin audio.
-- [ ] Corregir estimates/tier: extraer audio siempre implica procesamiento,
+- [x] M4A: copiar AAC cuando sea seguro; convertir otros códecs a AAC.
+- [x] MP3: codificar a MP3 y eliminar toda pista de video.
+- [x] Opus: copiar Opus compatible o codificar a Opus.
+- [x] FLAC: codificar lossless desde la fuente decodificada.
+- [x] WAV: producir PCM con parámetros documentados.
+- [x] Conservar tags soportados.
+- [x] Tratar cover art como imagen adjunta, no como video principal.
+- [x] Definir respuesta para fuentes sin audio.
+- [x] Corregir estimates/tier: extraer audio siempre implica procesamiento,
   aunque no siempre implique recodificar.
 
 ### Fase C5 — Taxonomía de errores y reintentos
@@ -168,11 +177,11 @@ Clasificar por causa y no sólo por etapa:
 | Espacio insuficiente | No reintentar automáticamente |
 | Cancelación | Terminal cancelado, sin marcar damaged |
 
-- [ ] `unexpected-container`, `unexpected-video-codec` y
+- [x] `unexpected-container`, `unexpected-video-codec` y
   `unexpected-audio-codec` deben distinguir defecto de transformación y daño
   de origen usando el contexto de la etapa.
-- [ ] Una salida determinísticamente incorrecta debe consumir un intento.
-- [ ] Conservar la detección de archivos genuinamente dañados en origen.
+- [x] Una salida determinísticamente incorrecta debe consumir un intento.
+- [x] Conservar la detección de archivos genuinamente dañados en origen.
 
 ### Fase C6 — Slideshows y bundles
 
@@ -192,20 +201,20 @@ binarios grandes en Git.
 
 Fixtures requeridos:
 
-- [ ] MP4 H.264/AAC: 2160, 1440, 1080, 720, 480 y 360.
-- [ ] MP4 H.265/AAC.
-- [ ] WebM VP9/Opus.
-- [ ] WebM AV1/Opus cuando el FFmpeg del runner lo soporte.
-- [ ] Video sin audio.
-- [ ] Audio AAC y audio Opus.
-- [ ] Video vertical 9:16.
-- [ ] Rotación mediante metadata.
-- [ ] VFR.
-- [ ] H.265 10-bit.
-- [ ] Cover art embebido.
-- [ ] Archivo truncado.
-- [ ] Corrupción en la mitad del stream.
-- [ ] Duración que contradiga metadata de fuente.
+- [x] MP4 H.264/AAC: 2160, 1440, 1080, 720, 480 y 360.
+- [x] MP4 H.265/AAC.
+- [x] WebM VP9/Opus.
+- [x] WebM AV1/Opus cuando el FFmpeg del runner lo soporte.
+- [x] Video sin audio.
+- [x] Audio AAC y audio Opus.
+- [x] Video vertical 9:16.
+- [x] Rotación mediante metadata.
+- [x] VFR.
+- [x] H.265 10-bit.
+- [x] Cover art embebido.
+- [x] Archivo truncado.
+- [x] Corrupción en la mitad del stream.
+- [x] Duración que contradiga metadata de fuente.
 
 Los clips de PR deben durar 2–5 segundos. Nightly puede utilizar clips de 30
 segundos y una prueba larga separada.
@@ -227,18 +236,18 @@ CORE-AUDIO-WAV
 
 Cada caso debe comprobar con ffprobe/ffmpeg reales:
 
-- [ ] Extensión.
-- [ ] Contenedor interno.
-- [ ] Códec de cada stream.
-- [ ] Ausencia de video en perfiles de audio.
-- [ ] Audio presente si la fixture lo tiene.
-- [ ] Resolución dentro del límite.
-- [ ] Duración dentro de tolerancia.
-- [ ] Decodificación completa sin errores.
-- [ ] Tamaño mayor que cero.
+- [x] Extensión.
+- [x] Contenedor interno.
+- [x] Códec de cada stream.
+- [x] Ausencia de video en perfiles de audio.
+- [x] Audio presente si la fixture lo tiene.
+- [x] Resolución dentro del límite.
+- [x] Duración dentro de tolerancia.
+- [x] Decodificación completa sin errores.
+- [x] Tamaño mayor que cero.
 - [ ] SHA-256 calculado.
 - [ ] Estado y pasos finales del job.
-- [ ] Tipo de procesamiento esperado.
+- [x] Tipo de procesamiento esperado.
 - [ ] Número de intentos.
 - [ ] Entrada correcta en archive.
 - [ ] Cero temporales restantes.
@@ -267,19 +276,19 @@ Conteo nightly de referencia: cinco fuentes principales por 26 perfiles =
 
 ## 7. Regresión de resiliencia
 
-- [ ] Cancelar durante download, remux, transcode, extract y validate.
+- [x] Cancelar durante download, remux, transcode, extract y validate.
 - [ ] Cerrar proceso y recuperar estado.
 - [ ] Disco lleno en cada etapa que escribe.
 - [ ] Archivo destino existente.
 - [ ] Nombres Unicode, emoji y rutas largas.
 - [ ] Falta de encoder.
 - [ ] ffmpeg retorna 0 pero produce salida inválida.
-- [ ] Validación `none`, `quick` y `full`.
-- [ ] Validación `during` y `after-batch`.
-- [ ] Lote con un item cancelado, uno dañado y uno correcto.
-- [ ] Archivo válido con extensión falsa.
-- [ ] Archivo con contenedor correcto y códec incorrecto.
-- [ ] Fuente sin pista solicitada.
+- [x] Validación `none`, `quick` y `full`.
+- [x] Validación `during` y `after-batch`.
+- [x] Lote con un item cancelado, uno dañado y uno correcto.
+- [x] Archivo válido con extensión falsa.
+- [x] Archivo con contenedor correcto y códec incorrecto.
+- [x] Fuente sin pista solicitada.
 - [ ] Reintento preserva exactamente el perfil original.
 
 ## 8. Cadencia recomendada
@@ -314,16 +323,16 @@ conformidad del formato.
 
 No publicar hasta cumplir todo:
 
-- [ ] 26/26 perfiles base válidos.
+- [x] 26/26 perfiles base válidos.
 - [ ] 130/130 casos locales nightly válidos.
-- [ ] MP4 de entrada solicitado como MKV termina como Matroska.
-- [ ] Todos los caps cumplen `height <= maxHeight`.
-- [ ] Ningún error determinista redescarga el medio.
-- [ ] Cero temporales tras éxito, error y cancelación.
-- [ ] Todas las suites preexistentes continúan en verde.
-- [ ] Paquete `.tgz` probado en proyecto limpio con import ESM y require CJS.
-- [ ] Node 20, 22 y 24.
-- [ ] README y changelog actualizados.
+- [x] MP4 de entrada solicitado como MKV termina como Matroska.
+- [x] Todos los caps cumplen `height <= maxHeight`.
+- [x] Ningún error determinista redescarga el medio.
+- [x] Cero temporales tras éxito, error y cancelación.
+- [x] Todas las suites preexistentes continúan en verde.
+- [x] Paquete `.tgz` probado en proyecto limpio con import ESM y require CJS.
+- [x] Node 20, 22 y 24.
+- [x] README y changelog actualizados.
 - [ ] Android puede consumir el tarball/versión sin adaptadores temporales.
 
 Versión recomendada: `1.13.0` si cambia la semántica pública o se expone el
@@ -331,12 +340,12 @@ tipo de procesamiento; `1.12.1` sólo si el arreglo queda estrictamente interno.
 
 ## 10. Entregables
 
-- [ ] Corrección de MKV.
-- [ ] Contrato de resolución documentado.
-- [ ] Planner de procesamiento explícito.
-- [ ] Taxonomía de reintentos corregida.
-- [ ] Fixtures generables.
-- [ ] Suite de conformidad de 26 perfiles.
+- [x] Corrección de MKV.
+- [x] Contrato de resolución documentado.
+- [x] Planner de procesamiento explícito.
+- [x] Taxonomía de reintentos corregida.
+- [x] Fixtures generables.
+- [x] Suite de conformidad de 26 perfiles.
 - [ ] Suite por fuentes.
 - [ ] Reporte legible por CI con ffprobe.
 - [ ] Release del core consumible por Android.

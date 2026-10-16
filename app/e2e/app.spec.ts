@@ -34,13 +34,20 @@ test.beforeEach(() => {
 // biome-ignore lint/correctness/noEmptyPattern: Playwright requires its fixtures argument destructured
 test.afterEach(async ({}, testInfo) => {
   if (testInfo.status !== testInfo.expectedStatus && output.length > 0) {
-    await testInfo.attach('app-output', {body: output.join(''), contentType: 'text/plain'})
+    // a file in test-results (kept whole by CI's artifact), not only the report's shortened copy
+    const file = testInfo.outputPath('app-output.txt')
+    await fs.writeFile(file, output.join(''))
+    await testInfo.attach('app-output', {path: file, contentType: 'text/plain'})
   }
 })
 
 /** Launch the built app, its output kept for the report (see `output`). */
 async function start(env: Record<string, string>): Promise<ElectronApplication> {
-  const app = await electron.launch({...target, env: {...(process.env as Record<string, string>), ...env}})
+  const app = await electron.launch({
+    ...target,
+    // the main process prints its start-up and quit steps (see phase() in src/main/index.ts)
+    env: {...(process.env as Record<string, string>), MDC_E2E_TRACE: '1', ...env},
+  })
   const launched = output.length
   const stamp = (stream: string) => (chunk: Buffer) => {
     output.push(`[app ${launched} ${stream} ${new Date().toISOString()}] ${chunk.toString()}`)
@@ -99,8 +106,16 @@ async function close(app: ElectronApplication) {
   ])
   clearTimeout(timer)
   if (!quit) {
+    // before the kill: is the main process busy (no answer) or idle and waiting on something (what)?
+    const state = await Promise.race([
+      app
+        .evaluate(() => JSON.stringify({resources: process.getActiveResourcesInfo(), uptime: process.uptime()}))
+        .catch((error: unknown) => `evaluate failed: ${String(error)}`),
+      new Promise<string>(resolve => setTimeout(() => resolve('no answer in 3 s: the main thread is blocked'), 3000)),
+    ])
+    output.push(`[e2e ${new Date().toISOString()}] stuck quit, main process: ${state}\n`)
     child.kill('SIGKILL')
-    throw new Error(`the app (pid ${child.pid}) did not quit within ${QUIT_MS / 1000} s`)
+    throw new Error(`the app (pid ${child.pid}) did not quit within ${QUIT_MS / 1000} s — main process: ${state}`)
   }
 }
 

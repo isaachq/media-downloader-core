@@ -331,6 +331,10 @@ export class FakeApi implements MdcApi {
     for (const listener of this.#verifyListeners) listener({done: 1, total: 2})
     return this.verifySummary
   })
+  /** Send a check's progress, as the main process does. */
+  emitVerifyProgress(progress: {done: number; total: number}): void {
+    for (const listener of this.#verifyListeners) listener(progress)
+  }
   onVerifyProgress(listener: (progress: {done: number; total: number}) => void): () => void {
     this.#verifyListeners.add(listener)
     return () => this.#verifyListeners.delete(listener)
@@ -343,6 +347,11 @@ export class FakeApi implements MdcApi {
     const before = this.finishedEntries.length
     this.finishedEntries = this.finishedEntries.filter(entry => entry.file !== 'missing')
     return before - this.finishedEntries.length
+  })
+  redownloadFinished = vi.fn(async (target: FinishedTarget) => {
+    const keys = 'keys' in target ? new Set(target.keys) : undefined
+    const gone = this.finishedEntries.filter(entry => entry.file === 'missing' && (!keys || keys.has(entry.key)))
+    return gone.length
   })
   retryFailed = vi.fn(async (items: readonly FailedRetry[]) =>
     batch({url: items[0]!.url, status: 'scheduled', kind: undefined, title: `Failed, retried (${items.length})`}),

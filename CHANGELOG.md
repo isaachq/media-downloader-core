@@ -35,6 +35,34 @@
 - `DownloadArchive.removeMany` writes all its removals at once (one write,
   O(k)) instead of one append per key.
 
+**App**
+
+- **Finished: the check's progress ends with the check.** It was shown in
+  a toast with no end (`duration: 0`) as well as in the card above the
+  table; a progress event arriving after the answer (IPC events and
+  `invoke` replies are not ordered against each other) opened the toast
+  again and put the card back, so "Checking files… n of n" stayed on
+  screen. The progress now lives only in the card, and events outside a
+  check this list started are ignored.
+- **Finished: a file already gone is not checked again.** With rows
+  picked, only those still on disk are checked; picking only missing ones
+  turns "Check" off and says why. Missing rows keep their "File not
+  found" tag instead of a "Checking" spinner.
+- **Finished: one check at a time.** The main process runs check requests
+  one after another (never two hashing the same disk), and while one runs
+  the list turns off "Check", "Remove missing records", "Download missing
+  again" and "Remove from list".
+- **Finished: "Download missing again".** Files deleted or moved can be
+  downloaded again from the link their record kept: one new batch, each
+  into its old folder, under its old name (the list position is read back
+  from the file name when it is exactly what that position gives) and in
+  its old format. Files damaged at the source stay excluded. "Remove
+  missing records" now says it forgets the link too, and points here
+  first.
+- Removing records from the history is one `removeMany` call instead of
+  one call per key; picking records by key reads the archive once (O(n))
+  instead of paging through the whole filter.
+
 ## App 0.2.0-beta.14.1 · library 1.14.1
 
 **Library**

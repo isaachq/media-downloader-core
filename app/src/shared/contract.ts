@@ -465,6 +465,12 @@ export type MdcApi = {
   removeFinished(keys: readonly string[]): Promise<number>
   /** Forget the records whose file is no longer where it was (deleted or moved); how many. */
   pruneFinished(target: FinishedTarget): Promise<number>
+  /**
+   * Download again, from the link each record kept, the files no longer where
+   * they were (deleted or moved): one new batch, each into its old folder and
+   * format. How many were queued (0: none of them is missing).
+   */
+  redownloadFinished(target: FinishedTarget): Promise<number>
   /** One new batch with these failed downloads, from however many batches; each keeps its folder. */
   retryFailed(items: readonly FailedRetry[]): Promise<BatchSnapshot>
   /** Videos found damaged at the source (never downloaded again), newest first. */
@@ -532,6 +538,7 @@ export const CHANNEL = {
   verifyProgress: 'mdc:verify-progress',
   removeFinished: 'mdc:remove-finished',
   pruneFinished: 'mdc:prune-finished',
+  redownloadFinished: 'mdc:redownload-finished',
   retryFailed: 'mdc:retry-failed',
   damagedList: 'mdc:damaged:list',
   damagedForget: 'mdc:damaged:forget',

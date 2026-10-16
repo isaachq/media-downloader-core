@@ -49,6 +49,7 @@ const api: MdcApi = {
   onVerifyProgress: listener => subscribe(CHANNEL.verifyProgress, listener),
   removeFinished: keys => ipcRenderer.invoke(CHANNEL.removeFinished, keys),
   pruneFinished: target => ipcRenderer.invoke(CHANNEL.pruneFinished, target),
+  redownloadFinished: target => ipcRenderer.invoke(CHANNEL.redownloadFinished, target),
   retryFailed: items => ipcRenderer.invoke(CHANNEL.retryFailed, items),
   damagedList: () => ipcRenderer.invoke(CHANNEL.damagedList),
   damagedForget: key => ipcRenderer.invoke(CHANNEL.damagedForget, key),

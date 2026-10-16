@@ -849,6 +849,19 @@ export function createWebBridge(): MdcApi {
       return before - finishedEntries.length
     },
 
+    async redownloadFinished(target: FinishedTarget): Promise<number> {
+      const keys = 'keys' in target ? new Set(target.keys) : undefined
+      const gone = finishedEntries.filter(e => e.file === 'missing' && (!keys || keys.has(e.key)))
+      if (gone.length === 0) return 0
+      await this.schedule({
+        url: gone[0]!.url,
+        format: 'mp4',
+        quality: 'best',
+        outDir: settings.downloadDir,
+      })
+      return gone.length
+    },
+
     async retryFailed(items: readonly FailedRetry[]): Promise<BatchSnapshot> {
       return this.schedule({
         url: items[0]?.url ?? 'https://example.com/retry',

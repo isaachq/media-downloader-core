@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## App 0.2.0-beta.14.3 · library 1.14.3
+
+Beta 14.3: the app quits when it's closed, even right after it opens; macOS saves without
+waiting on the drive's own cache.
 
 **Library**
 
@@ -16,6 +19,17 @@
 
 **App**
 
+- **Closing the app within a second of opening it no longer leaves it
+  running.** The window is shown on its first paint, or a second later all
+  the same; that second's timer touched the window even when a quit had
+  already destroyed it. The "Object has been destroyed" error opened
+  Electron's "Uncaught Exception" dialog, and the process waited on it
+  forever (macOS `sample`: every sample of the main thread in
+  `-[NSAlert runModal]` under a Node timer). This was the macOS end-to-end
+  hang on the quit-and-relaunch test, which closes the relaunched app
+  0.86 s after its window. A closed window is now let go, and the timer and
+  the "opened again" handler (a second launch while this one quits) check
+  that the window still exists.
 - End-to-end: an app that doesn't quit within 20 s is killed and the test
   fails right there, saying so, instead of on the 2-minute timeout with the
   worker's teardown stuck for 2 more; a failed test carries what the app

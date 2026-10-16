@@ -537,12 +537,14 @@ function registerIpc(): void {
     const q = (typeof query === 'object' && query !== null ? query : {}) as Partial<FinishedQuery>
     const filter = filterOf(q) ?? {}
     const sort: FinishedSort = (['oldest', 'largest', 'smallest'] as const).find(s => s === q.sort) ?? 'newest'
-    const page = await engine.archive.list({
-      offset: Number.isInteger(q.offset) ? q.offset : 0,
-      limit: Number.isInteger(q.limit) ? q.limit : 50,
-      sort,
-      ...(await archiveFilter(filter)),
-    })
+    const matches = await finishedMatches(filter, sort)
+    const offset = Math.max(0, Number.isInteger(q.offset) ? (q.offset as number) : 0)
+    const limit = Math.min(500, Math.max(1, Number.isInteger(q.limit) ? (q.limit as number) : 50))
+    const page = {
+      entries: matches.entries.slice(offset, offset + limit),
+      total: matches.entries.length,
+      bytes: matches.bytes,
+    }
     // only the page shown is checked on disk: ≤ 500 stats, in parallel (a disk filter checked them all already)
     const entries = await Promise.all(
       page.entries.map(async (entry): Promise<FinishedEntry> => {
@@ -576,7 +578,13 @@ function registerIpc(): void {
     else await opener.open(hit.filepath)
     return true
   })
-  ipcMain.handle(CHANNEL.finishedGroups, () => engine.archive.groups())
+  ipcMain.handle(CHANNEL.finishedGroups, () => {
+    // the 2 s refresh asks with every page: grouped again only when the history changed
+    const version = engine.archive.version
+    const cached = groupsCache?.version === version ? groupsCache : {version, groups: engine.archive.groups()}
+    groupsCache = cached
+    return cached.groups
+  })
   ipcMain.handle(CHANNEL.syncList, () => sync.list())
   ipcMain.handle(CHANNEL.syncFolder, async (_event, folder: unknown): Promise<SyncFolder> => {
     if (typeof folder !== 'string' || !path.isAbsolute(folder)) return {files: 0, formats: []}
@@ -624,7 +632,7 @@ function registerIpc(): void {
   })
   ipcMain.handle(CHANNEL.verifyFinished, (_event, target: unknown): Promise<VerifySummary> => {
     // one check at a time: a second request waits for the first instead of hashing the same disk twice
-    const run = verifying.then(() => verifyFinished(target))
+    const run = verifying.then(() => verifyFinished(target)).finally(forgetDiskScan)
     verifying = run.catch(() => undefined)
     return run
   })
@@ -637,6 +645,7 @@ function registerIpc(): void {
   ipcMain.handle(CHANNEL.pruneFinished, async (_event, target: unknown) => {
     const gone = await missingOf(target)
     const removed = await engine.archive.removeMany(gone.map(entry => entry.key))
+    forgetDiskScan()
     engine.log('info', `history: forgot ${removed} file(s) no longer where they were (deleted or moved)`)
     return removed
   })
@@ -832,17 +841,11 @@ async function archiveFilter(
   const base = (entry: ArchiveRecord) =>
     siteOf(entry) === activeMode &&
     (ranges.length === 0 || ranges.some(([min, max]) => entry.sizeBytes >= min && entry.sizeBytes < max))
-  let disk: Map<string, FinishedEntry['file']> | undefined
+  let disk: DiskStates | undefined
   if (onDisk) {
-    disk = new Map()
-    const scope = (await engine.archive.list({...plain(filter), match: base, limit: 500})).total
-    const all: ArchiveRecord[] = []
-    for (let offset = 0; offset < scope; offset += 500) {
-      all.push(...(await engine.archive.list({...plain(filter), match: base, offset, limit: 500})).entries)
-    }
-    await eachLimited(all, 32, async entry => {
-      disk!.set(entry.key, await fileState(entry))
-    })
+    // one pass over the archive (not one per 500-record page), and the stats of the last scan reused
+    const scope = (await engine.archive.matching({...plain(filter), match: base})).entries
+    disk = await diskStates(scope)
   }
   return {
     ...plain(filter),
@@ -850,10 +853,69 @@ async function archiveFilter(
       if (!base(entry)) return false
       if (wanted.size === 0) return true
       if (wanted.has(recordedIntegrity(entry))) return true
-      const state = disk?.get(entry.key)
+      const state = disk?.get(entry)
       return state !== undefined && state !== 'ok' && wanted.has(state)
     },
   }
+}
+
+/** How long a scan of the disk answers the Missing / Changed filters (files change outside the app too). */
+const DISK_SCAN_MS = 30_000
+
+/**
+ * The state on disk of each record seen by the last scan. Keyed by the record
+ * itself: the archive makes a new one whenever a file is recorded again, so a
+ * file downloaded since is never answered with its old state.
+ */
+type DiskStates = WeakMap<ArchiveRecord, FinishedEntry['file']>
+let diskScan: {at: number; states: DiskStates} | undefined
+
+const diskFresh = (scan = diskScan): scan is {at: number; states: DiskStates} =>
+  scan !== undefined && Date.now() - scan.at <= DISK_SCAN_MS
+
+/**
+ * The disk state of each record of `scope`: stats only for the ones the last
+ * scan (under 30 s old) didn't cover — a page change, or the 2 s refresh of a
+ * Missing filter while a batch adds files, stats only the new ones. 32 at a time.
+ */
+async function diskStates(scope: readonly ArchiveRecord[]): Promise<DiskStates> {
+  if (!diskFresh()) diskScan = {at: Date.now(), states: new WeakMap()}
+  const {states} = diskScan!
+  const unknown = scope.filter(entry => !states.has(entry))
+  await eachLimited(unknown, 32, async entry => {
+    states.set(entry, await fileState(entry))
+  })
+  return states
+}
+
+/** What the history derives from the archive, kept while it doesn't change. */
+let groupsCache: {version: number; groups: ReturnType<typeof engine.archive.groups>} | undefined
+let matchesCache:
+  | {key: string; version: number; disk: unknown; matches: {entries: readonly ArchiveRecord[]; bytes: number}}
+  | undefined
+
+/** Forget what was seen on disk (after an action that removes or brings back files). */
+function forgetDiskScan(): void {
+  diskScan = undefined
+}
+
+/**
+ * Every record a history filter shows, in its order — computed once per
+ * (filter, sort, history version, disk scan) and shared by every page and
+ * every refresh after it: a page is then O(page), not O(n).
+ */
+async function finishedMatches(filter: FinishedFilter, sort: FinishedSort) {
+  const key = JSON.stringify([filter.search, filter.batchId, filter.integrity, filter.size, sort])
+  const version = engine.archive.version
+  const onDisk = filter.integrity?.some(state => state === 'missing' || state === 'changed') ?? false
+  const cached = matchesCache
+  if (cached?.key === key && cached.version === version && (!onDisk || (cached.disk === diskScan && diskFresh()))) {
+    return cached.matches
+  }
+  const query = await archiveFilter(filter)
+  const matches = await engine.archive.matching({...query, sort})
+  matchesCache = {key, version, disk: diskScan, matches}
+  return matches
 }
 
 /** The words and batch of a filter, as the archive takes them. */
@@ -958,10 +1020,12 @@ async function verifyFinished(target: unknown): Promise<VerifySummary> {
 async function missingOf(target: unknown): Promise<ArchiveRecord[]> {
   const only = await selectionOf(target)
   if (!only) return []
-  let scope: ArchiveRecord[]
+  let scope: readonly ArchiveRecord[]
   if (only.keys) {
+    // from the records in memory, one pass — not a read of the whole log from disk
     const keys = new Set(only.keys)
-    scope = (await engine.archive.entries()).filter(entry => keys.has(entry.key) && siteOf(entry) === activeMode)
+    scope = (await engine.archive.matching({match: entry => keys.has(entry.key) && siteOf(entry) === activeMode}))
+      .entries
   } else scope = await allFinished({batchId: only.batchId})
   const gone: ArchiveRecord[] = []
   await eachLimited(scope, 16, async entry => {
@@ -971,14 +1035,9 @@ async function missingOf(target: unknown): Promise<ArchiveRecord[]> {
 }
 
 /** Every record of this mode matching a filter, read a page (500) at a time. */
-async function allFinished(filter: FinishedFilter) {
-  const query = await archiveFilter(filter)
-  const entries: ArchiveRecord[] = []
-  for (let offset = 0; ; offset += 500) {
-    const page = await engine.archive.list({...query, offset, limit: 500})
-    entries.push(...page.entries)
-    if (entries.length >= page.total || page.entries.length === 0) return entries
-  }
+async function allFinished(filter: FinishedFilter): Promise<readonly ArchiveRecord[]> {
+  // one pass, O(n): paging 500 at a time filtered the whole history again for every page
+  return (await engine.archive.matching(await archiveFilter(filter))).entries
 }
 
 /** The history as CSV (UTF-8 with a BOM, so spreadsheets keep accents), one row per file. */

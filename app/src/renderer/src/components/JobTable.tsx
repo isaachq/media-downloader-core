@@ -20,7 +20,7 @@ import {IntegrityTag, StatusTag, StepTrack} from './JobParts'
 const TIER_COLOR = {normal: 'default', long: 'gold', heavy: 'volcano'} as const
 
 /** Running first (the live threads), then queued, then finished newest first. */
-function rank(job: JobSnapshot): number {
+function rank(job: JobSnapshot): 0 | 1 | 2 {
   if (job.outcome !== 'in-progress') return 2
   return job.status === 'queued' ? 1 : 0
 }
@@ -73,19 +73,19 @@ export function JobTable({
   // biome-ignore lint/correctness/useExhaustiveDependencies: recompute when the store changes
   const {total, counts, filteredRows} = useMemo(() => {
     const counts = {working: 0, queued: 0, completed: 0, failed: 0}
-    const picked: Array<{job: JobSnapshot; order: number}> = []
+    // working first, then queued (both in arrival order), then finished newest first: three
+    // buckets filled in arrival order give that order with no sort — O(jobs), not O(jobs log jobs)
+    const byRank: [JobSnapshot[], JobSnapshot[], JobSnapshot[]] = [[], [], []]
     let order = 0
     for (const job of store.jobs.values()) {
       if (batchId && job.batchId !== batchId) continue
       const bucket = bucketOf(job)
       if (bucket) counts[bucket]++
-      if (statusFilter === 'all' || bucket === statusFilter) picked.push({job, order})
+      if (statusFilter === 'all' || bucket === statusFilter) byRank[rank(job)]!.push(job)
       order++
     }
-    const sorted = picked
-      .sort((a, b) => rank(a.job) - rank(b.job) || (rank(a.job) === 2 ? b.order - a.order : a.order - b.order))
-      .map(({job}) => job)
-    return {total: order, counts, filteredRows: sorted}
+    const [working, queued, finished] = byRank
+    return {total: order, counts, filteredRows: working.concat(queued, finished.reverse())}
   }, [version, batchId, statusFilter])
 
   const columns: ColumnsType<JobSnapshot> = [

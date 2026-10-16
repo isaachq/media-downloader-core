@@ -35,6 +35,24 @@
 - `DownloadArchive.removeMany` writes all its removals at once (one write,
   O(k)) instead of one append per key.
 
+**Library — Big-O pass on the hot paths** (measured at 50,000 records or items)
+
+- **Preflight: 7.7 s → 1 ms.** Grouping a batch's items by native source
+  copied the group's array for every item (O(n²)); a first TikTok sync or a
+  large profile batch froze the event loop for seconds. It pushes now.
+- **`LineSplitter`: O(L) per line.** A line still open was glued to each
+  new chunk and rescanned from its start; a 2 MB `--dump-json` line over
+  ~30 chunks cost ~10 ms instead of ~0.5 ms, for every preflighted item.
+  The pieces are now joined once, when the newline arrives.
+- **`DownloadArchive.matching(query)`**: every match of a query and its
+  bytes in one pass (O(n); O(1) with no filter), for a host that needs all
+  of them instead of paging. **`version`** moves with every change, so a
+  host can cache what it derives. Sorted views (oldest, largest, smallest)
+  are kept until the next change: a size-sorted page went from 13.7 ms to
+  1.1 ms.
+- `verifyArchive` takes its records from memory: checking 2 files no
+  longer reads the whole log from disk (126 ms → 2.7 ms).
+
 **App**
 
 - **Finished: the check's progress ends with the check.** It was shown in
@@ -62,6 +80,24 @@
 - Removing records from the history is one `removeMany` call instead of
   one call per key; picking records by key reads the archive once (O(n))
   instead of paging through the whole filter.
+- **Finished: pages and refreshes reuse what was computed.** The matches
+  of a filter are kept per (filter, sort, history version): a page change
+  or the 2 s refresh during a batch is O(page), not a filter of the whole
+  history. "Check all", "Remove missing", "Download missing again" and the
+  CSV export take all matches in one pass (110 ms → 1.4 ms). The
+  Missing / Changed filters reuse the last disk scan for 30 s (per record,
+  so a file recorded again is looked at again): a refresh stats only the
+  new files, not all of them. The batch groups are recomputed only when
+  the history changed.
+- **Failed downloads window: O(S + F).** The selection was compared with
+  the failed list job by job (25M comparisons per render at 5,000 failed,
+  10 renders a second during a batch) and the batch filter counted each
+  batch with its own pass. Sets and one counting pass now.
+- **Jobs table: no sort.** Working, queued and finished rows come out of
+  one pass in three buckets, in the order the sort produced (O(J), not
+  O(J log J) on every update).
+- **Batch items: an item off the page shown no longer re-renders the
+  table.**
 
 ## App 0.2.0-beta.14.1 · library 1.14.1
 

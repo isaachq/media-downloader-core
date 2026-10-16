@@ -16,32 +16,41 @@ export function utf8Env(extra?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 }
 
 /**
- * Splits a byte stream into lines without re-scanning or re-allocating the
- * whole buffer on every chunk: only the trailing partial line is carried over.
+ * Splits a byte stream into lines. Each chunk is scanned once, from its own
+ * start: the pieces of a line still open are kept apart and joined once, when
+ * its newline arrives — O(L) for a line of L characters however many chunks
+ * it spans (a 2 MB `--dump-json` line comes in ~30), not O(L²).
  */
 export class LineSplitter {
-  #rest = ''
+  #pending: string[] = []
 
   constructor(private readonly onLine: (line: string) => void) {}
 
   push(chunk: string): void {
     let start = 0
-    let data = chunk
-    if (this.#rest) {
-      data = this.#rest + chunk
-      this.#rest = ''
-    }
-    for (let nl = data.indexOf('\n'); nl !== -1; nl = data.indexOf('\n', start)) {
-      const end = nl > start && data.charCodeAt(nl - 1) === 13 ? nl - 1 : nl // strip \r of \r\n
-      if (end > start) this.onLine(data.slice(start, end))
+    for (let nl = chunk.indexOf('\n'); nl !== -1; nl = chunk.indexOf('\n', start)) {
+      const piece = chunk.slice(start, nl)
       start = nl + 1
+      if (this.#pending.length === 0) this.#emit(piece)
+      else {
+        this.#pending.push(piece)
+        const line = this.#pending.join('')
+        this.#pending = []
+        this.#emit(line)
+      }
     }
-    if (start < data.length) this.#rest = data.slice(start)
+    if (start < chunk.length) this.#pending.push(start === 0 ? chunk : chunk.slice(start))
   }
 
   flush(): void {
-    if (this.#rest) this.onLine(this.#rest)
-    this.#rest = ''
+    if (this.#pending.length > 0) this.#emit(this.#pending.join(''))
+    this.#pending = []
+  }
+
+  /** One line, without the \r of a \r\n; empty lines are skipped. */
+  #emit(line: string): void {
+    const end = line.charCodeAt(line.length - 1) === 13 ? line.length - 1 : line.length
+    if (end > 0) this.onLine(end === line.length ? line : line.slice(0, end))
   }
 }
 

@@ -712,8 +712,14 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       const generic: Array<(typeof items)[number]> = []
       for (const item of items) {
         const source = this.#sourceFor(item.url)
-        if (!source) generic.push(item)
-        else bySource.set(source, [...(bySource.get(source) ?? []), item])
+        if (!source) {
+          generic.push(item)
+          continue
+        }
+        // push, not a copy per item: O(n) for a 50,000-item profile, not O(n²)
+        const own = bySource.get(source)
+        if (own) own.push(item)
+        else bySource.set(source, [item])
       }
       // items a native source can't read right now (blocked / changed) are re-checked by yt-dlp
       const handBack: Array<(typeof items)[number]> = []
@@ -1077,12 +1083,13 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     /** Only these records (by key), or only the files of one batch. Default: everything. */
     only?: {readonly keys?: readonly string[] | undefined; readonly batchId?: string | undefined} | undefined,
   ): Promise<ArchiveCheck[]> {
-    let entries = await this.archive.entries()
-    if (only?.keys) {
-      const keys = new Set(only.keys)
-      entries = entries.filter(entry => keys.has(entry.key))
-    }
-    if (only?.batchId !== undefined) entries = entries.filter(entry => entry.batchId === only.batchId)
+    // from the records in memory, one pass: checking 2 files no longer reads the whole log from disk
+    const keys = only?.keys ? new Set(only.keys) : undefined
+    const {entries} = await this.archive.matching({
+      ...(only?.batchId !== undefined && {batchId: only.batchId}),
+      ...(keys && {match: entry => keys.has(entry.key)}),
+      sort: 'oldest',
+    })
     const results: ArchiveCheck[] = new Array(entries.length)
     let done = 0
     let next = 0

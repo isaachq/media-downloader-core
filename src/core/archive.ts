@@ -60,6 +60,13 @@ export type ArchiveGroup = {
   readonly lastCompletedAt: number
 }
 
+/** Every entry a query matches, in its order (see `DownloadArchive.matching`). */
+export type ArchiveMatches = {
+  readonly entries: readonly ArchiveEntry[]
+  /** Their bytes. */
+  readonly bytes: number
+}
+
 export type ArchivePage = {
   readonly entries: readonly ArchiveEntry[]
   /** Entries matching the search (all of them without one). */
@@ -178,6 +185,10 @@ export class DownloadArchive {
   #fullBytes = 0
   /** `#full` newest first (by completedAt), rebuilt on the first list() after a change. */
   #newestFirst: ArchiveEntry[] | undefined
+  /** `#full` in the other orders, each built on first use after a change. */
+  readonly #sorted = new Map<ArchiveSort, readonly ArchiveEntry[]>()
+  /** Bumped by every add / update / remove: a host caches what it derives from the archive by it. */
+  #version = 0
   /** Folded title + file name per entry, for searching (computed once per entry). */
   readonly #haystacks = new WeakMap<ArchiveEntry, string>()
 
@@ -185,6 +196,11 @@ export class DownloadArchive {
 
   get size(): number {
     return this.#index.size
+  }
+
+  /** Changes with every add, update and removal (not with a compaction, which changes no entry). */
+  get version(): number {
+    return this.#version
   }
 
   open(): Promise<void> {
@@ -311,6 +327,7 @@ export class DownloadArchive {
       // same place in the history: Map.set on a present key keeps its position
       this.#full?.set(key, next)
       this.#newestFirst = undefined
+      this.#sorted.clear()
     })
     return next
   }
@@ -318,36 +335,68 @@ export class DownloadArchive {
   /**
    * Finished downloads, newest first, a page at a time, optionally filtered.
    * The first call reads the log once (streamed); later calls are served from
-   * memory and follow every add / remove — O(page) without a search, O(n)
-   * with one (each entry's folded text is computed once).
+   * memory and follow every add / remove — O(page) without a filter (sorted
+   * views are kept until the next change), O(n) with one (each entry's
+   * folded text is computed once).
    */
   async list(query: ArchiveQuery = {}): Promise<ArchivePage> {
+    const {entries, bytes} = await this.matching(query)
+    const offset = Math.max(0, Math.floor(query.offset ?? 0))
+    const limit = Math.min(500, Math.max(1, Math.floor(query.limit ?? 50)))
+    return {entries: entries.slice(offset, offset + limit), total: entries.length, bytes}
+  }
+
+  /**
+   * Every entry a query matches, in its order, and their bytes — one pass,
+   * O(n) (O(1) without a filter: the sorted view is shared, never copied). A
+   * host that needs all of them (an export, an action on all shown) asks once
+   * instead of paging, which would filter everything again per page.
+   * `offset` and `limit` are ignored. The array must not be modified.
+   */
+  async matching(query: Omit<ArchiveQuery, 'offset' | 'limit'> = {}): Promise<ArchiveMatches> {
     const full = await this.#loadFull()
     // insertion order is nearly newest-last already: the stable sort is close to linear
     this.#newestFirst ??= [...full.values()].reverse().sort((a, b) => b.completedAt - a.completedAt)
-    const newest = this.#newestFirst
+    const ordered = this.#ordered(query.sort ?? 'newest', this.#newestFirst)
     const words = fold(query.search ?? '')
       .split(/\s+/)
       .filter(Boolean)
-    let matching = newest
-    let bytes = this.#fullBytes
     const {batchId, match} = query
+    let matching: readonly ArchiveEntry[] = ordered
+    let bytes = this.#fullBytes
     if (words.length > 0 || batchId !== undefined || match !== undefined) {
-      matching = newest.filter(entry => {
-        if (batchId !== undefined && entry.batchId !== batchId) return false
-        if (match && !match(entry)) return false
-        if (words.length === 0) return true
-        const haystack = this.#haystack(entry)
-        return words.every(word => haystack.includes(word))
-      })
-      bytes = matching.reduce((sum, entry) => sum + entry.sizeBytes, 0)
+      const kept: ArchiveEntry[] = []
+      bytes = 0
+      for (const entry of ordered) {
+        if (batchId !== undefined && entry.batchId !== batchId) continue
+        if (match && !match(entry)) continue
+        if (words.length > 0) {
+          const haystack = this.#haystack(entry)
+          if (!words.every(word => haystack.includes(word))) continue
+        }
+        kept.push(entry)
+        bytes += entry.sizeBytes
+      }
+      matching = kept
     }
-    if (query.sort === 'oldest') matching = [...matching].reverse()
-    else if (query.sort === 'largest') matching = [...matching].sort((a, b) => b.sizeBytes - a.sizeBytes)
-    else if (query.sort === 'smallest') matching = [...matching].sort((a, b) => a.sizeBytes - b.sizeBytes)
-    const offset = Math.max(0, Math.floor(query.offset ?? 0))
-    const limit = Math.min(500, Math.max(1, Math.floor(query.limit ?? 50)))
-    return {entries: matching.slice(offset, offset + limit), total: matching.length, bytes}
+    return {entries: matching, bytes}
+  }
+
+  /** The loaded entries in one order, kept until the next change: a page of a size sort doesn't sort again. */
+  #ordered(sort: ArchiveSort, newest: readonly ArchiveEntry[]): readonly ArchiveEntry[] {
+    if (sort === 'newest') return newest
+    let view = this.#sorted.get(sort)
+    if (!view) {
+      // stable sorts of the newest-first view: ties keep the order they always had
+      view =
+        sort === 'oldest'
+          ? [...newest].reverse()
+          : sort === 'largest'
+            ? [...newest].sort((a, b) => b.sizeBytes - a.sizeBytes)
+            : [...newest].sort((a, b) => a.sizeBytes - b.sizeBytes)
+      this.#sorted.set(sort, view)
+    }
+    return view
   }
 
   /** The batches the finished files came from, newest first — O(n) over the loaded records. */
@@ -405,6 +454,7 @@ export class DownloadArchive {
     this.#fullLoading = undefined
     this.#fullBytes = 0
     this.#newestFirst = undefined
+    this.#sorted.clear()
   }
 
   /**
@@ -424,6 +474,7 @@ export class DownloadArchive {
         this.#full = full
         this.#fullBytes = bytes
         this.#newestFirst = undefined
+        this.#sorted.clear()
         return full
       })
       this.#writes = load.then(
@@ -442,6 +493,7 @@ export class DownloadArchive {
   /** Drop a key from the loaded records (before a re-add or on removal). */
   #forget(key: string): void {
     this.#newestFirst = undefined
+    this.#sorted.clear()
     const old = this.#full?.get(key)
     if (!old) return
     this.#full!.delete(key)
@@ -484,6 +536,7 @@ export class DownloadArchive {
       this.#torn = false
       apply(this.#records)
       this.#records += batch.length
+      this.#version++
     })
     this.#writes = write.catch(() => {})
     return write

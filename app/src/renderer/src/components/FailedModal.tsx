@@ -1,6 +1,6 @@
 import {ReloadOutlined} from '@ant-design/icons'
 import {App as AntApp, Button, Empty, Flex, Modal, Select, Table, Tag, Tooltip, Typography} from 'antd'
-import type {JobId, JobSnapshot} from 'media-downloader-core'
+import type {BatchId, JobId, JobSnapshot} from 'media-downloader-core'
 import {useMemo, useState} from 'react'
 import type {FailedRetry} from '../../../shared/contract'
 import {api} from '../api'
@@ -47,27 +47,34 @@ export function FailedModal({onClose, onCreated}: {readonly onClose: () => void;
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: recompute when the store changes
   const all = useMemo(() => failedJobs(store).reverse(), [version])
-  const rows = batches.length ? all.filter(job => job.batchId && batches.includes(job.batchId)) : all
-  const eligible = rows.filter(retryable)
-  // a selection follows the list: a job retried elsewhere (or filtered out) leaves it
-  const picked = selected.filter(id => eligible.some(job => job.id === id))
+  const rows = useMemo(() => {
+    if (batches.length === 0) return all
+    const shown = new Set(batches)
+    return all.filter(job => job.batchId && shown.has(job.batchId))
+  }, [all, batches])
+  const eligible = useMemo(() => rows.filter(retryable), [rows])
+  // a selection follows the list: a job retried elsewhere (or filtered out) leaves it — O(S + F)
+  const picked = useMemo(() => {
+    const ids = new Set(eligible.map(job => job.id))
+    return selected.filter(id => ids.has(id))
+  }, [eligible, selected])
   const batchTitle = (job: JobSnapshot) => {
     const batch = job.batchId ? store.batches.get(job.batchId) : undefined
     return batch ? (batch.title ?? batch.url) : undefined
   }
+  // one pass: failures per batch, in the order they are listed — O(F)
   const batchOptions = useMemo(() => {
-    const seen = new Map<string, {value: string; label: string}>()
-    for (const job of all) {
-      if (!job.batchId || seen.has(job.batchId)) continue
-      const batch = store.batches.get(job.batchId)
-      const count = all.filter(other => other.batchId === job.batchId).length
-      seen.set(job.batchId, {value: job.batchId, label: `${batch?.title ?? batch?.url ?? job.batchId} · ${count}`})
-    }
-    return [...seen.values()]
+    const counts = new Map<string, number>()
+    for (const job of all) if (job.batchId) counts.set(job.batchId, (counts.get(job.batchId) ?? 0) + 1)
+    return [...counts].map(([id, count]) => {
+      const batch = store.batches.get(id as BatchId)
+      return {value: id, label: `${batch?.title ?? batch?.url ?? id} · ${count}`}
+    })
   }, [all, store])
 
   const create = async () => {
-    const chosen = all.filter(job => picked.includes(job.id))
+    const ids = new Set(picked)
+    const chosen = all.filter(job => ids.has(job.id))
     if (chosen.length === 0) return
     setBusy(true)
     try {

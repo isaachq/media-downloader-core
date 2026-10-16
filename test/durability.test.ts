@@ -111,9 +111,23 @@ describe('archive: records of other shapes and versions', () => {
 
   it('records of older versions load: fields added since are optional, a missing size or time is 0', async () => {
     const file = path.join(await fresh(), 'archive.jsonl')
-    const oldest = {key: 'old:1:audio:m4a:0', extractor: 'Old', mediaId: '1', profile: 'audio:m4a:0', url: 'u', filepath: '/a.m4a'}
+    const oldest = {
+      key: 'old:1:audio:m4a:0',
+      extractor: 'Old',
+      mediaId: '1',
+      profile: 'audio:m4a:0',
+      url: 'u',
+      filepath: '/a.m4a',
+    }
     const older = {...record(2), completedAt: 2000} // no validation / batch / damaged / sha256
-    const current = {...record(3), completedAt: 3000, validation: 'full', batchId: 'B', batchTitle: 'Trip', sha256: 'ab'}
+    const current = {
+      ...record(3),
+      completedAt: 3000,
+      validation: 'full',
+      batchId: 'B',
+      batchTitle: 'Trip',
+      sha256: 'ab',
+    }
     await fs.writeFile(file, put(oldest) + put(older) + put(current))
     const archive = new DownloadArchive(file)
     const page = await archive.list({limit: 10})
@@ -193,7 +207,10 @@ describe('archive: removing many', () => {
     assert.equal(await archive.removeMany([]), 0)
     await archive.close()
     const reopened = new DownloadArchive(file)
-    assert.deepEqual((await keys(reopened)).sort(), [0, 2, 4].map(i => `fake:${i}:video:mp4:best`))
+    assert.deepEqual(
+      (await keys(reopened)).sort(),
+      [0, 2, 4].map(i => `fake:${i}:video:mp4:best`),
+    )
     await reopened.close()
   })
 })
@@ -309,5 +326,44 @@ describe('file helpers', () => {
     }
     await removeLeftovers(file, '.compact')
     assert.deepEqual((await fs.readdir(folder)).sort(), ['archive.jsonl.rejected', 'other.jsonl.1.compact'])
+  })
+})
+
+describe('archive: all matches at once, and the views it keeps', () => {
+  it('matching() returns every match in order with its bytes; version moves only on changes', async () => {
+    const file = path.join(await fresh(), 'archive.jsonl')
+    const archive = new DownloadArchive(file)
+    for (let i = 0; i < 1200; i++) await archive.add({...record(i), batchId: i % 2 ? 'odd' : 'even'})
+    const version = archive.version
+    const odd = await archive.matching({batchId: 'odd'})
+    assert.equal(odd.entries.length, 600)
+    assert.equal(odd.entries[0]!.key, 'fake:1199:video:mp4:best', 'newest first')
+    assert.equal(odd.bytes, odd.entries.reduce((sum, entry) => sum + entry.sizeBytes, 0))
+    const all = await archive.matching()
+    assert.equal(all.entries.length, 1200)
+    await archive.list({limit: 5, search: 'Clip 7'})
+    assert.equal(archive.version, version, 'reads change nothing')
+    await archive.update('fake:3:video:mp4:best', {validation: 'full'})
+    await archive.removeMany(['fake:4:video:mp4:best'])
+    assert.equal(archive.version, version + 2)
+    await archive.close()
+  })
+
+  it('a size-sorted view is kept between pages and follows every change', async () => {
+    const file = path.join(await fresh(), 'archive.jsonl')
+    const archive = new DownloadArchive(file)
+    for (let i = 0; i < 10; i++) await archive.add(record(i))
+    const first = await archive.list({sort: 'largest', limit: 3})
+    assert.deepEqual(first.entries.map(entry => entry.sizeBytes), [109, 108, 107])
+    await archive.add({...record(99), sizeBytes: 10_000})
+    assert.equal((await archive.list({sort: 'largest', limit: 1})).entries[0]!.sizeBytes, 10_000)
+    assert.equal((await archive.list({sort: 'smallest', limit: 1})).entries[0]!.sizeBytes, 100)
+    await archive.remove('fake:0:video:mp4:best')
+    assert.equal((await archive.list({sort: 'smallest', limit: 1})).entries[0]!.sizeBytes, 101)
+    assert.deepEqual(
+      (await archive.list({sort: 'oldest', limit: 2})).entries.map(entry => entry.key),
+      ['fake:1:video:mp4:best', 'fake:2:video:mp4:best'],
+    )
+    await archive.close()
   })
 })

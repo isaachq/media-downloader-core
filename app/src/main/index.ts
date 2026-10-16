@@ -58,6 +58,7 @@ import {
 import {EventCoalescer} from './events'
 import {createMetaBrowser} from './meta-browser'
 import {createPlayerBrowser} from './player-browser'
+import {redownloadRequest} from './redownload'
 import {defaultSettings, SettingsStore} from './settings'
 import {taskbarState} from './taskbar'
 import {createTikTokBrowser} from './tiktok-browser'
@@ -621,59 +622,38 @@ function registerIpc(): void {
     window.show()
     window.focus()
   })
-  ipcMain.handle(CHANNEL.verifyFinished, async (_event, target: unknown): Promise<VerifySummary> => {
-    const only = await selectionOf(target)
-    if (!only) return {checked: 0, ok: 0, missing: 0, changed: 0, corrupted: 0}
-    let lastSent = 0
-    const checks = await engine.verifyArchive(
-      (done, total) => {
-        const now = Date.now()
-        if (now - lastSent < 200 && done !== total) return
-        lastSent = now
-        send(CHANNEL.verifyProgress, {done, total})
-      },
-      undefined,
-      only,
-    )
-    const summary = {checked: checks.length, ok: 0, missing: 0, changed: 0, corrupted: 0}
-    for (const check of checks) {
-      if (check.ok) summary.ok++
-      else if (check.problem === 'missing') summary.missing++
-      else if (check.problem === 'size-changed') summary.changed++
-      else summary.corrupted++
-    }
-    engine.log(
-      'info',
-      `checked ${summary.checked} finished file(s): ${summary.ok} ok, ${summary.missing} missing, ${summary.changed} changed, ${summary.corrupted} corrupted`,
-    )
-    return summary
+  ipcMain.handle(CHANNEL.verifyFinished, (_event, target: unknown): Promise<VerifySummary> => {
+    // one check at a time: a second request waits for the first instead of hashing the same disk twice
+    const run = verifying.then(() => verifyFinished(target))
+    verifying = run.catch(() => undefined)
+    return run
   })
-  ipcMain.handle(CHANNEL.removeFinished, async (_event, keys: unknown) => {
+  ipcMain.handle(CHANNEL.removeFinished, (_event, keys: unknown) => {
     if (!Array.isArray(keys)) return 0
-    let removed = 0
-    for (const key of keys.slice(0, MAX_REQUESTED_ITEMS)) {
-      if (typeof key !== 'string') continue
-      await engine.archive.remove(key)
-      removed++
-    }
-    return removed
+    return engine.archive.removeMany(
+      keys.slice(0, MAX_REQUESTED_ITEMS).filter((key): key is string => typeof key === 'string'),
+    )
   })
   ipcMain.handle(CHANNEL.pruneFinished, async (_event, target: unknown) => {
-    const only = await selectionOf(target)
-    if (!only) return 0
-    const scope = only.keys
-      ? await allFinished({}).then(all => {
-          const keys = new Set(only.keys)
-          return all.filter(entry => keys.has(entry.key))
-        })
-      : await allFinished({batchId: only.batchId})
-    const gone: string[] = []
-    await eachLimited(scope, 16, async entry => {
-      if ((await fileState(entry)) === 'missing') gone.push(entry.key)
-    })
-    const removed = await engine.archive.removeMany(gone)
+    const gone = await missingOf(target)
+    const removed = await engine.archive.removeMany(gone.map(entry => entry.key))
     engine.log('info', `history: forgot ${removed} file(s) no longer where they were (deleted or moved)`)
     return removed
+  })
+  ipcMain.handle(CHANNEL.redownloadFinished, async (_event, target: unknown) => {
+    // damaged at the source: never downloaded again (the Damaged list lets one go)
+    const gone = (await missingOf(target)).filter(entry => !entry.damaged).slice(0, MAX_REQUESTED_ITEMS)
+    const stamp = new Date().toLocaleString(settings.current.language === 'es' ? 'es' : 'en', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    })
+    const title = settings.current.language === 'es' ? `Descargados de nuevo · ${stamp}` : `Downloaded again · ${stamp}`
+    const request = redownloadRequest(gone, title)
+    if (!request) return 0
+    engine.log('info', `history: downloading again ${request.targets.length} file(s) no longer where they were`)
+    // the records stay: the engine finds their files gone and replaces each record when its download finishes
+    await scheduler.schedule(request)
+    return request.targets.length
   })
   ipcMain.handle(CHANNEL.retryFailed, async (_event, items: unknown) => {
     if (!Array.isArray(items) || items.length === 0) throw new Error('Invalid request.')
@@ -935,6 +915,59 @@ async function selectionOf(target: unknown): Promise<{keys?: readonly string[]; 
   if (t.all !== true) return typeof t.batchId === 'string' ? {batchId: t.batchId} : undefined
   // always as keys: the history shown holds only this mode's files
   return {keys: (await allFinished(filterOf(target)!)).map(entry => entry.key)}
+}
+
+/** The finished-files check in flight (serializes `verifyFinished`). */
+let verifying: Promise<unknown> = Promise.resolve()
+
+/** Re-hash the records a target covers; progress goes out at most every 200 ms (and at the end). */
+async function verifyFinished(target: unknown): Promise<VerifySummary> {
+  const summary = {checked: 0, ok: 0, missing: 0, changed: 0, corrupted: 0}
+  const only = await selectionOf(target)
+  if (!only || only.keys?.length === 0) return summary
+  let lastSent = 0
+  const checks = await engine.verifyArchive(
+    (done, total) => {
+      const now = Date.now()
+      if (now - lastSent < 200 && done !== total) return
+      lastSent = now
+      send(CHANNEL.verifyProgress, {done, total})
+    },
+    undefined,
+    only,
+  )
+  for (const check of checks) {
+    if (check.ok) summary.ok++
+    else if (check.problem === 'missing') summary.missing++
+    else if (check.problem === 'size-changed') summary.changed++
+    else summary.corrupted++
+  }
+  summary.checked = checks.length
+  engine.log(
+    'info',
+    `checked ${summary.checked} finished file(s): ${summary.ok} ok, ${summary.missing} missing, ${summary.changed} changed, ${summary.corrupted} corrupted`,
+  )
+  return summary
+}
+
+/**
+ * The records a target covers whose file is no longer where it was: given
+ * keys (one pass over the archive, O(n)), or every match of a filter. Stats
+ * run 16 at a time.
+ */
+async function missingOf(target: unknown): Promise<ArchiveRecord[]> {
+  const only = await selectionOf(target)
+  if (!only) return []
+  let scope: ArchiveRecord[]
+  if (only.keys) {
+    const keys = new Set(only.keys)
+    scope = (await engine.archive.entries()).filter(entry => keys.has(entry.key) && siteOf(entry) === activeMode)
+  } else scope = await allFinished({batchId: only.batchId})
+  const gone: ArchiveRecord[] = []
+  await eachLimited(scope, 16, async entry => {
+    if ((await fileState(entry)) === 'missing') gone.push(entry)
+  })
+  return gone
 }
 
 /** Every record of this mode matching a filter, read a page (500) at a time. */

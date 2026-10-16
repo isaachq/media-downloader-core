@@ -571,3 +571,34 @@ test('Finished: filters by integrity and size, and forgets the records of delete
   await expect(list.locator('.finished-row')).toHaveCount(2)
   await close(app)
 })
+
+test('Finished: a deleted file is not checked again, and downloads again into its folder from its link', async () => {
+  const {app, page, outDir} = await launch('redownload')
+  await download(page, 'https://fake.test/list?n=3')
+  await expect(page.getByTestId('batch-card').first()).toHaveAttribute('data-status', 'completed', {timeout: 60_000})
+  const gone = path.join(outDir, 'Fake-List', '002-Title-b2-b2.m4a')
+  await fs.rm(gone)
+  await page.getByRole('tab', {name: /^Finished/}).click()
+  const list = page.getByTestId('finished-list')
+  await expect(list.getByText('File not found')).toHaveCount(1)
+
+  // only the missing file picked: there is nothing to check
+  await list.locator('.ant-table-row').filter({hasText: 'Title b2'}).getByRole('checkbox').check()
+  await expect(list.getByTestId('finished-verify')).toBeDisabled()
+
+  await list.getByTestId('finished-redownload').click()
+  await page.getByRole('button', {name: 'Download', exact: true}).click()
+  await expect(page.getByText('1 file(s) queued to download again')).toBeVisible()
+  await expect
+    .poll(
+      () =>
+        fs.stat(gone).then(
+          () => true,
+          () => false,
+        ),
+      {timeout: 60_000},
+    )
+    .toBe(true)
+  await expect(list.getByText('File not found')).toHaveCount(0, {timeout: 10_000})
+  await close(app)
+})

@@ -3,7 +3,7 @@ import {DownloadError} from '../../core/errors.js'
 import {genericChoices} from '../../core/formats.js'
 import type {AnalysisResult, PlaylistAnalysis, VideoAnalysis} from '../../types.js'
 import type {BrowserAssist} from '../browser.js'
-import {type Fetch, HttpSession} from '../http.js'
+import {type Fetch, HttpSession, IFRAME_NAVIGATION_HEADERS, navigationFetch} from '../http.js'
 import {MetaClient, type PageRead, type SessionProvider} from '../meta/client.js'
 import {downloadPost} from '../meta/download.js'
 import {MetaError, type MetaProblem, toDownloadError} from '../meta/errors.js'
@@ -128,7 +128,8 @@ export class InstagramSource implements MediaSource {
     this.#maxProfileItems = Math.max(1, options.maxProfileItems ?? INSTAGRAM_PROFILE_DEFAULT_ITEMS)
     this.#queries = {...DEFAULT_QUERIES, ...options.queries}
     this.#log = options.log ?? (() => {})
-    this.#anonymous = new HttpSession({fetch: options.fetch, timeoutMs: ANONYMOUS_TIMEOUT_MS})
+    // its own transport: the embed is walled unless asked for as a page load, which Node's fetch can't say
+    this.#anonymous = new HttpSession({fetch: options.fetch ?? navigationFetch, timeoutMs: ANONYMOUS_TIMEOUT_MS})
     this.#apiOrigin = (options.apiOrigin ?? options.origin ?? API_ORIGIN).replace(/\/$/, '')
   }
 
@@ -366,7 +367,7 @@ export class InstagramSource implements MediaSource {
           readEmbedPage(
             await this.#anonymousGet(
               `${origin}${EMBED_PATH(code)}`,
-              {Accept: 'text/html,application/xhtml+xml', Referer: `${origin}/`},
+              {...IFRAME_NAVIGATION_HEADERS, Referer: `${origin}/`},
               signal,
             ),
           ),

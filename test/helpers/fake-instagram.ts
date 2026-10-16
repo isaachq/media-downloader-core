@@ -394,6 +394,12 @@ export async function startFakeInstagram(config: FakeInstagramConfig = {}): Prom
     if (parts[0] === 'p' && parts[2] === 'embed') {
       hits.embed++
       if (config.noEmbed) return send(404, 'not found')
+      // as Instagram since October 2026: the embed is a page load or it is the login page
+      if (req.headers['sec-fetch-mode'] !== 'navigate') {
+        return send(200, '<html><body><form id="loginForm" action="/accounts/login/"></form></body></html>', {
+          'Content-Type': 'text/html',
+        })
+      }
       const index = codes.indexOf(parts[1] ?? '')
       const context = JSON.stringify({gql_data: {shortcode_media: index === -1 ? null : node(index)}})
       return send(

@@ -3,12 +3,97 @@
  * one consistent set of headers, per-request timeouts. Sites that tie media
  * links to the session that fetched the page (TikTok does) need exactly that.
  */
+import * as http from 'node:http'
+import * as https from 'node:https'
+import {Readable} from 'node:stream'
+import * as zlib from 'node:zlib'
 
 /** A recent desktop Chrome: what most of the web is tested against. */
 export const BROWSER_USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36'
 
 export type Fetch = (input: string, init?: RequestInit) => Promise<Response>
+
+/**
+ * The headers a desktop Chrome sends when a page loads in an iframe on another
+ * site: how an embed is meant to be read. Instagram (since October 2026) walls
+ * its embed unless the Sec-Fetch-* trio says it is a page load.
+ */
+export const IFRAME_NAVIGATION_HEADERS: Readonly<Record<string, string>> = {
+  Accept:
+    'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+  'Sec-Fetch-Dest': 'iframe',
+  'Sec-Fetch-Mode': 'navigate',
+  'Sec-Fetch-Site': 'cross-site',
+  'Upgrade-Insecure-Requests': '1',
+}
+
+const MAX_REDIRECTS = 10
+
+/**
+ * A fetch that sends the headers it is given, as given: Node's built-in fetch
+ * (undici) always sends `Sec-Fetch-Mode: cors`, whatever the caller sets, and
+ * some sites wall exactly that on pages a browser navigates to. GET and POST
+ * over node:http(s), gzip / deflate / brotli bodies, redirects followed (or
+ * returned with `redirect: 'manual'`), the signal honoured.
+ */
+export const navigationFetch: Fetch = async (input, init = {}) => {
+  const method = (init.method ?? 'GET').toUpperCase()
+  const signal = init.signal ?? undefined
+  const headers: Record<string, string> = {'accept-encoding': 'gzip, deflate, br'}
+  for (const [name, value] of new Headers(init.headers).entries()) headers[name] = value
+  let url = new URL(input)
+  for (let hop = 0; ; hop++) {
+    signal?.throwIfAborted()
+    const target = url
+    const response = await new Promise<http.IncomingMessage>((resolve, reject) => {
+      const request = (target.protocol === 'https:' ? https : http).request(
+        target,
+        {method, headers, ...(signal && {signal})},
+        resolve,
+      )
+      request.on('error', error => reject(signal?.aborted ? signal.reason : error))
+      request.end(method === 'POST' && typeof init.body === 'string' ? init.body : undefined)
+    })
+    const status = response.statusCode ?? 0
+    const location = response.headers.location
+    if (status >= 300 && status < 400 && location && (init.redirect ?? 'follow') === 'follow') {
+      response.resume()
+      if (hop >= MAX_REDIRECTS) throw new TypeError(`Too many redirects from ${input}`)
+      url = new URL(location, url)
+      continue
+    }
+    const out = new Headers()
+    for (let i = 0; i + 1 < response.rawHeaders.length; i += 2) {
+      out.append(response.rawHeaders[i]!, response.rawHeaders[i + 1]!)
+    }
+    const encoding = String(response.headers['content-encoding'] ?? '').toLowerCase()
+    const decoder =
+      encoding === 'gzip'
+        ? zlib.createGunzip()
+        : encoding === 'deflate'
+          ? zlib.createInflate()
+          : encoding === 'br'
+            ? zlib.createBrotliDecompress()
+            : undefined
+    // a decoded body: its length and encoding no longer describe it
+    if (decoder) {
+      out.delete('content-encoding')
+      out.delete('content-length')
+      response.on('error', error => decoder.destroy(error))
+    }
+    const body = decoder ? response.pipe(decoder) : response
+    const empty = status === 204 || status === 304 || method === 'HEAD'
+    if (empty) response.resume()
+    const result = new Response(empty ? null : (Readable.toWeb(body) as ReadableStream<Uint8Array>), {
+      status,
+      statusText: response.statusMessage ?? '',
+      headers: out,
+    })
+    Object.defineProperty(result, 'url', {value: url.href})
+    return result
+  }
+}
 
 export type SessionOptions = {
   readonly userAgent?: string | undefined

@@ -1,8 +1,10 @@
 import {strict as assert} from 'node:assert'
 import * as fs from 'node:fs/promises'
+import * as http from 'node:http'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import {describe, it} from 'node:test'
+import {gzipSync} from 'node:zlib'
 import {compareVersions} from '../src/binaries/manager.js'
 import {parseChecksums, ytDlpBuildFor} from '../src/binaries/sources.js'
 import {isYouTubeMix} from '../src/core/analyze.js'
@@ -28,6 +30,7 @@ import {
   videoSelector,
 } from '../src/core/formats.js'
 import {clampConcurrency, maxConcurrency, TaskPool} from '../src/core/pool.js'
+import {navigationFetch} from '../src/sources/http.js'
 
 describe('concurrency limit = ⌊CPUs/2⌋', () => {
   it('halves the logical processors, never below 1', () => {
@@ -556,3 +559,44 @@ function buildChoicesFixture() {
     },
   ])
 }
+
+describe('navigationFetch (headers as given)', () => {
+  it('sends Sec-Fetch-Mode as set (Node fetch forces cors), follows redirects, decodes gzip, keeps every cookie', async () => {
+    const seen: http.IncomingHttpHeaders[] = []
+    const server = http.createServer((req, res) => {
+      seen.push(req.headers)
+      if (req.url === '/hop') {
+        res.writeHead(302, {Location: '/page'}).end()
+        return
+      }
+      res.writeHead(200, {
+        'Content-Type': 'text/html',
+        'Content-Encoding': 'gzip',
+        'Set-Cookie': ['a=1; Path=/', 'b=2; Path=/'],
+      })
+      res.end(gzipSync('<html>page</html>'))
+    })
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+    try {
+      const {port} = server.address() as {port: number}
+      const response = await navigationFetch(`http://127.0.0.1:${port}/hop`, {
+        headers: {'Sec-Fetch-Mode': 'navigate', 'User-Agent': 'test'},
+      })
+      assert.equal(response.status, 200)
+      assert.equal(await response.text(), '<html>page</html>')
+      assert.equal(response.url, `http://127.0.0.1:${port}/page`)
+      assert.deepEqual(response.headers.getSetCookie(), ['a=1; Path=/', 'b=2; Path=/'])
+      assert.deepEqual(
+        seen.map(h => h['sec-fetch-mode']),
+        ['navigate', 'navigate'],
+      )
+      const manual = await navigationFetch(`http://127.0.0.1:${port}/hop`, {redirect: 'manual'})
+      assert.equal(manual.status, 302)
+      const controller = new AbortController()
+      controller.abort(new Error('stop'))
+      await assert.rejects(navigationFetch(`http://127.0.0.1:${port}/page`, {signal: controller.signal}), /stop/)
+    } finally {
+      server.close()
+    }
+  })
+})

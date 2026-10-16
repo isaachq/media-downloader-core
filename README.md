@@ -45,6 +45,10 @@ the ⌊CPUs/2⌋ pool and verified file by file.
 
 ![Paste a link, download it as MP4, check its integrity report, find it in Finished, open the run report](docs/demo.gif)
 
+### What's new in beta 14.1 (library 1.14.1)
+
+- **Instagram posts download again without signing in** — since 2026-10-15 Instagram serves its embed page only to requests that say they are a page load (`Sec-Fetch-Mode: navigate`), which Node's fetch can never send; the anonymous routes now go through a small `node:http(s)` client that sends the headers as a browser loads an embedded post. Every network had been getting the login page.
+
 ### What's new in beta 14 (library 1.14.0)
 
 Hardening after beta 13 — nothing you asked for changes; the edges do:

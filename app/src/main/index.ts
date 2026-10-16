@@ -342,9 +342,11 @@ function createWindow(): void {
   // shown once the first paint is ready; if that event never comes (seen on
   // some Windows machines), a second later all the same. Shown and focused,
   // never forced on top: an always-on-top flip steals focus from whatever
-  // the user is doing and flashes over full-screen apps on macOS
+  // the user is doing and flashes over full-screen apps on macOS. A quit
+  // within that second leaves the window destroyed: touching it then throws,
+  // and Electron's "Uncaught Exception" dialog keeps the app from exiting
   const reveal = () => {
-    if (!window || window.isVisible()) return
+    if (!window || window.isDestroyed() || window.isVisible()) return
     if (bounds.maximized) window.maximize()
     window.show()
     window.focus()
@@ -352,8 +354,11 @@ function createWindow(): void {
   window.once('ready-to-show', reveal)
   setTimeout(reveal, 1000).unref()
   // remember size and position for the next launch (normal bounds even when maximized)
-  // the hidden TikTok reader must never keep the app alive on its own
+  // the hidden TikTok reader must never keep the app alive on its own.
+  // A closed window is let go: every `if (!window)` past this point skips it
+  // instead of touching a destroyed object, which throws
   window.on('closed', () => {
+    window = undefined
     tiktokBrowser.close()
     for (const browser of [...playerBrowsers, ...metaBrowsers]) browser.close()
   })
@@ -1119,9 +1124,11 @@ async function folderOf(target: unknown): Promise<string | undefined> {
 
 if (!app.requestSingleInstanceLock()) app.quit()
 else {
+  // opened again while this one is still quitting: its window may be gone already
   app.on('second-instance', () => {
-    if (window?.isMinimized()) window.restore()
-    window?.focus()
+    if (!window || window.isDestroyed()) return
+    if (window.isMinimized()) window.restore()
+    window.focus()
   })
 
   const start = async () => {

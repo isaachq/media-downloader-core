@@ -45,6 +45,11 @@ the ⌊CPUs/2⌋ pool and verified file by file.
 
 ![Paste a link, download it as MP4, check its integrity report, find it in Finished, open the run report](docs/demo.gif)
 
+### What's new in beta 14.3 (library 1.14.3)
+
+- **Closing right after opening quits the app**: closed within a second of starting, the app could stay in the background behind an "Uncaught Exception" dialog; it now quits every time.
+- **macOS saves without waiting on the drive's cache**: beta 14.2's flush before an atomic rename became a full drive-cache flush on macOS that could stall a quit; APFS renames atomically, so macOS skips it (Windows and Linux keep it).
+
 ### What's new in beta 14.2 (library 1.14.2)
 
 - **Finished: the check ends when it ends** — "Checking files…" no longer stays on screen after the check, a file already gone is not checked again, and one check runs at a time.

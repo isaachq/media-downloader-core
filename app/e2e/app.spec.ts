@@ -25,6 +25,31 @@ test.afterAll(async () => {
   await fs.rm(root, {recursive: true, force: true})
 })
 
+/** What every app launched by the running test printed (main process stdout / stderr), oldest first. */
+let output: string[] = []
+test.beforeEach(() => {
+  output = []
+})
+// a failure carries what the app itself said: a hang or a crash in the main process is not blind
+// biome-ignore lint/correctness/noEmptyPattern: Playwright requires its fixtures argument destructured
+test.afterEach(async ({}, testInfo) => {
+  if (testInfo.status !== testInfo.expectedStatus && output.length > 0) {
+    await testInfo.attach('app-output', {body: output.join(''), contentType: 'text/plain'})
+  }
+})
+
+/** Launch the built app, its output kept for the report (see `output`). */
+async function start(env: Record<string, string>): Promise<ElectronApplication> {
+  const app = await electron.launch({...target, env: {...(process.env as Record<string, string>), ...env}})
+  const launched = output.length
+  const stamp = (stream: string) => (chunk: Buffer) => {
+    output.push(`[app ${launched} ${stream} ${new Date().toISOString()}] ${chunk.toString()}`)
+  }
+  app.process().stdout?.on('data', stamp('out'))
+  app.process().stderr?.on('data', stamp('err'))
+  return app
+}
+
 async function launch(name: string, settings: Record<string, unknown> = {}, env: Record<string, string> = {}) {
   const dataDir = path.join(root, name, 'data')
   const outDir = path.join(root, name, 'out')
@@ -44,17 +69,39 @@ async function launch(name: string, settings: Record<string, unknown> = {}, env:
     }),
   )
   const fakes = await writeFakes(path.join(root, name, 'fakes'))
-  const app = await electron.launch({
-    ...target,
-    env: {...process.env, MDC_DATA_DIR: dataDir, MDC_DOWNLOAD_DIR: outDir, MDC_BINARIES: JSON.stringify(fakes), ...env},
+  const app = await start({
+    MDC_DATA_DIR: dataDir,
+    MDC_DOWNLOAD_DIR: outDir,
+    MDC_BINARIES: JSON.stringify(fakes),
+    ...env,
   })
   const page = await app.firstWindow()
   await page.waitForSelector('[data-testid="theme-mode"]', {state: 'attached'}) // start-up finished
   return {app, page, dataDir, outDir}
 }
 
+/** The app's own quit gives up on a stuck shutdown after 10 s (forced exit): past that it is a bug. */
+const QUIT_MS = 20_000
+
+/**
+ * Quit the app; one that doesn't quit in time is killed and the test fails
+ * right here, saying so — not two minutes later on the test's timeout, with
+ * the worker's teardown stuck on the same process for two more.
+ */
 async function close(app: ElectronApplication) {
-  await app.close()
+  const child = app.process()
+  let timer: NodeJS.Timeout | undefined
+  const quit = await Promise.race([
+    app.close().then(() => true),
+    new Promise<false>(resolve => {
+      timer = setTimeout(() => resolve(false), QUIT_MS)
+    }),
+  ])
+  clearTimeout(timer)
+  if (!quit) {
+    child.kill('SIGKILL')
+    throw new Error(`the app (pid ${child.pid}) did not quit within ${QUIT_MS / 1000} s`)
+  }
 }
 
 /** Paste a link and start it; a list opens the preview, confirmed with everything selected. */
@@ -192,7 +239,7 @@ test('the first launch shows the three first steps once; Guide replays them', as
   await close(app)
 
   // a second launch doesn't show it again
-  const again = await electron.launch({...target, env: {...process.env, MDC_DATA_DIR: dataDir}})
+  const again = await start({MDC_DATA_DIR: dataDir})
   const second = await again.firstWindow()
   await second.waitForSelector('[data-testid="theme-mode"]', {state: 'attached'})
   await second.waitForTimeout(800)
@@ -426,10 +473,7 @@ test('remembers language and theme across restarts', async () => {
 
   // relaunch on the same data folder (settings.json is not rewritten this time)
   const fakes = await writeFakes(path.join(root, 'prefs', 'fakes'))
-  const app = await electron.launch({
-    ...target,
-    env: {...process.env, MDC_DATA_DIR: first.dataDir, MDC_BINARIES: JSON.stringify(fakes)},
-  })
+  const app = await start({MDC_DATA_DIR: first.dataDir, MDC_BINARIES: JSON.stringify(fakes)})
   const page = await app.firstWindow()
   await expect(page.getByText('Nueva descarga')).toBeVisible()
   await expect(page.getByTestId('theme-mode')).toHaveText('dark')

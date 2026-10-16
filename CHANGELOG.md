@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+**Library**
+
+- **macOS: no drive-cache flush before an atomic rename.** Beta 14.2 made
+  `writeAtomic` and the compactions of the archive and the pending journal
+  flush the temp file to disk before renaming it. On macOS Node turns that
+  flush into `F_FULLFSYNC` (the drive's own cache), which can stall on a
+  virtual disk long enough that a quit waiting on it never ends: the macOS
+  end-to-end run hung on a quit-and-relaunch test in 2 of 3 runs after
+  38 green ones. APFS is copy-on-write and renames atomically, so macOS
+  keeps the old-or-new guarantee without it (`FLUSH_BEFORE_RENAME`);
+  Windows and Linux keep the flush.
+
+**App**
+
+- End-to-end: an app that doesn't quit within 20 s is killed and the test
+  fails right there, saying so, instead of on the 2-minute timeout with the
+  worker's teardown stuck for 2 more; a failed test carries what the app
+  printed (main-process stdout / stderr), and CI keeps the results of a
+  failed run as an artifact.
+
 ## App 0.2.0-beta.14.2 · library 1.14.2
 
 Beta 14.2: the Finished tab's check no longer sticks and can bring deleted files back; the

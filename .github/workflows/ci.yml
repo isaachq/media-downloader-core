@@ -91,6 +91,15 @@ jobs:
         if: runner.os == 'Linux'
         run: xvfb-run -a npm run test:e2e
         working-directory: app
+      # a failed run keeps what it saw: error contexts, screenshots and the app's own output
+      - name: Keep the end-to-end results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results-${{ matrix.os }}
+          path: app/test-results
+          retention-days: 14
+          if-no-files-found: ignore
       # packaging breaks quietly (a missing tool, a bad target): build the Linux packages
       # on every PR so a release tag never finds out first
       - name: Package (Linux)

@@ -4,7 +4,7 @@ import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import {createInterface} from 'node:readline'
 import type {FormatProfile, ValidationLevel} from '../types.js'
-import {renameRetrying} from './files.js'
+import {endsMidLine, removeLeftovers, renameRetrying, syncFile} from './files.js'
 import {profileKey} from './formats.js'
 
 export type ArchiveEntry = {
@@ -91,7 +91,47 @@ const fold = (text: string): string =>
 /** Compact when the log holds this many more records than live entries. */
 const COMPACT_SLACK = 1000
 
-async function* records(file: string): AsyncGenerator<{readonly record: ArchiveRecord; readonly raw: string}> {
+/**
+ * A log line read back as a record, or undefined when it can't be one: a
+ * torn write, a line of another shape, an operation of a newer version.
+ * Records of older versions load as they are (the fields added since are
+ * optional); a record missing its size or time gets 0, so it still lists
+ * and sorts. Fields this version doesn't know are kept (the raw line is what
+ * compaction writes back).
+ */
+export function parseArchiveLine(raw: string): ArchiveRecord | undefined {
+  let value: unknown
+  try {
+    value = JSON.parse(raw)
+  } catch {
+    return undefined
+  }
+  if (typeof value !== 'object' || value === null) return undefined
+  const record = value as {op?: unknown; key?: unknown; entry?: unknown}
+  if (record.op === 'del') return typeof record.key === 'string' ? {op: 'del', key: record.key} : undefined
+  if (record.op !== 'put' || typeof record.entry !== 'object' || record.entry === null) return undefined
+  const entry = record.entry as Partial<Record<keyof ArchiveEntry, unknown>>
+  if (typeof entry.key !== 'string' || typeof entry.filepath !== 'string') return undefined
+  if (Number.isFinite(entry.sizeBytes) && Number.isFinite(entry.completedAt)) return record as ArchiveRecord
+  return {
+    op: 'put',
+    entry: {
+      ...(entry as unknown as ArchiveEntry),
+      sizeBytes: Number.isFinite(entry.sizeBytes) ? (entry.sizeBytes as number) : 0,
+      completedAt: Number.isFinite(entry.completedAt) ? (entry.completedAt as number) : 0,
+    },
+  }
+}
+
+/**
+ * The records of a log, in order. Lines that aren't records are skipped
+ * here — by every reader alike, so record numbers agree between passes —
+ * and handed to `rejected` when given.
+ */
+async function* records(
+  file: string,
+  rejected?: (raw: string) => void,
+): AsyncGenerator<{readonly record: ArchiveRecord; readonly raw: string}> {
   try {
     await fs.access(file)
   } catch {
@@ -102,12 +142,10 @@ async function* records(file: string): AsyncGenerator<{readonly record: ArchiveR
     crlfDelay: Number.POSITIVE_INFINITY,
   })
   for await (const raw of lines) {
-    if (!raw) continue
-    try {
-      yield {record: JSON.parse(raw) as ArchiveRecord, raw}
-    } catch {
-      // torn write from a crash
-    }
+    if (!raw.trim()) continue
+    const record = parseArchiveLine(raw)
+    if (record) yield {record, raw}
+    else rejected?.(raw)
   }
 }
 
@@ -128,6 +166,8 @@ export class DownloadArchive {
   #handle: FileHandle | undefined
   #opening: Promise<void> | undefined
   #writes: Promise<void> = Promise.resolve()
+  /** The log ends mid-line (a write cut short): the next append starts a new line first. */
+  #torn = false
   /**
    * Full records by key, oldest first — only once `list()` has been used (the
    * index alone serves downloads), then kept in step with every add / remove,
@@ -154,6 +194,8 @@ export class DownloadArchive {
 
   async #open(): Promise<void> {
     await fs.mkdir(path.dirname(this.file), {recursive: true})
+    // a compaction a crash cut short: the log itself was never replaced
+    await removeLeftovers(this.file, '.compact')
     for await (const {record} of records(this.file)) {
       const line = this.#records++
       if (record.op === 'put') {
@@ -164,17 +206,29 @@ export class DownloadArchive {
       }
     }
     if (this.#records > this.#index.size + COMPACT_SLACK) await this.#compact()
+    this.#torn = await endsMidLine(this.file)
     this.#handle = await fs.open(this.file, 'a')
   }
 
-  /** Rewrite the log with only the latest record of each live key — streamed, constant memory. */
+  /** Where lines that aren't records go when a compaction leaves them out: kept, never dropped. */
+  get rejectedFile(): string {
+    return `${this.file}.rejected`
+  }
+
+  /**
+   * Rewrite the log with only the latest record of each live key — streamed,
+   * constant memory. The new log is on the disk before it replaces the old
+   * one (a power cut leaves one or the other, whole); lines that aren't
+   * records are moved to `rejectedFile`, not dropped.
+   */
   async #compact(): Promise<void> {
     const tmp = `${this.file}.${process.pid}.compact`
     const out = createWriteStream(tmp)
     const reindexed = new Map<string, Indexed>()
+    const rejected: string[] = []
     let line = 0
     let written = 0
-    for await (const {record, raw} of records(this.file)) {
+    for await (const {record, raw} of records(this.file, text => rejected.push(text))) {
       const current = line++
       if (record.op !== 'put') continue
       const live = this.#index.get(record.entry.key)
@@ -183,6 +237,8 @@ export class DownloadArchive {
       reindexed.set(record.entry.key, {filepath: live.filepath, sizeBytes: live.sizeBytes, line: written++})
     }
     await new Promise<void>((resolve, reject) => out.end((error?: Error | null) => (error ? reject(error) : resolve())))
+    if (rejected.length > 0) await fs.appendFile(this.rejectedFile, `${rejected.join('\n')}\n`)
+    await syncFile(tmp)
     await renameRetrying(tmp, this.file)
     this.#index = reindexed
     this.#records = written
@@ -222,16 +278,21 @@ export class DownloadArchive {
     })
   }
 
-  /** Forget several records; how many were there. */
+  /** Forget several records in one write; how many were there. O(k). */
   async removeMany(keys: Iterable<string>): Promise<number> {
-    let removed = 0
-    for (const key of keys) {
-      await this.open()
-      if (!this.#index.has(key)) continue
-      await this.remove(key)
-      removed++
-    }
-    return removed
+    await this.open()
+    const present = [...new Set(keys)].filter(key => this.#index.has(key))
+    if (present.length === 0) return 0
+    await this.#appendAll(
+      present.map(key => ({op: 'del', key})),
+      () => {
+        for (const key of present) {
+          this.#index.delete(key)
+          this.#forget(key)
+        }
+      },
+    )
+    return present.length
   }
 
   /**
@@ -402,11 +463,27 @@ export class DownloadArchive {
    * index as the line lands, so index and file always agree.
    */
   #append(record: ArchiveRecord, apply: (line: number) => void): Promise<void> {
-    const text = `${JSON.stringify(record)}\n`
+    return this.#appendAll([record], line => apply(line))
+  }
+
+  /**
+   * Append records in one write. A write that fails may have left part of a
+   * line: the next one starts on a new line, so the records after it are
+   * never glued to the torn one.
+   */
+  #appendAll(batch: readonly ArchiveRecord[], apply: (firstLine: number) => void): Promise<void> {
+    const text = batch.map(record => `${JSON.stringify(record)}\n`).join('')
     const write = this.#writes.then(async () => {
       if (!this.#handle) throw new Error('Archive is closed.')
-      await this.#handle.write(text)
-      apply(this.#records++)
+      try {
+        await this.#handle.write(this.#torn ? `\n${text}` : text)
+      } catch (error) {
+        this.#torn = true
+        throw error
+      }
+      this.#torn = false
+      apply(this.#records)
+      this.#records += batch.length
     })
     this.#writes = write.catch(() => {})
     return write

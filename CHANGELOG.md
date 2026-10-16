@@ -1,5 +1,40 @@
 # Changelog
 
+## Unreleased
+
+**Library — durability of the stores (history, pending queue, damaged list)**
+
+- **A record written after a torn line is no longer lost.** A crash or a
+  full disk in the middle of an append left part of a line; the next
+  append was written right after it, on the same line, so both were
+  unreadable on the next start (the history forgot a finished download,
+  the pending journal an item). The archive and the pending journal now
+  look at the last byte when they open (and remember a failed write) and
+  start the next record on a new line.
+- **A line of another shape no longer stops the archive from opening.**
+  Valid JSON that isn't a record (`null`, `{"op":"put"}`, a key that isn't
+  a string) threw in `open()`. Every line is now checked
+  (`parseArchiveLine`, `parseJournalLine`) and skipped alike by every pass,
+  so record numbers still agree.
+- **Records of older versions load, fields of newer ones are kept.** A
+  record missing its size or finish time gets 0 instead of breaking the
+  sort and the totals; unknown fields survive updates and compaction.
+- **Nothing the user had is dropped silently.** Compaction moves the lines
+  it can't read (torn writes, operations of a newer version) to
+  `<archive>.rejected`. A pending-queue or damaged-list file that can't be
+  read back (empty after a power cut, cut short, another shape) is moved
+  to `<file>.corrupt-<time>` instead of being overwritten by the next save.
+- **Renames only after the data is on disk.** `writeAtomic` and the
+  compactions of the archive and the journal fsync the temp file before
+  renaming it over the old one, so a power cut leaves the old file or the
+  new one, never an empty one. Each `writeAtomic` has its own temp name
+  (two writes at once to one file no longer clash); the damaged list uses
+  it too.
+- Temp files of a compaction a crash cut short are removed on open, once
+  older than 10 minutes (a younger one may be another process's).
+- `DownloadArchive.removeMany` writes all its removals at once (one write,
+  O(k)) instead of one append per key.
+
 ## App 0.2.0-beta.14.1 · library 1.14.1
 
 **Library**

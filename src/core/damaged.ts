@@ -1,7 +1,6 @@
 import * as fs from 'node:fs/promises'
-import * as path from 'node:path'
 import type {ValidationIssueCode} from '../types.js'
-import {renameRetrying} from './files.js'
+import {quarantine, writeAtomic} from './files.js'
 
 /** A media whose file is broken where it comes from: not downloaded again. */
 export type DamagedEntry = {
@@ -107,14 +106,25 @@ export class DamagedRegistry {
   }
 
   async #read(): Promise<void> {
+    let text: string
     try {
-      const saved: unknown = JSON.parse(await fs.readFile(this.file, 'utf8'))
-      if (!Array.isArray(saved)) return
-      for (const entry of saved as DamagedEntry[]) {
-        if (typeof entry?.key === 'string' && typeof entry.url === 'string') this.#index(entry)
-      }
+      text = await fs.readFile(this.file, 'utf8')
     } catch {
-      // first run, or an unreadable file: nothing is known damaged
+      return // first run: nothing is known damaged
+    }
+    let saved: unknown
+    try {
+      saved = JSON.parse(text)
+    } catch {
+      saved = undefined
+    }
+    if (!Array.isArray(saved)) {
+      // unreadable: kept aside, never overwritten by the next save
+      await quarantine(this.file)
+      return
+    }
+    for (const entry of saved as DamagedEntry[]) {
+      if (typeof entry?.key === 'string' && typeof entry.url === 'string') this.#index(entry)
     }
   }
 
@@ -167,12 +177,7 @@ export class DamagedRegistry {
   /** Writes are chained (never two at once) and atomic (temp file, then rename). */
   #save(): Promise<void> {
     const text = JSON.stringify([...this.#entries.values()], null, 1)
-    const write = this.#writes.then(async () => {
-      await fs.mkdir(path.dirname(this.file), {recursive: true})
-      const tmp = `${this.file}.${process.pid}.tmp`
-      await fs.writeFile(tmp, text)
-      await renameRetrying(tmp, this.file)
-    })
+    const write = this.#writes.then(() => writeAtomic(this.file, text))
     this.#writes = write.catch(() => {})
     return write
   }

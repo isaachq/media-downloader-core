@@ -3,7 +3,7 @@ import type {FileHandle} from 'node:fs/promises'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import {createInterface} from 'node:readline'
-import {renameRetrying, writeAtomic} from './files.js'
+import {endsMidLine, quarantine, removeLeftovers, renameRetrying, syncFile, writeAtomic} from './files.js'
 
 type StoreFile<T> = {readonly version: 1; readonly requests: readonly T[]}
 
@@ -53,14 +53,27 @@ export class QueueStore<T> {
     this.#frozen = true
   }
 
+  /**
+   * The saved requests. A file that can't be read back (cut short, of
+   * another shape) is moved aside (`<file>.corrupt-<time>`), not overwritten
+   * by the next save: nothing pending is restored from it, and it is kept.
+   */
   async load(): Promise<readonly T[]> {
+    await this.#writing
+    let text: string
     try {
-      await this.#writing
-      const parsed = JSON.parse(await fs.readFile(this.file, 'utf8')) as Partial<StoreFile<T>>
-      return Array.isArray(parsed.requests) ? parsed.requests : []
+      text = await fs.readFile(this.file, 'utf8')
     } catch {
-      return [] // first launch, or an unreadable file
+      return [] // first launch
     }
+    try {
+      const parsed = JSON.parse(text) as Partial<StoreFile<T>> | null
+      if (parsed && Array.isArray(parsed.requests)) return parsed.requests
+    } catch {
+      // unreadable: kept aside below
+    }
+    await quarantine(this.file)
+    return []
   }
 }
 
@@ -70,6 +83,24 @@ const COMPACT_SLICE = 500
 type JournalRecord<T> =
   | {readonly op: 'put'; readonly id: string; readonly value: T}
   | {readonly op: 'del'; readonly id: string}
+
+/** A journal line read back as a record; undefined for a torn write or a line of another shape. */
+export function parseJournalLine<T>(raw: string): JournalRecord<T> | undefined {
+  let value: unknown
+  try {
+    value = JSON.parse(raw)
+  } catch {
+    return undefined
+  }
+  if (typeof value !== 'object' || value === null) return undefined
+  const record = value as {op?: unknown; id?: unknown; value?: unknown}
+  if (typeof record.id !== 'string') return undefined
+  if (record.op === 'del') return {op: 'del', id: record.id}
+  if (record.op === 'put' && record.value !== undefined && record.value !== null) {
+    return {op: 'put', id: record.id, value: record.value as T}
+  }
+  return undefined
+}
 
 /**
  * Pending-work journal for large queues: adding or finishing an item appends
@@ -86,6 +117,8 @@ export class PendingJournal<T> {
   #writePromise: Promise<void> = Promise.resolve()
   #lines = 0
   #frozen = false
+  /** The file ends mid-line (a write cut short): the next chunk starts a new line first. */
+  #torn = false
   #compactScheduled = false
   #compactPromise: Promise<void> | undefined
   #compactSeq = 0
@@ -130,6 +163,8 @@ export class PendingJournal<T> {
     const live = new Map<string, T>()
     let stream: ReturnType<typeof createReadStream> | undefined
     let rl: ReturnType<typeof createInterface> | undefined
+    // a compaction a crash cut short: the journal itself was never replaced
+    await removeLeftovers(this.file, '.compact')
     try {
       await fs.access(this.file)
       stream = createReadStream(this.file, {encoding: 'utf8'})
@@ -138,14 +173,10 @@ export class PendingJournal<T> {
         crlfDelay: Number.POSITIVE_INFINITY,
       })
       for await (const line of rl) {
-        if (line.length === 0) continue
-        try {
-          const record = JSON.parse(line) as JournalRecord<T>
-          if (record.op === 'put') live.set(record.id, record.value)
-          else live.delete(record.id)
-        } catch {
-          // torn last line from a crash
-        }
+        if (!line.trim()) continue
+        const record = parseJournalLine<T>(line)
+        if (record?.op === 'put') live.set(record.id, record.value)
+        else if (record?.op === 'del') live.delete(record.id)
       }
     } catch {
       return []
@@ -207,6 +238,8 @@ export class PendingJournal<T> {
       await new Promise<void>((resolve, reject) =>
         out.end((error?: Error | null) => (error ? reject(error) : resolve())),
       )
+      // on the disk before it replaces the journal: a power cut leaves one or the other, whole
+      await syncFile(tmp)
       await renameRetrying(tmp, this.file)
       this.#lines = entries.length
     } catch (error) {
@@ -260,10 +293,17 @@ export class PendingJournal<T> {
         await this.#withLock(async () => {
           if (this.#frozen) return
           this.#opening ??= fs.mkdir(path.dirname(this.file), {recursive: true}).then(async () => {
+            this.#torn = await endsMidLine(this.file)
             this.#handle = await fs.open(this.file, 'a')
           })
           await this.#opening
-          await this.#handle?.write(chunk)
+          try {
+            await this.#handle?.write(this.#torn ? `\n${chunk}` : chunk)
+          } catch (error) {
+            this.#torn = true // part of a line may be on disk
+            throw error
+          }
+          this.#torn = false
           this.#lines += count
         })
       } catch {

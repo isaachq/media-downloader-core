@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased · library 1.14.1
+
+**Library**
+
+- **Instagram: anonymous posts read again.** Since 2026-10-15 Instagram
+  serves the embed page (`/p/<code>/embed/captioned/`) only to requests
+  that say they are a page load (`Sec-Fetch-Mode: navigate`); everything
+  else gets the login page, on every network. Node's built-in fetch always
+  sends `Sec-Fetch-Mode: cors` and cannot be told otherwise, so the
+  anonymous routes now go through `navigationFetch` (node:http(s), headers
+  as given) and the embed is asked for with the headers Chrome sends for a
+  cross-site iframe. The local fake walls the embed the same way.
+
 ## App 0.2.0-beta.14 · library 1.14.0
 
 Beta 14: hardening after beta 13. Found by reviewing beta 10 → 13 and running the suites: no behaviour the

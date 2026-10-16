@@ -275,12 +275,101 @@ export async function sha256Stream(
   return hash.digest('hex')
 }
 
-/** Write via tmp + rename: readers see either the old or the new content, never half. */
+let tmpSeq = 0
+
+/**
+ * Write via tmp + rename: readers see either the old or the new content,
+ * never half. The tmp file reaches the disk (fsync) before the rename, so a
+ * power cut right after can't leave an empty file in place of the old one;
+ * each write has its own tmp name, so two at once never clash.
+ */
 export async function writeAtomic(file: string, data: string): Promise<void> {
   await fs.mkdir(path.dirname(file), {recursive: true})
-  const tmp = `${file}.${process.pid}.tmp`
-  await fs.writeFile(tmp, data)
-  await renameRetrying(tmp, file)
+  const tmp = `${file}.${process.pid}.${++tmpSeq}.tmp`
+  try {
+    await writeSynced(tmp, data)
+    await renameRetrying(tmp, file)
+  } catch (error) {
+    await fs.rm(tmp, {force: true}).catch(() => {})
+    throw error
+  }
+}
+
+/** Write a whole file and wait until it is on the disk. */
+async function writeSynced(file: string, data: string): Promise<void> {
+  const handle = await fs.open(file, 'w')
+  try {
+    await handle.writeFile(data)
+    await handle.datasync()
+  } finally {
+    await handle.close()
+  }
+}
+
+/** Wait until a file written through a stream is on the disk (before it is renamed into place). */
+export async function syncFile(file: string): Promise<void> {
+  const handle = await fs.open(file, 'r+')
+  try {
+    await handle.datasync()
+  } finally {
+    await handle.close()
+  }
+}
+
+/**
+ * Move an unreadable state file aside (`<file>.corrupt-<time>`) instead of
+ * letting the next save overwrite it: what it held can still be recovered by
+ * hand. Undefined when there was nothing to move.
+ */
+export async function quarantine(file: string): Promise<string | undefined> {
+  const aside = `${file}.corrupt-${Date.now()}`
+  try {
+    await renameRetrying(file, aside)
+    return aside
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Whether the next line appended to a log must start with a newline: the
+ * file ends in the middle of a line (a write cut short by a crash or a full
+ * disk). Without it the next record would be glued to the torn one, and
+ * both lost on the next read. O(1): reads only the last byte.
+ */
+export async function endsMidLine(file: string): Promise<boolean> {
+  const handle = await fs.open(file, 'r').catch(() => undefined)
+  if (!handle) return false
+  try {
+    const {size} = await handle.stat()
+    if (size === 0) return false
+    const last = Buffer.alloc(1)
+    await handle.read(last, 0, 1, size - 1)
+    return last[0] !== 0x0a
+  } finally {
+    await handle.close()
+  }
+}
+
+/**
+ * Remove the temp files a crash left beside `file` (`<file>.<anything><suffix>`)
+ * once older than `minAgeMs`: a younger one may be another process's write in
+ * progress (the CLI beside the app).
+ */
+export async function removeLeftovers(file: string, suffix: string, minAgeMs = 10 * 60_000): Promise<void> {
+  const dir = path.dirname(file)
+  const prefix = `${path.basename(file)}.`
+  const names = await fs.readdir(dir).catch(() => [] as string[])
+  const before = Date.now() - minAgeMs
+  await Promise.all(
+    names
+      .filter(name => name.startsWith(prefix) && name.endsWith(suffix))
+      .map(async name => {
+        const leftover = path.join(dir, name)
+        const stat = await fs.stat(leftover).catch(() => undefined)
+        if (stat && stat.mtimeMs <= before) await fs.rm(leftover, {force: true}).catch(() => {})
+      }),
+  )
 }
 
 /** True if `child` is inside `parent` (after resolving `..`). */

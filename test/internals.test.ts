@@ -113,6 +113,29 @@ describe('LineSplitter', () => {
     splitter.flush()
     assert.deepEqual(received, ['hello', 'world', 'partial end'])
   })
+
+  it('a \\r\\n split across chunks, and chunks that are only a newline', () => {
+    const received: string[] = []
+    const splitter = new LineSplitter(line => received.push(line))
+    for (const chunk of ['a\r', '\nb', '\n', '\n', 'c\r\n']) splitter.push(chunk)
+    splitter.flush()
+    assert.deepEqual(received, ['a', 'b', 'c'])
+  })
+
+  it('a 2 MB line over many chunks comes out whole, in linear time', () => {
+    const line = `{"formats":"${'x'.repeat(2_000_000)}"}`
+    const received: string[] = []
+    const splitter = new LineSplitter(text => received.push(text))
+    const started = performance.now()
+    for (let i = 0; i < line.length; i += 65_536) splitter.push(line.slice(i, i + 65_536))
+    splitter.push('\nnext\n')
+    const elapsed = performance.now() - started
+    assert.equal(received.length, 2)
+    assert.equal(received[0], line)
+    assert.equal(received[1], 'next')
+    // quadratic rescans took ~10 ms here, several times this on a slow runner; linear is ~1 ms
+    assert.ok(elapsed < 200, `took ${elapsed} ms`)
+  })
 })
 
 describe('TailBuffer', () => {

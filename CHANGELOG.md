@@ -1,5 +1,107 @@
 # Changelog
 
+## App 0.2.0-beta.14.2 · library 1.14.2
+
+Beta 14.2: the Finished tab's check no longer sticks and can bring deleted files back; the
+history and the pending queue survive torn writes and power cuts; a Big-O pass on the hot paths.
+
+**Library — durability of the stores (history, pending queue, damaged list)**
+
+- **A record written after a torn line is no longer lost.** A crash or a
+  full disk in the middle of an append left part of a line; the next
+  append was written right after it, on the same line, so both were
+  unreadable on the next start (the history forgot a finished download,
+  the pending journal an item). The archive and the pending journal now
+  look at the last byte when they open (and remember a failed write) and
+  start the next record on a new line.
+- **A line of another shape no longer stops the archive from opening.**
+  Valid JSON that isn't a record (`null`, `{"op":"put"}`, a key that isn't
+  a string) threw in `open()`. Every line is now checked
+  (`parseArchiveLine`, `parseJournalLine`) and skipped alike by every pass,
+  so record numbers still agree.
+- **Records of older versions load, fields of newer ones are kept.** A
+  record missing its size or finish time gets 0 instead of breaking the
+  sort and the totals; unknown fields survive updates and compaction.
+- **Nothing the user had is dropped silently.** Compaction moves the lines
+  it can't read (torn writes, operations of a newer version) to
+  `<archive>.rejected`. A pending-queue or damaged-list file that can't be
+  read back (empty after a power cut, cut short, another shape) is moved
+  to `<file>.corrupt-<time>` instead of being overwritten by the next save.
+- **Renames only after the data is on disk.** `writeAtomic` and the
+  compactions of the archive and the journal fsync the temp file before
+  renaming it over the old one, so a power cut leaves the old file or the
+  new one, never an empty one. Each `writeAtomic` has its own temp name
+  (two writes at once to one file no longer clash); the damaged list uses
+  it too.
+- Temp files of a compaction a crash cut short are removed on open, once
+  older than 10 minutes (a younger one may be another process's).
+- `DownloadArchive.removeMany` writes all its removals at once (one write,
+  O(k)) instead of one append per key.
+
+**Library — Big-O pass on the hot paths** (measured at 50,000 records or items)
+
+- **Preflight: 7.7 s → 1 ms.** Grouping a batch's items by native source
+  copied the group's array for every item (O(n²)); a first TikTok sync or a
+  large profile batch froze the event loop for seconds. It pushes now.
+- **`LineSplitter`: O(L) per line.** A line still open was glued to each
+  new chunk and rescanned from its start; a 2 MB `--dump-json` line over
+  ~30 chunks cost ~10 ms instead of ~0.5 ms, for every preflighted item.
+  The pieces are now joined once, when the newline arrives.
+- **`DownloadArchive.matching(query)`**: every match of a query and its
+  bytes in one pass (O(n); O(1) with no filter), for a host that needs all
+  of them instead of paging. **`version`** moves with every change, so a
+  host can cache what it derives. Sorted views (oldest, largest, smallest)
+  are kept until the next change: a size-sorted page went from 13.7 ms to
+  1.1 ms.
+- `verifyArchive` takes its records from memory: checking 2 files no
+  longer reads the whole log from disk (126 ms → 2.7 ms).
+
+**App**
+
+- **Finished: the check's progress ends with the check.** It was shown in
+  a toast with no end (`duration: 0`) as well as in the card above the
+  table; a progress event arriving after the answer (IPC events and
+  `invoke` replies are not ordered against each other) opened the toast
+  again and put the card back, so "Checking files… n of n" stayed on
+  screen. The progress now lives only in the card, and events outside a
+  check this list started are ignored.
+- **Finished: a file already gone is not checked again.** With rows
+  picked, only those still on disk are checked; picking only missing ones
+  turns "Check" off and says why. Missing rows keep their "File not
+  found" tag instead of a "Checking" spinner.
+- **Finished: one check at a time.** The main process runs check requests
+  one after another (never two hashing the same disk), and while one runs
+  the list turns off "Check", "Remove missing records", "Download missing
+  again" and "Remove from list".
+- **Finished: "Download missing again".** Files deleted or moved can be
+  downloaded again from the link their record kept: one new batch, each
+  into its old folder, under its old name (the list position is read back
+  from the file name when it is exactly what that position gives) and in
+  its old format. Files damaged at the source stay excluded. "Remove
+  missing records" now says it forgets the link too, and points here
+  first.
+- Removing records from the history is one `removeMany` call instead of
+  one call per key; picking records by key reads the archive once (O(n))
+  instead of paging through the whole filter.
+- **Finished: pages and refreshes reuse what was computed.** The matches
+  of a filter are kept per (filter, sort, history version): a page change
+  or the 2 s refresh during a batch is O(page), not a filter of the whole
+  history. "Check all", "Remove missing", "Download missing again" and the
+  CSV export take all matches in one pass (110 ms → 1.4 ms). The
+  Missing / Changed filters reuse the last disk scan for 30 s (per record,
+  so a file recorded again is looked at again): a refresh stats only the
+  new files, not all of them. The batch groups are recomputed only when
+  the history changed.
+- **Failed downloads window: O(S + F).** The selection was compared with
+  the failed list job by job (25M comparisons per render at 5,000 failed,
+  10 renders a second during a batch) and the batch filter counted each
+  batch with its own pass. Sets and one counting pass now.
+- **Jobs table: no sort.** Working, queued and finished rows come out of
+  one pass in three buckets, in the order the sort produced (O(J), not
+  O(J log J) on every update).
+- **Batch items: an item off the page shown no longer re-renders the
+  table.**
+
 ## App 0.2.0-beta.14.1 · library 1.14.1
 
 **Library**

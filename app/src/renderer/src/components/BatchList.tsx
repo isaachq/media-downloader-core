@@ -82,7 +82,16 @@ function BatchItems({batchId}: {readonly batchId: BatchId}) {
   }, [load])
   useEffect(
     () =>
-      store.onItem(batchId, item => setRows(current => current.map(row => (row.index === item.index ? item : row)))),
+      store.onItem(batchId, item =>
+        setRows(current => {
+          // an item off the page shown changes nothing: same array, no render — O(1) instead of O(page)
+          const at = current.findIndex(row => row.index === item.index)
+          if (at < 0) return current
+          const next = current.slice()
+          next[at] = item
+          return next
+        }),
+      ),
     [batchId, store],
   )
 

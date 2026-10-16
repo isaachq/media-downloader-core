@@ -45,6 +45,13 @@ the ⌊CPUs/2⌋ pool and verified file by file.
 
 ![Paste a link, download it as MP4, check its integrity report, find it in Finished, open the run report](docs/demo.gif)
 
+### What's new in beta 14.2 (library 1.14.2)
+
+- **Finished: the check ends when it ends** — "Checking files…" no longer stays on screen after the check, a file already gone is not checked again, and one check runs at a time.
+- **Download missing files again** — files deleted or moved come back from the link their record kept: into the same folder, under the same name, in the same format.
+- **History that survives a crash** — a record written after a write cut short is no longer lost; an odd line no longer stops the history from opening; a power cut can't leave it empty; unreadable files are kept aside (`.rejected`, `.corrupt-<time>`), never overwritten.
+- **Faster at scale** — a 50,000-item preflight no longer freezes for seconds (7.7 s → 1 ms); "check all", export and the size sort of a 50,000-file history are 10–80× faster; the Failed and Jobs views stop doing quadratic work on every update.
+
 ### What's new in beta 14.1 (library 1.14.1)
 
 - **Instagram posts download again without signing in** — since 2026-10-15 Instagram serves its embed page only to requests that say they are a page load (`Sec-Fetch-Mode: navigate`), which Node's fetch can never send; the anonymous routes now go through a small `node:http(s)` client that sends the headers as a browser loads an embedded post. Every network had been getting the login page.

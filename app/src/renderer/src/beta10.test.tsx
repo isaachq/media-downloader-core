@@ -1,4 +1,4 @@
-import {cleanup, fireEvent, render, screen, waitFor, within} from '@testing-library/react'
+import {act, cleanup, fireEvent, render, screen, waitFor, within} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type {BatchId, JobId, PreflightItem} from 'media-downloader-core'
 import {afterEach, describe, expect, it} from 'vitest'
@@ -352,6 +352,83 @@ describe('finished: header filters and missing records', () => {
     expect(await screen.findByText('1 record(s) of missing files removed')).toBeInTheDocument()
     await waitFor(() => expect(within(list).queryByText('Clip 2')).not.toBeInTheDocument())
     expect(within(list).getByText('Clip 1')).toBeInTheDocument()
+  })
+
+  /** The row checkbox of a title. */
+  const pick = (list: HTMLElement, title: string) =>
+    within(within(list).getByText(title).closest('tr')!).getByRole('checkbox')
+
+  it('a file already gone is not checked again: only the selected files still on disk are', async () => {
+    const api = new FakeApi()
+    api.finishedEntries = [entry(3, {file: 'missing'}), entry(2, {file: 'missing'}), entry(1)]
+    const {user, list} = await openFinished(api)
+    await user.click(pick(list, 'Clip 3'))
+    await user.click(pick(list, 'Clip 2'))
+    const verify = within(list).getByTestId('finished-verify')
+    // only missing files picked: nothing to check
+    expect(verify).toBeDisabled()
+    expect(verify).toHaveTextContent('Check selected (0)')
+    await user.click(pick(list, 'Clip 1'))
+    expect(verify).toBeEnabled()
+    await user.click(verify)
+    await waitFor(() => expect(api.verifyFinished).toHaveBeenCalledWith({keys: ['k1']}))
+    // the missing rows keep their tag, never a "Checking" spinner
+    expect(within(list).getAllByText('File not found')).toHaveLength(2)
+  })
+
+  it('the progress ends with the check: a late progress event does not bring it back', async () => {
+    const api = new FakeApi()
+    api.finishedEntries = [entry(2), entry(1)]
+    api.verifySummary = {checked: 2, ok: 2, missing: 0, changed: 0, corrupted: 0}
+    const {user, list} = await openFinished(api)
+    await user.click(within(list).getByTestId('finished-verify'))
+    expect(await screen.findByText(/Checked 2: 2 intact/)).toBeInTheDocument()
+    await waitFor(() => expect(within(list).queryByTestId('finished-checking')).not.toBeInTheDocument())
+    act(() => api.emitVerifyProgress({done: 2, total: 2}))
+    expect(within(list).queryByTestId('finished-checking')).not.toBeInTheDocument()
+    expect(within(list).getByTestId('finished-verify')).toBeEnabled()
+    // no "Checking files…" toast left behind
+    expect(screen.queryByText(/Checking files…/)).not.toBeInTheDocument()
+  })
+
+  it('the actions wait for a running check: no second check, no prune meanwhile', async () => {
+    const api = new FakeApi()
+    api.finishedEntries = [entry(2, {file: 'missing'}), entry(1)]
+    let finish: (summary: typeof api.verifySummary) => void = () => {}
+    api.verifyFinished.mockImplementationOnce(() => new Promise(resolve => (finish = resolve)))
+    const {user, list} = await openFinished(api)
+    await user.click(within(list).getByTestId('finished-verify'))
+    expect(await within(list).findByTestId('finished-checking')).toBeInTheDocument()
+    expect(within(list).getByTestId('finished-prune')).toBeDisabled()
+    expect(within(list).getByTestId('finished-redownload')).toBeDisabled()
+    await user.click(within(list).getByTestId('finished-verify'))
+    expect(api.verifyFinished).toHaveBeenCalledTimes(1)
+    act(() => finish({checked: 2, ok: 1, missing: 1, changed: 0, corrupted: 0}))
+    await waitFor(() => expect(within(list).queryByTestId('finished-checking')).not.toBeInTheDocument())
+    expect(within(list).getByTestId('finished-prune')).toBeEnabled()
+  })
+
+  it('downloads the missing files again from their links, after asking', async () => {
+    const api = new FakeApi()
+    api.finishedEntries = [entry(2, {file: 'missing'}), entry(1)]
+    const {user, list} = await openFinished(api)
+    await user.click(within(list).getByTestId('finished-redownload'))
+    expect(await screen.findByText(/from the link each one kept/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', {name: 'Download'}))
+    await waitFor(() => expect(api.redownloadFinished).toHaveBeenCalledWith(expect.objectContaining({all: true})))
+    expect(await screen.findByText('1 file(s) queued to download again')).toBeInTheDocument()
+  })
+
+  it('with only files still on disk picked, the missing-file actions are off', async () => {
+    const api = new FakeApi()
+    api.finishedEntries = [entry(2, {file: 'missing'}), entry(1)]
+    const {user, list} = await openFinished(api)
+    await user.click(pick(list, 'Clip 1'))
+    expect(within(list).getByTestId('finished-redownload')).toBeDisabled()
+    expect(within(list).getByTestId('finished-prune')).toBeDisabled()
+    await user.click(pick(list, 'Clip 2'))
+    expect(within(list).getByTestId('finished-redownload')).toHaveTextContent('Download missing again (1)')
+    expect(within(list).getByTestId('finished-prune')).toHaveTextContent('Remove missing among selected (1)')
   })
 })
 

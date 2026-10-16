@@ -4,7 +4,7 @@ import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import {createInterface} from 'node:readline'
 import type {FormatProfile, ValidationLevel} from '../types.js'
-import {renameRetrying} from './files.js'
+import {endsMidLine, removeLeftovers, renameRetrying, syncFile} from './files.js'
 import {profileKey} from './formats.js'
 
 export type ArchiveEntry = {
@@ -60,6 +60,13 @@ export type ArchiveGroup = {
   readonly lastCompletedAt: number
 }
 
+/** Every entry a query matches, in its order (see `DownloadArchive.matching`). */
+export type ArchiveMatches = {
+  readonly entries: readonly ArchiveEntry[]
+  /** Their bytes. */
+  readonly bytes: number
+}
+
 export type ArchivePage = {
   readonly entries: readonly ArchiveEntry[]
   /** Entries matching the search (all of them without one). */
@@ -91,7 +98,47 @@ const fold = (text: string): string =>
 /** Compact when the log holds this many more records than live entries. */
 const COMPACT_SLACK = 1000
 
-async function* records(file: string): AsyncGenerator<{readonly record: ArchiveRecord; readonly raw: string}> {
+/**
+ * A log line read back as a record, or undefined when it can't be one: a
+ * torn write, a line of another shape, an operation of a newer version.
+ * Records of older versions load as they are (the fields added since are
+ * optional); a record missing its size or time gets 0, so it still lists
+ * and sorts. Fields this version doesn't know are kept (the raw line is what
+ * compaction writes back).
+ */
+export function parseArchiveLine(raw: string): ArchiveRecord | undefined {
+  let value: unknown
+  try {
+    value = JSON.parse(raw)
+  } catch {
+    return undefined
+  }
+  if (typeof value !== 'object' || value === null) return undefined
+  const record = value as {op?: unknown; key?: unknown; entry?: unknown}
+  if (record.op === 'del') return typeof record.key === 'string' ? {op: 'del', key: record.key} : undefined
+  if (record.op !== 'put' || typeof record.entry !== 'object' || record.entry === null) return undefined
+  const entry = record.entry as Partial<Record<keyof ArchiveEntry, unknown>>
+  if (typeof entry.key !== 'string' || typeof entry.filepath !== 'string') return undefined
+  if (Number.isFinite(entry.sizeBytes) && Number.isFinite(entry.completedAt)) return record as ArchiveRecord
+  return {
+    op: 'put',
+    entry: {
+      ...(entry as unknown as ArchiveEntry),
+      sizeBytes: Number.isFinite(entry.sizeBytes) ? (entry.sizeBytes as number) : 0,
+      completedAt: Number.isFinite(entry.completedAt) ? (entry.completedAt as number) : 0,
+    },
+  }
+}
+
+/**
+ * The records of a log, in order. Lines that aren't records are skipped
+ * here — by every reader alike, so record numbers agree between passes —
+ * and handed to `rejected` when given.
+ */
+async function* records(
+  file: string,
+  rejected?: (raw: string) => void,
+): AsyncGenerator<{readonly record: ArchiveRecord; readonly raw: string}> {
   try {
     await fs.access(file)
   } catch {
@@ -102,12 +149,10 @@ async function* records(file: string): AsyncGenerator<{readonly record: ArchiveR
     crlfDelay: Number.POSITIVE_INFINITY,
   })
   for await (const raw of lines) {
-    if (!raw) continue
-    try {
-      yield {record: JSON.parse(raw) as ArchiveRecord, raw}
-    } catch {
-      // torn write from a crash
-    }
+    if (!raw.trim()) continue
+    const record = parseArchiveLine(raw)
+    if (record) yield {record, raw}
+    else rejected?.(raw)
   }
 }
 
@@ -128,6 +173,8 @@ export class DownloadArchive {
   #handle: FileHandle | undefined
   #opening: Promise<void> | undefined
   #writes: Promise<void> = Promise.resolve()
+  /** The log ends mid-line (a write cut short): the next append starts a new line first. */
+  #torn = false
   /**
    * Full records by key, oldest first — only once `list()` has been used (the
    * index alone serves downloads), then kept in step with every add / remove,
@@ -138,6 +185,10 @@ export class DownloadArchive {
   #fullBytes = 0
   /** `#full` newest first (by completedAt), rebuilt on the first list() after a change. */
   #newestFirst: ArchiveEntry[] | undefined
+  /** `#full` in the other orders, each built on first use after a change. */
+  readonly #sorted = new Map<ArchiveSort, readonly ArchiveEntry[]>()
+  /** Bumped by every add / update / remove: a host caches what it derives from the archive by it. */
+  #version = 0
   /** Folded title + file name per entry, for searching (computed once per entry). */
   readonly #haystacks = new WeakMap<ArchiveEntry, string>()
 
@@ -147,6 +198,11 @@ export class DownloadArchive {
     return this.#index.size
   }
 
+  /** Changes with every add, update and removal (not with a compaction, which changes no entry). */
+  get version(): number {
+    return this.#version
+  }
+
   open(): Promise<void> {
     this.#opening ??= this.#open()
     return this.#opening
@@ -154,6 +210,8 @@ export class DownloadArchive {
 
   async #open(): Promise<void> {
     await fs.mkdir(path.dirname(this.file), {recursive: true})
+    // a compaction a crash cut short: the log itself was never replaced
+    await removeLeftovers(this.file, '.compact')
     for await (const {record} of records(this.file)) {
       const line = this.#records++
       if (record.op === 'put') {
@@ -164,17 +222,29 @@ export class DownloadArchive {
       }
     }
     if (this.#records > this.#index.size + COMPACT_SLACK) await this.#compact()
+    this.#torn = await endsMidLine(this.file)
     this.#handle = await fs.open(this.file, 'a')
   }
 
-  /** Rewrite the log with only the latest record of each live key — streamed, constant memory. */
+  /** Where lines that aren't records go when a compaction leaves them out: kept, never dropped. */
+  get rejectedFile(): string {
+    return `${this.file}.rejected`
+  }
+
+  /**
+   * Rewrite the log with only the latest record of each live key — streamed,
+   * constant memory. The new log is on the disk before it replaces the old
+   * one (a power cut leaves one or the other, whole); lines that aren't
+   * records are moved to `rejectedFile`, not dropped.
+   */
   async #compact(): Promise<void> {
     const tmp = `${this.file}.${process.pid}.compact`
     const out = createWriteStream(tmp)
     const reindexed = new Map<string, Indexed>()
+    const rejected: string[] = []
     let line = 0
     let written = 0
-    for await (const {record, raw} of records(this.file)) {
+    for await (const {record, raw} of records(this.file, text => rejected.push(text))) {
       const current = line++
       if (record.op !== 'put') continue
       const live = this.#index.get(record.entry.key)
@@ -183,6 +253,8 @@ export class DownloadArchive {
       reindexed.set(record.entry.key, {filepath: live.filepath, sizeBytes: live.sizeBytes, line: written++})
     }
     await new Promise<void>((resolve, reject) => out.end((error?: Error | null) => (error ? reject(error) : resolve())))
+    if (rejected.length > 0) await fs.appendFile(this.rejectedFile, `${rejected.join('\n')}\n`)
+    await syncFile(tmp)
     await renameRetrying(tmp, this.file)
     this.#index = reindexed
     this.#records = written
@@ -222,16 +294,21 @@ export class DownloadArchive {
     })
   }
 
-  /** Forget several records; how many were there. */
+  /** Forget several records in one write; how many were there. O(k). */
   async removeMany(keys: Iterable<string>): Promise<number> {
-    let removed = 0
-    for (const key of keys) {
-      await this.open()
-      if (!this.#index.has(key)) continue
-      await this.remove(key)
-      removed++
-    }
-    return removed
+    await this.open()
+    const present = [...new Set(keys)].filter(key => this.#index.has(key))
+    if (present.length === 0) return 0
+    await this.#appendAll(
+      present.map(key => ({op: 'del', key})),
+      () => {
+        for (const key of present) {
+          this.#index.delete(key)
+          this.#forget(key)
+        }
+      },
+    )
+    return present.length
   }
 
   /**
@@ -250,6 +327,7 @@ export class DownloadArchive {
       // same place in the history: Map.set on a present key keeps its position
       this.#full?.set(key, next)
       this.#newestFirst = undefined
+      this.#sorted.clear()
     })
     return next
   }
@@ -257,36 +335,68 @@ export class DownloadArchive {
   /**
    * Finished downloads, newest first, a page at a time, optionally filtered.
    * The first call reads the log once (streamed); later calls are served from
-   * memory and follow every add / remove — O(page) without a search, O(n)
-   * with one (each entry's folded text is computed once).
+   * memory and follow every add / remove — O(page) without a filter (sorted
+   * views are kept until the next change), O(n) with one (each entry's
+   * folded text is computed once).
    */
   async list(query: ArchiveQuery = {}): Promise<ArchivePage> {
+    const {entries, bytes} = await this.matching(query)
+    const offset = Math.max(0, Math.floor(query.offset ?? 0))
+    const limit = Math.min(500, Math.max(1, Math.floor(query.limit ?? 50)))
+    return {entries: entries.slice(offset, offset + limit), total: entries.length, bytes}
+  }
+
+  /**
+   * Every entry a query matches, in its order, and their bytes — one pass,
+   * O(n) (O(1) without a filter: the sorted view is shared, never copied). A
+   * host that needs all of them (an export, an action on all shown) asks once
+   * instead of paging, which would filter everything again per page.
+   * `offset` and `limit` are ignored. The array must not be modified.
+   */
+  async matching(query: Omit<ArchiveQuery, 'offset' | 'limit'> = {}): Promise<ArchiveMatches> {
     const full = await this.#loadFull()
     // insertion order is nearly newest-last already: the stable sort is close to linear
     this.#newestFirst ??= [...full.values()].reverse().sort((a, b) => b.completedAt - a.completedAt)
-    const newest = this.#newestFirst
+    const ordered = this.#ordered(query.sort ?? 'newest', this.#newestFirst)
     const words = fold(query.search ?? '')
       .split(/\s+/)
       .filter(Boolean)
-    let matching = newest
-    let bytes = this.#fullBytes
     const {batchId, match} = query
+    let matching: readonly ArchiveEntry[] = ordered
+    let bytes = this.#fullBytes
     if (words.length > 0 || batchId !== undefined || match !== undefined) {
-      matching = newest.filter(entry => {
-        if (batchId !== undefined && entry.batchId !== batchId) return false
-        if (match && !match(entry)) return false
-        if (words.length === 0) return true
-        const haystack = this.#haystack(entry)
-        return words.every(word => haystack.includes(word))
-      })
-      bytes = matching.reduce((sum, entry) => sum + entry.sizeBytes, 0)
+      const kept: ArchiveEntry[] = []
+      bytes = 0
+      for (const entry of ordered) {
+        if (batchId !== undefined && entry.batchId !== batchId) continue
+        if (match && !match(entry)) continue
+        if (words.length > 0) {
+          const haystack = this.#haystack(entry)
+          if (!words.every(word => haystack.includes(word))) continue
+        }
+        kept.push(entry)
+        bytes += entry.sizeBytes
+      }
+      matching = kept
     }
-    if (query.sort === 'oldest') matching = [...matching].reverse()
-    else if (query.sort === 'largest') matching = [...matching].sort((a, b) => b.sizeBytes - a.sizeBytes)
-    else if (query.sort === 'smallest') matching = [...matching].sort((a, b) => a.sizeBytes - b.sizeBytes)
-    const offset = Math.max(0, Math.floor(query.offset ?? 0))
-    const limit = Math.min(500, Math.max(1, Math.floor(query.limit ?? 50)))
-    return {entries: matching.slice(offset, offset + limit), total: matching.length, bytes}
+    return {entries: matching, bytes}
+  }
+
+  /** The loaded entries in one order, kept until the next change: a page of a size sort doesn't sort again. */
+  #ordered(sort: ArchiveSort, newest: readonly ArchiveEntry[]): readonly ArchiveEntry[] {
+    if (sort === 'newest') return newest
+    let view = this.#sorted.get(sort)
+    if (!view) {
+      // stable sorts of the newest-first view: ties keep the order they always had
+      view =
+        sort === 'oldest'
+          ? [...newest].reverse()
+          : sort === 'largest'
+            ? [...newest].sort((a, b) => b.sizeBytes - a.sizeBytes)
+            : [...newest].sort((a, b) => a.sizeBytes - b.sizeBytes)
+      this.#sorted.set(sort, view)
+    }
+    return view
   }
 
   /** The batches the finished files came from, newest first — O(n) over the loaded records. */
@@ -344,6 +454,7 @@ export class DownloadArchive {
     this.#fullLoading = undefined
     this.#fullBytes = 0
     this.#newestFirst = undefined
+    this.#sorted.clear()
   }
 
   /**
@@ -363,6 +474,7 @@ export class DownloadArchive {
         this.#full = full
         this.#fullBytes = bytes
         this.#newestFirst = undefined
+        this.#sorted.clear()
         return full
       })
       this.#writes = load.then(
@@ -381,6 +493,7 @@ export class DownloadArchive {
   /** Drop a key from the loaded records (before a re-add or on removal). */
   #forget(key: string): void {
     this.#newestFirst = undefined
+    this.#sorted.clear()
     const old = this.#full?.get(key)
     if (!old) return
     this.#full!.delete(key)
@@ -402,11 +515,28 @@ export class DownloadArchive {
    * index as the line lands, so index and file always agree.
    */
   #append(record: ArchiveRecord, apply: (line: number) => void): Promise<void> {
-    const text = `${JSON.stringify(record)}\n`
+    return this.#appendAll([record], line => apply(line))
+  }
+
+  /**
+   * Append records in one write. A write that fails may have left part of a
+   * line: the next one starts on a new line, so the records after it are
+   * never glued to the torn one.
+   */
+  #appendAll(batch: readonly ArchiveRecord[], apply: (firstLine: number) => void): Promise<void> {
+    const text = batch.map(record => `${JSON.stringify(record)}\n`).join('')
     const write = this.#writes.then(async () => {
       if (!this.#handle) throw new Error('Archive is closed.')
-      await this.#handle.write(text)
-      apply(this.#records++)
+      try {
+        await this.#handle.write(this.#torn ? `\n${text}` : text)
+      } catch (error) {
+        this.#torn = true
+        throw error
+      }
+      this.#torn = false
+      apply(this.#records)
+      this.#records += batch.length
+      this.#version++
     })
     this.#writes = write.catch(() => {})
     return write

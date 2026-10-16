@@ -2,6 +2,7 @@ import {
   ClearOutlined,
   ClockCircleOutlined,
   CloseCircleFilled,
+  CloudDownloadOutlined,
   CopyOutlined,
   DeleteOutlined,
   ExportOutlined,
@@ -129,7 +130,12 @@ export function FinishedList({
   const [size, setSize] = useState<readonly SizeRange[]>([])
   const [sort, setSort] = useState<FinishedSort>('newest')
   const [pruning, setPruning] = useState(false)
+  const [redownloading, setRedownloading] = useState(false)
   const latest = useRef(0)
+  // a check this list started is running: progress events outside one (late, or another window's) are ignored
+  const verifyRun = useRef(false)
+  // the disk state of every row seen (a selection outlives the page it was made on): O(1) per lookup
+  const fileStates = useRef(new Map<string, FinishedEntry['file']>())
 
   const load = useCallback(
     async (quiet = false) => {
@@ -150,6 +156,7 @@ export function FinishedList({
         ])
         // an answer to an older request (another page, another search) is dropped
         if (request === latest.current) {
+          for (const entry of result.entries) fileStates.current.set(entry.key, entry.file)
           setData(result)
           setGroups(batches)
         }
@@ -196,17 +203,13 @@ export function FinishedList({
     setPage(1)
     setSelected([])
   }, [batchId])
+  // the progress shows in the card above the table only: a toast with no end could outlive the check
   useEffect(
     () =>
       api().onVerifyProgress(progress => {
-        setChecking(progress)
-        void message.loading({
-          content: t('finished.verifying', {done: progress.done, total: progress.total}),
-          key: 'verify-progress',
-          duration: 0,
-        })
+        if (verifyRun.current) setChecking(progress)
       }),
-    [t, message],
+    [],
   )
 
   /** What the filters show (words, batch, header filters). */
@@ -220,25 +223,31 @@ export function FinishedList({
   /** The rows picked, else everything the filter shows. */
   const scope = (): FinishedTarget => (selected.length > 0 ? {keys: selected} : shown())
   const filtered = integrity.length > 0 || size.length > 0
+  // a file already known gone can't be checked: only the selected rows still on disk are
+  const selectedSet = new Set(selected)
+  const selectedMissing = selected.filter(key => fileStates.current.get(key) === 'missing').length
+  const selectedPresent = selected.length - selectedMissing
+  const busy = checking !== undefined || pruning || redownloading
+  // with rows picked, the missing-file actions need one of them gone
+  const noneMissing = selected.length > 0 && selectedMissing === 0
 
   const verify = async () => {
-    const totalCount = selected.length || data?.total || 0
-    setChecking({done: 0, total: totalCount})
-    void message.loading({
-      content: t('finished.verifying', {done: 0, total: totalCount}),
-      key: 'verify-progress',
-      duration: 0,
-    })
+    if (verifyRun.current) return
+    const target: FinishedTarget =
+      selected.length > 0 ? {keys: selected.filter(key => fileStates.current.get(key) !== 'missing')} : shown()
+    verifyRun.current = true
+    setChecking({done: 0, total: 'keys' in target ? target.keys.length : (data?.total ?? 0)})
     try {
-      const summary = await api().verifyFinished(scope())
+      const summary = await api().verifyFinished(target)
       const text = t('finished.verifyResult', {...summary})
-      message.destroy('verify-progress')
       if (summary.missing + summary.changed + summary.corrupted > 0)
         modal.warning({title: t('finished.verify'), content: text})
-      else void message.success({content: text, key: 'verify-progress', duration: 4})
+      else void message.success(text)
       void load(true)
+    } catch {
+      void message.error(t('finished.verifyFailed'))
     } finally {
-      message.destroy('verify-progress')
+      verifyRun.current = false
       setChecking(undefined)
     }
   }
@@ -257,6 +266,19 @@ export function FinishedList({
       void load(true)
     } finally {
       setPruning(false)
+    }
+  }
+  const redownload = async () => {
+    setRedownloading(true)
+    try {
+      const count = await api().redownloadFinished(scope())
+      setSelected([])
+      if (count) void message.success(t('finished.redownloaded', {count}))
+      else void message.info(t('finished.redownloadNone'))
+    } catch (error) {
+      void message.error(error instanceof Error ? error.message : String(error))
+    } finally {
+      setRedownloading(false)
     }
   }
   const exportCsv = async () => {
@@ -303,44 +325,64 @@ export function FinishedList({
         </Button>
       </Flex>
       <Flex gap={8} wrap align="center">
-        <Button
-          icon={<SafetyCertificateOutlined />}
-          loading={checking !== undefined}
-          disabled={!data?.total}
-          onClick={() => void verify()}
-          data-testid="finished-verify"
-        >
-          {selected.length ? t('finished.verifySelected', {count: selected.length}) : t('finished.verify')}
-        </Button>
+        <Tooltip title={selected.length > 0 && selectedPresent === 0 ? t('finished.verifyNoneThere') : undefined}>
+          <Button
+            icon={<SafetyCertificateOutlined />}
+            loading={checking !== undefined}
+            disabled={!data?.total || pruning || redownloading || (selected.length > 0 && selectedPresent === 0)}
+            onClick={() => void verify()}
+            data-testid="finished-verify"
+          >
+            {selected.length ? t('finished.verifySelected', {count: selectedPresent}) : t('finished.verify')}
+          </Button>
+        </Tooltip>
         <Button icon={<ExportOutlined />} disabled={!data?.total} onClick={() => void exportCsv()}>
           {t('finished.export')}
         </Button>
+        <Popconfirm
+          title={t('finished.redownload')}
+          description={t('finished.redownloadConfirm')}
+          onConfirm={() => void redownload()}
+          okText={t('finished.redownloadOk')}
+          disabled={!data?.total || busy || noneMissing}
+        >
+          <Button
+            icon={<CloudDownloadOutlined />}
+            loading={redownloading}
+            disabled={!data?.total || (busy && !redownloading) || noneMissing}
+            data-testid="finished-redownload"
+          >
+            {selected.length ? t('finished.redownloadSelected', {count: selectedMissing}) : t('finished.redownload')}
+          </Button>
+        </Popconfirm>
         <Popconfirm
           title={t('finished.prune')}
           description={t('finished.pruneConfirm')}
           onConfirm={() => void prune()}
           okText={t('finished.pruneOk')}
+          disabled={!data?.total || busy || noneMissing}
         >
-          <Button icon={<ClearOutlined />} loading={pruning} disabled={!data?.total} data-testid="finished-prune">
-            {selected.length ? t('finished.pruneSelected', {count: selected.length}) : t('finished.prune')}
+          <Button
+            icon={<ClearOutlined />}
+            loading={pruning}
+            disabled={!data?.total || (busy && !pruning) || noneMissing}
+            data-testid="finished-prune"
+          >
+            {selected.length ? t('finished.pruneSelected', {count: selectedMissing}) : t('finished.prune')}
           </Button>
         </Popconfirm>
         {selected.length ? (
-          <Popconfirm title={t('finished.removeConfirm')} onConfirm={() => void remove()}>
-            <Button danger icon={<DeleteOutlined />} data-testid="finished-remove">
+          <Popconfirm title={t('finished.removeConfirm')} onConfirm={() => void remove()} disabled={busy}>
+            <Button danger icon={<DeleteOutlined />} disabled={busy} data-testid="finished-remove">
               {t('finished.remove', {count: selected.length})}
             </Button>
           </Popconfirm>
-        ) : null}
-        {checking ? (
-          <Typography.Text type="secondary" data-testid="finished-checking">
-            {t('finished.verifying', {done: checking.done, total: checking.total})}
-          </Typography.Text>
         ) : null}
       </Flex>
       {checking ? (
         <Card
           size="small"
+          data-testid="finished-checking"
           style={{
             background: 'var(--ant-color-fill-quaternary, rgba(0, 0, 0, 0.02))',
             border: '1px solid var(--ant-color-primary-border, #91caff)',
@@ -469,10 +511,17 @@ export function FinishedList({
               value: state,
             })),
             filteredValue: [...integrity],
-            render: (_, entry) => {
-              const isEntryChecking = Boolean(checking && (selected.length === 0 || selected.includes(entry.key)))
-              return <FileTag entry={entry} isChecking={isEntryChecking} />
-            },
+            render: (_, entry) => (
+              <FileTag
+                entry={entry}
+                // a file known gone is not checked: it keeps its "not found" tag
+                isChecking={
+                  checking !== undefined &&
+                  entry.file !== 'missing' &&
+                  (selected.length === 0 || selectedSet.has(entry.key))
+                }
+              />
+            ),
           },
           {
             title: t('job.actions'),

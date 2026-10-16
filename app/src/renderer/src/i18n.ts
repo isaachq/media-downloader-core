@@ -585,8 +585,18 @@ const en = {
   'finished.prune': 'Remove missing records',
   'finished.pruneSelected': 'Remove missing among selected ({count})',
   'finished.pruneConfirm':
-    'Forgets the files that are no longer where they were downloaded (deleted or moved). The files you still have are not touched. If you download them again, they will be downloaded again.',
+    'Forgets the files that are no longer where they were downloaded (deleted or moved), and the links they came from. The files you still have are not touched. To get them back, use "Download missing again" first.',
   'finished.pruneOk': 'Remove',
+  'finished.redownload': 'Download missing again',
+  'finished.redownloadSelected': 'Download missing again ({count})',
+  'finished.redownloadConfirm':
+    'Downloads again, from the link each one kept, the files that are no longer where they were (deleted or moved): each into its old folder and format, in a new batch. The files you still have are not touched.',
+  'finished.redownloadOk': 'Download',
+  'finished.redownloaded': '{count} file(s) queued to download again',
+  'finished.redownloadNone': 'Every file is still in its place: nothing to download',
+  'finished.verifyNoneThere':
+    'These files are no longer on disk: there is nothing to check. Download them again or remove their records.',
+  'finished.verifyFailed': 'The check could not finish. Try again.',
   'finished.pruned': '{count} record(s) of missing files removed',
   'finished.prunedNone': 'Every file is still in its place: nothing to remove',
   'finished.size.lt10m': 'Under 10 MB',
@@ -1238,8 +1248,18 @@ const es: Record<MessageKey, string> = {
   'finished.prune': 'Quitar registros faltantes',
   'finished.pruneSelected': 'Quitar faltantes de los seleccionados ({count})',
   'finished.pruneConfirm':
-    'Olvida los archivos que ya no están donde se descargaron (borrados o movidos). Los archivos que sí tienes no se tocan. Si los vuelves a pedir, se descargarán de nuevo.',
+    'Olvida los archivos que ya no están donde se descargaron (borrados o movidos) y el enlace de donde vinieron. Los archivos que sí tienes no se tocan. Para recuperarlos, usa primero "Descargar faltantes de nuevo".',
   'finished.pruneOk': 'Quitar',
+  'finished.redownload': 'Descargar faltantes de nuevo',
+  'finished.redownloadSelected': 'Descargar faltantes de nuevo ({count})',
+  'finished.redownloadConfirm':
+    'Vuelve a descargar, desde el enlace que guardó cada uno, los archivos que ya no están donde estaban (borrados o movidos): cada uno a su carpeta y formato de antes, en un lote nuevo. Los archivos que sí tienes no se tocan.',
+  'finished.redownloadOk': 'Descargar',
+  'finished.redownloaded': '{count} archivo(s) en cola para descargarse de nuevo',
+  'finished.redownloadNone': 'Todos los archivos siguen en su lugar: nada que descargar',
+  'finished.verifyNoneThere':
+    'Estos archivos ya no están en el disco: no hay nada que revisar. Descárgalos de nuevo o quita sus registros.',
+  'finished.verifyFailed': 'La revisión no pudo terminar. Inténtalo de nuevo.',
   'finished.pruned': 'Se quitaron {count} registro(s) de archivos que ya no existen',
   'finished.prunedNone': 'Todos los archivos siguen en su lugar: nada que quitar',
   'finished.size.lt10m': 'Menos de 10 MB',

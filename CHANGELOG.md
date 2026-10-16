@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## App 0.2.0-beta.14.2 · library 1.14.2
+
+Beta 14.2: the Finished tab's check no longer sticks and can bring deleted files back; the
+history and the pending queue survive torn writes and power cuts; a Big-O pass on the hot paths.
 
 **Library — durability of the stores (history, pending queue, damaged list)**
 

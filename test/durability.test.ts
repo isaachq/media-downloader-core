@@ -338,7 +338,10 @@ describe('archive: all matches at once, and the views it keeps', () => {
     const odd = await archive.matching({batchId: 'odd'})
     assert.equal(odd.entries.length, 600)
     assert.equal(odd.entries[0]!.key, 'fake:1199:video:mp4:best', 'newest first')
-    assert.equal(odd.bytes, odd.entries.reduce((sum, entry) => sum + entry.sizeBytes, 0))
+    assert.equal(
+      odd.bytes,
+      odd.entries.reduce((sum, entry) => sum + entry.sizeBytes, 0),
+    )
     const all = await archive.matching()
     assert.equal(all.entries.length, 1200)
     await archive.list({limit: 5, search: 'Clip 7'})
@@ -354,7 +357,10 @@ describe('archive: all matches at once, and the views it keeps', () => {
     const archive = new DownloadArchive(file)
     for (let i = 0; i < 10; i++) await archive.add(record(i))
     const first = await archive.list({sort: 'largest', limit: 3})
-    assert.deepEqual(first.entries.map(entry => entry.sizeBytes), [109, 108, 107])
+    assert.deepEqual(
+      first.entries.map(entry => entry.sizeBytes),
+      [109, 108, 107],
+    )
     await archive.add({...record(99), sizeBytes: 10_000})
     assert.equal((await archive.list({sort: 'largest', limit: 1})).entries[0]!.sizeBytes, 10_000)
     assert.equal((await archive.list({sort: 'smallest', limit: 1})).entries[0]!.sizeBytes, 100)

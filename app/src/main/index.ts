@@ -175,6 +175,16 @@ function takePreview(url: string): VideoAnalysis | undefined {
 }
 let coalescer: EventCoalescer
 
+/**
+ * Start-up and quit, step by step, on stdout — only for the end-to-end runs
+ * (MDC_E2E_TRACE=1), which attach it to a failed test: a quit that hangs says
+ * at which step.
+ */
+const tracing = process.env['MDC_E2E_TRACE'] === '1'
+function phase(step: string): void {
+  if (tracing) process.stdout.write(`[mdc ${new Date().toISOString()}] ${step}\n`)
+}
+
 function send(channel: string, payload: unknown): void {
   if (window && !window.isDestroyed()) window.webContents.send(channel, payload)
 }
@@ -1131,9 +1141,11 @@ else {
       {half: max, boosted: MediaDownloader.maxConcurrency(MAX_CPU_SHARE)},
     )
     const current = await settings.load()
+    phase('start: settings loaded')
     activeMode = current.mode
     nativeTheme.themeSource = current.theme
     createEngine(current)
+    phase('start: engine created')
     const firstDiagnosis = engine.diagnose()
     warmDiagnosis = firstDiagnosis
     registerIpc()
@@ -1143,8 +1155,11 @@ else {
       .then(() => undefined)
       .catch(error => engine.log('error', `could not restore pending batches: ${String(error)}`))
     createWindow()
+    phase('start: window created')
     await createUpdater()
+    phase('start: updater ready')
     await restoring
+    phase('start: pending batches restored')
     // scheduled syncs (and any missed while the app was closed) once pending batches are back — TikTok mode only
     if (activeMode === 'tiktok' && current.syncEnabled) sync.startSchedule()
     // YouTube breaks old yt-dlp versions: refresh in the background once tools are in place
@@ -1167,6 +1182,7 @@ else {
 
   let quitting = false
   app.on('before-quit', event => {
+    phase(`quit: before-quit (quitting=${quitting}, engine=${Boolean(engine)})`)
     if (quitting || !engine) return
     event.preventDefault()
     quitting = true
@@ -1174,12 +1190,14 @@ else {
     tiktokBrowser.close()
     youtube.close()
     for (const browser of [...playerBrowsers, ...metaBrowsers]) browser.close()
+    phase('quit: browsers closed')
 
     // a shutdown that hangs (a tool that ignores its kill, a browser that
     // never closes) must not leave the app running in the background: the
     // engine's own dispose gives up on its pool after 3 s, so this fires only
     // past that, after the pending journal had its time to freeze
     const forceExitTimer = setTimeout(() => {
+      phase('quit: forced exit after 10 s')
       app.exit(0)
     }, 10_000)
     forceExitTimer.unref()
@@ -1187,12 +1205,18 @@ else {
     // saves pending batches and jobs, stops processes, keeps partial downloads for next launch
     void scheduler
       .dispose()
-      .then(() => engine.dispose())
+      .then(() => {
+        phase('quit: scheduler disposed')
+        return engine.dispose()
+      })
       .finally(() => {
+        phase('quit: engine disposed')
         clearTimeout(forceExitTimer)
         coalescer.dispose()
         app.quit()
       })
   })
+  app.on('will-quit', () => phase('quit: will-quit'))
+  app.on('quit', (_event, code) => phase(`quit: quit (code ${code})`))
   app.on('window-all-closed', () => app.quit())
 }

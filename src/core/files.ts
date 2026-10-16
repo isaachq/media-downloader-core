@@ -278,10 +278,22 @@ export async function sha256Stream(
 let tmpSeq = 0
 
 /**
+ * Whether a file is flushed to the disk before it is renamed into place.
+ * Not on macOS: there Node turns fsync / fdatasync into F_FULLFSYNC, a flush
+ * of the drive's own cache — slow on a Mac, and on a virtual disk it can
+ * stall long enough that a quit waiting on it never ends (a process inside
+ * that call can't even be killed). APFS is copy-on-write and renames
+ * atomically, so the old-or-new guarantee holds there without it. Windows
+ * and Linux keep the flush: there a rename can reach the disk before the data.
+ */
+export const FLUSH_BEFORE_RENAME = process.platform !== 'darwin'
+
+/**
  * Write via tmp + rename: readers see either the old or the new content,
- * never half. The tmp file reaches the disk (fsync) before the rename, so a
- * power cut right after can't leave an empty file in place of the old one;
- * each write has its own tmp name, so two at once never clash.
+ * never half. Where the file system needs it, the tmp file reaches the disk
+ * before the rename (see `FLUSH_BEFORE_RENAME`), so a power cut right after
+ * can't leave an empty file in place of the old one; each write has its own
+ * tmp name, so two at once never clash.
  */
 export async function writeAtomic(file: string, data: string): Promise<void> {
   await fs.mkdir(path.dirname(file), {recursive: true})
@@ -295,8 +307,9 @@ export async function writeAtomic(file: string, data: string): Promise<void> {
   }
 }
 
-/** Write a whole file and wait until it is on the disk. */
+/** Write a whole file and, where it matters, wait until it is on the disk. */
 async function writeSynced(file: string, data: string): Promise<void> {
+  if (!FLUSH_BEFORE_RENAME) return fs.writeFile(file, data)
   const handle = await fs.open(file, 'w')
   try {
     await handle.writeFile(data)
@@ -306,8 +319,9 @@ async function writeSynced(file: string, data: string): Promise<void> {
   }
 }
 
-/** Wait until a file written through a stream is on the disk (before it is renamed into place). */
+/** Wait until a file written through a stream is on the disk (before it is renamed into place); not on macOS. */
 export async function syncFile(file: string): Promise<void> {
+  if (!FLUSH_BEFORE_RENAME) return
   const handle = await fs.open(file, 'r+')
   try {
     await handle.datasync()

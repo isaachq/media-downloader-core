@@ -397,7 +397,10 @@ export class TikTokSource implements MediaSource {
    * download go on over plain HTTP — the browser is only needed again when
    * that session is refused. A captcha or login wall stays a challenge.
    */
-  async #pageInBrowser(url: string, signal?: AbortSignal): Promise<{scope: ReturnType<typeof pageScope>; html: string}> {
+  async #pageInBrowser(
+    url: string,
+    signal?: AbortSignal,
+  ): Promise<{scope: ReturnType<typeof pageScope>; html: string}> {
     let scope: ReturnType<typeof pageScope>
     let page: Awaited<ReturnType<BrowserAssist>>
     try {

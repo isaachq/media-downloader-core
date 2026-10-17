@@ -45,9 +45,14 @@ the ⌊CPUs/2⌋ pool and verified file by file.
 
 ![Paste a link, download it as MP4, check its integrity report, find it in Finished, open the run report](docs/demo.gif)
 
-### What's new in beta 14.3 (library 1.14.3)
+### What's new in beta 14.4 (library 1.14.4)
 
 - **TikTok profile videos download again** — after a profile is listed, TikTok often answers the video page with a shell that has no `webapp.video-detail`. The post is in a second script on that same page (`#api-data`); the reader uses it. A listing cookie that turns later pages into shells is dropped once, and a host with an in-app browser loads that video there when the plain page still has no post.
+
+### What's new in beta 14.3 (library 1.14.3)
+
+- **Closing right after opening quits the app**: closed within a second of starting, the app could stay in the background behind an "Uncaught Exception" dialog; it now quits every time.
+- **macOS saves without waiting on the drive's cache**: beta 14.2's flush before an atomic rename became a full drive-cache flush on macOS that could stall a quit; APFS renames atomically, so macOS skips it (Windows and Linux keep it).
 
 ### What's new in beta 14.2 (library 1.14.2)
 

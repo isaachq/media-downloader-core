@@ -415,7 +415,7 @@ export class TikTokSource implements MediaSource {
       throw error
     }
     this.#session.adopt(page)
-    this.#log('info', `TikTok: ${url} needed a browser (verification page) — continuing with its session`)
+    this.#log('info', `TikTok: ${url} read in the in-app browser`)
     this.#blockedUntil = 0
     // the refusal that sent us here no longer applies: no cool-down before the listing
     this.#pacer.resume()
@@ -448,8 +448,13 @@ export class TikTokSource implements MediaSource {
     const url = postUrl(this.#origin, id, user ?? cached?.post.author)
     const scope = await this.#page(url, signal)
     let embedded = takePost(scope)
-    // A profile listing leaves a cookie that makes the next video page a bot shell
-    // (reflow, no post). One fresh jar, then the normal page, whose links the CDN accepts.
+    // Plain HTTP often gets a reflow shell after a listing (no post). The in-app
+    // browser still receives the page the site gives a real client; one load.
+    if (!embedded && this.#browser) {
+      embedded = await this.#readViaBrowser(url, signal)
+      if (embedded) this.#log('info', `TikTok: ${id} read from the in-app browser`)
+    }
+    // No browser: drop the listing cookie once and read the page again.
     if (!embedded && botShell(scope)) {
       embedded = await this.#afterFreshJar(url, signal)
       if (embedded) this.#log('info', `TikTok: ${id} read again after a shell page`)
@@ -482,6 +487,17 @@ export class TikTokSource implements MediaSource {
       return listed
     }
     throw new TikTokError('format-changed', 'TikTok video page without video details.')
+  }
+
+  /** The video page as the in-app browser receives it. Undefined when that page has no post either. */
+  async #readViaBrowser(url: string, signal?: AbortSignal): Promise<TikTokPost | undefined> {
+    try {
+      return takePost(await this.#pageInBrowser(url, signal))
+    } catch (error) {
+      if (signal?.aborted) throw error
+      if (error instanceof TikTokError && (error.problem === 'private' || error.problem === 'removed')) throw error
+      return undefined
+    }
   }
 
   /** One reset shared by the downloads in flight, then this post's page. */

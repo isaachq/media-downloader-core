@@ -11,8 +11,10 @@
   canonical url, then `/api/item/detail/`, then the post the listing already
   parsed. A listing also leaves a bot cookie that makes later video pages a
   shell with no post: that page is read once more with a fresh jar, which is
-  the page the CDN accepts. Each step is one request (or an O(1) cache read);
-  a page that really has no data script still goes to yt-dlp.
+  the page the CDN accepts. When the shell remains and the host has an in-app
+  browser, that video url is loaded there once — the page a real client gets —
+  and its session is what the CDN accepts. Each step is one request (or an
+  O(1) cache read); a page that really has no data script still goes to yt-dlp.
 
 - **macOS: no drive-cache flush before an atomic rename.** Beta 14.2 made
   `writeAtomic` and the compactions of the archive and the pending journal

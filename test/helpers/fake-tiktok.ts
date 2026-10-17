@@ -50,9 +50,11 @@ export type FakeTikTokConfig = {
    * Where a video's post lives. `page` embeds it (the default). `api` and
    * `listing` return a shell page; `api` then answers `/api/item/detail/`,
    * `listing` leaves that empty so the listing's own post has to be used.
-   * `canonical` points the shell at the same video with `?full=1`, which embeds it.
+   * `canonical` points the shell at the photo url, which embeds it. `dirty` is a
+   * shell only while the listing cookie is still in the jar. `browser` is a
+   * shell with no session cookie: only a browser page embeds the post.
    */
-  readonly videoDetail?: 'page' | 'api' | 'canonical' | 'listing' | 'dirty'
+  readonly videoDetail?: 'page' | 'api' | 'canonical' | 'listing' | 'dirty' | 'browser'
 }
 
 export type FakeTikTok = {
@@ -192,7 +194,7 @@ export async function startFakeTikTok(config: FakeTikTokConfig = {}): Promise<Fa
     }
     if (parts[0] === 'api' && parts[1] === 'item' && parts[2] === 'detail') {
       hits.item++
-      if ((config.videoDetail ?? 'page') === 'listing') return send(200, '')
+      if ((config.videoDetail ?? 'page') === 'listing' || config.videoDetail === 'browser') return send(200, '')
       const index = ids.indexOf(url.searchParams.get('itemId') ?? '')
       if (index === -1) return send(200, JSON.stringify({statusCode: 10204, statusMsg: "item doesn't exist"}))
       session++
@@ -303,6 +305,16 @@ export async function startFakeTikTok(config: FakeTikTokConfig = {}): Promise<Fa
       if (parts[2] === config.brokenPost) return send(200, '<html><body><div id="new-layout"></div></body></html>')
       const mode = config.videoDetail ?? 'page'
       // listing marks the jar; a page that still carries that cookie is the bot shell
+      if (mode === 'browser' && parts[1] === 'video') {
+        return send(
+          200,
+          page({
+            'seo.abtest': {canonical: `${origin}/@${handle}/video/${parts[2]}`},
+            'webapp.reflow.video.strategy': {status_code: 0, strategy: {}},
+          }),
+          {'Content-Type': 'text/html'},
+        )
+      }
       if (mode === 'dirty' && (req.headers.cookie ?? '').includes('tt_dirty=1')) {
         return send(
           200,

@@ -423,6 +423,60 @@ describe('TikTok, end to end (local fake)', () => {
     assert.equal(site.hits.refusedMedia, 0)
   })
 
+  it('a shell with no session cookie is read from the in-app browser', async () => {
+    let renders = 0
+    const browser =
+      (origin: string): BrowserAssist =>
+      async url => {
+        renders++
+        const id = url.split('/').pop() ?? ''
+        const scope = {
+          'webapp.video-detail': {
+            statusCode: 0,
+            itemInfo: {
+              itemStruct: {
+                id,
+                desc: 'from the browser',
+                author: {uniqueId: 'fakeuser'},
+                createTime: 1_790_000_000,
+                video: {
+                  duration: 3,
+                  bitrateInfo: [
+                    {
+                      CodecType: 'h264',
+                      Bitrate: 800_000,
+                      PlayAddr: {
+                        UrlList: [`${origin}/media/${id}/h264.mp4`],
+                        Width: 720,
+                        Height: 1280,
+                        DataSize: 32,
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        }
+        return {
+          html:
+            `<!doctype html><script id="__UNIVERSAL_DATA_FOR_REHYDRATION__" type="application/json">` +
+            `${JSON.stringify({__DEFAULT_SCOPE__: scope})}</script>`,
+          userAgent: 'FakeBrowser/1.0',
+          cookies: [{name: 'tt_chain_token', value: 'from-browser', domain: new URL(origin).hostname}],
+        }
+      }
+    const {site, scheduler, out} = await setup('detail-browser', {posts: 3, videoDetail: 'browser'}, browser)
+    const batch = scheduler.schedule({url: `${site.origin}/@${site.user}`, profile: mp4, outDir: out})
+    await scheduler.whenIdle()
+    const done = scheduler.batch(batch.id)!
+    assert.equal(done.status, 'completed', JSON.stringify(done.error))
+    assert.equal(done.jobs.succeeded, 3)
+    assert.equal(renders, 3, 'one browser load per shell, not per listing page')
+    assert.equal(site.hits.page, 3, 'plain HTTP still tried once')
+    assert.equal(site.hits.refusedMedia, 0)
+  })
+
   it('a bot shell after a listing is re-read once with a fresh session', async () => {
     const {site, scheduler, out} = await setup('detail-fresh', {posts: 3, videoDetail: 'dirty'})
     const batch = scheduler.schedule({url: `${site.origin}/@${site.user}`, profile: mp4, outDir: out})

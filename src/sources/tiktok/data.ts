@@ -15,6 +15,38 @@ const num = (value: unknown): number | undefined => {
 }
 
 /**
+ * The reflow page keeps the post out of `__UNIVERSAL_DATA` and puts it in a
+ * second script, `#api-data`, as `{videoDetail: {itemInfo: {itemStruct}}}`.
+ * Undefined when that script is absent or unreadable.
+ */
+export function readApiData(html: string): Json | undefined {
+  const marker = html.indexOf('id="api-data"')
+  if (marker === -1) return undefined
+  const start = html.indexOf('>', marker) + 1
+  const end = html.indexOf('</script>', start)
+  if (start <= 0 || end === -1) return undefined
+  try {
+    const data: unknown = JSON.parse(html.slice(start, end))
+    if (!isObject(data)) return undefined
+    const detail = data['videoDetail']
+    return isObject(detail) ? detail : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * The universal-script scope, with `#api-data`'s video detail filled in when
+ * the universal script is a shell. One pass over the HTML already downloaded.
+ */
+export function pageScope(html: string): Json {
+  const scope = readPageData(html)
+  if (embeddedDetail(scope)) return scope
+  const detail = readApiData(html)
+  return detail ? {...scope, 'webapp.video-detail': detail} : scope
+}
+
+/**
  * The JSON TikTok embeds in every page for its own front end — found with
  * two `indexOf`s, no HTML parser. A page without it is a verification page,
  * a login wall or a new page layout, told apart so callers can react.
@@ -183,13 +215,42 @@ export function readPost(raw: unknown): TikTokPost {
   }
 }
 
-/** The post on a video page (`webapp.video-detail`). */
-export function postFromPage(scope: Json): TikTokPost {
-  const detail = scope['webapp.video-detail']
+const DETAIL_KEYS = ['webapp.video-detail', 'webapp.reflow.video.detail'] as const
+
+function embeddedDetail(scope: Json): Json | undefined {
+  for (const key of DETAIL_KEYS) {
+    const value = scope[key]
+    if (isObject(value)) return value
+  }
+  return undefined
+}
+
+/**
+ * The post on a video page. The web app embeds it as `webapp.video-detail`
+ * (or the reflow key). A page that parsed but has neither is not a new layout
+ * by itself: callers can follow `canonicalUrl` or the item api.
+ */
+export function postFromPage(scope: unknown): TikTokPost {
+  if (!isObject(scope)) throw new TikTokError('format-changed', 'TikTok video page without video details.')
+  const detail = embeddedDetail(scope)
+  if (!detail) throw new TikTokError('format-changed', 'TikTok video page without video details.')
+  return postFromDetail(detail)
+}
+
+/** The post from `webapp.video-detail` or from `/api/item/detail/`, same shape. */
+export function postFromDetail(detail: unknown): TikTokPost {
   if (!isObject(detail)) throw new TikTokError('format-changed', 'TikTok video page without video details.')
   checkStatus(detail['statusCode'], detail['statusMsg'])
   const info = isObject(detail['itemInfo']) ? detail['itemInfo'] : undefined
   return readPost(info?.['itemStruct'])
+}
+
+/** Canonical url TikTok puts on a page that did not embed the post (`seo.abtest`). */
+export function canonicalUrl(scope: unknown): string | undefined {
+  if (!isObject(scope)) return undefined
+  const seo = scope['seo.abtest']
+  if (!isObject(seo)) return undefined
+  return text(seo['canonical'])
 }
 
 /** The account on a profile page (`webapp.user-detail`). */

@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+## App 0.2.0-beta.14.4 · library 1.14.4
+
+Beta 14.4: a TikTok profile's videos download again when the video page is a shell.
+
+**Library**
+
+- **TikTok: a video page without `webapp.video-detail` is still downloaded.**
+  Bulk profile downloads were failing with "TikTok video page without video
+  details" while the same video, opened on its own, worked: after a listing,
+  TikTok sometimes returns a shell page. The reader now follows that page's
+  canonical url, then `/api/item/detail/`, then the post the listing already
+  parsed. A listing also leaves a bot cookie that makes later video pages a
+  shell with no post: that page is read once more with a fresh jar, which is
+  the page the CDN accepts. When the shell remains and the host has an in-app
+  browser, that video url is loaded there once — the page a real client gets —
+  and its session is what the CDN accepts. That page (and, when TikTok
+  includes it, the plain HTTP page) carries the post in a second script,
+  `#api-data`, which is read from the HTML already in hand. Each step is one
+  request (or an O(1) cache read); a page that really has no data script still
+  goes to yt-dlp.
+
 ## App 0.2.0-beta.14.3 · library 1.14.3
 
 Beta 14.3: the app quits when it's closed, even right after it opens; macOS saves without

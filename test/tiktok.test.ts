@@ -8,7 +8,7 @@ import {BatchScheduler} from '../src/scheduler.js'
 import type {BrowserAssist} from '../src/sources/browser.js'
 import {HttpSession} from '../src/sources/http.js'
 import {Pacer} from '../src/sources/pacer.js'
-import {readPageData, readPost} from '../src/sources/tiktok/data.js'
+import {canonicalUrl, pageScope, postFromPage, readPageData, readPost} from '../src/sources/tiktok/data.js'
 import type {TikTokError} from '../src/sources/tiktok/errors.js'
 import {isTikTokProfile, parseTikTokLink} from '../src/sources/tiktok/links.js'
 import {walkProfile} from '../src/sources/tiktok/profile.js'
@@ -60,6 +60,37 @@ describe('TikTok page data', () => {
     assert.equal(problem('<html>Please wait... _wafchallengeid</html>'), 'challenge')
     assert.equal(problem('<html><div id="new-app"></div></html>'), 'format-changed')
     assert.equal(problem(html(null).replace('{"__DEFAULT_SCOPE__":null}', '{oops')), 'format-changed')
+    const post = postFromPage({
+      'webapp.reflow.video.detail': {
+        statusCode: 0,
+        itemInfo: {itemStruct: {id: '9', desc: 'r', author: {uniqueId: 'u'}, video: {duration: 3}}},
+      },
+    })
+    assert.equal(post.id, '9')
+    assert.equal(
+      canonicalUrl({'seo.abtest': {canonical: 'https://www.tiktok.com/@u/photo/9'}}),
+      'https://www.tiktok.com/@u/photo/9',
+    )
+    assert.equal(canonicalUrl({a: 1}), undefined)
+    const shell = html({'webapp.reflow.video.strategy': {status_code: 0}}).replace(
+      '</html>',
+      `<script id="api-data" type="application/json">${JSON.stringify({
+        videoDetail: {
+          statusCode: 0,
+          itemInfo: {
+            itemStruct: {
+              id: '9',
+              desc: 'r',
+              author: {uniqueId: 'u'},
+              video: {playAddr: 'https://cdn.example/v.mp4', duration: 3},
+            },
+          },
+        },
+      })}</script></html>`,
+    )
+    const fromScript = postFromPage(pageScope(shell))
+    assert.equal(fromScript.id, '9')
+    assert.equal(fromScript.renditions.length, 1)
   })
 
   it('keeps usable encodings only: no H.266, no redirector, resolution by the short side', () => {
@@ -377,6 +408,115 @@ describe('TikTok, end to end (local fake)', () => {
     assert.equal(scheduler.batch(batch.id)?.status, 'completed')
     const [file] = await fs.readdir(out)
     assert.equal((await fs.readFile(path.join(out, file!), 'utf8')).slice(0, 4), '5555', 'silent H.264 skipped → H.265')
+  })
+
+  it('a shell video page is read from the item api, one call each, no yt-dlp', async () => {
+    const {site, scheduler, out} = await setup('detail-api', {posts: 3, videoDetail: 'api'})
+    const batch = scheduler.schedule({url: `${site.origin}/@${site.user}`, profile: mp4, outDir: out})
+    await scheduler.whenIdle()
+    const done = scheduler.batch(batch.id)!
+    assert.equal(done.status, 'completed', JSON.stringify(done.error))
+    assert.equal(done.jobs.succeeded, 3)
+    assert.equal(site.hits.page, 3, 'one shell page per post')
+    assert.equal(site.hits.item, 3, 'one item api call per post')
+    assert.equal(site.hits.refusedMedia, 0)
+  })
+
+  it('a shell page that names a canonical photo url is read from that page', async () => {
+    const {site, scheduler, out} = await setup('detail-canonical', {posts: 2, videoDetail: 'canonical'})
+    const batch = scheduler.schedule({url: `${site.origin}/@${site.user}`, profile: mp4, outDir: out})
+    await scheduler.whenIdle()
+    assert.equal(scheduler.batch(batch.id)?.status, 'completed', JSON.stringify(scheduler.batch(batch.id)?.error))
+    assert.equal(scheduler.batch(batch.id)?.jobs.succeeded, 2)
+    assert.equal(site.hits.page, 4, 'shell plus the canonical page')
+    assert.equal(site.hits.item, 0, 'the canonical page had the post, so the api was not asked')
+  })
+
+  it('with no page detail and an empty item api, the profile listing still downloads', async () => {
+    const {site, scheduler, out} = await setup('detail-listing', {posts: 2, videoDetail: 'listing'})
+    const batch = scheduler.schedule({url: `${site.origin}/@${site.user}`, profile: mp4, outDir: out})
+    await scheduler.whenIdle()
+    assert.equal(scheduler.batch(batch.id)?.status, 'completed', JSON.stringify(scheduler.batch(batch.id)?.error))
+    assert.equal(scheduler.batch(batch.id)?.jobs.succeeded, 2)
+    assert.equal(site.hits.item, 2)
+    assert.equal(site.hits.refusedMedia, 0)
+  })
+
+  it('a shell with no session cookie is read from the in-app browser', async () => {
+    let renders = 0
+    const browser =
+      (origin: string): BrowserAssist =>
+      async url => {
+        renders++
+        const id = url.split('/').pop() ?? ''
+        const scope = {
+          'webapp.video-detail': {
+            statusCode: 0,
+            itemInfo: {
+              itemStruct: {
+                id,
+                desc: 'from the browser',
+                author: {uniqueId: 'fakeuser'},
+                createTime: 1_790_000_000,
+                video: {
+                  duration: 3,
+                  bitrateInfo: [
+                    {
+                      CodecType: 'h264',
+                      Bitrate: 800_000,
+                      PlayAddr: {
+                        UrlList: [`${origin}/media/${id}/h264.mp4`],
+                        Width: 720,
+                        Height: 1280,
+                        DataSize: 32,
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        }
+        return {
+          html:
+            `<!doctype html><script id="__UNIVERSAL_DATA_FOR_REHYDRATION__" type="application/json">` +
+            `${JSON.stringify({__DEFAULT_SCOPE__: scope})}</script>`,
+          userAgent: 'FakeBrowser/1.0',
+          cookies: [{name: 'tt_chain_token', value: 'from-browser', domain: new URL(origin).hostname}],
+        }
+      }
+    const {site, scheduler, out} = await setup('detail-browser', {posts: 3, videoDetail: 'browser'}, browser)
+    const batch = scheduler.schedule({url: `${site.origin}/@${site.user}`, profile: mp4, outDir: out})
+    await scheduler.whenIdle()
+    const done = scheduler.batch(batch.id)!
+    assert.equal(done.status, 'completed', JSON.stringify(done.error))
+    assert.equal(done.jobs.succeeded, 3)
+    assert.equal(renders, 3, 'one browser load per shell, not per listing page')
+    assert.equal(site.hits.page, 3, 'plain HTTP still tried once')
+    assert.equal(site.hits.refusedMedia, 0)
+  })
+
+  it('a reflow shell whose api-data script has the post downloads without the item api', async () => {
+    const {site, scheduler, out} = await setup('detail-script', {posts: 3, videoDetail: 'script'})
+    const batch = scheduler.schedule({url: `${site.origin}/@${site.user}`, profile: mp4, outDir: out})
+    await scheduler.whenIdle()
+    const done = scheduler.batch(batch.id)!
+    assert.equal(done.status, 'completed', JSON.stringify(done.error))
+    assert.equal(done.jobs.succeeded, 3)
+    assert.equal(site.hits.page, 3, 'the script is on the page already fetched')
+    assert.equal(site.hits.item, 0)
+    assert.equal(site.hits.refusedMedia, 0)
+  })
+
+  it('a bot shell after a listing is re-read once with a fresh session', async () => {
+    const {site, scheduler, out} = await setup('detail-fresh', {posts: 3, videoDetail: 'dirty'})
+    const batch = scheduler.schedule({url: `${site.origin}/@${site.user}`, profile: mp4, outDir: out})
+    await scheduler.whenIdle()
+    const done = scheduler.batch(batch.id)!
+    assert.equal(done.status, 'completed', JSON.stringify(done.error))
+    assert.equal(done.jobs.succeeded, 3)
+    assert.ok(site.hits.page >= 4 && site.hits.page <= 6, `shell re-read, pages=${site.hits.page}`)
+    assert.ok(site.hits.refusedMedia <= 1, `refused media ${site.hits.refusedMedia}`)
   })
 
   it('falls back to yt-dlp when a page no longer has the data (layout changed)', async () => {

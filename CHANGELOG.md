@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## App 0.2.0-beta.14.3 · library 1.14.3
+
+Beta 14.3: a TikTok profile's videos download again when the video page is a
+shell. macOS no longer flushes the drive cache before an atomic rename.
+
 **Library**
 
 - **TikTok: a video page without `webapp.video-detail` is still downloaded.**
@@ -11,7 +16,7 @@
   canonical url, then `/api/item/detail/`, then the post the listing already
   parsed. A listing also leaves a bot cookie that makes later video pages a
   shell with no post: that page is read once more with a fresh jar, which is
-  the page the CDN accepts.   When the shell remains and the host has an in-app
+  the page the CDN accepts. When the shell remains and the host has an in-app
   browser, that video url is loaded there once — the page a real client gets —
   and its session is what the CDN accepts. That page (and, when TikTok
   includes it, the plain HTTP page) carries the post in a second script,

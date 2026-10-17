@@ -45,6 +45,10 @@ the ⌊CPUs/2⌋ pool and verified file by file.
 
 ![Paste a link, download it as MP4, check its integrity report, find it in Finished, open the run report](docs/demo.gif)
 
+### What's new in beta 14.3 (library 1.14.3)
+
+- **TikTok profile videos download again** — after a profile is listed, TikTok often answers the video page with a shell that has no `webapp.video-detail`. The post is in a second script on that same page (`#api-data`); the reader uses it. A listing cookie that turns later pages into shells is dropped once, and a host with an in-app browser loads that video there when the plain page still has no post.
+
 ### What's new in beta 14.2 (library 1.14.2)
 
 - **Finished: the check ends when it ends** — "Checking files…" no longer stays on screen after the check, a file already gone is not checked again, and one check runs at a time.

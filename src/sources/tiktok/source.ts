@@ -75,6 +75,11 @@ const BLOCKED_MS = 10 * 60_000
 
 type Cached = {readonly post: TikTokPost; readonly fromPage: boolean; readonly at: number}
 
+/** TikTok's bot shell: a reflow page with no post, after a listing has marked the jar. */
+function botShell(scope: unknown): boolean {
+  return typeof scope === 'object' && scope !== null && 'webapp.reflow.video.strategy' in scope
+}
+
 /** The embedded post, or undefined when this page is a shell. Private and removed still throw. */
 function takePost(scope: unknown): TikTokPost | undefined {
   try {
@@ -110,6 +115,8 @@ export class TikTokSource implements MediaSource {
   /** One browser page at a time: each is a full page load. */
   readonly #browserTurns = new Pacer({concurrency: 1, spacingMs: 0, jitterMs: 0})
   readonly #host: HostSession
+  /** The in-flight cookie reset, so parallel downloads don't wipe each other's fresh jar. */
+  #refreshing: Promise<void> | undefined
 
   constructor(options: TikTokOptions = {}) {
     this.#origin = (options.origin ?? 'https://www.tiktok.com').replace(/\/$/, '')
@@ -440,7 +447,13 @@ export class TikTokSource implements MediaSource {
     if (!fresh && cached?.fromPage && Date.now() - cached.at < PAGE_FRESH_MS) return cached.post
     const url = postUrl(this.#origin, id, user ?? cached?.post.author)
     const scope = await this.#page(url, signal)
-    const embedded = takePost(scope)
+    let embedded = takePost(scope)
+    // A profile listing leaves a cookie that makes the next video page a bot shell
+    // (reflow, no post). One fresh jar, then the normal page, whose links the CDN accepts.
+    if (!embedded && botShell(scope)) {
+      embedded = await this.#afterFreshJar(url, signal)
+      if (embedded) this.#log('info', `TikTok: ${id} read again after a shell page`)
+    }
     if (embedded) {
       this.#remember(embedded, true)
       return embedded
@@ -469,6 +482,28 @@ export class TikTokSource implements MediaSource {
       return listed
     }
     throw new TikTokError('format-changed', 'TikTok video page without video details.')
+  }
+
+  /** One reset shared by the downloads in flight, then this post's page. */
+  async #afterFreshJar(url: string, signal?: AbortSignal): Promise<TikTokPost | undefined> {
+    const pending = this.#refreshing
+    if (pending) {
+      await pending
+    } else {
+      let done: () => void = () => {}
+      this.#refreshing = new Promise(resolve => {
+        done = resolve
+      })
+      try {
+        this.#session.reset()
+        this.#host.forget()
+        await this.#host.load()
+      } finally {
+        this.#refreshing = undefined
+        done()
+      }
+    }
+    return takePost(await this.#page(url, signal))
   }
 
   /** A different post url advertised on a shell page, or undefined when it is the page we already read. */

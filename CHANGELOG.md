@@ -9,8 +9,10 @@
   details" while the same video, opened on its own, worked: after a listing,
   TikTok sometimes returns a shell page. The reader now follows that page's
   canonical url, then `/api/item/detail/`, then the post the listing already
-  parsed. Each step is one request (or an O(1) cache read); a page that
-  really has no data script still goes to yt-dlp.
+  parsed. A listing also leaves a bot cookie that makes later video pages a
+  shell with no post: that page is read once more with a fresh jar, which is
+  the page the CDN accepts. Each step is one request (or an O(1) cache read);
+  a page that really has no data script still goes to yt-dlp.
 
 - **macOS: no drive-cache flush before an atomic rename.** Beta 14.2 made
   `writeAtomic` and the compactions of the archive and the pending journal

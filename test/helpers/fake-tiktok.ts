@@ -52,7 +52,7 @@ export type FakeTikTokConfig = {
    * `listing` leaves that empty so the listing's own post has to be used.
    * `canonical` points the shell at the same video with `?full=1`, which embeds it.
    */
-  readonly videoDetail?: 'page' | 'api' | 'canonical' | 'listing'
+  readonly videoDetail?: 'page' | 'api' | 'canonical' | 'listing' | 'dirty'
 }
 
 export type FakeTikTok = {
@@ -218,7 +218,9 @@ export async function startFakeTikTok(config: FakeTikTokConfig = {}): Promise<Fa
       let body = {statusCode: 0, itemList: items, hasMorePrevious: regular.length > pageSize}
       if (listCalls === 1) firstPage = body
       if (config.repeatPage && listCalls === 2) body = firstPage as typeof body
-      return send(200, JSON.stringify(body), {'Content-Type': 'application/json'})
+      const headers: http.OutgoingHttpHeaders = {'Content-Type': 'application/json'}
+      if (config.videoDetail === 'dirty') headers['Set-Cookie'] = 'tt_dirty=1; Path=/; HttpOnly'
+      return send(200, JSON.stringify(body), headers)
     }
     // slideshow images and soundtracks: plain files, no session needed (as on the real CDN)
     if (parts[0] === 'image') {
@@ -300,8 +302,19 @@ export async function startFakeTikTok(config: FakeTikTokConfig = {}): Promise<Fa
       }
       if (parts[2] === config.brokenPost) return send(200, '<html><body><div id="new-layout"></div></body></html>')
       const mode = config.videoDetail ?? 'page'
+      // listing marks the jar; a page that still carries that cookie is the bot shell
+      if (mode === 'dirty' && (req.headers.cookie ?? '').includes('tt_dirty=1')) {
+        return send(
+          200,
+          page({
+            'seo.abtest': {canonical: `${origin}/@${handle}/video/${parts[2]}`},
+            'webapp.reflow.video.strategy': {status_code: 0, strategy: {}},
+          }),
+          {'Content-Type': 'text/html'},
+        )
+      }
       // a shell only on the /video/ form; /photo/ is the canonical the shell points at
-      if (parts[1] === 'video' && mode !== 'page') {
+      if (parts[1] === 'video' && mode !== 'page' && mode !== 'dirty') {
         session++
         const canonical =
           mode === 'canonical' ? `${origin}/@${handle}/photo/${parts[2]}` : `${origin}/@${handle}/video/${parts[2]}`

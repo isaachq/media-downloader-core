@@ -423,6 +423,17 @@ describe('TikTok, end to end (local fake)', () => {
     assert.equal(site.hits.refusedMedia, 0)
   })
 
+  it('a bot shell after a listing is re-read once with a fresh session', async () => {
+    const {site, scheduler, out} = await setup('detail-fresh', {posts: 3, videoDetail: 'dirty'})
+    const batch = scheduler.schedule({url: `${site.origin}/@${site.user}`, profile: mp4, outDir: out})
+    await scheduler.whenIdle()
+    const done = scheduler.batch(batch.id)!
+    assert.equal(done.status, 'completed', JSON.stringify(done.error))
+    assert.equal(done.jobs.succeeded, 3)
+    assert.ok(site.hits.page >= 4 && site.hits.page <= 6, `shell re-read, pages=${site.hits.page}`)
+    assert.ok(site.hits.refusedMedia <= 1, `refused media ${site.hits.refusedMedia}`)
+  })
+
   it('falls back to yt-dlp when a page no longer has the data (layout changed)', async () => {
     const site = await startFakeTikTok({posts: 2})
     const broken = site.ids[0]!

@@ -19,10 +19,10 @@ import {
 } from '../source.js'
 import {
   canonicalUrl,
+  pageScope,
   postFromDetail,
   postFromPage,
   readListPage,
-  readPageData,
   type TikTokPost,
   type TikTokUser,
   userFromPage,
@@ -387,7 +387,7 @@ export class TikTokSource implements MediaSource {
       return await this.#retrying(() => this.#pageOnce(url, signal), signal)
     } catch (error) {
       if (!(error instanceof TikTokError) || error.problem !== 'challenge' || !this.#browser) throw error
-      return this.#pageInBrowser(url, signal)
+      return (await this.#pageInBrowser(url, signal)).scope
     }
   }
 
@@ -397,12 +397,12 @@ export class TikTokSource implements MediaSource {
    * download go on over plain HTTP — the browser is only needed again when
    * that session is refused. A captcha or login wall stays a challenge.
    */
-  async #pageInBrowser(url: string, signal?: AbortSignal) {
-    let scope: ReturnType<typeof readPageData>
+  async #pageInBrowser(url: string, signal?: AbortSignal): Promise<{scope: ReturnType<typeof pageScope>; html: string}> {
+    let scope: ReturnType<typeof pageScope>
     let page: Awaited<ReturnType<BrowserAssist>>
     try {
       page = await this.#browserTurns.run(() => this.#browser!(url, signal), signal)
-      scope = readPageData(page.html)
+      scope = pageScope(page.html)
     } catch (error) {
       // the browser got a captcha / login wall too: step aside (yt-dlp) for a while
       if (error instanceof TikTokError && error.transient) {
@@ -419,7 +419,7 @@ export class TikTokSource implements MediaSource {
     this.#blockedUntil = 0
     // the refusal that sent us here no longer applies: no cool-down before the listing
     this.#pacer.resume()
-    return scope
+    return {scope, html: page.html}
   }
 
   async #pageOnce(url: string, signal?: AbortSignal) {
@@ -431,7 +431,7 @@ export class TikTokSource implements MediaSource {
         throw new TikTokError('refused', `TikTok answered HTTP ${response.status}.`)
       }
       try {
-        const scope = readPageData(await response.text())
+        const scope = pageScope(await response.text())
         this.#pacer.succeeded()
         return scope
       } catch (error) {
@@ -492,7 +492,7 @@ export class TikTokSource implements MediaSource {
   /** The video page as the in-app browser receives it. Undefined when that page has no post either. */
   async #readViaBrowser(url: string, signal?: AbortSignal): Promise<TikTokPost | undefined> {
     try {
-      return takePost(await this.#pageInBrowser(url, signal))
+      return takePost((await this.#pageInBrowser(url, signal)).scope)
     } catch (error) {
       if (signal?.aborted) throw error
       if (error instanceof TikTokError && (error.problem === 'private' || error.problem === 'removed')) throw error

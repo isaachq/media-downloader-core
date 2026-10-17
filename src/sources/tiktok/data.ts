@@ -15,6 +15,38 @@ const num = (value: unknown): number | undefined => {
 }
 
 /**
+ * The reflow page keeps the post out of `__UNIVERSAL_DATA` and puts it in a
+ * second script, `#api-data`, as `{videoDetail: {itemInfo: {itemStruct}}}`.
+ * Undefined when that script is absent or unreadable.
+ */
+export function readApiData(html: string): Json | undefined {
+  const marker = html.indexOf('id="api-data"')
+  if (marker === -1) return undefined
+  const start = html.indexOf('>', marker) + 1
+  const end = html.indexOf('</script>', start)
+  if (start <= 0 || end === -1) return undefined
+  try {
+    const data: unknown = JSON.parse(html.slice(start, end))
+    if (!isObject(data)) return undefined
+    const detail = data['videoDetail']
+    return isObject(detail) ? detail : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * The universal-script scope, with `#api-data`'s video detail filled in when
+ * the universal script is a shell. One pass over the HTML already downloaded.
+ */
+export function pageScope(html: string): Json {
+  const scope = readPageData(html)
+  if (embeddedDetail(scope)) return scope
+  const detail = readApiData(html)
+  return detail ? {...scope, 'webapp.video-detail': detail} : scope
+}
+
+/**
  * The JSON TikTok embeds in every page for its own front end — found with
  * two `indexOf`s, no HTML parser. A page without it is a verification page,
  * a login wall or a new page layout, told apart so callers can react.

@@ -8,7 +8,7 @@ import {BatchScheduler} from '../src/scheduler.js'
 import type {BrowserAssist} from '../src/sources/browser.js'
 import {HttpSession} from '../src/sources/http.js'
 import {Pacer} from '../src/sources/pacer.js'
-import {canonicalUrl, postFromPage, readPageData, readPost} from '../src/sources/tiktok/data.js'
+import {canonicalUrl, pageScope, postFromPage, readPageData, readPost} from '../src/sources/tiktok/data.js'
 import type {TikTokError} from '../src/sources/tiktok/errors.js'
 import {isTikTokProfile, parseTikTokLink} from '../src/sources/tiktok/links.js'
 import {walkProfile} from '../src/sources/tiktok/profile.js'
@@ -72,6 +72,25 @@ describe('TikTok page data', () => {
       'https://www.tiktok.com/@u/photo/9',
     )
     assert.equal(canonicalUrl({a: 1}), undefined)
+    const shell = html({'webapp.reflow.video.strategy': {status_code: 0}}).replace(
+      '</html>',
+      `<script id="api-data" type="application/json">${JSON.stringify({
+        videoDetail: {
+          statusCode: 0,
+          itemInfo: {
+            itemStruct: {
+              id: '9',
+              desc: 'r',
+              author: {uniqueId: 'u'},
+              video: {playAddr: 'https://cdn.example/v.mp4', duration: 3},
+            },
+          },
+        },
+      })}</script></html>`,
+    )
+    const fromScript = postFromPage(pageScope(shell))
+    assert.equal(fromScript.id, '9')
+    assert.equal(fromScript.renditions.length, 1)
   })
 
   it('keeps usable encodings only: no H.266, no redirector, resolution by the short side', () => {
@@ -474,6 +493,18 @@ describe('TikTok, end to end (local fake)', () => {
     assert.equal(done.jobs.succeeded, 3)
     assert.equal(renders, 3, 'one browser load per shell, not per listing page')
     assert.equal(site.hits.page, 3, 'plain HTTP still tried once')
+    assert.equal(site.hits.refusedMedia, 0)
+  })
+
+  it('a reflow shell whose api-data script has the post downloads without the item api', async () => {
+    const {site, scheduler, out} = await setup('detail-script', {posts: 3, videoDetail: 'script'})
+    const batch = scheduler.schedule({url: `${site.origin}/@${site.user}`, profile: mp4, outDir: out})
+    await scheduler.whenIdle()
+    const done = scheduler.batch(batch.id)!
+    assert.equal(done.status, 'completed', JSON.stringify(done.error))
+    assert.equal(done.jobs.succeeded, 3)
+    assert.equal(site.hits.page, 3, 'the script is on the page already fetched')
+    assert.equal(site.hits.item, 0)
     assert.equal(site.hits.refusedMedia, 0)
   })
 

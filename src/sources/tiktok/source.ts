@@ -17,7 +17,16 @@ import {
   type SourceDownload,
   type SourceFile,
 } from '../source.js'
-import {postFromPage, readListPage, readPageData, type TikTokPost, type TikTokUser, userFromPage} from './data.js'
+import {
+  canonicalUrl,
+  postFromDetail,
+  postFromPage,
+  readListPage,
+  readPageData,
+  type TikTokPost,
+  type TikTokUser,
+  userFromPage,
+} from './data.js'
 import {TikTokError} from './errors.js'
 import {parseTikTokLink, postUrl, profileUrl} from './links.js'
 import {walkProfile} from './profile.js'
@@ -65,6 +74,17 @@ const READ_ATTEMPTS = 3
 const BLOCKED_MS = 10 * 60_000
 
 type Cached = {readonly post: TikTokPost; readonly fromPage: boolean; readonly at: number}
+
+/** The embedded post, or undefined when this page is a shell. Private and removed still throw. */
+function takePost(scope: unknown): TikTokPost | undefined {
+  try {
+    return postFromPage(scope)
+  } catch (error) {
+    if (error instanceof TikTokError && (error.problem === 'private' || error.problem === 'removed')) throw error
+    if (error instanceof TikTokError && error.problem === 'format-changed') return undefined
+    throw error
+  }
+}
 
 /**
  * TikTok, natively: pages and the public profile listing over plain HTTP,
@@ -416,11 +436,76 @@ export class TikTokSource implements MediaSource {
 
   async #readPost(id: string, user: string | undefined, signal?: AbortSignal, fresh = false): Promise<TikTokPost> {
     const cached = this.#posts.get(id)
-    // listing data can't download (its links are refused): only a recent page read can
+    // a page read is minutes-fresh; listing links are only a last resort (see below)
     if (!fresh && cached?.fromPage && Date.now() - cached.at < PAGE_FRESH_MS) return cached.post
-    const post = postFromPage(await this.#page(postUrl(this.#origin, id, user ?? cached?.post.author), signal))
-    this.#remember(post, true)
-    return post
+    const url = postUrl(this.#origin, id, user ?? cached?.post.author)
+    const scope = await this.#page(url, signal)
+    const embedded = takePost(scope)
+    if (embedded) {
+      this.#remember(embedded, true)
+      return embedded
+    }
+    // one canonical follow when the first page is a shell (a /video/ url for a photo, or the other way)
+    const canonical = this.#canonical(url, scope)
+    if (canonical) {
+      const followed = takePost(await this.#page(canonical, signal))
+      if (followed) {
+        this.#log('info', `TikTok: ${id} read from its canonical page`)
+        this.#remember(followed, true)
+        return followed
+      }
+    }
+    // the item api returns the same itemStruct the page used to embed; one request, paced with the rest
+    const fromApi = await this.#itemDetail(id, signal)
+    if (fromApi) {
+      this.#log('info', `TikTok: ${id} read from the item api`)
+      this.#remember(fromApi, true)
+      return fromApi
+    }
+    // profile listings already parsed the post. Their media links are often refused, so this is last.
+    const listed = cached?.post
+    if (listed && (listed.renditions.length > 0 || (listed.photoPost && listed.images.length > 0))) {
+      this.#log('info', `TikTok: ${id} read from the profile listing`)
+      return listed
+    }
+    throw new TikTokError('format-changed', 'TikTok video page without video details.')
+  }
+
+  /** A different post url advertised on a shell page, or undefined when it is the page we already read. */
+  #canonical(current: string, scope: unknown): string | undefined {
+    const canonical = canonicalUrl(scope)
+    if (!canonical) return undefined
+    const next = parseTikTokLink(canonical, this.#originHost)
+    if (!next || (next.kind !== 'video' && next.kind !== 'photo')) return undefined
+    const now = parseTikTokLink(current, this.#originHost)
+    if (now && (now.kind === 'video' || now.kind === 'photo') && now.id === next.id && now.kind === next.kind)
+      return undefined
+    return canonical
+  }
+
+  /** `/api/item/detail/`. Undefined when it has no post; private and removed still throw. */
+  async #itemDetail(id: string, signal?: AbortSignal): Promise<TikTokPost | undefined> {
+    const query = new URLSearchParams({aid: '1988', itemId: id})
+    try {
+      return await this.#pacer.run(async () => {
+        const response = await this.#session.get(`${this.#origin}/api/item/detail/?${query}`, {
+          headers: {Accept: 'application/json', Referer: `${this.#origin}/`},
+          signal,
+        })
+        const body = response.ok ? await response.text() : ''
+        if (!body) return undefined
+        try {
+          return postFromDetail(JSON.parse(body) as unknown)
+        } catch (error) {
+          if (error instanceof TikTokError && (error.problem === 'private' || error.problem === 'removed')) throw error
+          return undefined
+        }
+      }, signal)
+    } catch (error) {
+      if (signal?.aborted) throw error
+      if (error instanceof TikTokError && (error.problem === 'private' || error.problem === 'removed')) throw error
+      return undefined
+    }
   }
 
   async #profile(

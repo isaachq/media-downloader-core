@@ -183,13 +183,42 @@ export function readPost(raw: unknown): TikTokPost {
   }
 }
 
-/** The post on a video page (`webapp.video-detail`). */
-export function postFromPage(scope: Json): TikTokPost {
-  const detail = scope['webapp.video-detail']
+const DETAIL_KEYS = ['webapp.video-detail', 'webapp.reflow.video.detail'] as const
+
+function embeddedDetail(scope: Json): Json | undefined {
+  for (const key of DETAIL_KEYS) {
+    const value = scope[key]
+    if (isObject(value)) return value
+  }
+  return undefined
+}
+
+/**
+ * The post on a video page. The web app embeds it as `webapp.video-detail`
+ * (or the reflow key). A page that parsed but has neither is not a new layout
+ * by itself: callers can follow `canonicalUrl` or the item api.
+ */
+export function postFromPage(scope: unknown): TikTokPost {
+  if (!isObject(scope)) throw new TikTokError('format-changed', 'TikTok video page without video details.')
+  const detail = embeddedDetail(scope)
+  if (!detail) throw new TikTokError('format-changed', 'TikTok video page without video details.')
+  return postFromDetail(detail)
+}
+
+/** The post from `webapp.video-detail` or from `/api/item/detail/`, same shape. */
+export function postFromDetail(detail: unknown): TikTokPost {
   if (!isObject(detail)) throw new TikTokError('format-changed', 'TikTok video page without video details.')
   checkStatus(detail['statusCode'], detail['statusMsg'])
   const info = isObject(detail['itemInfo']) ? detail['itemInfo'] : undefined
   return readPost(info?.['itemStruct'])
+}
+
+/** Canonical url TikTok puts on a page that did not embed the post (`seo.abtest`). */
+export function canonicalUrl(scope: unknown): string | undefined {
+  if (!isObject(scope)) return undefined
+  const seo = scope['seo.abtest']
+  if (!isObject(seo)) return undefined
+  return text(seo['canonical'])
 }
 
 /** The account on a profile page (`webapp.user-detail`). */

@@ -46,6 +46,13 @@ export type FakeTikTokConfig = {
   readonly unlisted?: number
   /** After this many listing answers, the next `count` listing requests are refused (403, no data). */
   readonly listFailures?: {readonly after: number; readonly count: number}
+  /**
+   * Where a video's post lives. `page` embeds it (the default). `api` and
+   * `listing` return a shell page; `api` then answers `/api/item/detail/`,
+   * `listing` leaves that empty so the listing's own post has to be used.
+   * `canonical` points the shell at the same video with `?full=1`, which embeds it.
+   */
+  readonly videoDetail?: 'page' | 'api' | 'canonical' | 'listing'
 }
 
 export type FakeTikTok = {
@@ -53,7 +60,7 @@ export type FakeTikTok = {
   readonly user: string
   readonly ids: readonly string[]
   /** Requests per route kind. */
-  readonly hits: Record<'page' | 'profile' | 'list' | 'media' | 'refusedMedia' | 'short' | 'challenge', number>
+  readonly hits: Record<'page' | 'profile' | 'list' | 'media' | 'refusedMedia' | 'short' | 'challenge' | 'item', number>
   close(): Promise<void>
 }
 
@@ -64,7 +71,7 @@ export async function startFakeTikTok(config: FakeTikTokConfig = {}): Promise<Fa
   const count = config.posts ?? 3
   const size = config.mediaBytes ?? 48 * 1024
   const ids = Array.from({length: count}, (_, i) => String(7_400_000_000_000_000_000n + BigInt(count - i)))
-  const hits = {page: 0, profile: 0, list: 0, media: 0, refusedMedia: 0, short: 0, challenge: 0}
+  const hits = {page: 0, profile: 0, list: 0, media: 0, refusedMedia: 0, short: 0, challenge: 0, item: 0}
   let challengesLeft = config.challenges ?? 0
   let refusalsLeft = config.refusals ?? 0
   let listCalls = 0
@@ -183,6 +190,17 @@ export async function startFakeTikTok(config: FakeTikTokConfig = {}): Promise<Fa
       hits.short++
       return send(302, '', {Location: `/@${user}/video/${ids[0]}`})
     }
+    if (parts[0] === 'api' && parts[1] === 'item' && parts[2] === 'detail') {
+      hits.item++
+      if ((config.videoDetail ?? 'page') === 'listing') return send(200, '')
+      const index = ids.indexOf(url.searchParams.get('itemId') ?? '')
+      if (index === -1) return send(200, JSON.stringify({statusCode: 10204, statusMsg: "item doesn't exist"}))
+      session++
+      return send(200, JSON.stringify({statusCode: 0, itemInfo: {itemStruct: post(index)}}), {
+        'Content-Type': 'application/json',
+        'Set-Cookie': `tt_chain_token=tok-${session}; Path=/; HttpOnly`,
+      })
+    }
     if (parts[0] === 'api' && parts[2] === 'item_list') {
       hits.list++
       const failures = config.listFailures
@@ -270,7 +288,7 @@ export async function startFakeTikTok(config: FakeTikTokConfig = {}): Promise<Fa
         {'Content-Type': 'text/html'},
       )
     }
-    if (handle && parts[1] === 'video' && parts[2]) {
+    if (handle && (parts[1] === 'video' || parts[1] === 'photo') && parts[2]) {
       hits.page++
       if (refusalsLeft > 0) {
         refusalsLeft--
@@ -281,6 +299,17 @@ export async function startFakeTikTok(config: FakeTikTokConfig = {}): Promise<Fa
         return send(200, '<html><body>Please wait... <script>var _wafchallengeid="x"</script></body></html>')
       }
       if (parts[2] === config.brokenPost) return send(200, '<html><body><div id="new-layout"></div></body></html>')
+      const mode = config.videoDetail ?? 'page'
+      // a shell only on the /video/ form; /photo/ is the canonical the shell points at
+      if (parts[1] === 'video' && mode !== 'page') {
+        session++
+        const canonical =
+          mode === 'canonical' ? `${origin}/@${handle}/photo/${parts[2]}` : `${origin}/@${handle}/video/${parts[2]}`
+        return send(200, page({'webapp.app-context': {app: 'tiktok'}, 'seo.abtest': {canonical}}), {
+          'Content-Type': 'text/html',
+          'Set-Cookie': `tt_chain_token=tok-${session}; Path=/; HttpOnly`,
+        })
+      }
       const index = ids.indexOf(parts[2])
       if (index === -1) {
         return send(200, page({'webapp.video-detail': {statusCode: 10204, statusMsg: "item doesn't exist"}}))

@@ -8,7 +8,7 @@ import {BatchScheduler} from '../src/scheduler.js'
 import type {BrowserAssist} from '../src/sources/browser.js'
 import {HttpSession} from '../src/sources/http.js'
 import {Pacer} from '../src/sources/pacer.js'
-import {readPageData, readPost} from '../src/sources/tiktok/data.js'
+import {canonicalUrl, postFromPage, readPageData, readPost} from '../src/sources/tiktok/data.js'
 import type {TikTokError} from '../src/sources/tiktok/errors.js'
 import {isTikTokProfile, parseTikTokLink} from '../src/sources/tiktok/links.js'
 import {walkProfile} from '../src/sources/tiktok/profile.js'
@@ -60,6 +60,18 @@ describe('TikTok page data', () => {
     assert.equal(problem('<html>Please wait... _wafchallengeid</html>'), 'challenge')
     assert.equal(problem('<html><div id="new-app"></div></html>'), 'format-changed')
     assert.equal(problem(html(null).replace('{"__DEFAULT_SCOPE__":null}', '{oops')), 'format-changed')
+    const post = postFromPage({
+      'webapp.reflow.video.detail': {
+        statusCode: 0,
+        itemInfo: {itemStruct: {id: '9', desc: 'r', author: {uniqueId: 'u'}, video: {duration: 3}}},
+      },
+    })
+    assert.equal(post.id, '9')
+    assert.equal(
+      canonicalUrl({'seo.abtest': {canonical: 'https://www.tiktok.com/@u/photo/9'}}),
+      'https://www.tiktok.com/@u/photo/9',
+    )
+    assert.equal(canonicalUrl({a: 1}), undefined)
   })
 
   it('keeps usable encodings only: no H.266, no redirector, resolution by the short side', () => {
@@ -377,6 +389,38 @@ describe('TikTok, end to end (local fake)', () => {
     assert.equal(scheduler.batch(batch.id)?.status, 'completed')
     const [file] = await fs.readdir(out)
     assert.equal((await fs.readFile(path.join(out, file!), 'utf8')).slice(0, 4), '5555', 'silent H.264 skipped → H.265')
+  })
+
+  it('a shell video page is read from the item api, one call each, no yt-dlp', async () => {
+    const {site, scheduler, out} = await setup('detail-api', {posts: 3, videoDetail: 'api'})
+    const batch = scheduler.schedule({url: `${site.origin}/@${site.user}`, profile: mp4, outDir: out})
+    await scheduler.whenIdle()
+    const done = scheduler.batch(batch.id)!
+    assert.equal(done.status, 'completed', JSON.stringify(done.error))
+    assert.equal(done.jobs.succeeded, 3)
+    assert.equal(site.hits.page, 3, 'one shell page per post')
+    assert.equal(site.hits.item, 3, 'one item api call per post')
+    assert.equal(site.hits.refusedMedia, 0)
+  })
+
+  it('a shell page that names a canonical photo url is read from that page', async () => {
+    const {site, scheduler, out} = await setup('detail-canonical', {posts: 2, videoDetail: 'canonical'})
+    const batch = scheduler.schedule({url: `${site.origin}/@${site.user}`, profile: mp4, outDir: out})
+    await scheduler.whenIdle()
+    assert.equal(scheduler.batch(batch.id)?.status, 'completed', JSON.stringify(scheduler.batch(batch.id)?.error))
+    assert.equal(scheduler.batch(batch.id)?.jobs.succeeded, 2)
+    assert.equal(site.hits.page, 4, 'shell plus the canonical page')
+    assert.equal(site.hits.item, 0, 'the canonical page had the post, so the api was not asked')
+  })
+
+  it('with no page detail and an empty item api, the profile listing still downloads', async () => {
+    const {site, scheduler, out} = await setup('detail-listing', {posts: 2, videoDetail: 'listing'})
+    const batch = scheduler.schedule({url: `${site.origin}/@${site.user}`, profile: mp4, outDir: out})
+    await scheduler.whenIdle()
+    assert.equal(scheduler.batch(batch.id)?.status, 'completed', JSON.stringify(scheduler.batch(batch.id)?.error))
+    assert.equal(scheduler.batch(batch.id)?.jobs.succeeded, 2)
+    assert.equal(site.hits.item, 2)
+    assert.equal(site.hits.refusedMedia, 0)
   })
 
   it('falls back to yt-dlp when a page no longer has the data (layout changed)', async () => {

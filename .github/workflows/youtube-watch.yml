@@ -6,16 +6,20 @@ name: YouTube watch
 # request — in English and Spanish — says so and what to do; it closes itself
 # when the probe is healthy again. A runner YouTube bot-checks (datacenter IPs
 # often are) is inconclusive, not an alert.
+#
+# The daily schedule and the pull request trigger are paused to stay within the CI
+# minutes limit; run it by hand from the Actions tab (workflow_dispatch) until they
+# are re-enabled.
 on:
-  schedule:
-    - cron: '17 6 * * *'
+  # schedule:
+  #   - cron: '17 6 * * *'
   workflow_dispatch:
-  pull_request:
-    paths:
-      - 'src/youtube/**'
-      - 'app/src/main/youtube/**'
-      - 'scripts/youtube-watch.mjs'
-      - '.github/workflows/youtube-watch.yml'
+  # pull_request:
+  #   paths:
+  #     - 'src/youtube/**'
+  #     - 'app/src/main/youtube/**'
+  #     - 'scripts/youtube-watch.mjs'
+  #     - '.github/workflows/youtube-watch.yml'
 
 permissions:
   contents: write

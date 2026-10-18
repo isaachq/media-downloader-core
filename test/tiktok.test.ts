@@ -388,6 +388,34 @@ describe('TikTok, end to end (local fake)', () => {
     assert.match((await fs.readdir(out))[0]!, /^Post-numero-1/)
   })
 
+  it('a listing cookie that makes posts "not exist" (10204) is dropped once: every post downloads on its first attempt', async () => {
+    const {site, engine, scheduler, out} = await setup('gone-dirty', {posts: 4, videoDetail: 'gone-dirty'})
+    const batch = scheduler.schedule({url: `${site.origin}/@${site.user}`, profile: mp4, outDir: out})
+    await scheduler.whenIdle()
+    const done = scheduler.batch(batch.id)!
+    assert.equal(done.status, 'completed', JSON.stringify(done.problems))
+    assert.equal(done.jobs.succeeded, 4)
+    assert.ok(
+      engine.jobs().every(job => job.attempts.length === 1),
+      'no retries: the fresh jar is read in the same attempt',
+    )
+    assert.ok(site.hits.page <= 8, `at most one 10204 and one good page per post, pages=${site.hits.page}`)
+  })
+
+  it('a listed post the listing cookie makes "private" (10216) downloads too', async () => {
+    const {site, engine, scheduler, out} = await setup('private-dirty', {
+      posts: 3,
+      videoDetail: 'gone-dirty',
+      goneAs: 'private',
+    })
+    const batch = scheduler.schedule({url: `${site.origin}/@${site.user}`, profile: mp4, outDir: out})
+    await scheduler.whenIdle()
+    const done = scheduler.batch(batch.id)!
+    assert.equal(done.status, 'completed', JSON.stringify(done.problems))
+    assert.equal(done.jobs.succeeded, 3)
+    assert.ok(engine.jobs().every(job => job.attempts.length === 1))
+  })
+
   it('a listed post TikTok calls gone (10204) right after the listing is read again after the back-off', async () => {
     const {site, scheduler, out} = await setup('gone-once', {posts: 3, gone: 1})
     const batch = scheduler.schedule({url: `${site.origin}/@${site.user}`, profile: mp4, outDir: out})
@@ -409,14 +437,14 @@ describe('TikTok, end to end (local fake)', () => {
     assert.equal(site.hits.page, 9, 'two 10204 and one good page per post')
   })
 
-  it('a listed post TikTok keeps calling gone fails as removed after two doubts, with no fourth read', async () => {
+  it('a listed post TikTok keeps calling gone fails as removed after two doubts, with no fourth attempt', async () => {
     const {site, scheduler, out} = await setup('gone-for-good', {posts: 1, gone: 100})
     const batch = scheduler.schedule({url: `${site.origin}/@${site.user}`, profile: mp4, outDir: out})
     await scheduler.whenIdle()
     const done = scheduler.batch(batch.id)!
     assert.equal(done.status, 'failed')
     assert.deepEqual(done.problems?.failed, {removed: 1})
-    assert.equal(site.hits.page, 3, 'doubted twice, then believed')
+    assert.equal(site.hits.page, 6, 'three attempts, each a page and its fresh-jar re-read')
   })
 
   it('a link nobody listed that TikTok calls gone fails as removed at once', async () => {

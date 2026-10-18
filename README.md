@@ -45,6 +45,10 @@ the ⌊CPUs/2⌋ pool and verified file by file.
 
 ![Paste a link, download it as MP4, check its integrity report, find it in Finished, open the run report](docs/demo.gif)
 
+### What's new in beta 14.6 (library 1.14.6)
+
+- **No more "doesn't exist" or "private" for videos of a profile you just listed** — the listing leaves a cookie that makes TikTok say so; the app now drops it and reads the video again right away, without slowing the other downloads.
+
 ### What's new in beta 14.5 (library 1.14.5)
 
 - **Big TikTok profiles keep every video** — right after a profile is listed, TikTok can say a post "doesn't exist" when it does. A post the app just listed now gets a second read after a pause instead of being dropped.

@@ -61,8 +61,8 @@ export const TIKTOK_PROFILE_DEFAULT_ITEMS = 500
 /** Media links are tied to the session and minutes-fresh pages; older ones are re-read. */
 const PAGE_FRESH_MS = 10 * 60_000
 /**
- * How many "doesn't exist" (10204) answers a listed post gets before it is
- * believed. Each is followed by the shared back-off (30 s, then doubling).
+ * How many downloads of a listed post may end on "doesn't exist" (10204), even
+ * with fresh cookies, before TikTok is believed. Each one is retried by its job.
  */
 const GONE_DOUBTS = 2
 const CACHE_LIMIT = 5000
@@ -86,6 +86,15 @@ function botShell(scope: unknown): boolean {
 }
 
 /** The embedded post, or undefined when this page is a shell. Private and removed still throw. */
+/**
+ * "Doesn't exist" (10204) or "private" (10216): final for a link nobody listed,
+ * doubted for a post a listing just showed (razr 50: a listed post read as
+ * private that PC and two earlier runs read fine).
+ */
+function isGoneAnswer(error: unknown): boolean {
+  return error instanceof TikTokError && (error.problem === 'removed' || error.problem === 'private')
+}
+
 function takePost(scope: unknown): TikTokPost | undefined {
   try {
     return postFromPage(scope)
@@ -459,33 +468,27 @@ export class TikTokSource implements MediaSource {
     const cached = this.#posts.get(id)
     // a page read is minutes-fresh; listing links are only a last resort (see below)
     if (!fresh && cached?.fromPage && Date.now() - cached.at < PAGE_FRESH_MS) return cached.post
+    // known: in the cache now, or doubted before (a failed download drops its cache entry)
+    const doubts = this.#doubted.get(id) ?? 0
+    const known = cached !== undefined || doubts > 0
     try {
-      const post = await this.#readPage(id, user, cached, signal)
+      const post = await this.#readPage(id, user, cached, known, signal)
       this.#doubted.delete(id)
       return post
     } catch (error) {
-      // Right after a profile listing TikTok answers some video pages with status 10204
-      // ("doesn't exist") for posts it serves again minutes later (razr 50: 56 of the first
-      // 164 posts of an 840-video profile, for ~3 minutes). A post this session has seen is
-      // not taken as deleted on such an answer: everybody backs off (longer each time) and
-      // the job retries. After GONE_DOUBTS of them, TikTok is believed.
-      const gone = error instanceof TikTokError && error.problem === 'removed'
-      // known: in the cache now, or doubted before (a failed download drops its cache entry)
-      const doubts = this.#doubted.get(id) ?? 0
-      if (!gone || (!cached && doubts === 0) || doubts >= GONE_DOUBTS) {
+      // Still "doesn't exist" with a fresh jar: the job retries (its own delay, nobody else
+      // waits), and after GONE_DOUBTS such answers TikTok is believed.
+      const gone = isGoneAnswer(error)
+      if (!gone || !known || doubts >= GONE_DOUBTS) {
         this.#doubted.delete(id)
         throw error
       }
       this.#doubted.set(id, doubts + 1)
-      this.#pacer.refused()
       this.#log(
         'warn',
-        `TikTok: ${id} was listed but TikTok now says it doesn't exist — backing off, then reading it again`,
+        `TikTok: ${id} was listed but TikTok says it doesn't exist or is private, even with fresh cookies — retrying`,
       )
-      throw new TikTokError(
-        'refused',
-        'TikTok said a post it just listed no longer exists; it is read again after a pause.',
-      )
+      throw new TikTokError('refused', 'TikTok said a post it listed no longer exists; it is read again.')
     }
   }
 
@@ -493,11 +496,25 @@ export class TikTokSource implements MediaSource {
     id: string,
     user: string | undefined,
     cached: Cached | undefined,
+    known: boolean,
     signal?: AbortSignal,
   ): Promise<TikTokPost> {
     const url = postUrl(this.#origin, id, user ?? cached?.post.author)
     const scope = await this.#page(url, signal)
-    let embedded = takePost(scope)
+    let embedded: TikTokPost | undefined
+    try {
+      embedded = takePost(scope)
+    } catch (error) {
+      // A profile listing leaves a cookie that makes TikTok answer some of its posts' pages
+      // with status 10204 ("doesn't exist"): on a razr 50, 56 of the first 164 posts of an
+      // 840-video profile; all 18 that failed that way again downloaded at once with a clean
+      // jar. A post this session has seen is read once more with the listing cookie dropped
+      // (one reset shared by the downloads in flight, like the shell page below).
+      if (!(known && isGoneAnswer(error))) throw error
+      embedded = await this.#afterFreshJar(url, signal)
+      if (embedded)
+        this.#log('info', `TikTok: ${id} read again with fresh cookies after a "doesn't exist" or "private" page`)
+    }
     // Plain HTTP often gets a reflow shell after a listing (no post). The in-app
     // browser still receives the page the site gives a real client; one load.
     if (!embedded && this.#browser) {

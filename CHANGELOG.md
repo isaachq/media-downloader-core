@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+## App 0.2.0-beta.14.6 · library 1.14.6
+
+Beta 14.6: the false "doesn't exist" after a TikTok profile listing is fixed at its cause.
+
+**Library**
+
+- **TikTok: the listing cookie is dropped when it makes a post "not exist".**
+  Testing 1.14.5 on the phone showed the 10204 answers are not a passing
+  throttle: the same posts kept getting them across retries and back-offs,
+  and all of them downloaded at once with a clean cookie jar. A profile
+  listing leaves a cookie that makes TikTok call some of its own posts gone
+  (10204) or private (10216). A post this session has seen is now read once
+  more in the same attempt with that cookie dropped (one reset shared by the
+  downloads in flight, as for the shell page). On the phone, a profile listed
+  and its 840 videos downloaded right after (closed and reopened halfway):
+  one such reset, no retries, 839/840; the one failure was a post called
+  private that two earlier runs had downloaded, which is now handled the same
+  way. If TikTok still says so with fresh cookies, the job retries up to twice
+  before it is believed.
+- **No shared back-off for it.** 1.14.5 made every download wait after each
+  such answer, which slowed a whole profile to a crawl (30 videos in 11
+  minutes on the phone); only the post's own job retries now.
+
 ## App 0.2.0-beta.14.5 · library 1.14.5
 
 Beta 14.5: big TikTok profiles no longer lose videos to a false "no longer exists", and a

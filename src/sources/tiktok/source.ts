@@ -117,6 +117,12 @@ export class TikTokSource implements MediaSource {
   readonly #host: HostSession
   /** The in-flight cookie reset, so parallel downloads don't wipe each other's fresh jar. */
   #refreshing: Promise<void> | undefined
+  /**
+   * Known posts TikTok once called gone (status 10204) and that wait for a
+   * second read after the back-off. Removed on that read: holds only posts in
+   * flight, O(1) per check.
+   */
+  readonly #doubted = new Set<string>()
 
   constructor(options: TikTokOptions = {}) {
     this.#origin = (options.origin ?? 'https://www.tiktok.com').replace(/\/$/, '')
@@ -448,6 +454,40 @@ export class TikTokSource implements MediaSource {
     const cached = this.#posts.get(id)
     // a page read is minutes-fresh; listing links are only a last resort (see below)
     if (!fresh && cached?.fromPage && Date.now() - cached.at < PAGE_FRESH_MS) return cached.post
+    try {
+      const post = await this.#readPage(id, user, cached, signal)
+      this.#doubted.delete(id)
+      return post
+    } catch (error) {
+      // Right after a profile listing TikTok answers some video pages with status 10204
+      // ("doesn't exist") for posts it serves again minutes later (razr 50: 56 of the first
+      // 164 posts of an 840-video profile). A post this session has seen is not taken as
+      // deleted on the first such answer: everybody backs off and the job retries. If
+      // TikTok still says so after the back-off, it is.
+      const gone = error instanceof TikTokError && error.problem === 'removed'
+      if (!gone || !cached || this.#doubted.has(id)) {
+        this.#doubted.delete(id)
+        throw error
+      }
+      this.#doubted.add(id)
+      this.#pacer.refused()
+      this.#log(
+        'warn',
+        `TikTok: ${id} was listed but TikTok now says it doesn't exist — backing off, then reading it again`,
+      )
+      throw new TikTokError(
+        'refused',
+        'TikTok said a post it just listed no longer exists; it is read again after a pause.',
+      )
+    }
+  }
+
+  async #readPage(
+    id: string,
+    user: string | undefined,
+    cached: Cached | undefined,
+    signal?: AbortSignal,
+  ): Promise<TikTokPost> {
     const url = postUrl(this.#origin, id, user ?? cached?.post.author)
     const scope = await this.#page(url, signal)
     let embedded = takePost(scope)

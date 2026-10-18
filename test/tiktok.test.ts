@@ -1007,7 +1007,11 @@ describe('TikTok slideshows: one post, one record per mode (local fake)', () => 
 
     const asImages = await run('images')
     assert.equal(asImages.done.status, 'completed', JSON.stringify(asImages.done.problems))
-    assert.deepEqual(asImages.statuses, ['skipped', 'completed', 'skipped'], 'the MP4 of the photo post is not its images')
+    assert.deepEqual(
+      asImages.statuses,
+      ['skipped', 'completed', 'skipped'],
+      'the MP4 of the photo post is not its images',
+    )
     assert.equal(asImages.done.estimate?.archived, 2, 'the forecast counts only the videos as downloaded')
     assert.equal(asImages.checked, 1, 'preflight checks only the photo post')
 

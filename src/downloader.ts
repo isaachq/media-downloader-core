@@ -12,7 +12,7 @@ import {
   type UpdateResult,
 } from './binaries/manager.js'
 import {analyze, assertHttpUrl, type ExtractResult, extractMany, isYouTubeUrl} from './core/analyze.js'
-import {type ArchiveEntry, archiveKey, DownloadArchive} from './core/archive.js'
+import {type ArchiveEntry, type ArchiveHit, archiveKey, archiveSlideshow, DownloadArchive} from './core/archive.js'
 import {convertBundle, ensureContainer, extractAudio, type MediaTags, writeTags} from './core/convert.js'
 import {BrowserCookies, type CookieRecord, exportBrowserCookies, jarCopy, parseNetscape} from './core/cookies.js'
 import {jobTier, peakBytes, TIER_WEIGHT} from './core/cost.js'
@@ -64,6 +64,7 @@ import type {
   LogEntry,
   LogLevel,
   PlaylistAnalysis,
+  SlideshowOptions,
   StepName,
   TerminalStatus,
   TraceId,
@@ -121,6 +122,11 @@ export type LaterCheck = {
   readonly damaged: number
   /** Failed for another reason (codecs, container): removed, to be downloaded again. */
   readonly failed: number
+}
+
+/** What a photo post of this request is made into (an MP4 unless asked otherwise). O(1). */
+function slideshowMode(request: JobRequest): SlideshowOptions['mode'] {
+  return (request.slideshow ?? DEFAULT_SLIDESHOW).mode
 }
 
 /** The error of a media known to be damaged at the source. */
@@ -568,9 +574,18 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     return this.#settings.longVideoMinutes
   }
 
-  /** Whether this media was already downloaded with this profile (and the file is still there). */
-  async isArchived(extractor: string, mediaId: string, profile: FormatProfile): Promise<boolean> {
-    return (await this.archive.find(archiveKey(extractor, mediaId, profile))) !== undefined
+  /**
+   * Whether this media was already downloaded with this profile (and the file
+   * is still there). `slideshow`: what a photo post is made into — only for a
+   * known photo post (see `archiveKey`). O(1): one index hit and one stat.
+   */
+  async isArchived(
+    extractor: string,
+    mediaId: string,
+    profile: FormatProfile,
+    slideshow?: SlideshowOptions['mode'] | undefined,
+  ): Promise<boolean> {
+    return (await this.archive.find(archiveKey(extractor, mediaId, profile, slideshow))) !== undefined
   }
 
   /** Check tools, codecs, data folder and free space without changing anything. */
@@ -1299,8 +1314,13 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     job.startedAt = Date.now()
     const {signal} = job.controller
     const {request} = job
-    // deterministic per url + profile: a retry or an app restart resumes the .part files
-    const workDir = path.join(this.#workRoot, shortHash(`${request.url}|${profileKey(request.profile)}`))
+    // deterministic per url + profile (+ the folder a photo post becomes): a retry or an app restart
+    // resumes the .part files, and a folder of images never picks up another mode's leftovers
+    const kept = request.photoPost === false ? undefined : archiveSlideshow(request.profile, slideshowMode(request))
+    const workDir = path.join(
+      this.#workRoot,
+      shortHash(`${request.url}|${profileKey(request.profile)}${kept ? `|${kept}` : ''}`),
+    )
     let infoJsonPath = await this.#freshMetadata(job)
     let profile = request.profile
     let strategy: AttemptStrategy = 'primary'
@@ -1708,12 +1728,15 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
 
     const extractor = info.extractor ?? request.extractor
     if (extractor && mediaId) {
+      // a folder is a photo post kept as images: its mode is part of its key (an MP4 of it is not it)
+      const slideshow = bundle ? archiveSlideshow(request.profile, slideshowMode(request)) : undefined
       await this.archive.add({
         // archived under the requested profile, so re-adding the same request skips it
-        key: archiveKey(extractor, mediaId, request.profile),
+        key: archiveKey(extractor, mediaId, request.profile, slideshow),
         extractor,
         mediaId,
         profile: profileKey(request.profile),
+        ...(slideshow && {slideshow}),
         title: mediaTitle,
         url: request.url,
         filepath: finalPath,
@@ -1779,9 +1802,27 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     return undefined
   }
 
+  /**
+   * Skip a job already in the archive. A photo post kept as a folder has a key
+   * of its own: the request says whether the media is one (the scheduler
+   * always does). Not said, the folder's key is looked up first, then the
+   * plain one. O(1): one or two index hits, a stat each.
+   */
   async #skipIfArchived(job: Job, extractor: string | undefined, mediaId: string | undefined): Promise<boolean> {
     if (!this.#settings.useArchive || !extractor || !mediaId) return false
-    const entry = await this.archive.find(archiveKey(extractor, mediaId, job.request.profile))
+    const {request} = job
+    const kept = request.photoPost === false ? undefined : archiveSlideshow(request.profile, slideshowMode(request))
+    const plain = archiveKey(extractor, mediaId, request.profile)
+    const keys = !kept
+      ? [plain]
+      : request.photoPost
+        ? [archiveKey(extractor, mediaId, request.profile, kept)]
+        : [archiveKey(extractor, mediaId, request.profile, kept), plain]
+    let entry: ArchiveHit | undefined
+    for (const key of keys) {
+      entry = await this.archive.find(key)
+      if (entry) break
+    }
     if (!entry) return false
     this.#finish(job, 'skipped', {filepath: entry.filepath})
     return true

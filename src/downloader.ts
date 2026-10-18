@@ -1728,8 +1728,10 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
 
     const extractor = info.extractor ?? request.extractor
     if (extractor && mediaId) {
-      // a folder is a photo post kept as images: its mode is part of its key (an MP4 of it is not it)
-      const slideshow = bundle ? archiveSlideshow(request.profile, slideshowMode(request)) : undefined
+      // a folder made by the mode (a photo post kept as images) has the mode in its key — an MP4 of it
+      // is not it; a folder that is the same whatever the mode (photoPost false) keeps the plain key
+      const slideshow =
+        bundle && request.photoPost !== false ? archiveSlideshow(request.profile, slideshowMode(request)) : undefined
       await this.archive.add({
         // archived under the requested profile, so re-adding the same request skips it
         key: archiveKey(extractor, mediaId, request.profile, slideshow),

@@ -46,6 +46,28 @@ describe('redownloadRequest', () => {
     expect(request.url).toBe('https://example.com/v/1')
   })
 
+  it('a photo post kept as a folder comes back as that folder, in the same mode', () => {
+    const folder = (slideshow: 'images' | 'images-audio' | undefined) => ({
+      ...record(1),
+      title: 'Carrusel',
+      extractor: 'TikTok',
+      filepath: path.join(path.sep, 'media', 'TikTok-user', '001-Carrusel-1'),
+      ...(slideshow && {slideshow}),
+    })
+    for (const mode of ['images', 'images-audio'] as const) {
+      const [target] = redownloadRequest([folder(mode)], 'Again')!.targets
+      expect(target).toEqual({
+        index: 1,
+        outDir: path.join(path.sep, 'media', 'TikTok-user'),
+        profile: {kind: 'video', container: 'mp4'},
+        playlist: {id: '', title: 'TikTok-user', index: 1},
+        slideshow: {mode, secondsPerImage: 3},
+      })
+    }
+    // an MP4 of the images (or any other file) has no mode: the batch's own applies
+    expect(redownloadRequest([folder(undefined)], 'Again')!.targets[0]!.slideshow).toBeUndefined()
+  })
+
   it('skips records whose format is unknown; nothing left is no request', () => {
     const request = redownloadRequest([record(1, 'video:avi:best'), record(2)], 'Again')!
     expect(request.targets.map(target => target.index)).toEqual([1])

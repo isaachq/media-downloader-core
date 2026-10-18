@@ -69,8 +69,14 @@ export type MediaSummary = {
   readonly thumbnail?: string | undefined
   /** When it was published, unix seconds (when the listing tells). */
   readonly publishedAt?: number | undefined
-  /** A photo post (TikTok slideshow): its images and whether it has a soundtrack. */
-  readonly slideshow?: {readonly images: number; readonly audio: boolean} | undefined
+  /**
+   * A photo post (TikTok slideshow) or a carousel: its items and whether it
+   * has sound. `videos`: a carousel that has videos too — always a folder of
+   * everything as the site serves it, whatever `SlideshowOptions.mode` says.
+   */
+  readonly slideshow?:
+    | {readonly images: number; readonly audio: boolean; readonly videos?: boolean | undefined}
+    | undefined
   /** yt-dlp extractor key, e.g. "Youtube". */
   readonly extractor: string
   readonly isLive: boolean

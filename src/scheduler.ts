@@ -29,6 +29,7 @@ import type {
   JobOutcome,
   JobRequest,
   JobSnapshot,
+  MediaSummary,
   PlaylistAnalysis,
   PreflightItem,
   SchedulerEvents,
@@ -60,6 +61,14 @@ async function volumes(outDir: string, workDir: string): Promise<[number | undef
 const yieldToEventLoop = () => new Promise<void>(resolve => setImmediate(resolve))
 
 const TERMINAL: ReadonlySet<BatchStatus> = new Set(['completed', 'completed-with-errors', 'failed', 'cancelled'])
+
+/**
+ * Whether what a media becomes depends on `SlideshowOptions.mode`: a photo
+ * post or a carousel of pictures does; a video, or a carousel with videos
+ * (always a folder of everything), does not. O(1).
+ */
+const madeByMode = (media: Pick<MediaSummary, 'slideshow'>): boolean =>
+  media.slideshow !== undefined && media.slideshow.videos !== true
 
 /** Extra fields an item carries internally (never emitted). */
 type ItemState = PreflightItem & {
@@ -483,7 +492,7 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
         mediaId: analysis.media.id,
         duration: analysis.media.duration,
         extractor: analysis.media.extractor,
-        photoPost: analysis.media.slideshow !== undefined,
+        photoPost: madeByMode(analysis.media),
         state: 'pending',
       },
     ])
@@ -511,7 +520,7 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
           mediaId: entry.id,
           duration: entry.duration,
           extractor: entry.extractor,
-          photoPost: entry.slideshow !== undefined,
+          photoPost: madeByMode(entry),
           state: 'pending' as const,
         })),
     )
@@ -638,7 +647,7 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
       title: analysis.media.title,
       duration,
       infoJsonPath: analysis.infoJsonPath,
-      photoPost: analysis.media.slideshow !== undefined,
+      photoPost: madeByMode(analysis.media),
       ...(analysis.media.extractor && {extractor: analysis.media.extractor}),
       ...(analysis.media.id && {mediaId: analysis.media.id}),
     }

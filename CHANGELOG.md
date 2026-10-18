@@ -2,6 +2,51 @@
 
 ## Unreleased
 
+## App 0.2.0-beta.14.7 · library 1.14.7
+
+Beta 14.7: a TikTok photo post asked as images is no longer "already downloaded" because
+its MP4 is, and its folder opens for everyone on a phone.
+
+**Library**
+
+- **A photo post kept as a folder has an archive key of its own.** The key was
+  `site:id:format`, so an MP4 of a carousel, its images, and its images with
+  their sound shared one record: asking for the images after the MP4 (same
+  format and quality) was skipped as already downloaded, on the phone and on
+  desktop. A photo post kept as images now adds its mode to the key
+  (`tiktok:<id>:video:mp4:best#images`, `#images-audio`) and to the record
+  (`ArchiveEntry.slideshow`); the record's `profile` is unchanged. Every
+  other key — videos, and photo posts made an MP4 — is the one 1.14.6 wrote,
+  so existing archives keep matching with no migration.
+- **The engine knows a photo post before downloading it.** The scheduler takes
+  it from the listing (`PlaylistEntry.slideshow`) or the link's analysis and
+  passes it to the job (`JobRequest.photoPost`), so the preflight skip, the
+  forecast's "already downloaded" count and the job's own check use the same
+  key as the record. A video asked with an images mode keeps its plain key
+  (it is never downloaded twice). A host adding a job itself without
+  `photoPost` gets the folder's key looked up first, then the plain one.
+  `isArchived()` and `archiveKey()` take the mode as an optional last argument.
+- **Downloading a record again keeps its mode.** `BatchTarget.slideshow` sets
+  what one entry's photo post becomes; the desktop app's "download missing
+  files again" uses it, so a missing folder of images came back as an MP4
+  before and comes back as images now.
+- **A carousel folder moved to another volume gets normal permissions.** A
+  slideshow's folder is assembled in the engine's work folder; when the
+  destination is on another volume it was copied with `fs.cp`, which keeps
+  the source's modes. On Android the work folder is in the app's private
+  storage (`700`), so the folder in shared storage opened for the app alone
+  (`adb shell ls`: permission denied). The copy now makes its folders with
+  `fs.mkdir` and gives each file the mode a new file gets there; a single file
+  copied across volumes too. Still copied to `.partial` and renamed, O(files).
+- **A slideshow's work folder depends on its mode.** An interrupted "images +
+  audio" download no longer leaves its soundtrack in a later "images only"
+  folder of the same post.
+
+**App**
+
+- "Download missing files again" brings a carousel kept as images back as
+  images, in the same folder.
+
 ## App 0.2.0-beta.14.6 · library 1.14.6
 
 Beta 14.6: the false "doesn't exist" after a TikTok profile listing is fixed at its cause.

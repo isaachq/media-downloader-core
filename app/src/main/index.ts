@@ -58,7 +58,7 @@ import {
 import {EventCoalescer} from './events'
 import {createMetaBrowser} from './meta-browser'
 import {createPlayerBrowser} from './player-browser'
-import {redownloadRequest} from './redownload'
+import {redownloadRequest, retryTarget} from './redownload'
 import {defaultSettings, SettingsStore} from './settings'
 import {taskbarState} from './taskbar'
 import {createTikTokBrowser} from './tiktok-browser'
@@ -963,12 +963,7 @@ function retryRequest(items: readonly FailedRetry[]) {
       extractor: known?.extractor ?? 'Generic',
       isLive: false,
     })
-    targets.push({
-      index,
-      outDir: known?.outDir ?? settings.current.downloadDir,
-      profile: known?.profile ?? item.profile,
-      ...(known?.playlist && {playlist: known.playlist}),
-    })
+    targets.push(retryTarget(index, known, {outDir: settings.current.downloadDir, profile: item.profile}))
   }
   const stamp = new Date().toLocaleString(settings.current.language === 'es' ? 'es' : 'en', {
     dateStyle: 'medium',

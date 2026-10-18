@@ -6,6 +6,7 @@ import {
   type BatchTarget,
   DEFAULT_SLIDESHOW,
   type FormatProfile,
+  type JobRequest,
   mediaFileStem,
   VIDEO_CONTAINERS,
   type VideoContainer,
@@ -53,6 +54,26 @@ export function positionOf(record: Pick<HistoryRecord, 'title' | 'mediaId' | 'fi
   const index = Number(found[1])
   const media = {title: record.title, id: record.mediaId, index}
   return mediaFileStem('original', media) === stem || mediaFileStem('portable', media) === stem ? index : undefined
+}
+
+/**
+ * Where a failed download is retried: the folder, format, list position and,
+ * for a photo post, the slideshow mode its job had (a folder of images is
+ * retried as images, not as the batch's default MP4); the downloads folder
+ * and the given format when the job is no longer known. O(1).
+ */
+export function retryTarget(
+  index: number,
+  known: Pick<JobRequest, 'outDir' | 'profile' | 'playlist' | 'slideshow' | 'photoPost'> | undefined,
+  fallback: {readonly outDir: string; readonly profile: FormatProfile},
+): BatchTarget {
+  return {
+    index,
+    outDir: known?.outDir ?? fallback.outDir,
+    profile: known?.profile ?? fallback.profile,
+    ...(known?.playlist && {playlist: known.playlist}),
+    ...(known?.photoPost && known.slideshow && {slideshow: known.slideshow}),
+  }
 }
 
 /**

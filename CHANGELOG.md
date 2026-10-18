@@ -48,6 +48,8 @@ its MP4 is, and its folder opens for everyone on a phone.
 
 - "Download missing files again" brings a carousel kept as images back as
   images, in the same folder.
+- Retrying a failed carousel download (the Failed card) keeps the mode it was
+  asked in; it was retried as an MP4.
 
 ## App 0.2.0-beta.14.6 · library 1.14.6
 

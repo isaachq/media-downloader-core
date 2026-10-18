@@ -1,6 +1,6 @@
 import * as path from 'node:path'
 import {describe, expect, it} from 'vitest'
-import {positionOf, profileFromKey, redownloadRequest} from './redownload'
+import {positionOf, profileFromKey, redownloadRequest, retryTarget} from './redownload'
 
 describe('profileFromKey', () => {
   it('reads back the video and audio keys the archive writes', () => {
@@ -74,6 +74,28 @@ describe('redownloadRequest', () => {
     expect(request.selection.entries[0]!.id).toBe('2')
     expect(redownloadRequest([record(1, 'nope')], 'Again')).toBeUndefined()
     expect(redownloadRequest([], 'Again')).toBeUndefined()
+  })
+})
+
+describe('retryTarget', () => {
+  const mp4 = {kind: 'video', container: 'mp4'} as const
+  const fallback = {outDir: '/downloads', profile: mp4}
+
+  it('a failed photo post is retried in the mode it was asked in', () => {
+    const images = {mode: 'images', secondsPerImage: 3} as const
+    expect(retryTarget(1, {outDir: '/media/list', profile: mp4, slideshow: images, photoPost: true}, fallback)).toEqual(
+      {index: 1, outDir: '/media/list', profile: mp4, slideshow: images},
+    )
+  })
+
+  it('a video keeps no mode; a job no longer known goes to the downloads folder', () => {
+    const images = {mode: 'images', secondsPerImage: 3} as const
+    expect(retryTarget(2, {outDir: '/m', profile: mp4, slideshow: images, photoPost: false}, fallback)).toEqual({
+      index: 2,
+      outDir: '/m',
+      profile: mp4,
+    })
+    expect(retryTarget(3, undefined, fallback)).toEqual({index: 3, outDir: '/downloads', profile: mp4})
   })
 })
 

@@ -972,3 +972,167 @@ describe('TikTok slideshows (local fake)', () => {
     assert.match(failed.error?.message ?? '', /no soundtrack/)
   })
 })
+
+describe('TikTok slideshows: one post, one record per mode (local fake)', () => {
+  const as = (mode: 'video' | 'images-audio' | 'images') => ({mode, secondsPerImage: 2}) as const
+  /** Items a batch checks over the network (preflight), counted. */
+  const countChecks = (engine: MediaDownloader) => {
+    let items = 0
+    const original = engine.preflight.bind(engine)
+    engine.preflight = (list, opts) => {
+      items += list.length
+      return original(list, opts)
+    }
+    return () => items
+  }
+
+  it('a profile as MP4, then as images, then images + audio: the photo post downloads in each; again, skipped', async () => {
+    // posts 0 and 2 are videos, post 1 a photo post
+    const {site, engine, scheduler, out} = await setup('slides-modes', {posts: 3, slideshows: [1]})
+    const url = `${site.origin}/@${site.user}`
+    const checks = countChecks(engine)
+    const run = async (mode: 'video' | 'images-audio' | 'images') => {
+      const before = checks()
+      const batch = scheduler.schedule({url, profile: mp4, outDir: out, slideshow: as(mode)})
+      await scheduler.whenIdle()
+      const done = scheduler.batch(batch.id)!
+      const jobs = engine.jobs().filter(job => job.batchId === batch.id)
+      const of = (i: number) => jobs.find(job => job.mediaId === site.ids[i])?.status
+      return {done, statuses: [of(0), of(1), of(2)], checked: checks() - before}
+    }
+
+    const asVideo = await run('video')
+    assert.equal(asVideo.done.status, 'completed', JSON.stringify(asVideo.done.problems))
+    assert.deepEqual(asVideo.statuses, ['completed', 'completed', 'completed'])
+
+    const asImages = await run('images')
+    assert.equal(asImages.done.status, 'completed', JSON.stringify(asImages.done.problems))
+    assert.deepEqual(asImages.statuses, ['skipped', 'completed', 'skipped'], 'the MP4 of the photo post is not its images')
+    assert.equal(asImages.done.estimate?.archived, 2, 'the forecast counts only the videos as downloaded')
+    assert.equal(asImages.checked, 1, 'preflight checks only the photo post')
+
+    const withSound = await run('images-audio')
+    assert.deepEqual(withSound.statuses, ['skipped', 'completed', 'skipped'])
+    assert.equal(withSound.done.estimate?.archived, 2)
+
+    const again = await run('images')
+    assert.deepEqual(again.statuses, ['skipped', 'skipped', 'skipped'])
+    assert.equal(again.done.estimate?.archived, 3)
+    assert.equal(again.checked, 0, 'everything is in the archive: nothing is checked over the network')
+
+    const {entries} = await engine.archive.list({limit: 50})
+    const post = entries.filter(entry => entry.mediaId === site.ids[1])
+    assert.equal(entries.length, 5, '2 videos + the photo post three ways')
+    assert.deepEqual(post.map(entry => entry.slideshow ?? 'video').sort(), ['images', 'images-audio', 'video'])
+    assert.ok(
+      post.every(entry => entry.profile === 'video:mp4:best'),
+      'the profile field stays as hosts read it back',
+    )
+    const images = post.find(entry => entry.slideshow === 'images')!
+    const sound = post.find(entry => entry.slideshow === 'images-audio')!
+    assert.deepEqual((await fs.readdir(images.filepath)).sort(), ['01.jpg', '02.jpg', '03.jpg'])
+    assert.deepEqual((await fs.readdir(sound.filepath)).sort(), ['01.jpg', '02.jpg', '03.jpg', 'sound.mp3'])
+    assert.notEqual(images.filepath, sound.filepath)
+  })
+
+  it('an archive written by 1.14.6 (plain keys) still skips its MP4 carousels, and their images still download', async () => {
+    const {site, engine, scheduler, out} = await setup('slides-old-archive', {posts: 2, slideshows: [0]})
+    const mp4File = path.join(out, 'old', 'Carrusel.mp4')
+    await fs.mkdir(path.dirname(mp4File), {recursive: true})
+    await fs.writeFile(mp4File, 'an MP4 made by 1.14.6')
+    // the record exactly as 1.14.6 wrote it, before the engine opens its archive
+    const record = {
+      op: 'put',
+      entry: {
+        key: `tiktok:${site.ids[0]}:video:mp4:best`,
+        extractor: 'TikTok',
+        mediaId: site.ids[0],
+        profile: 'video:mp4:best',
+        url: videoUrl(site, 0),
+        filepath: mp4File,
+        sizeBytes: (await fs.stat(mp4File)).size,
+        validation: 'none',
+        completedAt: 1,
+      },
+    }
+    await fs.mkdir(path.join(root, 'slides-old-archive'), {recursive: true})
+    await fs.writeFile(path.join(root, 'slides-old-archive', 'archive.jsonl'), `${JSON.stringify(record)}\n`)
+
+    const url = `${site.origin}/@${site.user}`
+    const status = async (mode: 'video' | 'images') => {
+      const batch = scheduler.schedule({url, profile: mp4, outDir: out, slideshow: as(mode)})
+      await scheduler.whenIdle()
+      return engine.jobs().find(job => job.batchId === batch.id && job.mediaId === site.ids[0])?.status
+    }
+    assert.equal(await status('video'), 'skipped', 'no migration needed: the old key still matches')
+    assert.equal(await status('images'), 'completed')
+  })
+
+  it('a single photo-post link: each mode downloads once, then is skipped', async () => {
+    const {site, engine, scheduler, out} = await setup('slides-single', {posts: 1, slideshows: [0]})
+    const status = async (mode: 'video' | 'images-audio' | 'images') => {
+      const batch = scheduler.schedule({url: videoUrl(site, 0), profile: mp4, outDir: out, slideshow: as(mode)})
+      await scheduler.whenIdle()
+      return engine.jobs().find(job => job.batchId === batch.id)?.status
+    }
+    assert.equal(await status('video'), 'completed')
+    assert.equal(await status('images'), 'completed')
+    assert.equal(await status('images-audio'), 'completed')
+    assert.equal(await status('images'), 'skipped')
+    assert.equal(await status('video'), 'skipped')
+  })
+
+  it('a video asked as images is the same video: one download, then skipped (no "just in case" key)', async () => {
+    const {site, engine, scheduler, out} = await setup('slides-video-post', {posts: 2})
+    const url = `${site.origin}/@${site.user}`
+    const statuses = async (mode: 'video' | 'images') => {
+      const batch = scheduler.schedule({url, profile: mp4, outDir: out, slideshow: as(mode)})
+      await scheduler.whenIdle()
+      return engine
+        .jobs()
+        .filter(job => job.batchId === batch.id)
+        .map(job => job.status)
+    }
+    assert.deepEqual(await statuses('images'), ['completed', 'completed'])
+    assert.deepEqual(await statuses('images'), ['skipped', 'skipped'])
+    assert.deepEqual(await statuses('video'), ['skipped', 'skipped'])
+    // a host adding the job itself, without saying whether it is a photo post
+    const direct = engine.add({
+      url: videoUrl(site, 0),
+      profile: mp4,
+      outDir: out,
+      slideshow: as('images'),
+      mediaId: site.ids[0],
+      extractor: 'TikTok',
+    })
+    await engine.whenIdle()
+    assert.equal(engine.job(direct.id)?.status, 'skipped')
+  })
+
+  it('downloading a record again keeps its mode: a missing images folder comes back as images', async () => {
+    const {site, engine, scheduler, out} = await setup('slides-again', {posts: 1, slideshows: [0]})
+    const first = scheduler.schedule({url: videoUrl(site, 0), profile: mp4, outDir: out, slideshow: as('images')})
+    await scheduler.whenIdle()
+    assert.equal(scheduler.batch(first.id)?.status, 'completed')
+    const [record] = (await engine.archive.list()).entries
+    assert.equal(record?.slideshow, 'images')
+    await fs.rm(record!.filepath, {recursive: true})
+
+    // what a host's "download missing files again" sends: the record's link, folder, format and mode
+    const again = scheduler.schedule({
+      url: record!.url,
+      profile: mp4,
+      outDir: out,
+      selection: {
+        title: 'again',
+        entries: [{index: 1, id: record!.mediaId, url: record!.url, title: 'x', extractor: 'TikTok', isLive: false}],
+      },
+      targets: [{index: 1, outDir: path.dirname(record!.filepath), profile: mp4, slideshow: as('images')}],
+    })
+    await scheduler.whenIdle()
+    assert.equal(scheduler.batch(again.id)?.status, 'completed', JSON.stringify(scheduler.batch(again.id)?.problems))
+    const [back] = (await engine.archive.list()).entries
+    assert.equal(back?.slideshow, 'images')
+    assert.ok((await fs.stat(back!.filepath)).isDirectory(), 'a folder of images again, not an MP4')
+  })
+})

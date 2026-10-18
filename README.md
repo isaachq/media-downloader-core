@@ -900,6 +900,23 @@ npm run demo -- "https://www.youtube.com/watch?v=jNQXAC9IVRw"     # list choices
 npm run demo -- "https://www.youtube.com/watch?v=jNQXAC9IVRw" 0   # download choice 0
 ```
 
+### Testing: smoke in CI, the full regression before a release
+
+Every pull request runs a **smoke** CI (about 3–4 minutes): on Linux the library's whole
+suite with the real ffmpeg, the packed package and the desktop app end to end; on macOS and
+Windows the library's suite and the app's unit tests. The **full regression** runs before a
+release, on your machine:
+
+```bash
+npm run test:full   # typecheck, lint, every library test, build, pack check, then the app: typecheck, unit, end to end
+```
+
+…and, when a release needs every system, from GitHub: **Actions → CI → Run workflow**
+(`full` checked) adds macOS and Windows end to end, Node 20 and 24, a real yt-dlp/ffmpeg
+install and the Linux packages. The real-media format matrix stays manual too
+(**Actions → Nightly matrix**). A release tag (`lib-v*`, `app-v*`) still runs its own
+checks before it publishes.
+
 ## Changes
 
 See [CHANGELOG.md](CHANGELOG.md).

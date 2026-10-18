@@ -39,8 +39,10 @@ export {
   type ArchiveGroup,
   type ArchivePage,
   type ArchiveQuery,
+  type ArchiveSlideshow,
   type ArchiveSort,
   archiveKey,
+  archiveSlideshow,
   DownloadArchive,
 } from './core/archive.js'
 export {ensureContainer} from './core/convert.js'

@@ -1,6 +1,6 @@
 import * as path from 'node:path'
 import {describe, expect, it} from 'vitest'
-import {positionOf, profileFromKey, redownloadRequest} from './redownload'
+import {positionOf, profileFromKey, redownloadRequest, retryTarget} from './redownload'
 
 describe('profileFromKey', () => {
   it('reads back the video and audio keys the archive writes', () => {
@@ -46,12 +46,56 @@ describe('redownloadRequest', () => {
     expect(request.url).toBe('https://example.com/v/1')
   })
 
+  it('a photo post kept as a folder comes back as that folder, in the same mode', () => {
+    const folder = (slideshow: 'images' | 'images-audio' | undefined) => ({
+      ...record(1),
+      title: 'Carrusel',
+      extractor: 'TikTok',
+      filepath: path.join(path.sep, 'media', 'TikTok-user', '001-Carrusel-1'),
+      ...(slideshow && {slideshow}),
+    })
+    for (const mode of ['images', 'images-audio'] as const) {
+      const [target] = redownloadRequest([folder(mode)], 'Again')!.targets
+      expect(target).toEqual({
+        index: 1,
+        outDir: path.join(path.sep, 'media', 'TikTok-user'),
+        profile: {kind: 'video', container: 'mp4'},
+        playlist: {id: '', title: 'TikTok-user', index: 1},
+        slideshow: {mode, secondsPerImage: 3},
+      })
+    }
+    // an MP4 of the images (or any other file) has no mode: the batch's own applies
+    expect(redownloadRequest([folder(undefined)], 'Again')!.targets[0]!.slideshow).toBeUndefined()
+  })
+
   it('skips records whose format is unknown; nothing left is no request', () => {
     const request = redownloadRequest([record(1, 'video:avi:best'), record(2)], 'Again')!
     expect(request.targets.map(target => target.index)).toEqual([1])
     expect(request.selection.entries[0]!.id).toBe('2')
     expect(redownloadRequest([record(1, 'nope')], 'Again')).toBeUndefined()
     expect(redownloadRequest([], 'Again')).toBeUndefined()
+  })
+})
+
+describe('retryTarget', () => {
+  const mp4 = {kind: 'video', container: 'mp4'} as const
+  const fallback = {outDir: '/downloads', profile: mp4}
+
+  it('a failed photo post is retried in the mode it was asked in', () => {
+    const images = {mode: 'images', secondsPerImage: 3} as const
+    expect(retryTarget(1, {outDir: '/media/list', profile: mp4, slideshow: images, photoPost: true}, fallback)).toEqual(
+      {index: 1, outDir: '/media/list', profile: mp4, slideshow: images},
+    )
+  })
+
+  it('a video keeps no mode; a job no longer known goes to the downloads folder', () => {
+    const images = {mode: 'images', secondsPerImage: 3} as const
+    expect(retryTarget(2, {outDir: '/m', profile: mp4, slideshow: images, photoPost: false}, fallback)).toEqual({
+      index: 2,
+      outDir: '/m',
+      profile: mp4,
+    })
+    expect(retryTarget(3, undefined, fallback)).toEqual({index: 3, outDir: '/downloads', profile: mp4})
   })
 })
 

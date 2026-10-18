@@ -137,7 +137,7 @@ describe('Instagram data', () => {
       user: {username: 'u'},
     })
     assert.equal(shapeOf(carousel), 'carousel')
-    assert.deepEqual(summaryOf(carousel, 'Instagram').slideshow, {images: 2, audio: true})
+    assert.deepEqual(summaryOf(carousel, 'Instagram').slideshow, {images: 2, audio: true, videos: true})
     assert.equal(titleOf(carousel, 'Instagram'), 'Instagram 2')
 
     const story = readV1Item(
@@ -884,5 +884,35 @@ describe('Instagram that answers 403', () => {
     assert.equal(result.kind, 'video')
     assert.ok(Date.now() - started < 5000, `took ${Date.now() - started} ms`)
     assert.ok(site.hits.refused >= 1)
+  })
+})
+
+describe('Instagram photos and carousels in the archive (local fake)', () => {
+  it('a photo is a new download as images after its MP4; a carousel with videos is one folder whatever the mode', async () => {
+    // post 1 a photo, post 2 a carousel of two photos and a video, posts 0 and 3 videos
+    const {site, engine, scheduler, out} = await setup('archive-modes', {
+      posts: 4,
+      photos: [1],
+      carousels: [2],
+      mixedCarousels: true,
+    })
+    const run = async (mode: 'video' | 'images') => {
+      const batch = scheduler.schedule({url: profileUrl(site), profile: mp4, outDir: out, slideshow: {...images, mode}})
+      await scheduler.whenIdle()
+      const jobs = engine.jobs().filter(job => job.batchId === batch.id)
+      return site.ids.map(id => jobs.find(job => job.mediaId === id)?.status)
+    }
+    assert.deepEqual(await run('video'), ['completed', 'completed', 'completed', 'completed'])
+    // the photo was an MP4: its picture is new; the carousel's folder is what images give too
+    assert.deepEqual(await run('images'), ['skipped', 'completed', 'skipped', 'skipped'])
+    assert.deepEqual(await run('images'), ['skipped', 'skipped', 'skipped', 'skipped'])
+    assert.deepEqual(await run('video'), ['skipped', 'skipped', 'skipped', 'skipped'])
+    const {entries} = await engine.archive.list({limit: 50})
+    assert.equal(entries.length, 5, '4 posts + the photo as a picture')
+    assert.deepEqual(
+      entries.filter(entry => entry.mediaId === site.ids[2]).map(entry => entry.slideshow),
+      [undefined],
+      'one record for the carousel with a video',
+    )
   })
 })

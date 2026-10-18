@@ -91,7 +91,10 @@ export function summaryOf(post: MetaPost, site: string): MediaSummary {
     thumbnail: post.cover ?? video?.cover ?? imagesOf(post)[0]?.urls[0],
     publishedAt: post.createdAt,
     // a photo or a carousel is a set of pictures (with videos: a bundle, kept as they are)
-    ...(shape !== 'video' && shape !== 'empty' && {slideshow: {images: post.items.length, audio: video !== undefined}}),
+    ...(shape !== 'video' &&
+      shape !== 'empty' && {
+        slideshow: {images: post.items.length, audio: video !== undefined, ...(video && {videos: true})},
+      }),
     extractor: site,
     isLive: false,
   }

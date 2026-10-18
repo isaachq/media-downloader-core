@@ -3,7 +3,7 @@ import type {FileHandle} from 'node:fs/promises'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import {createInterface} from 'node:readline'
-import type {FormatProfile, ValidationLevel} from '../types.js'
+import type {FormatProfile, SlideshowOptions, ValidationLevel} from '../types.js'
 import {endsMidLine, removeLeftovers, renameRetrying, syncFile} from './files.js'
 import {profileKey} from './formats.js'
 
@@ -28,8 +28,17 @@ export type ArchiveEntry = {
    * (what it found, in English): it is kept, and never downloaded again.
    */
   readonly damaged?: string | undefined
+  /**
+   * A photo post kept as a folder: of its images ('images'), or of its images
+   * and soundtrack ('images-audio'). Absent for everything else, a photo post
+   * made an MP4 included (and in records older than 1.14.7).
+   */
+  readonly slideshow?: ArchiveSlideshow | undefined
   readonly completedAt: number
 }
+
+/** What a photo post was kept as when it is a folder (see `ArchiveEntry.slideshow`). */
+export type ArchiveSlideshow = Exclude<SlideshowOptions['mode'], 'video'>
 
 /** Order of a page of finished downloads. */
 export type ArchiveSort = 'newest' | 'oldest' | 'largest' | 'smallest'
@@ -83,9 +92,34 @@ type ArchiveRecord = {readonly op: 'put'; readonly entry: ArchiveEntry} | {reado
 /** In-memory index entry: the hit, plus the log line holding the full record. */
 type Indexed = ArchiveHit & {readonly line: number}
 
-/** "youtube:dQw4w9WgXcQ:video:mp4:1080" — same media + same profile = same file. */
-export function archiveKey(extractor: string, mediaId: string, profile: FormatProfile): string {
-  return `${extractor.toLowerCase()}:${mediaId}:${profileKey(profile)}`
+/**
+ * What a photo post becomes with this profile when it is not a single file:
+ * the mode for 'images' / 'images-audio' with a video profile, else undefined
+ * (an MP4 of the images, or its soundtrack with an audio profile). O(1).
+ */
+export function archiveSlideshow(
+  profile: FormatProfile,
+  mode: SlideshowOptions['mode'] | undefined,
+): ArchiveSlideshow | undefined {
+  return profile.kind === 'video' && (mode === 'images' || mode === 'images-audio') ? mode : undefined
+}
+
+/**
+ * "youtube:dQw4w9WgXcQ:video:mp4:1080" — same media + same profile = same file.
+ * A photo post kept as a folder adds its mode ("tiktok:7693…:video:mp4:best#images"):
+ * an MP4 of its images, its images, and its images with their sound are three
+ * different results. Pass `slideshow` only for an item known to be a photo
+ * post; every other key is the one older versions wrote, so their records
+ * keep matching with no migration. O(1).
+ */
+export function archiveKey(
+  extractor: string,
+  mediaId: string,
+  profile: FormatProfile,
+  slideshow?: SlideshowOptions['mode'] | undefined,
+): string {
+  const kept = archiveSlideshow(profile, slideshow)
+  return `${extractor.toLowerCase()}:${mediaId}:${profileKey(profile)}${kept ? `#${kept}` : ''}`
 }
 
 /** Lower case without accents: "Canción" and "cancion" find each other. */

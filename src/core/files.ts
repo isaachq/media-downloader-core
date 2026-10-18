@@ -157,13 +157,21 @@ export const removeRetrying = (target: string) =>
  * Move a validated file into its final folder. Rename when on the same
  * volume (instant, atomic); otherwise copy → verify size → rename → delete,
  * so a disconnected external drive never leaves a truncated file under the
- * final name.
+ * final name. A copy gets the permissions of what is made at the destination,
+ * not those of the work folder (on Android that is the app's private storage,
+ * 700: a folder copied with its modes would open for the app alone). O(files)
+ * for a folder.
  */
-export async function moveIntoPlace(source: string, destination: string): Promise<string> {
+export async function moveIntoPlace(
+  source: string,
+  destination: string,
+  deps: {readonly rename?: (from: string, to: string) => Promise<void>} = {},
+): Promise<string> {
+  const rename = (from: string, to: string) => renameRetrying(from, to, deps.rename ? {rename: deps.rename} : {})
   await fs.mkdir(path.dirname(destination), {recursive: true})
   const target = await uniquePath(destination)
   try {
-    await renameRetrying(source, target)
+    await rename(source, target)
     return target
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'EXDEV') throw error
@@ -173,8 +181,8 @@ export async function moveIntoPlace(source: string, destination: string): Promis
   if ((await fs.stat(source)).isDirectory()) {
     // a folder of files (a slideshow's images) on another volume: copy it whole, then swap it in
     try {
-      await fs.cp(source, partial, {recursive: true, errorOnExist: true})
-      await renameRetrying(partial, target)
+      await copyTree(source, partial)
+      await rename(partial, target)
     } catch (error) {
       await fs.rm(partial, {recursive: true, force: true})
       throw error
@@ -183,16 +191,67 @@ export async function moveIntoPlace(source: string, destination: string): Promis
     return target
   }
   try {
-    await fs.copyFile(source, partial)
-    const [a, b] = await Promise.all([fs.stat(source), fs.stat(partial)])
-    if (a.size !== b.size) throw new Error(`Incomplete copy (${b.size} of ${a.size} bytes).`)
-    await renameRetrying(partial, target)
+    await copyChecked(source, partial, await newFileMode(path.dirname(target)))
+    await rename(partial, target)
   } catch (error) {
     await fs.rm(partial, {force: true})
     throw error
   }
   await fs.rm(source, {force: true})
   return target
+}
+
+/**
+ * The mode a new file gets beside `folder`, a folder just made with
+ * `fs.mkdir`: its permissions without the execute bits (777 and 666 under
+ * the same umask, or whatever the volume imposes), read without the
+ * deprecated `process.umask()` getter. Undefined on Windows (modes don't apply). O(1).
+ */
+async function modeBeside(folder: string): Promise<number | undefined> {
+  if (process.platform === 'win32') return undefined
+  return (await fs.stat(folder)).mode & 0o666
+}
+
+/** The mode a new file gets in `dir`, from a probe folder made there. O(1). */
+async function newFileMode(dir: string): Promise<number | undefined> {
+  if (process.platform === 'win32') return undefined
+  const probe = path.join(dir, `.mdc-mode-${process.pid}-${Math.random().toString(36).slice(2)}`)
+  await fs.mkdir(probe)
+  try {
+    return await modeBeside(probe)
+  } finally {
+    await fs.rmdir(probe).catch(() => {})
+  }
+}
+
+/** Copy one file, check its size, and give it `mode` (when known). O(1) calls. */
+async function copyChecked(from: string, to: string, mode: number | undefined): Promise<void> {
+  await fs.copyFile(from, to)
+  const [a, b] = await Promise.all([fs.stat(from), fs.stat(to)])
+  if (a.size !== b.size) throw new Error(`Incomplete copy (${b.size} of ${a.size} bytes).`)
+  // copyFile keeps the source's mode; a volume that won't take a mode keeps its own
+  if (mode !== undefined) await fs.chmod(to, mode).catch(() => {})
+}
+
+/**
+ * Copy a folder: each sub-folder made with `fs.mkdir` (the destination's
+ * default permissions), each file copied and checked. O(files), one file at
+ * a time (a slideshow has a few dozen at most).
+ */
+async function copyTree(from: string, to: string): Promise<void> {
+  await fs.mkdir(to) // fails if it exists: never mixed with an older copy
+  const mode = await modeBeside(to)
+  const walk = async (src: string, dst: string): Promise<void> => {
+    for (const entry of await fs.readdir(src, {withFileTypes: true})) {
+      const a = path.join(src, entry.name)
+      const b = path.join(dst, entry.name)
+      if (entry.isDirectory()) {
+        await fs.mkdir(b)
+        await walk(a, b)
+      } else await copyChecked(a, b, mode)
+    }
+  }
+  await walk(from, to)
 }
 
 /** Earliest believable publication date (before it, a timestamp is a placeholder). */

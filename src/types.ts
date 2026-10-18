@@ -69,8 +69,14 @@ export type MediaSummary = {
   readonly thumbnail?: string | undefined
   /** When it was published, unix seconds (when the listing tells). */
   readonly publishedAt?: number | undefined
-  /** A photo post (TikTok slideshow): its images and whether it has a soundtrack. */
-  readonly slideshow?: {readonly images: number; readonly audio: boolean} | undefined
+  /**
+   * A photo post (TikTok slideshow) or a carousel: its items and whether it
+   * has sound. `videos`: a carousel that has videos too — always a folder of
+   * everything as the site serves it, whatever `SlideshowOptions.mode` says.
+   */
+  readonly slideshow?:
+    | {readonly images: number; readonly audio: boolean; readonly videos?: boolean | undefined}
+    | undefined
   /** yt-dlp extractor key, e.g. "Youtube". */
   readonly extractor: string
   readonly isLive: boolean
@@ -397,6 +403,14 @@ export type JobRequest = {
   readonly playlist?: PlaylistRef | undefined
   /** What a photo post becomes (see SlideshowOptions). */
   readonly slideshow?: SlideshowOptions | undefined
+  /**
+   * Whether the media is a photo post (a TikTok slideshow), as its listing or
+   * analysis says (`MediaSummary.slideshow`). A photo post kept as a folder is
+   * archived under its own key (`archiveKey`), and this is how the job finds
+   * it before downloading: the scheduler always sets it. Left out, the job
+   * looks for the folder's key first and then the plain one.
+   */
+  readonly photoPost?: boolean | undefined
   /** From analyze(); ignored unless it lives in the engine's cache folder. */
   readonly infoJsonPath?: string | undefined
 }
@@ -576,6 +590,12 @@ export type BatchTarget = {
   readonly profile: FormatProfile
   /** Its list and position, for the file name ("NNN - title"). */
   readonly playlist?: PlaylistRef | undefined
+  /**
+   * The entry is a photo post, made this way (instead of the batch's
+   * `slideshow`): a record downloaded again comes back as it was kept
+   * (`ArchiveEntry.slideshow`).
+   */
+  readonly slideshow?: SlideshowOptions | undefined
 }
 
 export type BatchSelection = {

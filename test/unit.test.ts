@@ -16,6 +16,7 @@ import {WorkMeter} from '../src/core/eta.js'
 import {
   folderName,
   mediaFileStem,
+  moveIntoPlace,
   portableName,
   renameRetrying,
   sanitizeFilename,
@@ -515,9 +516,81 @@ describe('files', () => {
     assert.equal(await uniquePath(target), path.join(dir, 'x (3).mp4'))
     await fs.rm(dir, {recursive: true})
   })
+
+  // Android: a slideshow's folder is made in the app's private storage (700) and moved to shared storage
+  it('a folder moved across volumes gets the permissions of a folder made there, not those of its source', {
+    skip: process.platform === 'win32' && 'modes do not apply on Windows',
+  }, async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdc-'))
+    const source = path.join(dir, 'work', 'post-slides')
+    await fs.mkdir(source, {recursive: true, mode: 0o700})
+    await fs.chmod(source, 0o700)
+    for (const name of ['01.jpg', '02.jpg', 'sound.mp3']) {
+      await fs.writeFile(path.join(source, name), name)
+      await fs.chmod(path.join(source, name), 0o600)
+    }
+    const out = path.join(dir, 'shared')
+    await fs.mkdir(out)
+    // what a folder and a file made in place get (the process umask)
+    const made = path.join(out, 'made')
+    await fs.mkdir(made)
+    await fs.writeFile(path.join(made, 'file'), '')
+    const dirMode = (await fs.stat(made)).mode & 0o777
+    const fileMode = (await fs.stat(path.join(made, 'file'))).mode & 0o777
+
+    let renames = 0
+    const crossVolume = async (from: string, to: string) => {
+      // the first rename (straight into place) crosses volumes; the swap of the copy does not
+      if (renames++ === 0) throw Object.assign(new Error('cross-device link'), {code: 'EXDEV'})
+      await fs.rename(from, to)
+    }
+    const moved = await moveIntoPlace(source, path.join(out, 'post'), {rename: crossVolume})
+    assert.equal(moved, path.join(out, 'post'))
+    assert.ok(renames >= 2, 'the copy path was taken')
+    assert.equal((await fs.stat(moved)).mode & 0o777, dirMode, 'the folder opens for whoever opens a folder made there')
+    assert.deepEqual((await fs.readdir(moved)).sort(), ['01.jpg', '02.jpg', 'sound.mp3'])
+    for (const name of ['01.jpg', '02.jpg', 'sound.mp3']) {
+      assert.equal((await fs.stat(path.join(moved, name))).mode & 0o777, fileMode, name)
+      assert.equal(await fs.readFile(path.join(moved, name), 'utf8'), name)
+    }
+    await assert.rejects(fs.stat(source), /ENOENT/, 'the source is gone')
+    assert.deepEqual(await fs.readdir(out), ['made', 'post'], 'no .partial left behind')
+    await fs.rm(dir, {recursive: true})
+  })
+
+  it('a file moved across volumes gets the permissions of a file made there', {
+    skip: process.platform === 'win32' && 'modes do not apply on Windows',
+  }, async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdc-'))
+    const source = path.join(dir, 'video.mp4')
+    await fs.writeFile(source, 'video')
+    await fs.chmod(source, 0o600)
+    await fs.writeFile(path.join(dir, 'made'), '')
+    const fileMode = (await fs.stat(path.join(dir, 'made'))).mode & 0o777
+    let renames = 0
+    const crossVolume = async (from: string, to: string) => {
+      if (renames++ === 0) throw Object.assign(new Error('cross-device link'), {code: 'EXDEV'})
+      await fs.rename(from, to)
+    }
+    const moved = await moveIntoPlace(source, path.join(dir, 'out', 'video.mp4'), {rename: crossVolume})
+    assert.equal((await fs.stat(moved)).mode & 0o777, fileMode)
+    await fs.rm(dir, {recursive: true})
+  })
 })
 
 describe('download archive', () => {
+  it('a photo post kept as images has a key of its own; everything else keeps the key it always had', () => {
+    const mp4 = {kind: 'video', container: 'mp4'} as const
+    const mp3 = {kind: 'audio', container: 'mp3'} as const
+    const plain = 'tiktok:7693:video:mp4:best'
+    assert.equal(archiveKey('TikTok', '7693', mp4), plain)
+    assert.equal(archiveKey('TikTok', '7693', mp4, 'video'), plain, 'an MP4 of the images: the key 1.14.6 wrote')
+    assert.equal(archiveKey('TikTok', '7693', mp4, 'images'), `${plain}#images`)
+    assert.equal(archiveKey('TikTok', '7693', mp4, 'images-audio'), `${plain}#images-audio`)
+    // with an audio profile a photo post is its soundtrack, whatever the mode
+    assert.equal(archiveKey('TikTok', '7693', mp3, 'images'), 'tiktok:7693:audio:mp3:0')
+  })
+
   it('finds entries only while the file still exists with the same size', async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdc-'))
     const file = path.join(dir, 'song.m4a')

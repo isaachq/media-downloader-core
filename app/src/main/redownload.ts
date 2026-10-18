@@ -4,7 +4,9 @@ import {
   AUDIO_CONTAINERS,
   type AudioContainer,
   type BatchTarget,
+  DEFAULT_SLIDESHOW,
   type FormatProfile,
+  type JobRequest,
   mediaFileStem,
   VIDEO_CONTAINERS,
   type VideoContainer,
@@ -31,7 +33,10 @@ export function profileFromKey(key: string): FormatProfile | undefined {
   return undefined
 }
 
-type HistoryRecord = Pick<ArchiveEntry, 'url' | 'title' | 'mediaId' | 'extractor' | 'profile' | 'filepath' | 'duration'>
+type HistoryRecord = Pick<
+  ArchiveEntry,
+  'url' | 'title' | 'mediaId' | 'extractor' | 'profile' | 'filepath' | 'duration' | 'slideshow'
+>
 
 const POSITION = /^(\d{3,})(?: - |-)/
 
@@ -52,8 +57,29 @@ export function positionOf(record: Pick<HistoryRecord, 'title' | 'mediaId' | 'fi
 }
 
 /**
+ * Where a failed download is retried: the folder, format, list position and,
+ * for a photo post, the slideshow mode its job had (a folder of images is
+ * retried as images, not as the batch's default MP4); the downloads folder
+ * and the given format when the job is no longer known. O(1).
+ */
+export function retryTarget(
+  index: number,
+  known: Pick<JobRequest, 'outDir' | 'profile' | 'playlist' | 'slideshow' | 'photoPost'> | undefined,
+  fallback: {readonly outDir: string; readonly profile: FormatProfile},
+): BatchTarget {
+  return {
+    index,
+    outDir: known?.outDir ?? fallback.outDir,
+    profile: known?.profile ?? fallback.profile,
+    ...(known?.playlist && {playlist: known.playlist}),
+    ...(known?.photoPost && known.slideshow && {slideshow: known.slideshow}),
+  }
+}
+
+/**
  * One batch that downloads these records again from the link each kept: each
- * into the folder its file was in, under its old name, in the format it had. Records whose format
+ * into the folder its file was in, under its old name, in the format it had
+ * (a photo post kept as a folder, as that folder again). Records whose format
  * can't be read back are left out; undefined when none is left. O(n).
  */
 export function redownloadRequest(records: readonly HistoryRecord[], title: string) {
@@ -80,6 +106,10 @@ export function redownloadRequest(records: readonly HistoryRecord[], title: stri
       profile,
       // its old position: the file name starts with it again
       ...(position !== undefined && {playlist: {id: '', title: path.basename(outDir), index: position}}),
+      // a folder of images (and sound) is made again, not an MP4
+      ...(record.slideshow && {
+        slideshow: {mode: record.slideshow, secondsPerImage: DEFAULT_SLIDESHOW.secondsPerImage},
+      }),
     })
   }
   if (targets.length === 0) return undefined

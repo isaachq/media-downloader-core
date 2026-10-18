@@ -29,10 +29,12 @@ import type {
   JobOutcome,
   JobRequest,
   JobSnapshot,
+  MediaSummary,
   PlaylistAnalysis,
   PreflightItem,
   SchedulerEvents,
   SchedulerOptions,
+  SlideshowOptions,
   VideoAnalysis,
 } from './types.js'
 import {formatBytes} from './util/units.js'
@@ -60,8 +62,21 @@ const yieldToEventLoop = () => new Promise<void>(resolve => setImmediate(resolve
 
 const TERMINAL: ReadonlySet<BatchStatus> = new Set(['completed', 'completed-with-errors', 'failed', 'cancelled'])
 
+/**
+ * Whether what a media becomes depends on `SlideshowOptions.mode`: a photo
+ * post or a carousel of pictures does; a video, or a carousel with videos
+ * (always a folder of everything), does not. O(1).
+ */
+const madeByMode = (media: Pick<MediaSummary, 'slideshow'>): boolean =>
+  media.slideshow !== undefined && media.slideshow.videos !== true
+
 /** Extra fields an item carries internally (never emitted). */
-type ItemState = PreflightItem & {readonly extractor?: string | undefined; readonly infoJsonPath?: string | undefined}
+type ItemState = PreflightItem & {
+  readonly extractor?: string | undefined
+  readonly infoJsonPath?: string | undefined
+  /** A photo post (from the listing or the check): its archive key carries the slideshow mode. */
+  readonly photoPost?: boolean | undefined
+}
 
 type Batch = {
   readonly id: BatchId
@@ -194,7 +209,11 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
           ? 'Every target needs an entry index and an absolute outDir.'
           : profileProblem(target.profile)
       if (issue) throw new DownloadError('invalid-request', issue)
-      targets.set(target.index, {...target, outDir: path.resolve(target.outDir)})
+      targets.set(target.index, {
+        ...target,
+        outDir: path.resolve(target.outDir),
+        ...(target.slideshow !== undefined && {slideshow: slideshowOptions(target.slideshow)}),
+      })
     }
 
     const batch: Batch = {
@@ -473,6 +492,7 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
         mediaId: analysis.media.id,
         duration: analysis.media.duration,
         extractor: analysis.media.extractor,
+        photoPost: madeByMode(analysis.media),
         state: 'pending',
       },
     ])
@@ -500,6 +520,7 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
           mediaId: entry.id,
           duration: entry.duration,
           extractor: entry.extractor,
+          photoPost: madeByMode(entry),
           state: 'pending' as const,
         })),
     )
@@ -565,7 +586,12 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
       const done = await Promise.all(
         slice.map(item =>
           item.extractor && item.mediaId
-            ? this.#engine.isArchived(item.extractor, item.mediaId, this.#profileOf(batch, item.index))
+            ? this.#engine.isArchived(
+                item.extractor,
+                item.mediaId,
+                this.#profileOf(batch, item.index),
+                this.#slideshowKeyOf(batch, item),
+              )
             : false,
         ),
       )
@@ -591,6 +617,24 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
     return batch.targets.get(index)?.profile ?? batch.request.profile
   }
 
+  /** What an item's photo post is made into: its target's, else the batch's (an MP4 by default). O(1). */
+  #slideshowOf(batch: Batch, index: number): SlideshowOptions | undefined {
+    return batch.targets.get(index)?.slideshow ?? batch.request.slideshow
+  }
+
+  /** Whether an item is a photo post: its listing or check says so, or its target was kept as one. O(1). */
+  #isPhotoPost(batch: Batch, item: ItemState): boolean {
+    return item.photoPost === true || batch.targets.get(item.index)?.slideshow !== undefined
+  }
+
+  /**
+   * The slideshow mode an item's archive key carries — only a photo post's,
+   * so the lookups here and the job's (and its record) agree. O(1).
+   */
+  #slideshowKeyOf(batch: Batch, item: ItemState): SlideshowOptions['mode'] | undefined {
+    return this.#isPhotoPost(batch, item) ? this.#slideshowOf(batch, item.index)?.mode : undefined
+  }
+
   /** A checked item: downloadable if the source offers the requested kind of stream; sized and classified. */
   #resolveItem(batch: Batch, position: number, analysis: VideoAnalysis): void {
     const profile = this.#profileOf(batch, batch.items[position]?.index ?? 0)
@@ -603,6 +647,7 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
       title: analysis.media.title,
       duration,
       infoJsonPath: analysis.infoJsonPath,
+      photoPost: madeByMode(analysis.media),
       ...(analysis.media.extractor && {extractor: analysis.media.extractor}),
       ...(analysis.media.id && {mediaId: analysis.media.id}),
     }
@@ -650,7 +695,12 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
       const done = await Promise.all(
         slice.map((item, offset) =>
           item.state === 'ok' && !broken[offset] && item.extractor && item.mediaId
-            ? this.#engine.isArchived(item.extractor, item.mediaId, this.#profileOf(batch, item.index))
+            ? this.#engine.isArchived(
+                item.extractor,
+                item.mediaId,
+                this.#profileOf(batch, item.index),
+                this.#slideshowKeyOf(batch, item),
+              )
             : false,
         ),
       )
@@ -768,7 +818,8 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
             ? {id: batch.playlistId ?? batch.id, title: batch.title ?? 'Playlist', index: item.index}
             : undefined,
         infoJsonPath: item.infoJsonPath,
-        slideshow: batch.request.slideshow,
+        slideshow: this.#slideshowOf(batch, item.index),
+        photoPost: this.#isPhotoPost(batch, item),
       }
       const job = this.#engine.add(request)
       batch.meter.add(job.id, item.estimatedBytes)

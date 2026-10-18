@@ -45,6 +45,11 @@ the ⌊CPUs/2⌋ pool and verified file by file.
 
 ![Paste a link, download it as MP4, check its integrity report, find it in Finished, open the run report](docs/demo.gif)
 
+### What's new in beta 14.7 (library 1.14.7)
+
+- **A TikTok carousel can be downloaded as images after its MP4** — the MP4, the images, and the images with their sound are now three different downloads; asking for one no longer says the other is "already downloaded". What you already downloaded is still recognized.
+- **Downloading a missing carousel again keeps its form** — a folder of images comes back as images, not as an MP4.
+
 ### What's new in beta 14.6 (library 1.14.6)
 
 - **No more "doesn't exist" or "private" for videos of a profile you just listed** — the listing leaves a cookie that makes TikTok say so; the app now drops it and reads the video again right away, without slowing the other downloads.

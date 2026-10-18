@@ -388,6 +388,51 @@ describe('TikTok, end to end (local fake)', () => {
     assert.match((await fs.readdir(out))[0]!, /^Post-numero-1/)
   })
 
+  it('a listed post TikTok calls gone (10204) right after the listing is read again after the back-off', async () => {
+    const {site, scheduler, out} = await setup('gone-once', {posts: 3, gone: 1})
+    const batch = scheduler.schedule({url: `${site.origin}/@${site.user}`, profile: mp4, outDir: out})
+    await scheduler.whenIdle()
+    const done = scheduler.batch(batch.id)!
+    assert.equal(done.status, 'completed', JSON.stringify(done.problems))
+    assert.equal(done.jobs.succeeded, 3)
+    assert.equal(done.jobs.failed, 0)
+    assert.equal(site.hits.page, 6, 'one 10204 and one good page per post')
+  })
+
+  it('a listed post TikTok calls gone twice in a row still downloads', async () => {
+    const {site, scheduler, out} = await setup('gone-twice', {posts: 3, gone: 2})
+    const batch = scheduler.schedule({url: `${site.origin}/@${site.user}`, profile: mp4, outDir: out})
+    await scheduler.whenIdle()
+    const done = scheduler.batch(batch.id)!
+    assert.equal(done.status, 'completed', JSON.stringify(done.problems))
+    assert.equal(done.jobs.succeeded, 3)
+    assert.equal(site.hits.page, 9, 'two 10204 and one good page per post')
+  })
+
+  it('a listed post TikTok keeps calling gone fails as removed after two doubts, with no fourth read', async () => {
+    const {site, scheduler, out} = await setup('gone-for-good', {posts: 1, gone: 100})
+    const batch = scheduler.schedule({url: `${site.origin}/@${site.user}`, profile: mp4, outDir: out})
+    await scheduler.whenIdle()
+    const done = scheduler.batch(batch.id)!
+    assert.equal(done.status, 'failed')
+    assert.deepEqual(done.problems?.failed, {removed: 1})
+    assert.equal(site.hits.page, 3, 'doubted twice, then believed')
+  })
+
+  it('a link nobody listed that TikTok calls gone fails as removed at once', async () => {
+    const {site, scheduler, out} = await setup('gone-unknown', {posts: 1})
+    const batch = scheduler.schedule({
+      url: `${site.origin}/@${site.user}/video/7000000000000000999`,
+      profile: mp4,
+      outDir: out,
+    })
+    await scheduler.whenIdle()
+    const done = scheduler.batch(batch.id)!
+    assert.equal(done.status, 'failed')
+    assert.equal(done.error?.hint ?? Object.keys(done.problems?.unavailable ?? {})[0], 'removed')
+    assert.equal(site.hits.page, 1)
+  })
+
   it('a verification page is not solved: TikTok goes to yt-dlp for a while, without knocking again', async () => {
     const {site, engine, scheduler, out} = await setup('challenge', {challenges: 1, posts: 2})
     const batch = scheduler.schedule({url: videoUrl(site), profile: mp4, outDir: out})

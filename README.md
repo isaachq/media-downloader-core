@@ -45,6 +45,12 @@ the ⌊CPUs/2⌋ pool and verified file by file.
 
 ![Paste a link, download it as MP4, check its integrity report, find it in Finished, open the run report](docs/demo.gif)
 
+### What's new in beta 14.5 (library 1.14.5)
+
+- **Big TikTok profiles keep every video** — right after a profile is listed, TikTok can say a post "doesn't exist" when it does. A post the app just listed now gets a second read after a pause instead of being dropped.
+- **Reopening resumes at once** — a batch brought back after the app closed starts downloading right away instead of checking every post again first (~28 minutes for 840 TikTok posts).
+- **Asking for a list again checks only what's new** — videos already downloaded skip the check.
+
 ### What's new in beta 14.4 (library 1.14.4)
 
 - **TikTok profile videos download again** — after a profile is listed, TikTok often answers the video page with a shell that has no `webapp.video-detail`. The post is in a second script on that same page (`#api-data`); the reader uses it. A listing cookie that turns later pages into shells is dropped once, and a host with an in-app browser loads that video there when the plain page still has no post.

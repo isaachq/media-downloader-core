@@ -60,6 +60,11 @@ export type TikTokOptions = {
 export const TIKTOK_PROFILE_DEFAULT_ITEMS = 500
 /** Media links are tied to the session and minutes-fresh pages; older ones are re-read. */
 const PAGE_FRESH_MS = 10 * 60_000
+/**
+ * How many "doesn't exist" (10204) answers a listed post gets before it is
+ * believed. Each is followed by the shared back-off (30 s, then doubling).
+ */
+const GONE_DOUBTS = 2
 const CACHE_LIMIT = 5000
 const LIST_PAGE_SIZE = 15
 /** A profile listing is reused (or continued) for this long. */
@@ -117,6 +122,12 @@ export class TikTokSource implements MediaSource {
   readonly #host: HostSession
   /** The in-flight cookie reset, so parallel downloads don't wipe each other's fresh jar. */
   #refreshing: Promise<void> | undefined
+  /**
+   * Known posts TikTok called gone (status 10204), with how many times, while
+   * they wait for another read after the back-off. Cleared when they are read
+   * or given up: holds only posts in flight, O(1) per check.
+   */
+  readonly #doubted = new Map<string, number>()
 
   constructor(options: TikTokOptions = {}) {
     this.#origin = (options.origin ?? 'https://www.tiktok.com').replace(/\/$/, '')
@@ -448,6 +459,42 @@ export class TikTokSource implements MediaSource {
     const cached = this.#posts.get(id)
     // a page read is minutes-fresh; listing links are only a last resort (see below)
     if (!fresh && cached?.fromPage && Date.now() - cached.at < PAGE_FRESH_MS) return cached.post
+    try {
+      const post = await this.#readPage(id, user, cached, signal)
+      this.#doubted.delete(id)
+      return post
+    } catch (error) {
+      // Right after a profile listing TikTok answers some video pages with status 10204
+      // ("doesn't exist") for posts it serves again minutes later (razr 50: 56 of the first
+      // 164 posts of an 840-video profile, for ~3 minutes). A post this session has seen is
+      // not taken as deleted on such an answer: everybody backs off (longer each time) and
+      // the job retries. After GONE_DOUBTS of them, TikTok is believed.
+      const gone = error instanceof TikTokError && error.problem === 'removed'
+      // known: in the cache now, or doubted before (a failed download drops its cache entry)
+      const doubts = this.#doubted.get(id) ?? 0
+      if (!gone || (!cached && doubts === 0) || doubts >= GONE_DOUBTS) {
+        this.#doubted.delete(id)
+        throw error
+      }
+      this.#doubted.set(id, doubts + 1)
+      this.#pacer.refused()
+      this.#log(
+        'warn',
+        `TikTok: ${id} was listed but TikTok now says it doesn't exist — backing off, then reading it again`,
+      )
+      throw new TikTokError(
+        'refused',
+        'TikTok said a post it just listed no longer exists; it is read again after a pause.',
+      )
+    }
+  }
+
+  async #readPage(
+    id: string,
+    user: string | undefined,
+    cached: Cached | undefined,
+    signal?: AbortSignal,
+  ): Promise<TikTokPost> {
     const url = postUrl(this.#origin, id, user ?? cached?.post.author)
     const scope = await this.#page(url, signal)
     let embedded = takePost(scope)

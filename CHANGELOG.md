@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+## App 0.2.0-beta.14.5 · library 1.14.5
+
+Beta 14.5: big TikTok profiles no longer lose videos to a false "no longer exists", and a
+batch brought back after the app closed starts downloading at once.
+
+**Library**
+
+- **TikTok: a listed post is not dropped on TikTok's first "doesn't exist".**
+  Right after a profile listing, TikTok answers some video pages with status
+  10204 for posts it serves again minutes later (measured on a phone: 56 of
+  the first 164 posts of an 840-video profile, all downloadable later). The
+  reader took that as deleted and never retried. Now a post this session has
+  seen (in a listing or an earlier page) is read up to two more times: each
+  time everybody backs off (the shared Pacer, longer each time) and the job
+  retries; only if TikTok still says so is it reported as removed. A link
+  nobody listed is still removed at once. O(1) per read: one cache lookup and
+  a map of the posts waiting for another read.
+- **A restored batch is not checked again.** `BatchScheduler.restore()`
+  re-ran the network preflight over every item before downloading, including
+  those already archived: 840 TikTok posts at the site's pace is ~28 minutes of
+  "Checking". Restored batches now go straight to their downloads (each item
+  is read when it downloads; archived ones are skipped as before).
+- **A list asked again checks only what isn't downloaded yet.** Items already
+  in the archive skip the network preflight (O(n): one O(1) archive lookup and
+  a stat per item, 200 at a time).
+
 ## App 0.2.0-beta.14.4 · library 1.14.4
 
 Beta 14.4: a TikTok profile's videos download again when the video page is a shell.

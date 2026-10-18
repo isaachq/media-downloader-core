@@ -2,9 +2,9 @@ import * as path from 'node:path'
 import {
   type ArchiveEntry,
   AUDIO_CONTAINERS,
-  DEFAULT_SLIDESHOW,
   type AudioContainer,
   type BatchTarget,
+  DEFAULT_SLIDESHOW,
   type FormatProfile,
   mediaFileStem,
   VIDEO_CONTAINERS,
@@ -86,7 +86,9 @@ export function redownloadRequest(records: readonly HistoryRecord[], title: stri
       // its old position: the file name starts with it again
       ...(position !== undefined && {playlist: {id: '', title: path.basename(outDir), index: position}}),
       // a folder of images (and sound) is made again, not an MP4
-      ...(record.slideshow && {slideshow: {mode: record.slideshow, secondsPerImage: DEFAULT_SLIDESHOW.secondsPerImage}}),
+      ...(record.slideshow && {
+        slideshow: {mode: record.slideshow, secondsPerImage: DEFAULT_SLIDESHOW.secondsPerImage},
+      }),
     })
   }
   if (targets.length === 0) return undefined

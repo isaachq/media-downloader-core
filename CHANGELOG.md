@@ -23,7 +23,9 @@ its MP4 is, and its folder opens for everyone on a phone.
   passes it to the job (`JobRequest.photoPost`), so the preflight skip, the
   forecast's "already downloaded" count and the job's own check use the same
   key as the record. A video asked with an images mode keeps its plain key
-  (it is never downloaded twice). A host adding a job itself without
+  (it is never downloaded twice), and so does an Instagram or Facebook
+  carousel with videos, which is the same folder whatever the mode
+  (`MediaSummary.slideshow.videos`). A host adding a job itself without
   `photoPost` gets the folder's key looked up first, then the plain one.
   `isArchived()` and `archiveKey()` take the mode as an optional last argument.
 - **Downloading a record again keeps its mode.** `BatchTarget.slideshow` sets

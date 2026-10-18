@@ -105,6 +105,8 @@ type Batch = {
   checking: {done: number; total: number} | undefined
   /** Single items' own folder / profile / list position, by index (a batch gathering items of several). */
   readonly targets: ReadonlyMap<number, BatchTarget>
+  /** Brought back by restore(): its items were checked before the app closed, so they are not checked again. */
+  readonly restored: boolean
   lastEmit: number
   emitTimer: NodeJS.Timeout | undefined
 }
@@ -167,6 +169,10 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
 
   /** Queue a url. Returns at once; the batch starts when it's its turn. */
   schedule(request: BatchRequest): BatchSnapshot {
+    return this.#add(request, false)
+  }
+
+  #add(request: BatchRequest, restored: boolean): BatchSnapshot {
     if (this.#disposed) throw new Error('BatchScheduler has been disposed.')
     const url = assertHttpUrl(request.url)
     const problem = profileProblem(request.profile)
@@ -227,6 +233,7 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
       meter: undefined,
       checking: undefined,
       targets,
+      restored,
       error: undefined,
       createdAt: Date.now(),
       startedAt: undefined,
@@ -249,13 +256,16 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
    * Re-schedule the batches that were scheduled or active when the app last
    * closed, and restore the engine's own loose jobs. Items already archived
    * are skipped and partial downloads resume, so nothing is fetched twice.
+   * Their items were checked before the app closed and are not checked
+   * again (840 TikTok posts at the site's pace is ~28 minutes before the
+   * first download): each item is read when it downloads.
    */
   async restore(): Promise<BatchSnapshot[]> {
     await this.#engine.restoreQueue(request => request.batchId === undefined)
     const restored: BatchSnapshot[] = []
     for (const request of await this.#store.load()) {
       try {
-        restored.push(this.schedule(request))
+        restored.push(this.#add(request, true))
       } catch (error) {
         this.#engine.log('warn', `Dropped an invalid saved batch: ${toJobError(error).message}`)
       }
@@ -504,13 +514,20 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
     })
 
     const pending = batch.items.filter(item => item.state === 'pending')
-    if (!this.#preflight) {
+    if (!this.#preflight || batch.restored) {
       for (const item of pending) this.#settleItem(batch, batch.positions.get(item.url)!, 'ok', {})
+      if (batch.restored && pending.length > 0) {
+        this.#engine.log('info', `restored: ${pending.length} item(s) checked before, read as they download`, {
+          batchId: batch.id,
+        })
+      }
       return
     }
+    // an item already downloaded needs no network check (the forecast then counts it as archived)
+    const unknown = await this.#notArchived(batch, pending, signal)
     let deferred = 0
     await this.#engine.preflight(
-      pending.map(item => ({url: item.url, id: item.mediaId})),
+      unknown.map(item => ({url: item.url, id: item.mediaId})),
       {
         signal,
         keepMetadata: () => batch.cached++ < this.#maxCached,
@@ -533,6 +550,40 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
         {batchId: batch.id},
       )
     }
+  }
+
+  /**
+   * The items not archived yet; archived ones are settled ok without a network
+   * check. O(n): one archive lookup (an O(1) index hit and a stat) per item
+   * with an id, FORECAST_SLICE at a time.
+   */
+  async #notArchived(batch: Batch, pending: readonly ItemState[], signal: AbortSignal): Promise<ItemState[]> {
+    const unknown: ItemState[] = []
+    let archived = 0
+    for (let start = 0; start < pending.length && !signal.aborted; start += FORECAST_SLICE) {
+      const slice = pending.slice(start, start + FORECAST_SLICE)
+      const done = await Promise.all(
+        slice.map(item =>
+          item.extractor && item.mediaId
+            ? this.#engine.isArchived(item.extractor, item.mediaId, this.#profileOf(batch, item.index))
+            : false,
+        ),
+      )
+      slice.forEach((item, offset) => {
+        if (!done[offset]) {
+          unknown.push(item)
+          return
+        }
+        archived++
+        this.#settleItem(batch, batch.positions.get(item.url)!, 'ok', {})
+      })
+    }
+    if (archived > 0) {
+      this.#engine.log('info', `preflight: ${archived} item(s) already downloaded, not checked again`, {
+        batchId: batch.id,
+      })
+    }
+    return unknown
   }
 
   /** The profile an item downloads in: its target's, else the batch's. */

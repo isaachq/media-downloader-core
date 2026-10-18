@@ -54,6 +54,17 @@ function setup(
 
 const audio = {kind: 'audio', container: 'm4a'} as const
 
+/** How many items the scheduler hands to the engine's network check from now on. */
+function countPreflight(engine: MediaDownloader): () => number {
+  let items = 0
+  const original = engine.preflight.bind(engine)
+  engine.preflight = (list, opts) => {
+    items += list.length
+    return original(list, opts)
+  }
+  return () => items
+}
+
 describe('BatchScheduler', () => {
   it('runs batches one at a time: the next waits, then starts by itself', async () => {
     const {scheduler, statuses, out} = setup('fifo')
@@ -320,6 +331,7 @@ describe('BatchScheduler', () => {
       await scheduler.dispose()
       await engine.dispose()
     })
+    const checked = countPreflight(engine)
     const restored = await scheduler.restore()
     assert.equal(restored.length, 1)
     await scheduler.whenIdle()
@@ -329,6 +341,56 @@ describe('BatchScheduler', () => {
       engine.jobs().every(job => job.status === 'skipped'),
       'already archived items are skipped',
     )
+    assert.equal(checked(), 0, 'a restored batch was checked before the app closed: no second network check')
+  })
+
+  it('a restored batch downloads what was left without checking its items again', async () => {
+    const first = setup('restore-pending')
+    first.engine.pause() // nothing downloads before the "crash"
+    first.scheduler.schedule({url: 'https://fake.test/list-r', profile: audio, outDir: first.out})
+    await new Promise(resolve => setTimeout(resolve, 300))
+    await first.scheduler.dispose()
+    await first.engine.dispose()
+
+    const engine = new MediaDownloader({
+      dataDir: first.dataDir,
+      binaries: fakes,
+      validation: 'none',
+      progressIntervalMs: 0,
+    })
+    const scheduler = new BatchScheduler(engine)
+    cleanups.push(async () => {
+      await scheduler.dispose()
+      await engine.dispose()
+    })
+    const logs: LogEntry[] = []
+    engine.on('log', entry => logs.push(entry))
+    const checked = countPreflight(engine)
+    const [restored] = await scheduler.restore()
+    await scheduler.whenIdle()
+    const done = scheduler.batch(restored!.id)!
+    assert.equal(done.status, 'completed', JSON.stringify(done.error))
+    assert.ok(done.jobs.succeeded > 0)
+    assert.equal(checked(), 0)
+    assert.ok(logs.some(entry => /restored: \d+ item\(s\) checked before/.test(entry.message)))
+  })
+
+  it('a list asked again checks only what is not downloaded yet', async () => {
+    const {engine, scheduler, out} = setup('archived-skip-check')
+    const firstRun = scheduler.schedule({url: 'https://fake.test/list-r', profile: audio, outDir: out})
+    await scheduler.whenIdle()
+    assert.equal(scheduler.batch(firstRun.id)?.status, 'completed')
+    const total = scheduler.batch(firstRun.id)!.preflight.total
+    const logs: LogEntry[] = []
+    engine.on('log', entry => logs.push(entry))
+    const checked = countPreflight(engine)
+    const second = scheduler.schedule({url: 'https://fake.test/list-r', profile: audio, outDir: out})
+    await scheduler.whenIdle()
+    const done = scheduler.batch(second.id)!
+    assert.equal(done.status, 'completed')
+    assert.deepEqual(done.preflight, {total, checked: total, ok: total, unavailable: 0})
+    assert.equal(checked(), 0, 'every item was archived: nothing to check over the network')
+    assert.ok(logs.some(entry => entry.message === `preflight: ${total} item(s) already downloaded, not checked again`))
   })
 
   it("retries a closed batch's failures: it reopens, counts them back and closes complete; causes are kept", async () => {

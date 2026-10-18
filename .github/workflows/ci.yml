@@ -1,9 +1,34 @@
 name: CI
 
+# Two depths, one workflow:
+#
+# - smoke (every pull request): what breaks per platform, as fast as it can be told.
+#   Linux runs the library's whole suite with the real ffmpeg, the packed package and
+#   the desktop app end to end; macOS and Windows run the library's suite and the
+#   app's unit tests. About 3–4 minutes of wall time.
+# - full (Actions tab → CI → Run workflow → full): today's whole regression — Node 20
+#   and 24 too, ffmpeg and the end-to-end app on every OS, a real yt-dlp/ffmpeg install,
+#   the Linux packages. Run it before a release; locally the same suite is
+#   `npm run test:full` (see README → Development).
+#
+# No run on push to main: branch protection is strict (a pull request must be up to
+# date with main), so the merged tree is the one the pull request already checked.
 on:
-  push:
-    branches: [main]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      full:
+        description: Full regression (every OS end to end, Node 20 and 24, real install, packages)
+        type: boolean
+        default: true
+
+# a new push to a pull request stops the run it makes stale
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FULL: ${{ github.event_name == 'workflow_dispatch' && inputs.full }}
 
 jobs:
   check:
@@ -15,12 +40,8 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         node: [22]
-        include:
-          # the engine's supported range (engines.node >= 20): oldest and newest LTS, on one OS each
-          - os: ubuntu-latest
-            node: 20
-          - os: ubuntu-latest
-            node: 24
+        # the engine's supported range (engines.node >= 20): oldest and newest LTS, full runs only
+        include: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.full && '[{"os":"ubuntu-latest","node":20},{"os":"ubuntu-latest","node":24}]' || '[]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -28,29 +49,36 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
 
-      # ffmpeg/ffprobe enable the integrity test suite (it is skipped without them)
+      # ffmpeg/ffprobe enable the integrity test suite (it is skipped without them):
+      # every run on Linux, the other systems in full runs
       - name: Install ffmpeg (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Install ffmpeg (macOS)
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && env.FULL == 'true'
         run: brew install ffmpeg
       - name: Install ffmpeg (Windows)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && env.FULL == 'true'
         run: choco install ffmpeg -y --no-progress
 
       - run: npm ci
-      - run: npm run typecheck
-      - run: npm run lint
+      # types and lint read the same files on every system: once is enough
+      - if: runner.os == 'Linux' || env.FULL == 'true'
+        run: npm run typecheck
+      - if: runner.os == 'Linux' || env.FULL == 'true'
+        run: npm run lint
       - run: npm test
       - run: npm run build
       # the package as a consumer gets it: packed, installed in an empty project, loaded as ESM and CJS
-      - run: npm run pack:check
+      - if: runner.os == 'Linux' || env.FULL == 'true'
+        run: npm run pack:check
 
       # the real thing: download, checksum-verify and test yt-dlp + ffmpeg, then diagnose
       - name: mdc setup (real install)
+        if: env.FULL == 'true'
         run: node dist/cli.js setup --force --data-dir ./.ci-data --no-color
       - name: mdc doctor
+        if: env.FULL == 'true'
         run: node dist/cli.js doctor --data-dir ./.ci-data --no-color
 
   app:
@@ -72,7 +100,8 @@ jobs:
       - run: npm ci && npm run build
       - run: npm ci
         working-directory: app
-      - run: npm run typecheck
+      - if: runner.os == 'Linux' || env.FULL == 'true'
+        run: npm run typecheck
         working-directory: app
       - run: npm test
         working-directory: app
@@ -82,9 +111,10 @@ jobs:
       - name: Allow Chromium's sandbox (Linux)
         if: runner.os == 'Linux'
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
-      # the real Electron app, driven by Playwright with the engine's fake tools
+      # the real Electron app, driven by Playwright with the engine's fake tools:
+      # every run on Linux, macOS and Windows in full runs
       - name: End-to-end
-        if: runner.os != 'Linux'
+        if: runner.os != 'Linux' && env.FULL == 'true'
         run: npm run test:e2e
         working-directory: app
       - name: End-to-end (virtual display)
@@ -100,10 +130,10 @@ jobs:
           path: app/test-results
           retention-days: 14
           if-no-files-found: ignore
-      # packaging breaks quietly (a missing tool, a bad target): build the Linux packages
-      # on every PR so a release tag never finds out first
+      # packaging breaks quietly (a missing tool, a bad target): full runs build the Linux
+      # packages so a release tag never finds out first (the release workflow builds them all)
       - name: Package (Linux)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && env.FULL == 'true'
         run: |
           sudo apt-get update && sudo apt-get install -y rpm
           npx electron-builder --linux --publish never

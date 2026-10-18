@@ -4,9 +4,12 @@ name: Nightly matrix
 # slideshows and bundles, on real media with the real ffmpeg (test/matrix.test.ts),
 # plus the conformance and resilience suites. Results: a JUnit file and the ffprobe
 # manifest of every output, kept as an artifact for 30 days.
+#
+# The nightly schedule is paused to stay within the CI minutes limit; run it by hand
+# from the Actions tab (workflow_dispatch) until it is re-enabled.
 on:
-  schedule:
-    - cron: '20 3 * * *'
+  # schedule:
+  #   - cron: '20 3 * * *'
   workflow_dispatch:
 
 jobs:

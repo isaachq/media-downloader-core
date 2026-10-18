@@ -25,6 +25,8 @@ export type FakeTikTokConfig = {
    * many times first — what TikTok does right after a profile listing.
    */
   readonly gone?: number
+  /** What those pages (and `gone-dirty` ones) say: removed (10204, default) or private (10216). */
+  readonly goneAs?: 'removed' | 'private'
   /**
    * Pages and the listing need a cookie that only a browser earns: without it
    * they get a verification page whose script sets the cookie and reloads.
@@ -58,9 +60,10 @@ export type FakeTikTokConfig = {
    * `canonical` points the shell at the photo url, which embeds it. `dirty` is a
    * shell only while the listing cookie is still in the jar. `browser` is a
    * shell with no session cookie: only a browser page embeds the post.
-   * `script` is a shell whose `#api-data` script carries the post.
+   * `script` is a shell whose `#api-data` script carries the post. `gone-dirty`
+   * answers 10204 ("doesn't exist") while the listing cookie is in the jar.
    */
-  readonly videoDetail?: 'page' | 'api' | 'canonical' | 'listing' | 'dirty' | 'browser' | 'script'
+  readonly videoDetail?: 'page' | 'api' | 'canonical' | 'listing' | 'dirty' | 'gone-dirty' | 'browser' | 'script'
 }
 
 export type FakeTikTok = {
@@ -84,6 +87,11 @@ export async function startFakeTikTok(config: FakeTikTokConfig = {}): Promise<Fa
   let refusalsLeft = config.refusals ?? 0
   /** post id → 10204 answers its page has given so far */
   const goneSaid = new Map<string, number>()
+  /** What a page of a post that is there says when it says otherwise. */
+  const goneDetail = () =>
+    config.goneAs === 'private'
+      ? {statusCode: 10216, statusMsg: 'author_secret'}
+      : {statusCode: 10204, statusMsg: "item doesn't exist"}
   let listCalls = 0
   let refusedLists = 0
   let firstPage: unknown
@@ -234,7 +242,8 @@ export async function startFakeTikTok(config: FakeTikTokConfig = {}): Promise<Fa
       if (listCalls === 1) firstPage = body
       if (config.repeatPage && listCalls === 2) body = firstPage as typeof body
       const headers: http.OutgoingHttpHeaders = {'Content-Type': 'application/json'}
-      if (config.videoDetail === 'dirty') headers['Set-Cookie'] = 'tt_dirty=1; Path=/; HttpOnly'
+      if (config.videoDetail === 'dirty' || config.videoDetail === 'gone-dirty')
+        headers['Set-Cookie'] = 'tt_dirty=1; Path=/; HttpOnly'
       return send(200, JSON.stringify(body), headers)
     }
     // slideshow images and soundtracks: plain files, no session needed (as on the real CDN)
@@ -318,10 +327,14 @@ export async function startFakeTikTok(config: FakeTikTokConfig = {}): Promise<Fa
       const said = goneSaid.get(parts[2]) ?? 0
       if (said < (config.gone ?? 0) && ids.includes(parts[2])) {
         goneSaid.set(parts[2], said + 1)
-        return send(200, page({'webapp.video-detail': {statusCode: 10204, statusMsg: "item doesn't exist"}}))
+        return send(200, page({'webapp.video-detail': goneDetail()}))
       }
       if (parts[2] === config.brokenPost) return send(200, '<html><body><div id="new-layout"></div></body></html>')
       const mode = config.videoDetail ?? 'page'
+      // listing marks the jar; while that cookie is sent, the post's page says it does not exist (10204)
+      if (mode === 'gone-dirty' && (req.headers.cookie ?? '').includes('tt_dirty=1')) {
+        return send(200, page({'webapp.video-detail': goneDetail()}))
+      }
       // listing marks the jar; a page that still carries that cookie is the bot shell
       if (mode === 'script' && parts[1] === 'video') {
         const index = ids.indexOf(parts[2] ?? '')
@@ -364,7 +377,7 @@ export async function startFakeTikTok(config: FakeTikTokConfig = {}): Promise<Fa
         )
       }
       // a shell only on the /video/ form; /photo/ is the canonical the shell points at
-      if (parts[1] === 'video' && mode !== 'page' && mode !== 'dirty') {
+      if (parts[1] === 'video' && mode !== 'page' && mode !== 'dirty' && mode !== 'gone-dirty') {
         session++
         const canonical =
           mode === 'canonical' ? `${origin}/@${handle}/photo/${parts[2]}` : `${origin}/@${handle}/video/${parts[2]}`

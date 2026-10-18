@@ -14,10 +14,11 @@ batch brought back after the app closed starts downloading at once.
   10204 for posts it serves again minutes later (measured on a phone: 56 of
   the first 164 posts of an 840-video profile, all downloadable later). The
   reader took that as deleted and never retried. Now a post this session has
-  seen (in a listing or an earlier page) gets one more read: everybody backs
-  off (the shared Pacer), the job retries, and only if TikTok still says so is
-  it reported as removed. A link nobody listed is still removed at once. O(1)
-  per read: one cache lookup and a set of the posts waiting for that second read.
+  seen (in a listing or an earlier page) is read up to two more times: each
+  time everybody backs off (the shared Pacer, longer each time) and the job
+  retries; only if TikTok still says so is it reported as removed. A link
+  nobody listed is still removed at once. O(1) per read: one cache lookup and
+  a map of the posts waiting for another read.
 - **A restored batch is not checked again.** `BatchScheduler.restore()`
   re-ran the network preflight over every item before downloading, including
   those already archived: 840 TikTok posts at the site's pace is ~28 minutes of

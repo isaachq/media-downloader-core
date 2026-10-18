@@ -21,7 +21,7 @@ export type FakeTikTokConfig = {
   /** Video pages answer 403 this many times first. */
   readonly refusals?: number
   /**
-   * Pages of posts that exist answer status 10204 ("item doesn't exist") this
+   * Each existing post's page answers status 10204 ("item doesn't exist") this
    * many times first — what TikTok does right after a profile listing.
    */
   readonly gone?: number
@@ -82,7 +82,8 @@ export async function startFakeTikTok(config: FakeTikTokConfig = {}): Promise<Fa
   const hits = {page: 0, profile: 0, list: 0, media: 0, refusedMedia: 0, short: 0, challenge: 0, item: 0}
   let challengesLeft = config.challenges ?? 0
   let refusalsLeft = config.refusals ?? 0
-  let goneLeft = config.gone ?? 0
+  /** post id → 10204 answers its page has given so far */
+  const goneSaid = new Map<string, number>()
   let listCalls = 0
   let refusedLists = 0
   let firstPage: unknown
@@ -314,8 +315,9 @@ export async function startFakeTikTok(config: FakeTikTokConfig = {}): Promise<Fa
         challengesLeft--
         return send(200, '<html><body>Please wait... <script>var _wafchallengeid="x"</script></body></html>')
       }
-      if (goneLeft > 0 && ids.includes(parts[2])) {
-        goneLeft--
+      const said = goneSaid.get(parts[2]) ?? 0
+      if (said < (config.gone ?? 0) && ids.includes(parts[2])) {
+        goneSaid.set(parts[2], said + 1)
         return send(200, page({'webapp.video-detail': {statusCode: 10204, statusMsg: "item doesn't exist"}}))
       }
       if (parts[2] === config.brokenPost) return send(200, '<html><body><div id="new-layout"></div></body></html>')

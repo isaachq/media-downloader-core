@@ -389,7 +389,7 @@ describe('TikTok, end to end (local fake)', () => {
   })
 
   it('a listed post TikTok calls gone (10204) right after the listing is read again after the back-off', async () => {
-    const {site, scheduler, out} = await setup('gone-once', {posts: 3, gone: 3})
+    const {site, scheduler, out} = await setup('gone-once', {posts: 3, gone: 1})
     const batch = scheduler.schedule({url: `${site.origin}/@${site.user}`, profile: mp4, outDir: out})
     await scheduler.whenIdle()
     const done = scheduler.batch(batch.id)!
@@ -399,14 +399,24 @@ describe('TikTok, end to end (local fake)', () => {
     assert.equal(site.hits.page, 6, 'one 10204 and one good page per post')
   })
 
-  it('a listed post TikTok still calls gone after the back-off fails as removed, with no third read', async () => {
+  it('a listed post TikTok calls gone twice in a row still downloads', async () => {
+    const {site, scheduler, out} = await setup('gone-twice', {posts: 3, gone: 2})
+    const batch = scheduler.schedule({url: `${site.origin}/@${site.user}`, profile: mp4, outDir: out})
+    await scheduler.whenIdle()
+    const done = scheduler.batch(batch.id)!
+    assert.equal(done.status, 'completed', JSON.stringify(done.problems))
+    assert.equal(done.jobs.succeeded, 3)
+    assert.equal(site.hits.page, 9, 'two 10204 and one good page per post')
+  })
+
+  it('a listed post TikTok keeps calling gone fails as removed after two doubts, with no fourth read', async () => {
     const {site, scheduler, out} = await setup('gone-for-good', {posts: 1, gone: 100})
     const batch = scheduler.schedule({url: `${site.origin}/@${site.user}`, profile: mp4, outDir: out})
     await scheduler.whenIdle()
     const done = scheduler.batch(batch.id)!
     assert.equal(done.status, 'failed')
     assert.deepEqual(done.problems?.failed, {removed: 1})
-    assert.equal(site.hits.page, 2, 'doubted once, then believed')
+    assert.equal(site.hits.page, 3, 'doubted twice, then believed')
   })
 
   it('a link nobody listed that TikTok calls gone fails as removed at once', async () => {

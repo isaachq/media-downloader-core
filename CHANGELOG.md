@@ -43,6 +43,10 @@ every hop, and every failure can be copied as a report.
   `REDIRECT_LOOP`, `RATE_LIMITED`, `DASH_AUDIO_MISSING`…), the HTTP status, the time
   spent and a sanitized stack snippet; `platformOf()` names a url's site with one
   hash lookup per host suffix. Nothing is sent anywhere: hosts keep and show them.
+- **A failed request says why.** Node's fetch reports only "fetch failed" and keeps
+  the reason in `cause`; the native sources' errors now carry it
+  (`fetch failed (ENOTFOUND www.tiktok.com)`, `(ECONNRESET)`…) — on a phone that
+  lost its network, or a site that dropped the connection, the report tells which.
 - **Setup on Windows uses Windows' own `tar`.** A GNU tar earlier on the PATH (Git for
   Windows', MSYS2's) read `C:\…` as a remote host and the yt-dlp archive failed to
   extract.

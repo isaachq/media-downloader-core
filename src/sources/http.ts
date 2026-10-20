@@ -39,6 +39,25 @@ export const DOCUMENT_NAVIGATION_HEADERS: Readonly<Record<string, string>> = {
 const MAX_REDIRECTS = 10
 
 /**
+ * A failed request with its reason in the message: Node's fetch says only
+ * "fetch failed" and keeps why in `cause` (ENOTFOUND, ECONNRESET, a TLS
+ * error…), which is what a failure report needs. Aborts and timeouts pass
+ * through as they are.
+ */
+export function withCause(error: unknown): unknown {
+  if (!(error instanceof Error) || error.name === 'AbortError' || error.name === 'TimeoutError') return error
+  const cause = (error as Error & {cause?: unknown}).cause
+  if (!(cause instanceof Error) && (typeof cause !== 'object' || cause === null)) return error
+  const {code, hostname, message} = cause as {code?: unknown; hostname?: unknown; message?: unknown}
+  const reason = [typeof code === 'string' ? code : undefined, typeof hostname === 'string' ? hostname : undefined]
+    .filter(Boolean)
+    .join(' ')
+  const why = reason || (typeof message === 'string' ? message : '')
+  if (!why || error.message.includes(why)) return error
+  return Object.assign(new TypeError(`${error.message} (${why})`, {cause}), {name: error.name})
+}
+
+/**
  * A fetch that sends the headers it is given, as given: Node's built-in fetch
  * (undici) always sends `Sec-Fetch-Mode: cors`, whatever the caller sets, and
  * some sites wall exactly that on pages a browser navigates to. GET and POST
@@ -160,13 +179,18 @@ export class HttpSession {
     const cookie = this.cookieHeader(target.hostname)
     if (cookie) headers['Cookie'] = cookie
     const timeout = AbortSignal.timeout(opts.timeoutMs ?? this.#timeoutMs)
-    const response = await this.#fetch(target.href, {
-      method: opts.method ?? 'GET',
-      ...(opts.method === 'POST' && {body: opts.body ?? ''}),
-      headers,
-      redirect: opts.redirect ?? 'follow',
-      signal: opts.signal ? AbortSignal.any([opts.signal, timeout]) : timeout,
-    })
+    let response: Response
+    try {
+      response = await this.#fetch(target.href, {
+        method: opts.method ?? 'GET',
+        ...(opts.method === 'POST' && {body: opts.body ?? ''}),
+        headers,
+        redirect: opts.redirect ?? 'follow',
+        signal: opts.signal ? AbortSignal.any([opts.signal, timeout]) : timeout,
+      })
+    } catch (error) {
+      throw withCause(error)
+    }
     this.#store(target.hostname, response.headers)
     return response
   }

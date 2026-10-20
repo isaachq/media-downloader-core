@@ -2,6 +2,7 @@ import {strict as assert} from 'node:assert'
 import {describe, it} from 'node:test'
 import {tarCommand} from '../src/binaries/extract.js'
 import {diagnoseFailure, mediaTypeOf, platformOf} from '../src/core/diagnostic.js'
+import {HttpSession, withCause} from '../src/sources/http.js'
 import {followShortLink, MAX_HOPS, returnUrlOf} from '../src/sources/redirects.js'
 import type {AnalysisResult, JobError} from '../src/types.js'
 
@@ -162,5 +163,33 @@ describe('short links', () => {
     )
     assert.equal(endless.ok, false)
     assert.equal(requests, MAX_HOPS)
+  })
+})
+
+describe('network errors', () => {
+  it('say why a request failed: Node’s fetch keeps the reason in its cause', async () => {
+    const lookup = Object.assign(new Error('getaddrinfo ENOTFOUND www.tiktok.com'), {
+      code: 'ENOTFOUND',
+      hostname: 'www.tiktok.com',
+    })
+    const failed = new TypeError('fetch failed', {cause: lookup})
+    const session = new HttpSession({
+      fetch: async () => {
+        throw failed
+      },
+    })
+    await assert.rejects(session.get('https://www.tiktok.com/@a'), (e: Error) => {
+      assert.equal(e.message, 'fetch failed (ENOTFOUND www.tiktok.com)')
+      assert.equal((e as Error & {cause?: unknown}).cause, lookup)
+      return true
+    })
+    const reset = new TypeError('fetch failed', {
+      cause: Object.assign(new Error('socket hang up'), {code: 'ECONNRESET'}),
+    })
+    assert.equal((withCause(reset) as Error).message, 'fetch failed (ECONNRESET)')
+    const aborted = Object.assign(new Error('This operation was aborted'), {name: 'AbortError'})
+    assert.equal(withCause(aborted), aborted, 'an abort stays an abort')
+    const plain = new TypeError('fetch failed')
+    assert.equal(withCause(plain), plain)
   })
 })

@@ -101,7 +101,7 @@ describe('a host without yt-dlp', () => {
         return true
       })
     }
-    assert.equal(site.hits.login, 4, 'the second post was read natively too (embed + page each)')
+    assert.equal(site.hits.login, 6, 'the second post was read natively too (embed + post page + signed page each)')
   })
 
   it('a link only yt-dlp reads says yt-dlp is missing', async () => {

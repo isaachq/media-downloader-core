@@ -31,6 +31,14 @@ export type MetaImage = {
 
 export type MetaMedia = MetaVideo | MetaImage
 
+/** The song a photo post plays (Instagram's music sticker, Facebook's music on a photo). */
+export type MetaMusic = {
+  readonly url: string
+  /** Seconds. */
+  readonly duration?: number | undefined
+  readonly title?: string | undefined
+}
+
 export type MetaPost = {
   readonly id: string
   /** Instagram's shortcode; Facebook has none. */
@@ -47,6 +55,8 @@ export type MetaPost = {
   readonly expiresAt?: number | undefined
   /** One for a video or a photo; several for a carousel, in order. */
   readonly items: readonly MetaMedia[]
+  /** A photo or a carousel of photos with a song: what its slideshow plays. */
+  readonly music?: MetaMusic | undefined
   readonly cover?: string | undefined
   /** Pinned to the top of the profile: listed first whatever its date. */
   readonly pinned: boolean
@@ -93,7 +103,11 @@ export function summaryOf(post: MetaPost, site: string): MediaSummary {
     // a photo or a carousel is a set of pictures (with videos: a bundle, kept as they are)
     ...(shape !== 'video' &&
       shape !== 'empty' && {
-        slideshow: {images: post.items.length, audio: video !== undefined, ...(video && {videos: true})},
+        slideshow: {
+          images: post.items.length,
+          audio: video !== undefined || post.music !== undefined,
+          ...(video && {videos: true}),
+        },
       }),
     extractor: site,
     isLive: false,
@@ -102,8 +116,9 @@ export function summaryOf(post: MetaPost, site: string): MediaSummary {
 
 /**
  * What a post can become: a video's encodings as they are; a photo or a
- * carousel of photos as a slideshow video or a folder; a carousel with videos
- * as a folder, or the audio of its first video.
+ * carousel of photos as a slideshow video or a folder (over its song, which
+ * an audio profile extracts); a carousel with videos as a folder, or the
+ * audio of its first video.
  */
 export function choicesOf(post: MetaPost, secondsPerImage = 3): FormatChoice[] {
   const shape = shapeOf(post)
@@ -111,5 +126,6 @@ export function choicesOf(post: MetaPost, secondsPerImage = 3): FormatChoice[] {
   if (shape === 'video' && video) return renditionChoices(video.renditions, video.duration)
   if (shape === 'empty') return []
   const images = post.items.map(item => ({width: item.width, height: item.height}))
-  return imagesChoices(images, video?.duration, secondsPerImage, video !== undefined)
+  if (video) return imagesChoices(images, video.duration, secondsPerImage, true)
+  return imagesChoices(images, post.music?.duration, secondsPerImage, post.music !== undefined)
 }

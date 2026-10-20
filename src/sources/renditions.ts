@@ -21,6 +21,11 @@ export type Rendition = {
   readonly bytes?: number | undefined
   /** Mirrors of the same file, best first. */
   readonly urls: readonly string[]
+  /**
+   * A video-only stream (DASH) and the audio stream that goes with it: both
+   * are fetched and muxed into one file (a stream copy, nothing re-encoded).
+   */
+  readonly audio?: {readonly urls: readonly string[]; readonly bitrate: number} | undefined
 }
 
 /**

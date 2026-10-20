@@ -2,6 +2,69 @@
 
 ## Unreleased
 
+## App 0.2.0-beta.15 · library 1.15.0
+
+Beta 15: Instagram photos and photo carousels download without signing in, photo posts keep
+their song, Facebook videos served only as DASH download on the phone too, share links follow
+every hop, and every failure can be copied as a report.
+
+**Library**
+
+- **Instagram photos and photo carousels download without a session.** The embed
+  page Instagram serves anonymously now carries no data for a post without a video
+  (`contextJSON: null`), so a single photo or a carousel of photos fell through to the
+  app API and the web query (403 without a session) and failed as "Instagram is
+  limiting this network" — or, on desktop, reached yt-dlp's "There is no video in this
+  post". The post page a logged-out visitor gets carries the whole item
+  (`xig_polaris_media`: every picture of a carousel), and it is now the second
+  anonymous route, between the embed and the app API: one request.
+- **Photo posts with a song (Instagram's music sticker) keep their song.** A post's
+  `music_metadata` / `clips_metadata` music is read (`MetaPost.music`): the slideshow
+  MP4 plays it, `images-audio` keeps it beside the pictures (`sound.m4a`), and an audio
+  format extracts it. `MediaSummary.slideshow.audio` says so, and the audio choices are
+  offered.
+- **Facebook videos served only as DASH download natively.** A video with no
+  progressive MP4 was handed to yt-dlp — none on a phone. The DASH manifest is now read
+  in one linear pass: the best H.264 / H.265 video stream within the cap and the best
+  audio stream are streamed to disk and muxed by ffmpeg as a stream copy (constant
+  memory, nothing re-encoded). A video whose media fields are all empty (Facebook
+  plays nothing to that visitor) says so instead of "the page changed".
+- **Share links follow every hop.** `fb.watch`, `/share/r|v|p/`, Instagram's
+  `/share/`, `vm.` / `vt.tiktok.com` and `/t/` followed one redirect and gave up on a
+  tracker or a login page in between. Up to 5 hops are followed now, each url once (a
+  loop is named as one); a login redirect is read for the page it was asked for
+  (`?next=`). A share link Facebook or Instagram only resolves for signed-in sessions
+  says so.
+- **More link shapes.** Facebook posts in public groups (`/groups/<id>/posts/<id>/`,
+  `/permalink/`); Instagram codes under a user name on every route
+  (`/<user>/reels/<code>/` was read as the profile, `/<user>/tv/<code>/` not at all).
+- **Failure diagnostics.** `diagnoseFailure()` turns any error into a report with the
+  site, the media type, the stage, a stable code (`LOGIN_WALL_DETECTED`,
+  `REDIRECT_LOOP`, `RATE_LIMITED`, `DASH_AUDIO_MISSING`…), the HTTP status, the time
+  spent and a sanitized stack snippet; `platformOf()` names a url's site with one
+  hash lookup per host suffix. Nothing is sent anywhere: hosts keep and show them.
+- **A TikTok post pasted after a listing is not "gone" for nothing.** The cookie a
+  profile listing leaves makes TikTok answer some posts "doesn't exist" (10204); 1.14.6
+  read such a post again with a fresh jar only when the session had listed it. On a
+  razr 50, after a long session, public posts pasted by hand failed that way on every
+  read until the app restarted. Any post now gets that second read once a listing ran
+  since the jar was last reset; with a clean jar "doesn't exist" is still believed at once.
+- **A failed request says why.** Node's fetch reports only "fetch failed" and keeps
+  the reason in `cause`; the native sources' errors now carry it
+  (`fetch failed (ENOTFOUND www.tiktok.com)`, `(ECONNRESET)`…) — on a phone that
+  lost its network, or a site that dropped the connection, the report tells which.
+- **Setup on Windows uses Windows' own `tar`.** A GNU tar earlier on the PATH (Git for
+  Windows', MSYS2's) read `C:\…` as a remote host and the yt-dlp archive failed to
+  extract.
+
+**Development**
+
+- **A live URL matrix, local only** (`npm run live:matrix`): real public links per
+  scenario (watch links, reels, share links, photo posts, carousels, profiles…) read by
+  the whole engine, timed, every failure classified, with jitter between links;
+  `--native` runs it as the phone does (no yt-dlp), `--download` probes every file.
+  Never part of CI.
+
 ## App 0.2.0-beta.14.7 · library 1.14.7
 
 Beta 14.7: a TikTok photo post asked as images is no longer "already downloaded" because

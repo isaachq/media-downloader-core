@@ -8,6 +8,7 @@ import type {BrowserAssist} from '../browser.js'
 import {type Fetch, HttpSession} from '../http.js'
 import {fetchMedia} from '../media-fetch.js'
 import {Pacer, type PacerOptions} from '../pacer.js'
+import {followShortLink, resolved, unresolvedMessage} from '../redirects.js'
 import {HostSession, type SessionProvider} from '../session.js'
 import {
   type ListingProgress,
@@ -131,6 +132,8 @@ export class TikTokSource implements MediaSource {
   readonly #host: HostSession
   /** The in-flight cookie reset, so parallel downloads don't wipe each other's fresh jar. */
   #refreshing: Promise<void> | undefined
+  /** A listing ran since the jar was last reset: its cookie may make posts "not exist". */
+  #listedSinceReset = false
   /**
    * Known posts TikTok called gone (status 10204), with how many times, while
    * they wait for another read after the back-off. Cleared when they are read
@@ -360,7 +363,7 @@ export class TikTokSource implements MediaSource {
 
   // ─── links, pages, listing ───────────────────────────────────────────────
 
-  /** Short links are redirects: follow one hop; landing on the home page means the post is gone. */
+  /** Short links are redirects (a hop or a few): landing on the home page means the post is gone. */
   async #resolve(url: string, signal?: AbortSignal) {
     // every read starts here: the host's session (when it gives one) goes with it
     await this.#host.load()
@@ -374,11 +377,17 @@ export class TikTokSource implements MediaSource {
         'unsupported-url',
       )
     if (link.kind !== 'short') return link
-    const response = await this.#pacer.run(() => this.#session.get(link.url, {redirect: 'manual', signal}), signal)
-    const target = response.headers.get('location')
-    const resolved = target ? parseTikTokLink(new URL(target, link.url).href, this.#originHost) : undefined
-    if (!resolved || resolved.kind === 'short') throw new TikTokError('removed', 'This short link leads nowhere.')
-    return resolved
+    const followed = await followShortLink(
+      link.url,
+      async url => {
+        const response = await this.#pacer.run(() => this.#session.get(url, {redirect: 'manual', signal}), signal)
+        await response.body?.cancel()
+        return response.headers.get('location') ?? undefined
+      },
+      url => resolved(parseTikTokLink(url, this.#originHost)),
+    )
+    if (!followed.ok) throw new TikTokError('removed', unresolvedMessage(followed.reason))
+    return followed.link
   }
 
   /**
@@ -508,9 +517,12 @@ export class TikTokSource implements MediaSource {
       // A profile listing leaves a cookie that makes TikTok answer some of its posts' pages
       // with status 10204 ("doesn't exist"): on a razr 50, 56 of the first 164 posts of an
       // 840-video profile; all 18 that failed that way again downloaded at once with a clean
-      // jar. A post this session has seen is read once more with the listing cookie dropped
-      // (one reset shared by the downloads in flight, like the shell page below).
-      if (!(known && isGoneAnswer(error))) throw error
+      // jar. A post is read once more with the listing cookie dropped (one reset shared by the
+      // downloads in flight, like the shell page below) when this session has seen it — or has
+      // listed anything since the jar was last reset: on a razr 50, after a long session, three
+      // public posts pasted by hand answered 10204 on every read, and a fresh start read them at
+      // once. With a clean jar, "doesn't exist" is believed at once.
+      if (!(isGoneAnswer(error) && (known || this.#listedSinceReset))) throw error
       embedded = await this.#afterFreshJar(url, signal)
       if (embedded)
         this.#log('info', `TikTok: ${id} read again with fresh cookies after a "doesn't exist" or "private" page`)
@@ -579,6 +591,7 @@ export class TikTokSource implements MediaSource {
       })
       try {
         this.#session.reset()
+        this.#listedSinceReset = false
         this.#host.forget()
         await this.#host.load()
       } finally {
@@ -741,6 +754,8 @@ export class TikTokSource implements MediaSource {
         headers: {Accept: 'application/json', Referer: `${this.#origin}/`},
         signal,
       })
+      // the listing's answer sets the cookie that can make posts "not exist" afterwards
+      this.#listedSinceReset = true
       const body = response.ok ? await response.text() : ''
       if (!body) {
         this.#pacer.refused()

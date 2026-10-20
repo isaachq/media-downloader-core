@@ -3,6 +3,7 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import {after, before, describe, it} from 'node:test'
+import type {DownloadError} from '../src/core/errors.js'
 import {MediaDownloader} from '../src/downloader.js'
 import {BatchScheduler} from '../src/scheduler.js'
 import type {BrowserAssist} from '../src/sources/browser.js'
@@ -400,6 +401,26 @@ describe('TikTok, end to end (local fake)', () => {
       'no retries: the fresh jar is read in the same attempt',
     )
     assert.ok(site.hits.page <= 8, `at most one 10204 and one good page per post, pages=${site.hits.page}`)
+  })
+
+  it('a post pasted after a listing, that the dirty jar makes "not exist", is read again with fresh cookies', async () => {
+    // seen on a razr 50 (2026-10-20): after a long session, three public posts the session had never
+    // listed answered 10204 on every read; a fresh start read them at once
+    const {site, engine} = await setup('gone-dirty-pasted', {posts: 4, videoDetail: 'gone-dirty'})
+    const listing = await engine.analyze(`${site.origin}/@${site.user}`, {maxEntries: 2})
+    assert.equal(listing.kind === 'playlist' && listing.entries.length, 2)
+    const pasted = await engine.analyze(`${site.origin}/@${site.user}/video/${site.ids[3]}`)
+    assert.equal(pasted.kind === 'video' && pasted.media.id, site.ids[3])
+    // a post that really is gone still says so: one more read, not a loop
+    const before = site.hits.page
+    await assert.rejects(
+      engine.analyze(`${site.origin}/@${site.user}/video/7000000000000000001`),
+      (e: DownloadError) => {
+        assert.equal(e.hint, 'removed')
+        return true
+      },
+    )
+    assert.ok(site.hits.page - before <= 2, `at most two page reads for a gone post, got ${site.hits.page - before}`)
   })
 
   it('a listed post the listing cookie makes "private" (10216) downloads too', async () => {

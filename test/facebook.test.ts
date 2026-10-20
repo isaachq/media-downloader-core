@@ -7,7 +7,14 @@ import type {DownloadError} from '../src/core/errors.js'
 import {MediaDownloader} from '../src/downloader.js'
 import {BatchScheduler} from '../src/scheduler.js'
 import type {BrowserAssist} from '../src/sources/browser.js'
-import {checkWall, pageTokens, readVideoNode, renditionsOf} from '../src/sources/facebook/data.js'
+import {
+  checkWall,
+  dashRenditions,
+  pageTokens,
+  readVideoNode,
+  readVideoPage,
+  renditionsOf,
+} from '../src/sources/facebook/data.js'
 import {isFacebookListing, parseFacebookLink} from '../src/sources/facebook/links.js'
 import type {FacebookOptions} from '../src/sources/facebook/source.js'
 import type {MetaError} from '../src/sources/meta/errors.js'
@@ -21,6 +28,24 @@ const audio = {kind: 'audio', container: 'mp3'} as const
 const images = {mode: 'images', secondsPerImage: 3} as const
 
 describe('Facebook links', () => {
+  it('recognizes posts in public groups, by number or by name', () => {
+    assert.deepEqual(parseFacebookLink('https://www.facebook.com/groups/123456789/posts/987654321012345/'), {
+      kind: 'post',
+      id: '987654321012345',
+      group: '123456789',
+    })
+    assert.deepEqual(
+      parseFacebookLink('https://m.facebook.com/groups/some.group/permalink/987654321012345/?mibextid=x'),
+      {
+        kind: 'post',
+        id: '987654321012345',
+        group: 'some.group',
+      },
+    )
+    assert.equal(parseFacebookLink('https://www.facebook.com/groups/123456789/'), undefined, 'a group is not a post')
+    assert.equal(parseFacebookLink('https://www.facebook.com/groups/123456789/members/'), undefined)
+  })
+
   it('recognizes videos, reels, posts, profiles, stories and short links in every shape', () => {
     assert.deepEqual(parseFacebookLink('https://www.facebook.com/watch/?v=1000000000000001&ref=x'), {
       kind: 'video',
@@ -131,7 +156,52 @@ describe('Facebook data', () => {
         .map(c => c.label),
       ['1080p · MP4', '360p · MP4'],
     )
-    assert.equal(renditionsOf({dash_manifest: '<MPD/>'}).length, 0, 'DASH is left to yt-dlp')
+    assert.equal(renditionsOf({dash_manifest: '<MPD/>'}).length, 0, 'a manifest without H.264 is left to yt-dlp')
+  })
+
+  it('reads a DASH manifest in one pass: H.264 / H.265 video streams, each with the best audio stream', () => {
+    const rep = (attrs: string, url: string) =>
+      `<Representation ${attrs}><BaseURL>${url}</BaseURL><SegmentBase indexRange="1-2"/></Representation>`
+    const manifest =
+      '<MPD><Period><AdaptationSet contentType="video">' +
+      rep(
+        'bandwidth="900000" codecs="avc1.4d401f" mimeType="video/mp4" width="720" height="1280"',
+        'https://cdn/v720.mp4?a=1&amp;b=2',
+      ) +
+      rep(
+        'bandwidth="3000000" codecs="hvc1.1.6.L120" mimeType="video/mp4" width="1080" height="1920"',
+        'https://cdn/h265.mp4',
+      ) +
+      rep(
+        'bandwidth="1900000" codecs="av01.0.08M.08" mimeType="video/mp4" width="1080" height="1920"',
+        'https://cdn/av1.mp4',
+      ) +
+      rep(
+        'bandwidth="400000" codecs="vp09.00.31.08" mimeType="video/mp4" width="720" height="1280"',
+        'https://cdn/vp9.mp4',
+      ) +
+      '</AdaptationSet><AdaptationSet contentType="audio">' +
+      rep('bandwidth="64000" codecs="mp4a.40.5" mimeType="audio/mp4"', 'https://cdn/a64.m4a') +
+      rep('bandwidth="128000" codecs="mp4a.40.2" mimeType="audio/mp4"', 'https://cdn/a128.m4a') +
+      '</AdaptationSet></Period></MPD>'
+    const found = dashRenditions(manifest)
+    assert.deepEqual(
+      found.map(r => [r.codec, r.resolution, r.urls[0], r.audio?.urls[0]]),
+      [
+        ['h264', 720, 'https://cdn/v720.mp4?a=1&b=2', 'https://cdn/a128.m4a'],
+        ['h265', 1080, 'https://cdn/h265.mp4', 'https://cdn/a128.m4a'],
+      ],
+    )
+    const silent = manifest.slice(0, manifest.indexOf('<AdaptationSet contentType="audio">'))
+    assert.deepEqual(dashRenditions(silent), [], 'no sound: no rendition')
+    // the node: progressive first, the manifest only without them
+    assert.equal(renditionsOf({dash_manifest_xml_string: manifest}).length, 2)
+    assert.equal(renditionsOf({dash_manifest_xml_string: manifest, playable_url: 'https://cdn/sd.mp4'}).length, 1)
+    // linear: a huge manifest is read in one pass
+    const big = manifest.repeat(2000)
+    const started = performance.now()
+    assert.equal(dashRenditions(big).length, 4000)
+    assert.ok(performance.now() - started < 500, 'a 3 MB manifest in well under a second')
   })
 
   it('tells login walls, checkpoints and gone content apart, and reads the page tokens', () => {
@@ -286,6 +356,50 @@ describe('Facebook, end to end (local fake)', () => {
     assert.ok(
       warnings.some(w => /listing stopped at 8 of 500/.test(w)),
       warnings.join('\n'),
+    )
+  })
+
+  it('a video whose media fields are all empty says Facebook plays nothing to this visitor, not "the page changed"', () => {
+    const page = (node: Record<string, unknown>) => ({
+      url: 'https://www.facebook.com/watch/?v=414410432517233',
+      html: `<html><body><script type="application/json" data-sjs>${JSON.stringify({data: {video: node}})}</script></body></html>`,
+    })
+    const empty = {
+      __typename: 'Video',
+      id: '414410432517233',
+      dash_manifest_xml_string: '',
+      dash_manifest_url: null,
+      browser_native_sd_url: null,
+      browser_native_hd_url: null,
+    }
+    assert.throws(
+      () => readVideoPage(page(empty), '414410432517233'),
+      (e: MetaError) => e.problem === 'no-media' && /plays nothing/.test(e.message),
+    )
+    // a manifest with streams of other codecs only is still "changed" (yt-dlp may read it)
+    assert.throws(
+      () => readVideoPage(page({...empty, dash_manifest_xml_string: '<MPD/>'}), '414410432517233'),
+      (e: MetaError) => e.problem === 'format-changed',
+    )
+  })
+
+  it('a DASH-only video with H.264 streams downloads natively: the best video and audio, muxed', async () => {
+    const {site, engine, out} = await setup('dash', {videos: 2, dashOnly: [1], dashStreams: true})
+    const analysis = await engine.analyze(watchUrl(site, 1))
+    assert.equal(analysis.kind, 'video')
+    const job = engine.add({url: watchUrl(site, 1), profile: mp4, outDir: out})
+    await engine.whenIdle()
+    const done = engine.job(job.id)!
+    assert.equal(done.status, 'completed', JSON.stringify(done.error))
+    assert.deepEqual(
+      done.attempts.map(a => a.strategy),
+      ['primary'],
+      'no yt-dlp: the source reads DASH itself',
+    )
+    assert.deepEqual(
+      site.served.filter(p => p.includes('dash-')).map(p => p.split('/').pop()),
+      ['dash-1080.mp4', 'dash-audio.m4a'],
+      'the best H.264 stream and the best audio stream, nothing else',
     )
   })
 

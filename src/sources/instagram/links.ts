@@ -1,6 +1,6 @@
 /**
  * Instagram urls in all their shapes, reduced to what they point at:
- *   /p/<code>/  /reel/<code>/  /reels/<code>/  /tv/<code>/  /<user>/p/<code>/   → post
+ *   /p/<code>/  /reel/<code>/  /reels/<code>/  /tv/<code>/  /<user>/p|reel|reels|tv/<code>/   → post
  *   /<user>/  /<user>/reels/                                                   → profile
  *   /stories/<user>/  /stories/<user>/<id>/                                     → stories (one item with an id)
  *   /stories/highlights/<id>/  /s/<token>?story_media_id=…                      → highlight
@@ -82,8 +82,8 @@ export function parseInstagramLink(raw: string, extraHost?: string): InstagramLi
       : {kind: 'stories', user: second}
   }
   if (RESERVED.has(first) || !USER.test(first)) return undefined
-  if (!second || second === 'reels' || second === 'feed') return {kind: 'profile', user: first}
-  if ((second === 'p' || second === 'reel') && third && CODE.test(third))
+  if (!second || (second === 'reels' && !third) || second === 'feed') return {kind: 'profile', user: first}
+  if ((second === 'p' || second === 'reel' || second === 'reels' || second === 'tv') && third && CODE.test(third))
     return {kind: 'post', code: third, user: first}
   return undefined
 }

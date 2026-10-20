@@ -10,6 +10,7 @@ import {MetaError, toDownloadError} from '../meta/errors.js'
 import {type CursorPage, walkCursor} from '../meta/listing.js'
 import {choicesOf, type MetaPost, shapeOf, summaryOf, videosOf} from '../meta/post.js'
 import type {PacerOptions} from '../pacer.js'
+import {followShortLink, resolved, unresolvedMessage} from '../redirects.js'
 import type {ListingProgress, MediaSource, SourceDownload, SourceFile} from '../source.js'
 import {
   PUBLIC_ORIGIN,
@@ -59,6 +60,8 @@ const CACHE_LIMIT = 5000
 const LISTING_FRESH_MS = 15 * 60_000
 const STORIES_FRESH_MS = 5 * 60_000
 export const PROFILE_CHUNK = 500
+/** Where Facebook sends a visitor it wants signed in. */
+const LOGIN_PAGE = /\/(?:login|checkpoint)(?:\.php)?(?:[/?#]|$)/
 
 type Cached = {readonly post: MetaPost; readonly at: number}
 type KeptListing = {
@@ -206,10 +209,15 @@ export class FacebookSource implements MediaSource {
       )
     }
     if (link.kind !== 'short') return link
-    const target = await this.#client.redirectOf(link.url, signal)
-    const resolved = target ? parseFacebookLink(target, this.#client.host) : undefined
-    if (!resolved || resolved.kind === 'short') throw new MetaError('removed', 'This short link leads nowhere.')
-    return resolved
+    const followed = await followShortLink(
+      link.url,
+      url => this.#client.redirectOf(url, signal),
+      url => resolved(parseFacebookLink(url, this.#client.host)),
+    )
+    if (followed.ok) return followed.link
+    if (followed.reason === 'dead-end' && LOGIN_PAGE.test(followed.resolvedUrl))
+      throw new MetaError('login-required', 'Facebook shows where this share link leads to signed-in sessions only.')
+    throw new MetaError('removed', unresolvedMessage(followed.reason))
   }
 
   async #postFor(link: Exclude<FacebookLink, {kind: 'short'}>, signal: AbortSignal, fresh: boolean): Promise<MetaPost> {
@@ -224,14 +232,21 @@ export class FacebookSource implements MediaSource {
 
   /** One video (or the video of a post) from its page; a recent read with media is reused. */
   async #readVideo(
-    link: {readonly kind: 'video' | 'post'; readonly id: string; readonly page?: string | undefined},
+    link: {
+      readonly kind: 'video' | 'post'
+      readonly id: string
+      readonly page?: string | undefined
+      readonly group?: string | undefined
+    },
     signal?: AbortSignal,
     fresh = false,
   ): Promise<MetaPost> {
     const cached = this.#posts.get(link.id)
     if (!fresh && cached && Date.now() - cached.at < POST_FRESH_MS && downloadable(cached.post)) return cached.post
     const page =
-      link.kind === 'video' ? videoUrl(this.#client.origin, link.id) : postUrl(this.#client.origin, link.id, link.page)
+      link.kind === 'video'
+        ? videoUrl(this.#client.origin, link.id)
+        : postUrl(this.#client.origin, link.id, link.page, link.group)
     // the user's session, when the host gives one: Facebook shows most videos to signed-in visitors only
     await this.#client.loadCookies()
     let post: MetaPost

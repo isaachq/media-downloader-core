@@ -1,6 +1,6 @@
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
-import type {MediaTags} from '../../core/convert.js'
+import {type MediaTags, runFfmpeg} from '../../core/convert.js'
 import type {DownloadedInfo} from '../../core/download.js'
 import {fetchMedia} from '../media-fetch.js'
 import {type Rendition, rankRenditions} from '../renditions.js'
@@ -14,7 +14,8 @@ import {imagesOf, type MetaImage, type MetaPost, type MetaVideo, shapeOf, titleO
  * Fetching a post's media for the engine, the same way for Instagram and
  * Facebook: a video as its best encoding for the profile (every mirror of
  * each, best first); a photo or a carousel of photos as what `slideshow`
- * asks (an MP4 of the images, or a folder of them); a carousel with videos as
+ * asks (an MP4 of the images over the post's song, or a folder of them with
+ * the song), or the song alone for an audio profile; a carousel with videos as
  * a folder of everything, kept as it is. Media is streamed with the site's
  * session and Referer (the CDNs often require one), 4 files at a time.
  */
@@ -67,17 +68,31 @@ export async function downloadPost({client, post, task, site, referer}: PostDown
       tags,
     }
   }
-  if (audioOnly) throw new MetaError('no-media', 'A photo has no sound to extract.')
+  if (audioOnly && !post.music) throw new MetaError('no-media', 'A photo has no sound to extract.')
 
   const folder = path.join(task.workDir, `${post.id}-items`)
   await fs.mkdir(folder, {recursive: true})
   const {mode, secondsPerImage} = task.slideshow
 
-  // pictures only: a slideshow video, or a folder of the pictures
+  // pictures only: a slideshow video (over the post's song), a folder of the pictures (and the song), or the song
   if (videos.length === 0) {
     const images = imagesOf(post)
     const seconds = images.length * secondsPerImage
-    task.onInfo({...info, duration: mode === 'video' ? seconds : null})
+    const music = post.music
+    const wantsSound = audioOnly || mode !== 'images'
+    task.onInfo({...info, duration: audioOnly ? (music?.duration ?? null) : mode === 'video' ? seconds : null})
+    const sound =
+      wantsSound && music
+        ? await fetchOneOf(client, [music.url], folder, 'sound', '.m4a', task, site, referer)
+        : undefined
+    if (audioOnly) {
+      // the song alone: the engine converts it to the profile's container
+      return {
+        filepath: sound!,
+        info: {...info, duration: music?.duration ?? null, acodec: 'mp4a', filesize: (await fs.stat(sound!)).size},
+        tags,
+      }
+    }
     const files = await fetchImages(client, images, folder, task, site, referer)
     if (mode === 'video') {
       const output = path.join(task.workDir, `${post.id}-slideshow.mp4`)
@@ -86,6 +101,7 @@ export async function downloadPost({client, post, task, site, referer}: PostDown
         ffmpeg: task.ffmpeg,
         images: files,
         frame: slideshowFrame(images),
+        audio: sound,
         secondsPerImage,
         output,
         threads: task.threads,
@@ -96,11 +112,11 @@ export async function downloadPost({client, post, task, site, referer}: PostDown
       const bytes = (await fs.stat(output)).size
       return {
         filepath: output,
-        info: {...info, duration: seconds, vcodec: 'avc1', acodec: 'none', filesize: bytes},
+        info: {...info, duration: seconds, vcodec: 'avc1', acodec: sound ? 'mp4a' : 'none', filesize: bytes},
         tags,
       }
     }
-    return {filepath: folder, bundle: true, info: {...info, duration: null}}
+    return {filepath: folder, bundle: true, info: {...info, duration: sound ? (music?.duration ?? null) : null}}
   }
 
   // a carousel with videos: everything in order, each file as the site serves it
@@ -125,6 +141,10 @@ async function fetchBest(
     for (const url of rendition.urls) {
       const file = path.join(task.workDir, `${postId}-${video.id}-${rendition.codec}-${rendition.resolution}.mp4`)
       try {
+        if (rendition.audio) {
+          const bytes = await fetchDash(client, url, rendition.audio.urls, file, task, site, referer)
+          return {path: file, bytes, codec: rendition.codec}
+        }
         const {bytes} = await fetchMedia(client.session, url, file, {
           site,
           headers: {Referer: referer},
@@ -141,6 +161,63 @@ async function fetchBest(
     }
   }
   throw last ?? new MetaError('format-changed', 'No downloadable encoding.')
+}
+
+/**
+ * A DASH stream pair: the video-only file and the audio file, each streamed to
+ * disk, then muxed into `file` by ffmpeg as a stream copy (no re-encoding,
+ * constant memory whatever the size). The parts are removed either way.
+ */
+async function fetchDash(
+  client: MetaClient,
+  videoUrl: string,
+  audioUrls: readonly string[],
+  file: string,
+  task: SourceDownload,
+  site: string,
+  referer: string,
+): Promise<number> {
+  const videoPart = `${file}.video.mp4`
+  const audioPart = `${file}.audio.m4a`
+  try {
+    await fetchMedia(client.session, videoUrl, videoPart, {
+      site,
+      headers: {Referer: referer},
+      signal: task.signal,
+      onProgress: progress => task.onProgress({...progress, fraction: (progress.fraction ?? 0) * 0.9}),
+    })
+    let fetched = false
+    let last: unknown
+    for (const url of audioUrls) {
+      try {
+        await fetchMedia(client.session, url, audioPart, {
+          site,
+          headers: {Referer: referer},
+          signal: task.signal,
+          onProgress: () => {},
+        })
+        fetched = true
+        break
+      } catch (error) {
+        if (task.signal.aborted) throw error
+        await fs.rm(audioPart, {force: true})
+        last = error
+      }
+    }
+    if (!fetched) throw last ?? new MetaError('format-changed', 'The video came without its audio stream.')
+    await runFfmpeg({ffmpeg: task.ffmpeg, input: videoPart, threads: 1, signal: task.signal}, file, [
+      ['-i', audioPart],
+      ['-map', '0:v:0'],
+      ['-map', '1:a:0'],
+      ['-c', 'copy'],
+      ['-movflags', '+faststart'],
+    ])
+    task.onProgress({fraction: 1})
+    return (await fs.stat(file)).size
+  } finally {
+    await fs.rm(videoPart, {force: true})
+    await fs.rm(audioPart, {force: true})
+  }
 }
 
 /** Images into `folder` as 01.jpg, 02.jpg…, PARALLEL_FILES at a time, each from its first mirror that answers. */
@@ -237,6 +314,8 @@ export function extensionOf(contentType: string | undefined, fallback: string): 
     'video/quicktime': '.mov',
     'audio/mpeg': '.mp3',
     'audio/mp4': '.m4a',
+    'audio/x-m4a': '.m4a',
+    'audio/aac': '.aac',
   }
   return (contentType && known[contentType]) || fallback
 }

@@ -27,6 +27,8 @@ export type FakeFacebookConfig = {
   readonly refusals?: number
   /** Videos (by index) that only have a DASH manifest, no progressive url. */
   readonly dashOnly?: readonly number[]
+  /** With dashOnly: the manifest has H.264 video streams and an audio stream (else it is empty: AV1 / VP9 only). */
+  readonly dashStreams?: boolean
   /** The pagination query id changed: the API answers errors. */
   readonly rotatedQueries?: boolean
   /** Videos per listing page. Default 8. */
@@ -46,6 +48,8 @@ export type FakeFacebook = {
     'video' | 'listing' | 'graphql' | 'stories' | 'media' | 'refusedMedia' | 'login' | 'refused' | 'short',
     number
   >
+  /** Every media path asked for, in order. */
+  readonly served: readonly string[]
   close(): Promise<void>
 }
 
@@ -60,6 +64,7 @@ export async function startFakeFacebook(config: FakeFacebookConfig = {}): Promis
   const pageSize = config.pageSize ?? 8
   const ids = Array.from({length: count}, (_, i) => String(1_000_000_000_000_000n + BigInt(count - i)))
   const storyIds = (config.stories ?? []).map((_, i) => String(2_000_000_000_000_000n + BigInt(i + 1)))
+  const served: string[] = []
   const hits = {video: 0, listing: 0, graphql: 0, stories: 0, media: 0, refusedMedia: 0, login: 0, refused: 0, short: 0}
   let refusalsLeft = config.refusals ?? 0
   let origin = ''
@@ -69,7 +74,38 @@ export async function startFakeFacebook(config: FakeFacebookConfig = {}): Promis
   const mediaNode = (index: number) => {
     const id = ids[index]!
     if (config.dashOnly?.includes(index)) {
-      return {__typename: 'Video', id, videoId: id, dash_manifest: '<MPD/>', original_width: 1280, original_height: 720}
+      const representation = (rid: string, attrs: string, file: string) =>
+        `<Representation id="${rid}" ${attrs}><BaseURL>${origin}/media/${id}/${file}?a=1&amp;b=2</BaseURL><SegmentBase indexRange="0-1"/></Representation>`
+      const manifest = config.dashStreams
+        ? `<?xml version="1.0"?><MPD><Period><AdaptationSet contentType="video">` +
+          representation(
+            '1v',
+            'bandwidth="900000" codecs="avc1.4d401f" mimeType="video/mp4" width="720" height="1280"',
+            'dash-720.mp4',
+          ) +
+          representation(
+            '2v',
+            'bandwidth="2500000" codecs="avc1.640028" mimeType="video/mp4" width="1080" height="1920"',
+            'dash-1080.mp4',
+          ) +
+          representation(
+            '3v',
+            'bandwidth="1900000" codecs="av01.0.08M.08" mimeType="video/mp4" width="1080" height="1920"',
+            'dash-av1.mp4',
+          ) +
+          `</AdaptationSet><AdaptationSet contentType="audio">` +
+          representation('4a', 'bandwidth="64000" codecs="mp4a.40.5" mimeType="audio/mp4"', 'dash-low.m4a') +
+          representation('5a', 'bandwidth="128000" codecs="mp4a.40.2" mimeType="audio/mp4"', 'dash-audio.m4a') +
+          `</AdaptationSet></Period></MPD>`
+        : '<MPD/>'
+      return {
+        __typename: 'Video',
+        id,
+        videoId: id,
+        dash_manifest_xml_string: manifest,
+        original_width: 1080,
+        original_height: 1920,
+      }
     }
     return {
       __typename: 'Video',
@@ -177,6 +213,7 @@ export async function startFakeFacebook(config: FakeFacebookConfig = {}): Promis
     }
     if (isMedia) {
       hits.media++
+      served.push(url.pathname)
       if (!(req.headers.referer ?? '').startsWith(origin)) {
         hits.refusedMedia++
         return send(403, 'forbidden')
@@ -295,6 +332,7 @@ export async function startFakeFacebook(config: FakeFacebookConfig = {}): Promis
     ids,
     storyIds,
     hits,
+    served,
     close: () => new Promise(resolve => server.close(() => resolve())),
   }
 }

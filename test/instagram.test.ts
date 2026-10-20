@@ -34,6 +34,17 @@ const audio = {kind: 'audio', container: 'mp3'} as const
 const images = {mode: 'images', secondsPerImage: 3} as const
 
 describe('Instagram links', () => {
+  it('a code under a user name is a post, whatever the route: /p/, /reel/, /reels/, /tv/', () => {
+    for (const route of ['p', 'reel', 'reels', 'tv']) {
+      assert.deepEqual(parseInstagramLink(`https://www.instagram.com/nasa/${route}/DeTUk4sDSp-/?img_index=2`), {
+        kind: 'post',
+        code: 'DeTUk4sDSp-',
+        user: 'nasa',
+      })
+    }
+    assert.deepEqual(parseInstagramLink('https://www.instagram.com/nasa/reels/'), {kind: 'profile', user: 'nasa'})
+  })
+
   it('recognizes posts, reels, profiles, stories, highlights and share links', () => {
     assert.deepEqual(parseInstagramLink('https://www.instagram.com/p/C0DE000001/?igsh=abc'), {
       kind: 'post',
@@ -593,16 +604,23 @@ describe('Instagram, end to end (local fake)', () => {
     assert.equal(site.hits.refusedMedia, 0)
   })
 
-  it('without the embed, the app API reads the post; without both, the web client query does', async () => {
-    // the embed retired, the app API answering: the post by its pk, asked as the app
-    const api = await startFakeInstagram({posts: 2, noEmbed: true})
+  it('without the embed, the post page reads the post; then the app API; without all three, the web client query', async () => {
+    // the embed retired: the page a logged-out visitor gets (xig_polaris_media)
+    const page = await startFakeInstagram({posts: 2, noEmbed: true})
+    cleanups.push(() => page.close())
+    const fromPage = new InstagramSource({origin: page.origin, pacing: {spacingMs: 0, jitterMs: 0}})
+    const read = await fromPage.analyze(`${page.origin}/reel/${page.codes[1]}/`)
+    assert.equal(read.kind === 'video' && read.media.id, page.ids[1])
+    assert.deepEqual([page.hits.embed, page.hits.page, page.hits.app, page.hits.graphql], [1, 1, 0, 0])
+    // the embed retired and the page without data, the app API answering: the post by its pk, asked as the app
+    const api = await startFakeInstagram({posts: 2, noEmbed: true, noPage: true})
     cleanups.push(() => api.close())
     const source = new InstagramSource({origin: api.origin, pacing: {spacingMs: 0, jitterMs: 0}})
     const reel = await source.analyze(`${api.origin}/reel/${api.codes[1]}/`)
     assert.equal(reel.kind === 'video' && reel.media.id, api.ids[1])
     assert.deepEqual([api.hits.embed, api.hits.app, api.hits.graphql], [1, 1, 0])
-    // both retired: the web client's query, as before
-    const {site, engine} = await setup('routes', {posts: 2, noEmbed: true, noAppApi: true})
+    // all three retired: the web client's query, as before
+    const {site, engine} = await setup('routes', {posts: 2, noEmbed: true, noPage: true, noAppApi: true})
     const result = await engine.analyze(postUrl(site))
     assert.equal(result.kind, 'video')
     assert.deepEqual([site.hits.embed, site.hits.app, site.hits.graphql], [1, 1, 1])
@@ -639,7 +657,11 @@ describe('Instagram, end to end (local fake)', () => {
       assert.match(e.message, /limiting this network/)
       return true
     })
-    assert.equal(site.hits.login, 2, 'the embed and the page were sent to the login page (the APIs answered 401)')
+    assert.equal(
+      site.hits.login,
+      3,
+      'the embed, the post page and the signed route’s page were sent to the login page (the APIs answered 401)',
+    )
     assert.ok(
       logs.some(l => /every route got the wall/.test(l)),
       logs.join('\n'),
@@ -690,6 +712,60 @@ describe('Instagram, end to end (local fake)', () => {
     assert.match(failed.error?.message ?? '', /no sound/)
   })
 
+  it('a carousel of photos, whose embed has no data, is read anonymously from its post page: every picture', async () => {
+    const {site, engine, scheduler, out} = await setup('photo-carousel', {posts: 2, carousels: [0]})
+    const result = await engine.analyze(postUrl(site))
+    assert.equal(result.kind, 'video')
+    if (result.kind !== 'video') return
+    assert.deepEqual(result.media.slideshow, {images: 3, audio: false})
+    assert.deepEqual([site.hits.embed, site.hits.page, site.hits.app, site.hits.graphql], [1, 1, 0, 0])
+    const batch = scheduler.schedule({url: postUrl(site), profile: mp4, outDir: out, slideshow: images})
+    await scheduler.whenIdle()
+    assert.equal(scheduler.batch(batch.id)?.status, 'completed', JSON.stringify(scheduler.batch(batch.id)?.error))
+    const folder = (await fs.readdir(out))[0]!
+    assert.deepEqual(await fs.readdir(path.join(out, folder)), ['01.jpg', '02.jpg', '03.jpg'])
+  })
+
+  it('a photo with a song: a slideshow with sound, a folder with the song, or the song alone', async () => {
+    const {site, engine, out} = await setup('photo-music', {photos: [0], carousels: [1], music: [0, 1], posts: 2})
+    const single = await engine.analyze(postUrl(site))
+    assert.equal(single.kind === 'video' && single.media.slideshow?.audio, true, 'its song is its sound')
+    assert.ok(
+      single.kind === 'video' && single.choices.some(c => c.profile.kind === 'audio'),
+      'audio formats are offered',
+    )
+    // pictures and the song, kept as they are
+    const kept = engine.add({
+      url: postUrl(site, 1),
+      profile: mp4,
+      outDir: path.join(out, 'kept'),
+      slideshow: {mode: 'images-audio', secondsPerImage: 3},
+      photoPost: true,
+    })
+    await engine.whenIdle()
+    const folder = engine.job(kept.id)!
+    assert.equal(folder.status, 'completed', JSON.stringify(folder.error))
+    assert.deepEqual((await fs.readdir(folder.filepath!)).sort(), ['01.jpg', '02.jpg', '03.jpg', 'sound.m4a'])
+    // the song alone, for an audio format
+    const song = engine.add({url: postUrl(site), profile: audio, outDir: path.join(out, 'song')})
+    await engine.whenIdle()
+    const done = engine.job(song.id)!
+    assert.equal(done.status, 'completed', JSON.stringify(done.error))
+    assert.match(done.filepath ?? '', /\.mp3$/)
+    // the pictures only: no song fetched
+    const before = site.hits.media
+    const plain = engine.add({
+      url: postUrl(site, 1),
+      profile: mp4,
+      outDir: path.join(out, 'plain'),
+      slideshow: images,
+      photoPost: true,
+    })
+    await engine.whenIdle()
+    assert.equal(engine.job(plain.id)?.status, 'completed')
+    assert.equal(site.hits.media - before, 3, 'three pictures, no song')
+  })
+
   it('a private account fails at once with the reason', async () => {
     const {site, scheduler, out} = await setup('private', {private: true})
     const batch = scheduler.schedule({url: profileUrl(site), profile: mp4, outDir: out})
@@ -704,7 +780,7 @@ describe('Instagram, end to end (local fake)', () => {
     await scheduler.whenIdle()
     assert.equal(scheduler.batch(batch.id)?.status, 'completed', JSON.stringify(scheduler.batch(batch.id)?.error))
     assert.equal(site.hits.refused, 2)
-    assert.equal(site.hits.graphql, 1, '2 refusals + 1 success, all native')
+    assert.equal(site.hits.app + site.hits.graphql, 1, '2 refusals (the embed, the post page) + 1 success, all native')
   })
 
   it('a login wall is not solved: Instagram goes to yt-dlp for a while, without knocking again', async () => {
@@ -715,7 +791,11 @@ describe('Instagram, end to end (local fake)', () => {
     const second = scheduler.schedule({url: postUrl(site, 1), profile: mp4, outDir: out})
     await scheduler.whenIdle()
     assert.equal(scheduler.batch(second.id)?.status, 'completed')
-    assert.equal(site.hits.login, 2, 'the embed and the page each got one login redirect, then hands off')
+    assert.equal(
+      site.hits.login,
+      3,
+      'the embed and the post page, then the signed page: one login redirect each, then hands off',
+    )
     assert.ok(engine.jobs().every(job => job.attempts.length === 1))
   })
 

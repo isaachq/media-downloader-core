@@ -3,13 +3,20 @@
  *   /watch/?v=<id>  /watch/live/?v=<id>  /video.php?v=<id>  /videos/<id>
  *   /<page>/videos/<id>/  /<page>/videos/<slug>/<id>/  /reel/<id>  /<page>/reels/<id>   → video
  *   /<page>/posts/<id>  /story.php?story_fbid=<id>&id=…  /permalink.php?story_fbid=…   → post (its video)
+ *   /groups/<group>/posts/<id>/  /groups/<group>/permalink/<id>/                     → post in a public group
  *   /<page>  /<page>/videos  /<page>/reels  /profile.php?id=<id>                      → profile (its videos)
  *   /stories/<bucket>/  /stories/<bucket>/<card>/                                      → stories
  *   fb.watch/<x>  /share/v/<x>  /share/r/<x>  /share/p/<x>  /share/<x>                → short link (a redirect)
  */
 export type FacebookLink =
   | {readonly kind: 'video'; readonly id: string; readonly page?: string | undefined}
-  | {readonly kind: 'post'; readonly id: string; readonly page?: string | undefined}
+  | {
+      readonly kind: 'post'
+      readonly id: string
+      readonly page?: string | undefined
+      /** A post in a group: its page lives under /groups/<group>/. */
+      readonly group?: string | undefined
+    }
   | {readonly kind: 'profile'; readonly page: string}
   | {readonly kind: 'stories'; readonly bucket: string; readonly card?: string | undefined}
   | {readonly kind: 'short'; readonly url: string}
@@ -111,6 +118,13 @@ export function parseFacebookLink(raw: string, extraHost?: string): FacebookLink
     const id = query.get('id')
     return id && ID.test(id) ? {kind: 'profile', page: id} : undefined
   }
+  if (first === 'groups') {
+    // /groups/<group>/posts/<id>/  /groups/<group>/permalink/<id>/
+    const id = parts[3]
+    if (!second || !SLUG.test(second) || (third !== 'posts' && third !== 'permalink') || !id || !SLUG.test(id))
+      return undefined
+    return {kind: 'post', id, group: second}
+  }
   if (first === 'reel' || first === 'videos') return second && ID.test(second) ? {kind: 'video', id: second} : undefined
   if (first === 'stories') {
     if (!second || !ID.test(second)) return undefined
@@ -144,7 +158,8 @@ export function profileUrl(origin: string, page: string): string {
   return ID.test(page) ? `${origin}/profile.php?id=${page}` : `${origin}/${page}/`
 }
 
-export function postUrl(origin: string, id: string, page?: string): string {
+export function postUrl(origin: string, id: string, page?: string, group?: string): string {
+  if (group) return `${origin}/groups/${group}/posts/${id}/`
   return page && !ID.test(page) ? `${origin}/${page}/posts/${id}` : `${origin}/${id}`
 }
 

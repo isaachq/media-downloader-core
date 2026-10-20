@@ -146,7 +146,7 @@ export class TikTokSource implements MediaSource {
     this.#originHost = new URL(this.#origin).hostname
     this.#maxProfileItems = Math.max(1, options.maxProfileItems ?? TIKTOK_PROFILE_DEFAULT_ITEMS)
     this.#session = new HttpSession({fetch: options.fetch})
-    this.#pacer = new Pacer(options.pacing)
+    this.#pacer = new Pacer(options.pacing, 'TikTok')
     this.#browser = options.browser
     this.#log = options.log ?? (() => {})
     this.#host = new HostSession({site: this.name, provider: options.cookies, session: this.#session, log: this.#log})

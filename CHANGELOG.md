@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+## App 0.2.0-beta.16 · library 1.16.0
+
+Beta 16: a link pasted while a site rate-limits this network answers at once — "try again
+in about 2 min" — instead of hanging for up to ten minutes.
+
+**Library**
+
+- **An analysis someone is waiting for fails fast on a rate limit.** When a site answers
+  429 (or another refusal), every request to it backs off together: 30 s, then doubling,
+  up to 10 min. An `analyze()` slept through that cool-down — on a razr 50, an Instagram
+  profile took 14 minutes to fail. It now waits at most `ANALYZE_PATIENCE_MS` (15 s,
+  more than the normal spacing between requests) and otherwise fails at once with
+  "<Site> is rate limiting this network: try again in about N" (code `network`, hint
+  `retry-later`, `details` `COOLING_DOWN`, `params.retryAfterSeconds`), without
+  another request while it cools down. Background work keeps waiting its turn: a batch's
+  listing and a sync pass `waitForSite: true`, as can any host's own background
+  `analyze()`. `withPatience(ms, work)` gives the same limit to any work.
+
 ## App 0.2.0-beta.15 · library 1.15.0
 
 Beta 15: Instagram photos and photo carousels download without signing in, photo posts keep

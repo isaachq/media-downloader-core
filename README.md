@@ -45,6 +45,10 @@ the ⌊CPUs/2⌋ pool and verified file by file.
 
 ![Paste a link, download it as MP4, check its integrity report, find it in Finished, open the run report](docs/demo.gif)
 
+### What's new in beta 16 (library 1.16.0)
+
+- **No more waiting minutes for an answer** — when a site limits this network, a pasted link says "try again in about N" at once instead of hanging for up to ten minutes. Batches and Sync Up still wait their turn on their own.
+
 ### What's new in beta 15 (library 1.15.0)
 
 - **Instagram photos and photo carousels download without signing in** — they failed with "Instagram is limiting this network"; every picture of a carousel comes now.

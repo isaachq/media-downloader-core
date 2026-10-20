@@ -3,13 +3,20 @@ import {DownloadError} from '../../core/errors.js'
 import {genericChoices} from '../../core/formats.js'
 import type {AnalysisResult, PlaylistAnalysis, VideoAnalysis} from '../../types.js'
 import type {BrowserAssist} from '../browser.js'
-import {type Fetch, HttpSession, IFRAME_NAVIGATION_HEADERS, navigationFetch} from '../http.js'
+import {
+  DOCUMENT_NAVIGATION_HEADERS,
+  type Fetch,
+  HttpSession,
+  IFRAME_NAVIGATION_HEADERS,
+  navigationFetch,
+} from '../http.js'
 import {MetaClient, type PageRead, type SessionProvider} from '../meta/client.js'
 import {downloadPost} from '../meta/download.js'
 import {MetaError, type MetaProblem, toDownloadError} from '../meta/errors.js'
 import {type CursorPage, walkCursor} from '../meta/listing.js'
 import {choicesOf, type MetaPost, shapeOf, summaryOf, videosOf} from '../meta/post.js'
 import type {PacerOptions} from '../pacer.js'
+import {followShortLink, resolved, unresolvedMessage} from '../redirects.js'
 import type {ListingProgress, MediaSource, SourceDownload, SourceFile} from '../source.js'
 import {
   codeToPk,
@@ -230,7 +237,7 @@ export class InstagramSource implements MediaSource {
 
   // ─── links ───────────────────────────────────────────────────────────────
 
-  /** Share links are redirects: follow one hop; landing anywhere else means the post is gone. */
+  /** Share links are redirects (a hop or a few): landing anywhere else means the post is gone. */
   async #resolve(url: string, signal?: AbortSignal): Promise<Exclude<InstagramLink, {kind: 'short'}>> {
     const link = parseInstagramLink(url, this.#client.host)
     if (!link) {
@@ -243,10 +250,15 @@ export class InstagramSource implements MediaSource {
       )
     }
     if (link.kind !== 'short') return link
-    const target = await this.#client.redirectOf(link.url, signal)
-    const resolved = target ? parseInstagramLink(target, this.#client.host) : undefined
-    if (!resolved || resolved.kind === 'short') throw new MetaError('removed', 'This short link leads nowhere.')
-    return resolved
+    const followed = await followShortLink(
+      link.url,
+      url => this.#client.redirectOf(url, signal),
+      url => resolved(parseInstagramLink(url, this.#client.host)),
+    )
+    if (followed.ok) return followed.link
+    if (followed.reason === 'dead-end' && /\/accounts\/login/.test(followed.resolvedUrl))
+      throw new MetaError('login-required', 'Instagram shows where this share link leads to signed-in sessions only.')
+    throw new MetaError('removed', unresolvedMessage(followed.reason))
   }
 
   /** The post a url points at, from memory when recent enough to download, else read again. */
@@ -269,7 +281,7 @@ export class InstagramSource implements MediaSource {
 
   /**
    * One post by shortcode: the anonymous routes first (the embed page, the
-   * app's API — one request each, what a public post needs), then the web
+   * post page, the app's API — one request each, what a public post needs), then the web
    * client's query (JSON, answers without a session for public posts), then
    * the post page — a page a browser or a signed-in session can get. When
    * the anonymous routes were walled and the rest fails too, the error says
@@ -352,7 +364,7 @@ export class InstagramSource implements MediaSource {
    * moves on to the next. No post: what each route said, and whether any was
    * walled.
    *
-   * Time Complexity: O(R) where R <= 2 routes are attempted.
+   * Time Complexity: O(R) where R <= 3 routes are attempted.
    * Space Complexity: O(1) beyond response data.
    */
   async #readAnonymously(
@@ -368,6 +380,19 @@ export class InstagramSource implements MediaSource {
             await this.#anonymousGet(
               `${origin}${EMBED_PATH(code)}`,
               {...IFRAME_NAVIGATION_HEADERS, Referer: `${origin}/`},
+              signal,
+            ),
+          ),
+      ],
+      // the embed has no data for a photo or a carousel of photos (contextJSON: null);
+      // the post page a logged-out visitor gets carries the whole item, every picture
+      [
+        'post page',
+        async () =>
+          readPostPage(
+            await this.#anonymousGet(
+              postUrl(origin, code),
+              {...DOCUMENT_NAVIGATION_HEADERS, 'Accept-Language': 'en-US,en;q=0.9'},
               signal,
             ),
           ),

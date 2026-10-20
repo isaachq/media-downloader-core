@@ -8,6 +8,7 @@ import type {BrowserAssist} from '../browser.js'
 import {type Fetch, HttpSession} from '../http.js'
 import {fetchMedia} from '../media-fetch.js'
 import {Pacer, type PacerOptions} from '../pacer.js'
+import {followShortLink, resolved, unresolvedMessage} from '../redirects.js'
 import {HostSession, type SessionProvider} from '../session.js'
 import {
   type ListingProgress,
@@ -360,7 +361,7 @@ export class TikTokSource implements MediaSource {
 
   // ─── links, pages, listing ───────────────────────────────────────────────
 
-  /** Short links are redirects: follow one hop; landing on the home page means the post is gone. */
+  /** Short links are redirects (a hop or a few): landing on the home page means the post is gone. */
   async #resolve(url: string, signal?: AbortSignal) {
     // every read starts here: the host's session (when it gives one) goes with it
     await this.#host.load()
@@ -374,11 +375,17 @@ export class TikTokSource implements MediaSource {
         'unsupported-url',
       )
     if (link.kind !== 'short') return link
-    const response = await this.#pacer.run(() => this.#session.get(link.url, {redirect: 'manual', signal}), signal)
-    const target = response.headers.get('location')
-    const resolved = target ? parseTikTokLink(new URL(target, link.url).href, this.#originHost) : undefined
-    if (!resolved || resolved.kind === 'short') throw new TikTokError('removed', 'This short link leads nowhere.')
-    return resolved
+    const followed = await followShortLink(
+      link.url,
+      async url => {
+        const response = await this.#pacer.run(() => this.#session.get(url, {redirect: 'manual', signal}), signal)
+        await response.body?.cancel()
+        return response.headers.get('location') ?? undefined
+      },
+      url => resolved(parseTikTokLink(url, this.#originHost)),
+    )
+    if (!followed.ok) throw new TikTokError('removed', unresolvedMessage(followed.reason))
+    return followed.link
   }
 
   /**

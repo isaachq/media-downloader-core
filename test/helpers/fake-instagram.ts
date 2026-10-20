@@ -25,6 +25,10 @@ export type FakeInstagramConfig = {
   readonly loginWall?: boolean
   /** The embed page answers 404, as if Instagram retired it. */
   readonly noEmbed?: boolean
+  /** A logged-out post page carries no post data (as before Instagram's xig_polaris_media). */
+  readonly noPage?: boolean
+  /** Photo posts / carousels (by index) with a song (Instagram's music sticker): `music_metadata`. */
+  readonly music?: readonly number[]
   /** The app's media info API answers 404, as if Instagram retired it. */
   readonly noAppApi?: boolean
   /** The first N page / API answers are rate limited ("please wait a few minutes"). */
@@ -115,10 +119,25 @@ export async function startFakeInstagram(config: FakeInstagramConfig = {}): Prom
     {type: 102, url: `${origin}/media/${id}/sd.mp4`, width: 720, height: 1280, bandwidth: 900_000},
     {type: 102, url: `${origin}/media/${id}/hd.mp4`, width: 1080, height: 1920}, // a duplicate url: ignored
   ]
+  const song = (id: string) => ({
+    music_metadata: {
+      music_canonical_id: '0',
+      audio_type: 'licensed_music',
+      music_info: {
+        music_asset_info: {
+          progressive_download_url: `${origin}/audio/${id}.m4a`,
+          duration_in_ms: (config.media?.soundDuration ?? 30) * 1000,
+          title: 'Canción',
+          display_artist: 'Artista',
+        },
+      },
+    },
+  })
   /** A post as a v1 item (the API, the timeline query, the post page). */
   const v1 = (index: number) => {
     const id = ids[index]!
     const base = {
+      ...(config.music?.includes(index) && song(id)),
       pk: id,
       id: `${id}_${USER_ID}`,
       code: codes[index]!,
@@ -218,7 +237,8 @@ export async function startFakeInstagram(config: FakeInstagramConfig = {}): Prom
     const cookie = req.headers.cookie ?? ''
     const signedIn = cookie.includes(SESSION_COOKIE)
     const isApi = parts[0] === 'api' || parts[0] === 'graphql'
-    const isPage = !isApi && parts[0] !== 'media' && parts[0] !== 'image' && parts[0] !== 'accounts'
+    const isPage =
+      !isApi && parts[0] !== 'media' && parts[0] !== 'image' && parts[0] !== 'audio' && parts[0] !== 'accounts'
 
     if (parts[0] === 'accounts') {
       return send(200, '<html><body><form id="loginForm">Log in</form></body></html>', {'Content-Type': 'text/html'})
@@ -227,11 +247,18 @@ export async function startFakeInstagram(config: FakeInstagramConfig = {}): Prom
       hits.short++
       return send(302, '', {Location: `/p/${codes[0]}/`})
     }
-    if (parts[0] === 'media' || parts[0] === 'image') {
+    if (parts[0] === 'media' || parts[0] === 'image' || parts[0] === 'audio') {
       hits.media++
       if (!(req.headers.referer ?? '').startsWith(origin)) {
         hits.refusedMedia++
         return send(403, 'forbidden')
+      }
+      if (parts[0] === 'audio') {
+        if (config.media?.sound) {
+          const real = serveReal(config.media.sound, 'audio/mp4', req.headers.range)
+          return send(real.status, real.body, real.headers)
+        }
+        return send(200, Buffer.from(`M4A ${parts[1]}`), {'Content-Type': 'audio/mp4'})
       }
       if (parts[0] === 'image') {
         if (config.media?.image) {
@@ -401,6 +428,17 @@ export async function startFakeInstagram(config: FakeInstagramConfig = {}): Prom
         })
       }
       const index = codes.indexOf(parts[1] ?? '')
+      // as Instagram since October 2026: a post without a video is drawn by the server, contextJSON null
+      const item = index === -1 ? undefined : (v1(index) as Record<string, unknown>)
+      const children = item?.['carousel_media'] as Array<Record<string, unknown>> | undefined
+      const hasVideo = item !== undefined && (children ?? [item]).some(c => c['video_versions'] !== undefined)
+      if (item && !hasVideo) {
+        return send(
+          200,
+          `<!DOCTYPE html><html><head><title>Instagram</title></head><body><img class="EmbeddedMediaImage" src="${origin}/image/${ids[index]}/1.jpg"><script>(function(){require("EmbedSimple").init({"contextJSON":null});})();</script></body></html>`,
+          {'Content-Type': 'text/html'},
+        )
+      }
       const context = JSON.stringify({gql_data: {shortcode_media: index === -1 ? null : node(index)}})
       return send(
         200,
@@ -413,6 +451,18 @@ export async function startFakeInstagram(config: FakeInstagramConfig = {}): Prom
       const index = codes.indexOf(parts[1] ?? '')
       if (index === -1) {
         return send(200, "<html><body>Sorry, this page isn't available.</body></html>", {'Content-Type': 'text/html'})
+      }
+      // a logged-out visitor: the item as xig_polaris_media (every picture of a carousel, the song)
+      if (!signedIn) {
+        if (config.noPage) return send(200, '<html><head><title>Post</title></head><body></body></html>')
+        return send(
+          200,
+          sjs({xig_polaris_media: {__typename: 'XIGPolarisImageMedia', if_not_gated_logged_out: v1(index)}}),
+          {
+            'Content-Type': 'text/html',
+            'Set-Cookie': 'csrftoken=csrf-1; Path=/',
+          },
+        )
       }
       return send(200, sjs({xdt_api__v1__media__shortcode__web_info: {items: [v1(index)]}}), {
         'Content-Type': 'text/html',

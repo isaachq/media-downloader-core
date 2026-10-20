@@ -64,6 +64,16 @@ export {
   isSourceDamage,
   SOURCE_DAMAGE,
 } from './core/damaged.js'
+export {
+  type DetectedMediaType,
+  diagnoseFailure,
+  type FailureCode,
+  type FailureDiagnostic,
+  type FailureStage,
+  mediaTypeOf,
+  type Platform,
+  platformOf,
+} from './core/diagnostic.js'
 export {classifyYtDlpError, DownloadError, isRetryable} from './core/errors.js'
 export {type WorkEstimate, WorkMeter} from './core/eta.js'
 export {

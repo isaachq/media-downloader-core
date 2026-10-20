@@ -1,6 +1,6 @@
 import {MetaError} from '../meta/errors.js'
 import type {CursorPage} from '../meta/listing.js'
-import type {MetaImage, MetaMedia, MetaPost, MetaVideo} from '../meta/post.js'
+import type {MetaImage, MetaMedia, MetaMusic, MetaPost, MetaVideo} from '../meta/post.js'
 import {dig, findWithKey, isObject, type Json, jsonScripts, list, num, text} from '../meta/relay.js'
 import type {Rendition} from '../renditions.js'
 import {postUrl, storiesUrl} from './links.js'
@@ -107,6 +107,22 @@ function mediaOfV1(raw: Json): MetaMedia | undefined {
   return imageOf(raw, id)
 }
 
+/**
+ * The song of a photo post: `music_metadata.music_info` (a feed photo or
+ * carousel with a song), or `clips_metadata.music_info` (the same item as the
+ * app's clips route answers it). Direct lookups, no search: O(1).
+ */
+export function musicOfV1(raw: Json): MetaMusic | undefined {
+  const info = dig(raw, 'music_metadata', 'music_info') ?? dig(raw, 'clips_metadata', 'music_info')
+  const asset = dig(info, 'music_asset_info')
+  if (!isObject(asset)) return undefined
+  const url = text(asset['progressive_download_url']) ?? text(asset['fast_start_progressive_download_url'])
+  if (!url) return undefined
+  const ms = num(asset['duration_in_ms'])
+  const title = [text(asset['display_artist']), text(asset['title'])].filter(Boolean).join(' – ')
+  return {url, ...(ms && {duration: ms / 1000}), ...(title && {title})}
+}
+
 /** A post from a v1 item (an API answer, a timeline node, a post page, a story). */
 export function readV1Item(raw: unknown, opts: {readonly story?: boolean | undefined} = {}): MetaPost {
   if (!isObject(raw)) throw new MetaError('format-changed', 'Instagram item is not an object.')
@@ -126,6 +142,7 @@ export function readV1Item(raw: unknown, opts: {readonly story?: boolean | undef
     if (media) items.push(media)
   }
   const pinned = list(raw['timeline_pinned_user_ids']).length > 0
+  const music = items.some(item => item.kind === 'video') ? undefined : musicOfV1(raw)
   return {
     id,
     code,
@@ -140,6 +157,7 @@ export function readV1Item(raw: unknown, opts: {readonly story?: boolean | undef
     createdAt: num(raw['taken_at']),
     expiresAt: opts.story ? num(raw['expiring_at']) : undefined,
     items,
+    ...(music && {music}),
     cover: items[0]?.kind === 'video' ? items[0].cover : undefined,
     pinned,
     story: opts.story || undefined,

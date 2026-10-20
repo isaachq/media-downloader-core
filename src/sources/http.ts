@@ -28,6 +28,14 @@ export const IFRAME_NAVIGATION_HEADERS: Readonly<Record<string, string>> = {
   'Upgrade-Insecure-Requests': '1',
 }
 
+/** A top-level page load (a link typed or opened): what a site serves a visitor's first page to. */
+export const DOCUMENT_NAVIGATION_HEADERS: Readonly<Record<string, string>> = {
+  ...IFRAME_NAVIGATION_HEADERS,
+  'Sec-Fetch-Dest': 'document',
+  'Sec-Fetch-Site': 'none',
+  'Sec-Fetch-User': '?1',
+}
+
 const MAX_REDIRECTS = 10
 
 /**

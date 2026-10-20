@@ -10,9 +10,21 @@ import {type ArchiveFormat, BinaryError} from './sources.js'
  */
 export async function extractArchive(archive: string, format: ArchiveFormat, dest: string): Promise<void> {
   const linuxZip = format === 'zip' && process.platform === 'linux'
-  const [cmd, args] = linuxZip ? ['unzip', ['-q', '-o', archive, '-d', dest]] : ['tar', ['-xf', archive, '-C', dest]]
+  const [cmd, args] = linuxZip
+    ? ['unzip', ['-q', '-o', archive, '-d', dest]]
+    : [tarCommand(), ['-xf', archive, '-C', dest]]
   const result = await run(cmd, args, {timeoutMs: 300_000})
   if (result.code !== 0) throw new BinaryError(`Could not extract ${path.basename(archive)}: ${result.stderr.trim()}`)
+}
+
+/**
+ * Windows' own bsdtar, by its full path: a GNU tar earlier on the PATH (Git for
+ * Windows', MSYS2's) reads "C:\…" as a remote host and fails to extract.
+ */
+export function tarCommand(platform: NodeJS.Platform = process.platform, env: NodeJS.ProcessEnv = process.env): string {
+  if (platform !== 'win32') return 'tar'
+  const root = env['SystemRoot'] ?? env['SYSTEMROOT'] ?? env['windir']
+  return root ? path.win32.join(root, 'System32', 'tar.exe') : 'tar'
 }
 
 /**

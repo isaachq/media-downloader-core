@@ -23,6 +23,7 @@ const MEDIA_KEYS = [
   'browser_native_hd_url',
   'videoDeliveryLegacyFields',
   'videoDeliveryResponseFragment',
+  'dash_manifest_xml_string',
 ] as const
 
 // ─── Walls ──────────────────────────────────────────────────────────────────
@@ -94,8 +95,84 @@ function pushUrl(found: Rendition[], seen: Set<string>, url: unknown, hd: boolea
   found.push({codec: 'h264', width: w, height: h, resolution, bitrate: hd ? 2 : 1, urls: [href]})
 }
 
-/** The progressive encodings of a video node: HD first. DASH manifests are left to yt-dlp. */
+/**
+ * The encodings of a video node: the progressive files, HD first; without any,
+ * its DASH manifest's video streams, each paired with the best audio stream
+ * (a phone has no yt-dlp to hand a DASH-only video to).
+ */
 export function renditionsOf(node: Json): Rendition[] {
+  const progressive = progressiveOf(node)
+  if (progressive.length > 0) return progressive
+  const legacy = isObject(node['videoDeliveryLegacyFields']) ? node['videoDeliveryLegacyFields'] : {}
+  const manifest =
+    text(node['dash_manifest_xml_string']) ??
+    text(legacy['dash_manifest_xml_string']) ??
+    text(node['dash_manifest']) ??
+    text(legacy['dash_manifest']) ??
+    list(dig(node, 'videoDeliveryResponseFragment', 'videoDeliveryResponseResult', 'dash_manifests'))
+      .map(entry => (isObject(entry) ? text(entry['manifest_xml']) : undefined))
+      .find(Boolean)
+  return manifest ? dashRenditions(manifest) : []
+}
+
+const REPRESENTATION = /<Representation\b([^>]*)>([\s\S]*?)<\/Representation>/g
+const BASE_URL = /<BaseURL>([^<]+)<\/BaseURL>/
+/** The attributes read, each pattern compiled once. */
+const ATTRIBUTES = {
+  codecs: /\bcodecs="([^"]*)"/,
+  mimeType: /\bmimeType="([^"]*)"/,
+  bandwidth: /\bbandwidth="([^"]*)"/,
+  width: /\bwidth="([^"]*)"/,
+  height: /\bheight="([^"]*)"/,
+} as const
+const AUDIO_CODEC = /^(?:mp4a|opus|ac-3|ec-3)/
+const H264 = /^avc1/
+const H265 = /^(?:hvc1|hev1)/
+const attribute = (attrs: string, name: keyof typeof ATTRIBUTES): string | undefined =>
+  ATTRIBUTES[name].exec(attrs)?.[1]
+
+/**
+ * A DASH manifest's streams as renditions: every H.264 / H.265 video stream
+ * (its whole file, BaseURL) with the highest-bitrate audio stream. One pass
+ * over the manifest, linear patterns (no backtracking): O(n) for n bytes.
+ * Other codecs (AV1, VP9) are left out: the engine's MP4 promise is H.264
+ * first, H.265 at most. No audio stream: none either (a silent file is not
+ * what a video post is).
+ */
+export function dashRenditions(manifest: string): Rendition[] {
+  const videos: Rendition[] = []
+  let audio: {urls: string[]; bitrate: number} | undefined
+  for (const [, attrs = '', body = ''] of manifest.matchAll(REPRESENTATION)) {
+    const url = BASE_URL.exec(body)?.[1]
+    if (!url) continue
+    const href = unescapeHtml(url.trim())
+    const codecs = attribute(attrs, 'codecs') ?? ''
+    const mime = attribute(attrs, 'mimeType') ?? ''
+    const bitrate = Number(attribute(attrs, 'bandwidth')) || 0
+    if (mime.startsWith('audio/') || AUDIO_CODEC.test(codecs)) {
+      if (!audio || bitrate > audio.bitrate) audio = {urls: [href], bitrate}
+      continue
+    }
+    const codec = H264.test(codecs) ? 'h264' : H265.test(codecs) ? 'h265' : undefined
+    if (!codec) continue
+    const width = Number(attribute(attrs, 'width')) || 0
+    const height = Number(attribute(attrs, 'height')) || 0
+    videos.push({
+      codec,
+      width,
+      height,
+      resolution: Math.min(width, height) || Math.max(width, height),
+      bitrate,
+      urls: [href],
+    })
+  }
+  if (!audio) return []
+  const sound = audio
+  return videos.map(video => ({...video, audio: sound}))
+}
+
+/** The progressive encodings of a video node: HD first. */
+function progressiveOf(node: Json): Rendition[] {
   const width = num(node['original_width']) ?? num(node['width']) ?? 0
   const height = num(node['original_height']) ?? num(node['height']) ?? 0
   const found: Rendition[] = []
@@ -183,6 +260,17 @@ export function readVideoNode(node: Json, fallbackId?: string): MetaPost {
  * A page without any video is told apart: a login wall or checkpoint, a
  * removed video, or a layout this module doesn't know.
  */
+/** Where a video node carries its media, every shape (progressive urls, DASH). */
+const MEDIA_FIELDS = [
+  'playable_url',
+  'playable_url_quality_hd',
+  'browser_native_sd_url',
+  'browser_native_hd_url',
+  'dash_manifest_xml_string',
+  'dash_manifest_url',
+] as const
+const isEmptyMedia = (value: unknown): boolean => value === null || value === undefined || value === ''
+
 export function readVideoPage(page: {readonly html: string; readonly url: string}, id?: string): MetaPost {
   checkWall(page)
   const nodes = videoNodes(jsonScripts(page.html))
@@ -203,7 +291,18 @@ export function readVideoPage(page: {readonly html: string; readonly url: string
   }
   const post = readVideoNode(chosen, id)
   if (post.items[0]!.kind === 'video' && post.items[0]!.renditions.length === 0) {
-    throw new MetaError('format-changed', 'Facebook video page without a progressive encoding (DASH only).')
+    // every media field there and empty: Facebook itself plays nothing to this visitor ("We're having
+    // trouble playing this video") — a video kept for signed-in sessions, or no longer playable
+    if (MEDIA_FIELDS.some(key => key in chosen) && MEDIA_FIELDS.every(key => isEmptyMedia(chosen[key]))) {
+      throw new MetaError(
+        'no-media',
+        'Facebook plays nothing for this video to a visitor without a session: it may need a signed-in Facebook session, or it no longer plays.',
+      )
+    }
+    throw new MetaError(
+      'format-changed',
+      'Facebook video page without an encoding to download (no MP4, no H.264 DASH).',
+    )
   }
   return post
 }

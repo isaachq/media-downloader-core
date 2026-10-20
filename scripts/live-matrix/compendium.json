@@ -1,0 +1,323 @@
+{
+  "about": "Real public links for the live matrix (npm run live:matrix). Canonical links only: share links carry the sharer's id (mibextid, igsh, _t), so they go in .local/live-matrix/compendium.local.json, which is merged in and never committed. Links rot: replace a dead one with another of the same shape.",
+  "scenarios": [
+    {
+      "id": "FB-01",
+      "category": "Standard Watch",
+      "expect": "video",
+      "urls": [
+        "https://www.facebook.com/watch/?v=1557618349384047",
+        "https://www.facebook.com/watch/?v=1863947697952668",
+        "https://www.facebook.com/watch/?v=1665351285019129"
+      ]
+    },
+    {
+      "id": "FB-02",
+      "category": "Dirty Watch URL (tracking parameters)",
+      "expect": "video",
+      "urls": [
+        "https://www.facebook.com/watch/?v=1557618349384047&ref=sharing&mibextid=Nif5oz",
+        "https://www.facebook.com/watch/?v=1665351285019129&ref=sharing&rdid=AbCdEf123&__cft__[0]=AZx&__tn__=R-R"
+      ]
+    },
+    {
+      "id": "FB-03",
+      "category": "Short Link (fb.watch)",
+      "expect": "video",
+      "urls": []
+    },
+    {
+      "id": "FB-04",
+      "category": "Direct Reel",
+      "expect": "video",
+      "urls": [
+        "https://www.facebook.com/reel/1863947697952668/",
+        "https://www.facebook.com/reel/2292256888193769/"
+      ]
+    },
+    {
+      "id": "FB-05",
+      "category": "Shared Reel (/share/r/)",
+      "expect": "video",
+      "urls": []
+    },
+    {
+      "id": "FB-06",
+      "category": "Shared Video (/share/v/)",
+      "expect": "video",
+      "urls": []
+    },
+    {
+      "id": "FB-07",
+      "category": "Shared Post (/share/p/)",
+      "expect": "video",
+      "urls": []
+    },
+    {
+      "id": "FB-08",
+      "category": "Profile / Page Video",
+      "expect": "video",
+      "urls": [
+        "https://www.facebook.com/NASA/videos/nasa-moon-base-rovers-and-lunar-terrain-vehicles/1863947697952668/",
+        "https://www.facebook.com/NASA/videos/be-a-flight-director/4007941182848761/",
+        "https://www.facebook.com/NASA/videos/whats-up-for-october-2026/1665351285019129/"
+      ]
+    },
+    {
+      "id": "FB-09",
+      "category": "Numeric Profile Video",
+      "expect": "video",
+      "urls": [
+        "https://www.facebook.com/100044561550831/videos/1557618349384047"
+      ]
+    },
+    {
+      "id": "FB-09L",
+      "category": "Numeric Profile Video listing (profile.php?id=…&sk=videos)",
+      "expect": "playlist",
+      "session": true,
+      "urls": [
+        "https://www.facebook.com/profile.php?id=100044561550831&sk=videos"
+      ]
+    },
+    {
+      "id": "FB-10",
+      "category": "Photo with Audio / Music",
+      "expect": "photo_with_audio",
+      "urls": []
+    },
+    {
+      "id": "FB-11",
+      "category": "Multi-Photo Album with Audio",
+      "expect": "photo_with_audio",
+      "urls": []
+    },
+    {
+      "id": "FB-12",
+      "category": "Mobile Subdomain (m.)",
+      "expect": "video",
+      "urls": [
+        "https://m.facebook.com/watch/?v=1557618349384047",
+        "https://m.facebook.com/NASA/videos/1863947697952668/"
+      ]
+    },
+    {
+      "id": "FB-13",
+      "category": "Web Subdomain (web.)",
+      "expect": "video",
+      "urls": [
+        "https://web.facebook.com/watch/?v=1557618349384047",
+        "https://web.facebook.com/NASA/videos/1665351285019129/"
+      ]
+    },
+    {
+      "id": "FB-14",
+      "category": "Public Group Video",
+      "expect": "video",
+      "urls": []
+    },
+    {
+      "id": "FB-15",
+      "category": "Recorded Live VOD",
+      "expect": "video",
+      "urls": [
+        "https://www.facebook.com/NASA/videos/nasas-spacex-crew-13-launch/1408202287429345/"
+      ],
+      "note": "Old NASA Science Live episodes no longer play without a session (Facebook itself shows \"trouble playing\"): keep links that play in a private window."
+    },
+    {
+      "id": "IG-01",
+      "category": "Standard Reel",
+      "expect": "video",
+      "urls": [
+        "https://www.instagram.com/reel/DeTUk4sDSp-/",
+        "https://www.instagram.com/reel/Dbn-XJhk0_-/",
+        "https://www.instagram.com/reel/DehZj9wggt0/"
+      ]
+    },
+    {
+      "id": "IG-02",
+      "category": "Plural Reels Route (/reels/)",
+      "expect": "video",
+      "urls": [
+        "https://www.instagram.com/reels/DeTUk4sDSp-/",
+        "https://www.instagram.com/reels/DehZj9wggt0/"
+      ]
+    },
+    {
+      "id": "IG-03",
+      "category": "Licensed Music Reel (+ igsh)",
+      "expect": "video",
+      "urls": [
+        "https://www.instagram.com/reel/Det_SDdh8Fz/?igsh=MWx0dGVzdA==",
+        "https://www.instagram.com/reel/DerosMwxTf6/?igsh=MWx0dGVzdA=="
+      ]
+    },
+    {
+      "id": "IG-04",
+      "category": "Feed Video (/p/)",
+      "expect": "video",
+      "urls": [
+        "https://www.instagram.com/p/Dbn-XJhk0_-/",
+        "https://www.instagram.com/p/DeTUk4sDSp-/"
+      ]
+    },
+    {
+      "id": "IG-05",
+      "category": "Single Photo with Audio",
+      "expect": "photo_with_audio",
+      "urls": []
+    },
+    {
+      "id": "IG-05P",
+      "category": "Single Photo (no music)",
+      "expect": "photo",
+      "urls": [
+        "https://www.instagram.com/p/DesCOtRjETH/",
+        "https://www.instagram.com/p/DegXcPcu_vv/",
+        "https://www.instagram.com/p/DeqfM8KF6tZ/"
+      ]
+    },
+    {
+      "id": "IG-06",
+      "category": "Photo Carousel with Audio",
+      "expect": "photo_with_audio",
+      "urls": []
+    },
+    {
+      "id": "IG-06P",
+      "category": "Photo Carousel (no music)",
+      "expect": "carousel",
+      "urls": [
+        "https://www.instagram.com/p/DeAYvsnn4la/",
+        "https://www.instagram.com/p/DepDZVBkWOP/",
+        "https://www.instagram.com/p/DenGs55GyDH/"
+      ]
+    },
+    {
+      "id": "IG-07",
+      "category": "Mixed Carousel (photo + video, img_index)",
+      "expect": "carousel",
+      "urls": [
+        "https://www.instagram.com/p/Det5B-rAng2/?img_index=2",
+        "https://www.instagram.com/p/DeuNywaEb4W/?img_index=3"
+      ]
+    },
+    {
+      "id": "IG-08",
+      "category": "Opaque Share Link (/share/)",
+      "expect": "video",
+      "urls": []
+    },
+    {
+      "id": "IG-09",
+      "category": "Legacy IGTV (/tv/)",
+      "expect": "video",
+      "urls": [
+        "https://www.instagram.com/tv/DeTUk4sDSp-/",
+        "https://www.instagram.com/tv/Dbn-XJhk0_-/"
+      ]
+    },
+    {
+      "id": "IG-10",
+      "category": "Nested Username URL",
+      "expect": "video",
+      "urls": [
+        "https://www.instagram.com/nasa/reel/DeTUk4sDSp-/",
+        "https://www.instagram.com/natgeo/reel/DehZj9wggt0/",
+        "https://www.instagram.com/nasa/reels/DeTUk4sDSp-/"
+      ]
+    },
+    {
+      "id": "IG-11",
+      "category": "Public Profile Grid",
+      "expect": "playlist",
+      "session": true,
+      "urls": [
+        "https://www.instagram.com/nasa/",
+        "https://www.instagram.com/natgeo/"
+      ]
+    },
+    {
+      "id": "TT-01",
+      "category": "Standard Web Video",
+      "expect": "video",
+      "urls": [
+        "https://www.tiktok.com/@nasa/video/7697300954667994381",
+        "https://www.tiktok.com/@natgeo/video/7698733995634281742",
+        "https://www.tiktok.com/@bbcnews/video/7698812216845405463"
+      ]
+    },
+    {
+      "id": "TT-02",
+      "category": "Photo Mode Carousel (/photo/)",
+      "expect": "photo_with_audio",
+      "urls": []
+    },
+    {
+      "id": "TT-03",
+      "category": "Photo Mode under /video/",
+      "expect": "photo_with_audio",
+      "urls": [
+        "https://www.tiktok.com/@bbcnews/video/7698710239079566614"
+      ]
+    },
+    {
+      "id": "TT-04",
+      "category": "Global Short Link (vm.)",
+      "expect": "video",
+      "urls": []
+    },
+    {
+      "id": "TT-05",
+      "category": "Regional Short Link (vt.)",
+      "expect": "video",
+      "urls": [
+        "https://vt.tiktok.com/ZSgYwK46M/"
+      ]
+    },
+    {
+      "id": "TT-06",
+      "category": "Direct Short Link (/t/)",
+      "expect": "video",
+      "urls": []
+    },
+    {
+      "id": "TT-07",
+      "category": "Heavily Tracked Mobile URL",
+      "expect": "video",
+      "urls": [
+        "https://www.tiktok.com/@nasa/video/7697300954667994381?_r=1&_t=ZT-90abcdEFG&checksum=0f1e2d3c4b5a",
+        "https://www.tiktok.com/@bbcnews/video/7698812216845405463?is_from_webapp=1&sender_device=pc&web_id=7300000000000000000"
+      ]
+    },
+    {
+      "id": "TT-08",
+      "category": "Mobile Web Subdomain (m.)",
+      "expect": "video",
+      "urls": [
+        "https://m.tiktok.com/v/7697300954667994381.html",
+        "https://m.tiktok.com/v/7698733995634281742.html"
+      ]
+    },
+    {
+      "id": "TT-09",
+      "category": "Long-Form Video (3–10+ min)",
+      "expect": "video",
+      "urls": [
+        "https://www.tiktok.com/@nasa/video/7675427485873409293",
+        "https://www.tiktok.com/@tiktok/video/7665760124878802207",
+        "https://www.tiktok.com/@tiktok/video/7655732127413112095"
+      ]
+    },
+    {
+      "id": "TT-10",
+      "category": "User Profile Feed",
+      "expect": "playlist",
+      "urls": [
+        "https://www.tiktok.com/@nasa",
+        "https://www.tiktok.com/@natgeo"
+      ]
+    }
+  ]
+}

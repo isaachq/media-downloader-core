@@ -839,6 +839,25 @@ yt-dlp writes into a private work folder; only validated files are moved into th
 
 Every failure has a stable `code` — `network`, `expired`, `unavailable`, `disk-full`, `validation`, `conversion`, `binary-missing`, `invalid-request`, `cancelled`, `unknown` — plus an English `message`, optional `params` and `details` (stderr tail). Hosts localize by code. Only transient codes are retried, with exponential backoff and jitter.
 
+### Failure diagnostics
+
+`diagnoseFailure({url, error, stage, elapsedMs, resolvedUrl?, analysis?})` turns any of those
+errors into a report a person can paste into an issue, built in O(1) from what the engine
+already has (no request is made, nothing is sent anywhere):
+
+| Field | |
+| --- | --- |
+| `target_url`, `resolved_url` | the link as given, and where a short link led |
+| `platform` | `facebook` · `instagram` · `tiktok` · `youtube` · `unknown` (`platformOf(url)`: one hash lookup per host suffix) |
+| `detected_media_type` | `video` · `reel` · `photo_with_audio` · `carousel` · `profile` · `short_link` · `unknown` |
+| `failure_stage` | `URL_VALIDATION` · `REDIRECT_RESOLUTION` · `METADATA_PARSE` · `STREAM_EXTRACTION` · `MUXING` · `NETWORK_IO` |
+| `error_code` | `LOGIN_WALL_DETECTED`, `REDIRECT_LOOP`, `REDIRECT_DEAD_END`, `RATE_LIMITED`, `TIMEOUT`, `DASH_AUDIO_MISSING`, `PHOTO_AUDIO_PARSE_ERROR`, `MUXING_FAILED`, `UNSUPPORTED_URL`, `REMOVED`, `PRIVATE`, `NO_MEDIA`, `FORMAT_CHANGED`… |
+| `http_status`, `execution_time_ms`, `engine`, `message` | the status the error names, the time spent, the engine's own code and hint |
+| `stack_snippet` | the last lines of the error, query strings (signed media urls) removed, at most 1 KB |
+
+The Android app keeps the last 20 of these on the phone and offers them on every failure
+("Copy diagnostic report").
+
 ## Security
 
 - Requests are validated at the boundary (`add()`): http(s) urls only, profiles checked at runtime, absolute output folders, cached metadata accepted only from the engine's own cache. In Electron this is the line between the untrusted renderer and the main process.
@@ -915,6 +934,26 @@ release, on your machine:
 ```bash
 npm run test:full   # typecheck, lint, every library test, build, pack check, then the app: typecheck, unit, end to end
 ```
+
+**Live URL matrix (local only, never in CI).** The suites above run against local fakes.
+Before a release, `npm run live:matrix` reads real public links on Facebook, Instagram and
+TikTok (`scripts/live-matrix/compendium.json`, one or more per scenario: watch links, reels,
+share links, photo posts with music, carousels, profiles…) with the whole engine, timing each
+link, classifying every failure with `diagnoseFailure`, and pausing 1.5–4 s between links so
+a long run isn't rate limited:
+
+```bash
+npm run live:matrix                        # analyze every link (yt-dlp available, as on desktop)
+npm run live:matrix -- --native            # as the Android app runs it: no yt-dlp
+npm run live:matrix -- --download          # and download each item, ffprobed (video + audio, or pictures + song)
+npm run live:matrix -- --only FB-05,TT-02  # some scenarios; --platform tiktok, --jitter 500-1500
+```
+
+Share links carry the sharer's id, so they live in `.local/live-matrix/compendium.local.json`
+(same shape, merged by scenario id, never committed). Links that need a signed-in session
+take Netscape cookie files: `MDC_LIVE_COOKIES_FACEBOOK`, `MDC_LIVE_COOKIES_INSTAGRAM`,
+`MDC_LIVE_COOKIES_TIKTOK`; without one they must fail cleanly as `LOGIN_WALL_DETECTED`
+(counted apart). A JSON report lands in `.local/live-matrix/`.
 
 …and, when a release needs every system, from GitHub: **Actions → CI → Run workflow**
 (`full` checked) adds macOS and Windows end to end, Node 20 and 24, a real yt-dlp/ffmpeg

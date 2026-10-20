@@ -98,7 +98,7 @@ export class MetaClient {
     this.origin = options.origin.replace(/\/$/, '')
     this.host = new URL(this.origin).hostname
     this.session = new HttpSession({fetch: options.fetch})
-    this.pacer = new Pacer(options.pacing)
+    this.pacer = new Pacer(options.pacing, options.site)
     this.#sessionCookie = options.sessionCookie
     this.#browser = options.browser
     this.#log = options.log ?? (() => {})

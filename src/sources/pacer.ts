@@ -1,4 +1,6 @@
+import {AsyncLocalStorage} from 'node:async_hooks'
 import {setTimeout as sleep} from 'node:timers/promises'
+import {DownloadError} from '../core/errors.js'
 
 /**
  * Polite request scheduling for one site: at most `concurrency` requests in
@@ -24,6 +26,23 @@ export type PacerOptions = {
 
 type Waiter = {resolve: () => void; next: Waiter | undefined}
 
+/** How long the work in this async context will wait out a site's cool-down; unset: as long as it takes. */
+const patience = new AsyncLocalStorage<number>()
+
+/**
+ * Run `work` so that its requests never sleep through a site's cool-down longer
+ * than `maxWaitMs`: a longer one fails at once, saying when to try again. For
+ * work someone is waiting for (pasting a link); background work (a batch, a
+ * sync) runs outside it and waits its turn as before. The spacing between
+ * requests (a second or two) is never refused.
+ */
+export function withPatience<T>(maxWaitMs: number, work: () => Promise<T>): Promise<T> {
+  return patience.run(maxWaitMs, work)
+}
+
+/** `details` of the error when a site's cool-down is longer than the caller would wait. */
+export const COOLING_DOWN = 'source:cooling-down'
+
 export class Pacer {
   readonly #concurrency: number
   readonly #spacingMs: number
@@ -42,7 +61,11 @@ export class Pacer {
   /** Aborted by resume(): wakes the callers sleeping through a cool-down. */
   #wake = new AbortController()
 
-  constructor(options: PacerOptions = {}) {
+  /** The site, for the "try again in" message. */
+  readonly #site: string
+
+  constructor(options: PacerOptions = {}, site = 'The site') {
+    this.#site = site
     this.#concurrency = Math.max(1, Math.floor(options.concurrency ?? 2))
     this.#spacingMs = Math.max(0, options.spacingMs ?? 1500)
     this.#jitterMs = Math.max(0, options.jitterMs ?? 1000)
@@ -59,6 +82,8 @@ export class Pacer {
 
   /** Run `task` when a slot is free and its turn has come. */
   async run<T>(task: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    // a caller with little patience is told now, before it queues behind those sleeping it out
+    this.#checkPatience()
     await this.#acquire(signal)
     try {
       await this.#waitTurn(signal)
@@ -135,8 +160,27 @@ export class Pacer {
     }
   }
 
+  /** Throws when this context won't wait as long as the cool-down still runs. O(1). */
+  #checkPatience(): void {
+    const limit = patience.getStore()
+    if (limit === undefined) return
+    const wait = this.coolingDownMs
+    if (wait <= limit) return
+    const seconds = Math.ceil(wait / 1000)
+    const when = seconds < 90 ? `${seconds} s` : `${Math.ceil(seconds / 60)} min`
+    throw new DownloadError(
+      'network',
+      `${this.#site} is rate limiting this network: try again in about ${when}.`,
+      COOLING_DOWN,
+      {retryAfterSeconds: seconds},
+      'retry-later',
+    )
+  }
+
   async #waitTurn(signal?: AbortSignal): Promise<void> {
     for (;;) {
+      // also between retries: a refusal while queued may have started a cool-down
+      this.#checkPatience()
       const now = this.#now()
       const start = Math.max(now, this.#nextStart)
       // reserve this start before awaiting, so concurrent callers queue up behind it

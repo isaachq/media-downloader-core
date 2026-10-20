@@ -351,6 +351,8 @@ export class SyncManager extends EventEmitter<SyncEvents> {
     const incremental = !deep && scan.ids.size > 0
     const analysis = await this.#engine.analyze(subscription.url, {
       maxEntries: MAX_REQUESTED_ITEMS,
+      // a sync runs on its own: it waits out a site's cool-down instead of failing
+      waitForSite: true,
       ...(signal && {signal}),
       ...(incremental && {known: new Set(scan.ids.keys())}),
       onProgress: progress => this.#setState(subscription, 'listing', progress),

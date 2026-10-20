@@ -48,6 +48,7 @@ import {TraceLog} from './core/trace-log.js'
 import {ffprobe, ProbeError, summarizeProbe, validateBundle, validateFile} from './core/validate.js'
 import {FacebookSource} from './sources/facebook/source.js'
 import {InstagramSource} from './sources/instagram/source.js'
+import {withPatience} from './sources/pacer.js'
 import {type ListingProgress, type MediaSource, needsFallback} from './sources/source.js'
 import {DEFAULT_SLIDESHOW, slideshowOptions} from './sources/tiktok/slideshow.js'
 import {TikTokSource} from './sources/tiktok/source.js'
@@ -164,6 +165,13 @@ export type ArchiveCheck = {
  *   if (result.kind === 'video') dl.addVideo(result, result.choices[0]!.profile, outDir)
  *   await dl.whenIdle()
  */
+/**
+ * The longest an analysis someone is waiting for sleeps through a site's cool-down
+ * (see analyze's `waitForSite`): the spacing between requests fits, a back-off (30 s
+ * and doubling) does not.
+ */
+export const ANALYZE_PATIENCE_MS = 15_000
+
 export class MediaDownloader extends EventEmitter<DownloaderEvents> implements AsyncDisposable {
   readonly binaries: BinaryManager
   readonly archive: DownloadArchive
@@ -610,6 +618,13 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       onProgress?: (progress: ListingProgress) => void
       /** Entry ids already had: a native source lists only what is newer (see MediaSource.analyze). */
       known?: ReadonlySet<string>
+      /**
+       * Wait out a site's rate-limit cool-down however long it runs (background work: a
+       * batch's listing, a sync). Default false: an analysis someone is waiting for fails at
+       * once when the site asks to wait longer than ANALYZE_PATIENCE_MS, saying when to try
+       * again (`details` COOLING_DOWN, hint 'retry-later', `params.retryAfterSeconds`).
+       */
+      waitForSite?: boolean
     } = {},
   ): Promise<AnalysisResult> {
     this.#assertOpen()
@@ -622,18 +637,23 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     this.#analyses.add(analysis)
     /** Why the native source handed the link to yt-dlp: said instead of yt-dlp's "Unsupported URL", when it can't either. */
     let sourceError: DownloadError | undefined
+    // someone waiting for this answer is told "try again in N" instead of sleeping out a long cool-down
+    const patient = <T>(work: () => Promise<T>): Promise<T> =>
+      opts.waitForSite ? work() : withPatience(ANALYZE_PATIENCE_MS, work)
     try {
       // a host where yt-dlp is optional: whether there is one decides who reads the link
       if (this.binaries.ytDlpOptional) await this.#tools()
       const source = this.#sourceFor(url)
       if (source) {
         try {
-          return await source.analyze(url, {
-            signal: analysis.signal,
-            ...(opts.maxEntries !== undefined && {maxEntries: opts.maxEntries}),
-            ...(opts.onProgress && {onProgress: opts.onProgress}),
-            ...(opts.known && {known: opts.known}),
-          })
+          return await patient(() =>
+            source.analyze(url, {
+              signal: analysis.signal,
+              ...(opts.maxEntries !== undefined && {maxEntries: opts.maxEntries}),
+              ...(opts.onProgress && {onProgress: opts.onProgress}),
+              ...(opts.known && {known: opts.known}),
+            }),
+          )
         } catch (error) {
           if (!(error instanceof DownloadError) || !needsFallback(error.details)) throw error
           if (this.#ytDlpMissing) throw sourceFailure(error.toJSON())
@@ -673,12 +693,14 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
         if (!fallback) throw error
         let result: AnalysisResult
         try {
-          result = await fallback.source.analyze(url, {
-            signal: analysis.signal,
-            ...(opts.maxEntries !== undefined && {maxEntries: opts.maxEntries}),
-            ...(opts.onProgress && {onProgress: opts.onProgress}),
-            ...(opts.known && {known: opts.known}),
-          })
+          result = await patient(() =>
+            fallback.source.analyze(url, {
+              signal: analysis.signal,
+              ...(opts.maxEntries !== undefined && {maxEntries: opts.maxEntries}),
+              ...(opts.onProgress && {onProgress: opts.onProgress}),
+              ...(opts.known && {known: opts.known}),
+            }),
+          )
         } catch (fallbackError) {
           if (analysis.signal.aborted) throw cancelledError()
           this.#log(

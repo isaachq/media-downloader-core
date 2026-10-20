@@ -2,7 +2,9 @@ import {strict as assert} from 'node:assert'
 import {describe, it} from 'node:test'
 import {tarCommand} from '../src/binaries/extract.js'
 import {diagnoseFailure, mediaTypeOf, platformOf} from '../src/core/diagnostic.js'
+import type {DownloadError} from '../src/core/errors.js'
 import {HttpSession, withCause} from '../src/sources/http.js'
+import {COOLING_DOWN, Pacer, withPatience} from '../src/sources/pacer.js'
 import {followShortLink, MAX_HOPS, returnUrlOf} from '../src/sources/redirects.js'
 import type {AnalysisResult, JobError} from '../src/types.js'
 
@@ -191,5 +193,45 @@ describe('network errors', () => {
     assert.equal(withCause(aborted), aborted, 'an abort stays an abort')
     const plain = new TypeError('fetch failed')
     assert.equal(withCause(plain), plain)
+  })
+})
+
+describe('rate limits and someone waiting', () => {
+  it('an impatient caller is told when to try again at once; a patient one waits its turn', async () => {
+    const pacer = new Pacer({spacingMs: 0, jitterMs: 0, backoffMs: 400}, 'Instagram')
+    pacer.refused()
+    const started = performance.now()
+    await assert.rejects(
+      withPatience(100, () => pacer.run(async () => 'read')),
+      (e: DownloadError) => {
+        assert.equal(e.details, COOLING_DOWN)
+        assert.equal(e.hint, 'retry-later')
+        assert.equal(e.params?.['retryAfterSeconds'], 1)
+        assert.match(e.message, /^Instagram is rate limiting this network: try again in about 1 s\.$/)
+        return true
+      },
+    )
+    assert.ok(performance.now() - started < 50, 'no sleeping through the cool-down')
+    const report = diagnoseFailure({
+      url: 'https://www.instagram.com/nasa/',
+      error: {
+        code: 'network',
+        message: 'Instagram is rate limiting this network: try again in about 2 min.',
+        hint: 'retry-later',
+      },
+      stage: 'analyze',
+      elapsedMs: 3,
+    })
+    assert.deepEqual([report.error_code, report.failure_stage], ['RATE_LIMITED', 'NETWORK_IO'])
+    // enough patience, or none at all (background work): the turn comes after the cool-down
+    assert.equal(await withPatience(1000, () => pacer.run(async () => 'read')), 'read')
+    pacer.refused()
+    assert.equal(await pacer.run(async () => 'later'), 'later')
+  })
+
+  it('the normal spacing between requests is never refused', async () => {
+    const pacer = new Pacer({spacingMs: 50, jitterMs: 0})
+    const reads = await withPatience(100, () => Promise.all([1, 2, 3].map(n => pacer.run(async () => n))))
+    assert.deepEqual(reads, [1, 2, 3])
   })
 })

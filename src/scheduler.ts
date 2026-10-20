@@ -456,7 +456,12 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
       const {maxItems, selection, analysis: known} = batch.request
       const analysis = selection
         ? fromSelection(batch.request.url, selection)
-        : (known ?? (await this.#engine.analyze(batch.request.url, {signal, ...(maxItems && {maxEntries: maxItems})})))
+        : (known ??
+          (await this.#engine.analyze(batch.request.url, {
+            signal,
+            waitForSite: true,
+            ...(maxItems && {maxEntries: maxItems}),
+          })))
       if (maxItems && analysis.kind === 'playlist' && analysis.entries.length >= maxItems) {
         this.#engine.log('info', `list capped at its first ${maxItems} items`, {batchId: batch.id})
       }

@@ -25,6 +25,7 @@ import {MetaError} from '../src/sources/meta/errors.js'
 import {walkCursor} from '../src/sources/meta/listing.js'
 import {choicesOf, shapeOf, summaryOf, titleOf} from '../src/sources/meta/post.js'
 import {findAllWithKey, findWithKey, jsonScripts} from '../src/sources/meta/relay.js'
+import {COOLING_DOWN} from '../src/sources/pacer.js'
 import {SOURCE_BLOCKED} from '../src/sources/source.js'
 import {type FakeInstagram, SESSION_COOKIE, startFakeInstagram} from './helpers/fake-instagram.js'
 import {type FakeBinaries, writeFakes} from './helpers/fakes.js'
@@ -555,13 +556,17 @@ const [sessionName, sessionValue] = SESSION_COOKIE.split('=') as [string, string
 async function setup(
   name: string,
   config: Parameters<typeof startFakeInstagram>[0] = {},
-  extra: {readonly signedIn?: boolean; readonly browser?: (origin: string) => BrowserAssist} = {},
+  extra: {
+    readonly signedIn?: boolean
+    readonly browser?: (origin: string) => BrowserAssist
+    readonly pacing?: InstagramOptions['pacing']
+  } = {},
 ) {
   const site = await startFakeInstagram(config)
   const host = new URL(site.origin).hostname
   const options: InstagramOptions = {
     origin: site.origin,
-    pacing: {spacingMs: 0, jitterMs: 0, backoffMs: 30, maxBackoffMs: 100},
+    pacing: {spacingMs: 0, jitterMs: 0, backoffMs: 30, maxBackoffMs: 100, ...extra.pacing},
     ...(extra.browser && {browser: extra.browser(site.origin)}),
     cookies: async () => (extra.signedIn ? [{name: sessionName, value: sessionValue, domain: host}] : undefined),
   }
@@ -781,6 +786,33 @@ describe('Instagram, end to end (local fake)', () => {
     assert.equal(scheduler.batch(batch.id)?.status, 'completed', JSON.stringify(scheduler.batch(batch.id)?.error))
     assert.equal(site.hits.refused, 2)
     assert.equal(site.hits.app + site.hits.graphql, 1, '2 refusals (the embed, the post page) + 1 success, all native')
+  })
+
+  it('rate limited while someone waits: the analysis fails at once with "try again in", a batch waits it out', async () => {
+    // a real cool-down (20 s, doubling): the link pasted on screen must not hang on it
+    const {site, engine} = await setup(
+      'rate-limited',
+      {refusals: 10},
+      {pacing: {backoffMs: 20_000, maxBackoffMs: 600_000}},
+    )
+    const started = performance.now()
+    await assert.rejects(engine.analyze(postUrl(site)), (e: DownloadError) => {
+      assert.equal(e.hint, 'retry-later')
+      assert.equal(e.details, COOLING_DOWN)
+      assert.match(e.message, /Instagram is rate limiting this network: try again in about 20 s/)
+      return true
+    })
+    assert.ok(performance.now() - started < 5_000, `answered in ${Math.round(performance.now() - started)} ms`)
+    const total = () => Object.values(site.hits).reduce((sum, n) => sum + n, 0)
+    const asked = total()
+    assert.equal(
+      site.hits.refused,
+      4,
+      'each route asked once (embed, post page, app API, the query): no retry after sleeping',
+    )
+    // pasted again during the cool-down: told at once, nothing sent
+    await assert.rejects(engine.analyze(postUrl(site, 0)), (e: DownloadError) => e.details === COOLING_DOWN)
+    assert.equal(total(), asked, 'no request at all while it cools down')
   })
 
   it('a login wall is not solved: Instagram goes to yt-dlp for a while, without knocking again', async () => {

@@ -112,7 +112,7 @@ export {
 } from './core/pool.js'
 export {searchTrace} from './core/trace-log.js'
 export {ffprobe, summarizeProbe, validateFile} from './core/validate.js'
-export {type ArchiveCheck, MediaDownloader, relaxProfile, retryDelay} from './downloader.js'
+export {ANALYZE_PATIENCE_MS, type ArchiveCheck, MediaDownloader, relaxProfile, retryDelay} from './downloader.js'
 export {BatchScheduler} from './scheduler.js'
 export type {BrowserAssist, BrowserPage, MediaResolver, PlayerMedia} from './sources/browser.js'
 export type {FacebookQueries} from './sources/facebook/endpoints.js'
@@ -135,7 +135,7 @@ export {type FetchedMedia, fetchMedia, type MediaFetch} from './sources/media-fe
 export {MetaClient, type MetaClientOptions} from './sources/meta/client.js'
 export {MetaError, type MetaProblem} from './sources/meta/errors.js'
 export type {MetaMedia, MetaPost} from './sources/meta/post.js'
-export {Pacer, type PacerOptions} from './sources/pacer.js'
+export {COOLING_DOWN, Pacer, type PacerOptions, withPatience} from './sources/pacer.js'
 export {parsePlayerPageSites} from './sources/player-page/config.js'
 export {
   PLAYER_PAGE_DEFAULT_ITEMS,

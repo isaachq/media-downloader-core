@@ -45,6 +45,15 @@ the ⌊CPUs/2⌋ pool and verified file by file.
 
 ![Paste a link, download it as MP4, check its integrity report, find it in Finished, open the run report](docs/demo.gif)
 
+### What's new in beta 15 (library 1.15.0)
+
+- **Instagram photos and photo carousels download without signing in** — they failed with "Instagram is limiting this network"; every picture of a carousel comes now.
+- **Photo posts keep their song** — an Instagram photo with music becomes a slideshow with its music, a folder with the song beside the pictures, or just the song.
+- **Facebook videos offered only in separate video and audio streams download everywhere** — on the phone too (no yt-dlp there), in the best quality, video and audio joined without re-encoding.
+- **Share links work through every redirect** — fb.watch, Facebook and Instagram share links, vm.tiktok.com, vt.tiktok.com and /t/ links that hop through a tracker or a sign-in page.
+- **More links** — posts in public Facebook groups, Instagram reels under a user name (/user/reels/…).
+- **Every failure can be copied as a report** — the link, where it led, the stage, the reason and the versions, to paste in a message or an issue (nothing is sent anywhere).
+
 ### What's new in beta 14.7 (library 1.14.7)
 
 - **A TikTok carousel can be downloaded as images after its MP4** — the MP4, the images, and the images with their sound are now three different downloads; asking for one no longer says the other is "already downloaded". What you already downloaded is still recognized.

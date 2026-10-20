@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## App 0.2.0-beta.15 · library 1.15.0
+
+Beta 15: Instagram photos and photo carousels download without signing in, photo posts keep
+their song, Facebook videos served only as DASH download on the phone too, share links follow
+every hop, and every failure can be copied as a report.
+
 **Library**
 
 - **Instagram photos and photo carousels download without a session.** The embed

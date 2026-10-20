@@ -43,6 +43,12 @@ every hop, and every failure can be copied as a report.
   `REDIRECT_LOOP`, `RATE_LIMITED`, `DASH_AUDIO_MISSING`…), the HTTP status, the time
   spent and a sanitized stack snippet; `platformOf()` names a url's site with one
   hash lookup per host suffix. Nothing is sent anywhere: hosts keep and show them.
+- **A TikTok post pasted after a listing is not "gone" for nothing.** The cookie a
+  profile listing leaves makes TikTok answer some posts "doesn't exist" (10204); 1.14.6
+  read such a post again with a fresh jar only when the session had listed it. On a
+  razr 50, after a long session, public posts pasted by hand failed that way on every
+  read until the app restarted. Any post now gets that second read once a listing ran
+  since the jar was last reset; with a clean jar "doesn't exist" is still believed at once.
 - **A failed request says why.** Node's fetch reports only "fetch failed" and keeps
   the reason in `cause`; the native sources' errors now carry it
   (`fetch failed (ENOTFOUND www.tiktok.com)`, `(ECONNRESET)`…) — on a phone that

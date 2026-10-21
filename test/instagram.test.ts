@@ -14,12 +14,14 @@ import {
   pkToCode,
   readEmbedPage,
   readGraphNode,
+  readLoggedOutPostQuery,
   readMediaInfo,
   readPostPage,
   readV1Item,
-  readWebInfo,
+  readWebInfoQuery,
 } from '../src/sources/instagram/data.js'
-import {isInstagramListing, parseInstagramLink} from '../src/sources/instagram/links.js'
+import {isInstagramListing, parseInstagramLink, unwrapInstagramRedirect} from '../src/sources/instagram/links.js'
+import {linkExpiry, QueryBook, RouteHealth} from '../src/sources/instagram/routes.js'
 import {type InstagramOptions, InstagramSource} from '../src/sources/instagram/source.js'
 import {MetaError} from '../src/sources/meta/errors.js'
 import {walkCursor} from '../src/sources/meta/listing.js'
@@ -35,6 +37,22 @@ const audio = {kind: 'audio', container: 'mp3'} as const
 const images = {mode: 'images', secondsPerImage: 3} as const
 
 describe('Instagram links', () => {
+  it("Instagram's outbound wrapper (l.instagram.com/?u=) is unwrapped without a request; only to http(s)", () => {
+    const wrapped = `https://l.instagram.com/?u=${encodeURIComponent('https://www.instagram.com/p/DeRxA44ssLU/')}&e=AT0`
+    assert.deepEqual(parseInstagramLink(wrapped), {kind: 'post', code: 'DeRxA44ssLU'})
+    assert.equal(unwrapInstagramRedirect(wrapped), 'https://www.instagram.com/p/DeRxA44ssLU/')
+    assert.equal(
+      unwrapInstagramRedirect('https://lm.instagram.com/?u=https%3A%2F%2Fexample.com%2Fv.mp4'),
+      'https://example.com/v.mp4',
+    )
+    const script = 'https://l.instagram.com/?u=javascript%3Aalert(1)'
+    assert.equal(unwrapInstagramRedirect(script), script)
+    assert.equal(
+      unwrapInstagramRedirect('https://www.instagram.com/p/X/?u=https://a.b'),
+      'https://www.instagram.com/p/X/?u=https://a.b',
+    )
+  })
+
   it('a code under a user name is a post, whatever the route: /p/, /reel/, /reels/, /tv/', () => {
     for (const route of ['p', 'reel', 'reels', 'tv']) {
       assert.deepEqual(parseInstagramLink(`https://www.instagram.com/nasa/${route}/DeTUk4sDSp-/?img_index=2`), {
@@ -321,36 +339,96 @@ describe('Instagram anonymous routes', () => {
     )
   })
 
-  it('web info parser handles items (v1) and shortcode_media (GraphQL) structures', () => {
-    const webV1 = readWebInfo({
-      items: [
-        {
-          pk: '100',
-          code: 'WEBV1',
-          media_type: 1,
-          taken_at: 1_700_000_000,
-          user: {username: 'webuser'},
-          image_versions2: {candidates: [{url: 'https://cdn/web.jpg', width: 1080, height: 1080}]},
-        },
-      ],
-    })
-    assert.equal(webV1.id, '100')
-    assert.equal(webV1.author, 'webuser')
+  it('the web_info query and the logged-out post query → their v1 item; null → removed; no data → changed', () => {
+    const item = {
+      pk: '100',
+      code: 'WEBV1',
+      media_type: 1,
+      taken_at: 1_700_000_000,
+      user: {username: 'webuser'},
+      image_versions2: {candidates: [{url: 'https://cdn/web.jpg', width: 1080, height: 1080}]},
+    }
+    const web = readWebInfoQuery({data: {xdt_api__v1__media__shortcode__web_info: {items: [item]}}})
+    assert.equal(web.id, '100')
+    assert.equal(web.author, 'webuser')
+    assert.equal(
+      problemOf(() => readWebInfoQuery({data: {xdt_api__v1__media__shortcode__web_info: {items: []}}})),
+      'removed',
+    )
+    assert.equal(
+      problemOf(() => readWebInfoQuery({data: {}})),
+      'format-changed',
+    )
+    assert.equal(
+      problemOf(() => readWebInfoQuery({message: 'x', require_login: true, status: 'fail'})),
+      'login-required',
+    )
 
-    const webGql = readWebInfo({
-      graphql: {
-        shortcode_media: {
-          id: '101',
-          shortcode: 'WEBGQL',
-          taken_at_timestamp: 1_700_000_000,
-          owner: {username: 'gqluser'},
-          display_url: 'https://cdn/gql.jpg',
-          dimensions: {width: 1080, height: 1080},
-        },
-      },
-    })
-    assert.equal(webGql.id, '101')
-    assert.equal(webGql.author, 'gqluser')
+    const polaris = readLoggedOutPostQuery({data: {xig_polaris_media: {if_not_gated_logged_out: item}}})
+    assert.equal(polaris.id, '100')
+    assert.equal(
+      problemOf(() => readLoggedOutPostQuery({data: {xig_polaris_media: null}})),
+      'removed',
+    )
+    assert.equal(
+      problemOf(() => readLoggedOutPostQuery({data: {xig_polaris_media: {}}})),
+      'login-required',
+    )
+  })
+
+  it('QueryBook reads the query ids a page preloads, by name, and its LSD token; both expire', () => {
+    let now = 1_000_000
+    const book = new QueryBook(() => now)
+    const html =
+      '<script>{"expectedPreloaders":[{"actorID":"0","preloaderID":"adp_x","queryID":"27776306792043877","variables":{"media_id":"4"},"queryName":"PolarisLoggedOutDesktopWWWPostRootContentQuery"},' +
+      '{"actorID":"0","queryID":"26363073793392167","variables":{"location_id":null,"user_id":"1"},"queryName":"Other"}]}' +
+      '["LSD",[],{"token":"AdSUbFWLQEfHq9tB70AP5xBEBnQ"},323]</script>'
+    assert.equal(book.learn(html), 2)
+    assert.equal(book.id('PolarisLoggedOutDesktopWWWPostRootContentQuery'), '27776306792043877')
+    assert.equal(book.id('Other'), '26363073793392167')
+    assert.equal(book.lsd, 'AdSUbFWLQEfHq9tB70AP5xBEBnQ')
+    now += 31 * 60_000
+    assert.equal(book.lsd, undefined)
+    now += 24 * 60 * 60_000
+    assert.equal(book.id('Other'), undefined)
+  })
+
+  it('RouteHealth: a refusal rests one route, not the others; scores order routes and drift back with time', () => {
+    let now = 0
+    const health = new RouteHealth(() => now)
+    const routes = ['a', 'b', 'c']
+    assert.deepEqual(
+      health.order(routes, r => r),
+      ['a', 'b', 'c'],
+    )
+    health.refused('a')
+    assert.ok(health.coolingDownMs('a') > 0)
+    assert.equal(health.coolingDownMs('b'), 0)
+    assert.deepEqual(
+      health.order(routes, r => r),
+      ['b', 'c', 'a'],
+    )
+    health.succeeded('c')
+    health.succeeded('c')
+    assert.deepEqual(
+      health.order(routes, r => r),
+      ['c', 'b', 'a'],
+    )
+    // two refusals in a row: twice the rest
+    now += 61_000
+    assert.equal(health.coolingDownMs('a'), 0)
+    const second = health.refused('a')
+    assert.equal(second, 120_000)
+    // hours later every score is back near the prior: the default order again
+    now += 10 * 60 * 60_000
+    assert.ok(Math.abs(health.score('c') - 0.5) < 0.01)
+    assert.ok(Math.abs(health.score('a') - 0.5) < 0.01)
+  })
+
+  it('linkExpiry reads the CDN oe parameter (hex unix seconds)', () => {
+    assert.equal(linkExpiry('https://scontent.cdninstagram.com/v/x.jpg?stp=a&oe=68F2A1B0&_nc_sid=1'), 0x68f2a1b0 * 1000)
+    assert.equal(linkExpiry('https://cdn/x.jpg?oe=68F2A1B0'), 0x68f2a1b0 * 1000)
+    assert.equal(linkExpiry('https://cdn/x.jpg'), undefined)
   })
 
   it('the embed page: contextJSON → the reel, its caption without trailing tags, one H.264 rendition', () => {
@@ -609,26 +687,87 @@ describe('Instagram, end to end (local fake)', () => {
     assert.equal(site.hits.refusedMedia, 0)
   })
 
-  it('without the embed, the post page reads the post; then the app API; without all three, the web client query', async () => {
-    // the embed retired: the page a logged-out visitor gets (xig_polaris_media)
-    const page = await startFakeInstagram({posts: 2, noEmbed: true})
+  it('without the embed, the web_info query reads the post; then the post page; then the logged-out query the page names; then the app API; then the web client query', async () => {
+    const pacing = {spacingMs: 0, jitterMs: 0}
+    // the embed retired: the web_info query (JSON) answers first
+    const web = await startFakeInstagram({posts: 2, noEmbed: true})
+    cleanups.push(() => web.close())
+    const fromWeb = new InstagramSource({origin: web.origin, pacing})
+    const read = await fromWeb.analyze(`${web.origin}/reel/${web.codes[1]}/`)
+    assert.equal(read.kind === 'video' && read.media.id, web.ids[1])
+    assert.deepEqual([web.hits.embed, web.hits.webInfo, web.hits.page, web.hits.app, web.hits.graphql], [1, 1, 0, 0, 0])
+    // its query ids rotated too: the page a logged-out visitor gets (xig_polaris_media)
+    const page = await startFakeInstagram({posts: 2, noEmbed: true, noWebInfo: true})
     cleanups.push(() => page.close())
-    const fromPage = new InstagramSource({origin: page.origin, pacing: {spacingMs: 0, jitterMs: 0}})
-    const read = await fromPage.analyze(`${page.origin}/reel/${page.codes[1]}/`)
-    assert.equal(read.kind === 'video' && read.media.id, page.ids[1])
-    assert.deepEqual([page.hits.embed, page.hits.page, page.hits.app, page.hits.graphql], [1, 1, 0, 0])
-    // the embed retired and the page without data, the app API answering: the post by its pk, asked as the app
-    const api = await startFakeInstagram({posts: 2, noEmbed: true, noPage: true})
+    const fromPage = new InstagramSource({origin: page.origin, pacing})
+    const paged = await fromPage.analyze(`${page.origin}/reel/${page.codes[1]}/`)
+    assert.equal(paged.kind === 'video' && paged.media.id, page.ids[1])
+    assert.deepEqual([page.hits.webInfo, page.hits.page, page.hits.app], [2, 1, 0], 'both web_info ids, then the page')
+    // the page without the item but naming its logged-out query: that query, with the page's token
+    const named = await startFakeInstagram({posts: 2, noEmbed: true, noWebInfo: true, noPage: true, preloaders: true})
+    cleanups.push(() => named.close())
+    const fromNamed = new InstagramSource({origin: named.origin, pacing})
+    const queried = await fromNamed.analyze(`${named.origin}/p/${named.codes[0]}/`)
+    assert.equal(queried.kind === 'video' && queried.media.id, named.ids[0])
+    assert.deepEqual([named.hits.page, named.hits.loggedOut, named.hits.app], [1, 1, 0])
+    // the page names nothing: the app API, asked as the app
+    const api = await startFakeInstagram({posts: 2, noEmbed: true, noWebInfo: true, noPage: true})
     cleanups.push(() => api.close())
-    const source = new InstagramSource({origin: api.origin, pacing: {spacingMs: 0, jitterMs: 0}})
+    const source = new InstagramSource({origin: api.origin, pacing})
     const reel = await source.analyze(`${api.origin}/reel/${api.codes[1]}/`)
     assert.equal(reel.kind === 'video' && reel.media.id, api.ids[1])
     assert.deepEqual([api.hits.embed, api.hits.app, api.hits.graphql], [1, 1, 0])
-    // all three retired: the web client's query, as before
-    const {site, engine} = await setup('routes', {posts: 2, noEmbed: true, noPage: true, noAppApi: true})
+    // everything anonymous retired: the web client's query, as before
+    const {site, engine} = await setup('routes', {
+      posts: 2,
+      noEmbed: true,
+      noWebInfo: true,
+      noPage: true,
+      noAppApi: true,
+    })
     const result = await engine.analyze(postUrl(site))
     assert.equal(result.kind, 'video')
     assert.deepEqual([site.hits.embed, site.hits.app, site.hits.graphql], [1, 1, 1])
+  })
+
+  it('a route that refuses rests on its own (the others go on, no shared cool-down); one that answers goes first next time', async () => {
+    const site = await startFakeInstagram({posts: 3, noEmbed: true, appApiNeedsSession: true, noWebInfo: true})
+    cleanups.push(() => site.close())
+    const source = new InstagramSource({origin: site.origin, pacing: {spacingMs: 0, jitterMs: 0, backoffMs: 60_000}})
+    const first = await source.analyze(`${site.origin}/p/${site.codes[0]}/`)
+    assert.equal(first.kind, 'video')
+    const asked = {...site.hits}
+    // the next post: the page that answered is asked first; the embed and web_info (which failed) after it
+    const second = await source.analyze(`${site.origin}/p/${site.codes[1]}/`)
+    assert.equal(second.kind, 'video')
+    assert.equal(site.hits.page - asked.page, 1)
+    assert.equal(site.hits.embed - asked.embed, 0, 'the page answered: nothing else asked')
+    assert.equal(site.hits.webInfo - asked.webInfo, 0)
+  })
+
+  it('reads of the same post at once share one request; a share link is followed once', async () => {
+    const site = await startFakeInstagram({posts: 2})
+    cleanups.push(() => site.close())
+    const source = new InstagramSource({origin: site.origin, pacing: {spacingMs: 0, jitterMs: 0}})
+    const code = site.codes[0]!
+    await Promise.all([
+      source.analyze(`${site.origin}/p/${code}/`),
+      source.analyze(`${site.origin}/reel/${code}/`),
+      source.analyze(`${site.origin}/${site.user}/p/${code}/?img_index=1`),
+    ])
+    assert.equal(site.hits.embed, 1, 'three links to one post: one read')
+    await source.analyze(`${site.origin}/share/abc/`)
+    await source.analyze(`${site.origin}/share/abc/`)
+    assert.equal(site.hits.short, 1, 'the share link is asked once')
+  })
+
+  it('every route walled: oEmbed tells a gone post from a limited network', async () => {
+    const {site, engine} = await setup('walled-probe', {posts: 1, loginWall: true})
+    await assert.rejects(engine.analyze(`${site.origin}/p/C0DE999999/`), (e: DownloadError) => {
+      assert.equal(e.hint, 'removed')
+      return true
+    })
+    assert.ok(site.hits.oembed >= 1)
   })
 
   it('a carousel read from the embed keeps all its items; a gone post ends the search at once', async () => {
@@ -717,13 +856,16 @@ describe('Instagram, end to end (local fake)', () => {
     assert.match(failed.error?.message ?? '', /no sound/)
   })
 
-  it('a carousel of photos, whose embed has no data, is read anonymously from its post page: every picture', async () => {
+  it('a carousel of photos, whose embed has no data, is read anonymously from web_info: every picture; its song needs a session', async () => {
     const {site, engine, scheduler, out} = await setup('photo-carousel', {posts: 2, carousels: [0]})
     const result = await engine.analyze(postUrl(site))
     assert.equal(result.kind, 'video')
     if (result.kind !== 'video') return
-    assert.deepEqual(result.media.slideshow, {images: 3, audio: false})
-    assert.deepEqual([site.hits.embed, site.hits.page, site.hits.app, site.hits.graphql], [1, 1, 0, 0])
+    assert.deepEqual(result.media.slideshow, {images: 3, audio: false, songNeedsSession: true})
+    assert.deepEqual(
+      [site.hits.embed, site.hits.webInfo, site.hits.page, site.hits.app, site.hits.graphql],
+      [1, 1, 0, 0, 0],
+    )
     const batch = scheduler.schedule({url: postUrl(site), profile: mp4, outDir: out, slideshow: images})
     await scheduler.whenIdle()
     assert.equal(scheduler.batch(batch.id)?.status, 'completed', JSON.stringify(scheduler.batch(batch.id)?.error))
@@ -731,9 +873,40 @@ describe('Instagram, end to end (local fake)', () => {
     assert.deepEqual(await fs.readdir(path.join(out, folder)), ['01.jpg', '02.jpg', '03.jpg'])
   })
 
-  it('a photo with a song: a slideshow with sound, a folder with the song, or the song alone', async () => {
-    const {site, engine, out} = await setup('photo-music', {photos: [0], carousels: [1], music: [0, 1], posts: 2})
+  it('a photo with a song: without a session the song is not there (and the post says so); signed in, its song is asked once more', async () => {
+    const anonymous = await setup('photo-music-anon', {photos: [0], music: [0], posts: 1})
+    const unsigned = await anonymous.engine.analyze(postUrl(anonymous.site))
+    assert.equal(unsigned.kind === 'video' && unsigned.media.slideshow?.audio, false)
+    assert.equal(unsigned.kind === 'video' && unsigned.media.slideshow?.songNeedsSession, true)
+  })
+
+  it('a photo read before signing in gets its song once the user signs in (the cached post asks for it)', async () => {
+    const site = await startFakeInstagram({photos: [0], music: [0], posts: 1})
+    cleanups.push(() => site.close())
+    let signedIn = false
+    const host = new URL(site.origin).hostname
+    const source = new InstagramSource({
+      origin: site.origin,
+      pacing: {spacingMs: 0, jitterMs: 0},
+      cookies: async () => (signedIn ? [{name: sessionName, value: sessionValue, domain: host}] : undefined),
+    })
+    const url = `${site.origin}/p/${site.codes[0]}/`
+    const before = await source.analyze(url)
+    assert.equal(before.kind === 'video' && before.media.slideshow?.songNeedsSession, true)
+    signedIn = true
+    const after = await source.analyze(url)
+    assert.equal(after.kind === 'video' && after.media.slideshow?.audio, true, 'the song, now that there is a session')
+    assert.equal(after.kind === 'video' && after.media.slideshow?.songNeedsSession, undefined)
+  })
+
+  it('a photo with a song, signed in: a slideshow with sound, a folder with the song, or the song alone', async () => {
+    const {site, engine, out} = await setup(
+      'photo-music',
+      {photos: [0], carousels: [1], music: [0, 1], posts: 2},
+      {signedIn: true},
+    )
     const single = await engine.analyze(postUrl(site))
+    assert.equal(single.kind === 'video' && single.media.slideshow?.songNeedsSession, undefined)
     assert.equal(single.kind === 'video' && single.media.slideshow?.audio, true, 'its song is its sound')
     assert.ok(
       single.kind === 'video' && single.choices.some(c => c.profile.kind === 'audio'),
@@ -785,7 +958,8 @@ describe('Instagram, end to end (local fake)', () => {
     await scheduler.whenIdle()
     assert.equal(scheduler.batch(batch.id)?.status, 'completed', JSON.stringify(scheduler.batch(batch.id)?.error))
     assert.equal(site.hits.refused, 2)
-    assert.equal(site.hits.app + site.hits.graphql, 1, '2 refusals (the embed, the post page) + 1 success, all native')
+    assert.equal(site.hits.webInfo + site.hits.page, 1, '2 refusals (429: the network waits) + 1 success, all native')
+    assert.equal(site.hits.app + site.hits.graphql, 0)
   })
 
   it('rate limited while someone waits: the analysis fails at once with "try again in", a batch waits it out', async () => {
@@ -805,11 +979,7 @@ describe('Instagram, end to end (local fake)', () => {
     assert.ok(performance.now() - started < 5_000, `answered in ${Math.round(performance.now() - started)} ms`)
     const total = () => Object.values(site.hits).reduce((sum, n) => sum + n, 0)
     const asked = total()
-    assert.equal(
-      site.hits.refused,
-      4,
-      'each route asked once (embed, post page, app API, the query): no retry after sleeping',
-    )
+    assert.equal(site.hits.refused, 1, 'one 429 cools the whole network down: no other route is knocked on')
     // pasted again during the cool-down: told at once, nothing sent
     await assert.rejects(engine.analyze(postUrl(site, 0)), (e: DownloadError) => e.details === COOLING_DOWN)
     assert.equal(total(), asked, 'no request at all while it cools down')

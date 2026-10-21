@@ -378,6 +378,19 @@ describe('download archive listing', () => {
     assert.equal((await reopened.list({search: 'file-11'})).total, 11, 'file-11, file-110…119')
     assert.equal((await reopened.list({search: 'nothing like this'})).total, 0)
 
+    // a SHA-256, whole or its first characters, finds its file
+    const hash = 'ab'.repeat(32)
+    await reopened.add({...record(900, 'Hashed'), sha256: hash})
+    assert.deepEqual(
+      (await reopened.list({search: hash})).entries.map(e => e.mediaId),
+      ['900'],
+    )
+    assert.deepEqual(
+      (await reopened.list({search: 'ABABABAB'})).entries.map(e => e.mediaId),
+      ['900'],
+    )
+    await reopened.remove('fake:900:video:mp4:0')
+
     // later writes are followed without re-reading the log
     await reopened.add(record(500, 'Brand new'))
     const fresh = await reopened.list({limit: 1})

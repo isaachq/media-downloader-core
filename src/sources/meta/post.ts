@@ -57,6 +57,11 @@ export type MetaPost = {
   readonly items: readonly MetaMedia[]
   /** A photo or a carousel of photos with a song: what its slideshow plays. */
   readonly music?: MetaMusic | undefined
+  /**
+   * A photo post read without a session, which never carries the song: it may
+   * have one, and only a signed-in session can get it.
+   */
+  readonly songNeedsSession?: boolean | undefined
   readonly cover?: string | undefined
   /** Pinned to the top of the profile: listed first whatever its date. */
   readonly pinned: boolean
@@ -107,6 +112,7 @@ export function summaryOf(post: MetaPost, site: string): MediaSummary {
           images: post.items.length,
           audio: video !== undefined || post.music !== undefined,
           ...(video && {videos: true}),
+          ...(!video && !post.music && post.songNeedsSession && {songNeedsSession: true}),
         },
       }),
     extractor: site,

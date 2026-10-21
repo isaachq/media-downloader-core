@@ -46,9 +46,10 @@ import {utf8Env} from './core/process.js'
 import {PendingJournal} from './core/queue-store.js'
 import {TraceLog} from './core/trace-log.js'
 import {ffprobe, ProbeError, summarizeProbe, validateBundle, validateFile} from './core/validate.js'
+import {DirectFileSource} from './sources/direct/source.js'
 import {FacebookSource} from './sources/facebook/source.js'
 import {InstagramSource} from './sources/instagram/source.js'
-import {withPatience} from './sources/pacer.js'
+import {COOLING_DOWN, withPatience} from './sources/pacer.js'
 import {type ListingProgress, type MediaSource, needsFallback} from './sources/source.js'
 import {DEFAULT_SLIDESHOW, slideshowOptions} from './sources/tiktok/slideshow.js'
 import {TikTokSource} from './sources/tiktok/source.js'
@@ -172,6 +173,14 @@ export type ArchiveCheck = {
  */
 export const ANALYZE_PATIENCE_MS = 15_000
 
+/** Tries an analysis someone is waiting for gets before its error is the answer (see analyze). */
+export const ANALYZE_ATTEMPTS = 3
+/** The pause before the 2nd and the 3rd try: [min, max] ms, a random point in between. */
+const ANALYZE_RETRY_WAITS_MS: ReadonlyArray<readonly [number, number]> = [
+  [2_000, 5_000],
+  [8_000, 15_000],
+]
+
 export class MediaDownloader extends EventEmitter<DownloaderEvents> implements AsyncDisposable {
   readonly binaries: BinaryManager
   readonly archive: DownloadArchive
@@ -279,6 +288,8 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
         ? []
         : [new FacebookSource({log, cookies: () => this.#siteCookies(['facebook.com']), ...options.facebook})]),
       ...(options.sources ?? []),
+      // a link straight to a media file, on any other site: last, after every site's own source
+      ...(options.direct === false ? [] : [new DirectFileSource(options.direct)]),
     ]
     this.#unsupportedUrlSource = options.unsupportedUrlSource
     this.binaries = new BinaryManager(options.dataDir, options.binaries, undefined, {ytDlp: options.ytDlp})
@@ -625,7 +636,51 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
        * again (`details` COOLING_DOWN, hint 'retry-later', `params.retryAfterSeconds`).
        */
       waitForSite?: boolean
+      /**
+       * Tries in all (default ANALYZE_ATTEMPTS; 1: no retry). A failure that may pass
+       * (a network error, a refusal, a page that came without its data) is tried again
+       * after a short pause, each try another way: the sources rank their routes by what
+       * just answered and rest the ones that refused, and Instagram goes in with the
+       * user's session first on the third. A final answer (gone, private, needs a
+       * session, unsupported) or a cool-down longer than the caller waits is not retried.
+       */
+      attempts?: number
+      /** Called before each retry: the try about to start (2-based), of how many, and why. */
+      onRetry?: (attempt: number, of: number, error: DownloadError) => void
+      /** Tests: the pause before a retry. */
+      retryWaitMs?: (attempt: number) => number
     } = {},
+  ): Promise<AnalysisResult> {
+    const attempts = Math.max(1, Math.floor(opts.attempts ?? ANALYZE_ATTEMPTS))
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await this.#analyzeOnce(url, opts, attempt)
+      } catch (error) {
+        if (attempt >= attempts || opts.signal?.aborted || !(error instanceof DownloadError) || !retriesAnalysis(error))
+          throw error
+        const wait = opts.retryWaitMs?.(attempt + 1) ?? jittered(ANALYZE_RETRY_WAITS_MS[attempt - 1] ?? [8_000, 15_000])
+        this.#log(
+          'info',
+          `analysis of ${url}: try ${attempt}/${attempts} failed (${error.message}) — trying again in ${(wait / 1000).toFixed(1)} s`,
+        )
+        opts.onRetry?.(attempt + 1, attempts, error)
+        await sleep(wait, undefined, opts.signal ? {signal: opts.signal} : undefined).catch(() => {
+          throw cancelledError()
+        })
+      }
+    }
+  }
+
+  async #analyzeOnce(
+    url: string,
+    opts: {
+      signal?: AbortSignal
+      maxEntries?: number
+      onProgress?: (progress: ListingProgress) => void
+      known?: ReadonlySet<string>
+      waitForSite?: boolean
+    },
+    attempt: number,
   ): Promise<AnalysisResult> {
     this.#assertOpen()
     // tracked so dispose() can stop it; linked to the caller's signal
@@ -649,6 +704,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
           return await patient(() =>
             source.analyze(url, {
               signal: analysis.signal,
+              attempt,
               ...(opts.maxEntries !== undefined && {maxEntries: opts.maxEntries}),
               ...(opts.onProgress && {onProgress: opts.onProgress}),
               ...(opts.known && {known: opts.known}),
@@ -732,6 +788,16 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       readonly signal?: AbortSignal | undefined
       readonly onResult?: ((url: string, result: ExtractResult) => void) | undefined
       readonly keepMetadata?: ((url: string) => boolean) | undefined
+      /**
+       * Checks per item (default 1). Above 1 ("thorough", BatchRequest.retries), an
+       * item a native source could not read in a way that may pass is checked again
+       * after a pause — 2–5 s, then 8–15 s — with the source's routes re-ranked by
+       * then; only the last check's answer is final. O(F) extra checks per round for
+       * F such failures.
+       */
+      readonly attempts?: number | undefined
+      /** Tests: the pause before a round of re-checks. */
+      readonly retryWaitMs?: ((attempt: number) => number) | undefined
     } = {},
   ): Promise<Map<string, ExtractResult>> {
     this.#assertOpen()
@@ -760,26 +826,41 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       }
       // items a native source can't read right now (blocked / changed) are re-checked by yt-dlp
       const handBack: Array<(typeof items)[number]> = []
-      const native = Promise.all(
-        [...bySource].map(async ([source, own]) => {
-          const byUrl = new Map(own.map(item => [item.url, item]))
-          await source.preflight(own, {
-            signal: analysis.signal,
-            onResult: (url, result) => {
-              if (!result.ok && needsFallback(result.error.details)) {
-                if (tools.ytDlp) {
-                  handBack.push(byUrl.get(url)!)
-                  return
-                }
-                // no yt-dlp to hand it to: the source's reason
-                result = {ok: false, error: sourceFailure(result.error).toJSON()}
+      const attempts = Math.max(1, Math.floor(opts.attempts ?? 1))
+      const checkNative = async (source: MediaSource, own: Array<(typeof items)[number]>, attempt: number) => {
+        const byUrl = new Map(own.map(item => [item.url, item]))
+        const again: Array<(typeof items)[number]> = []
+        await source.preflight(own, {
+          signal: analysis.signal,
+          attempt,
+          onResult: (url, result) => {
+            if (!result.ok && needsFallback(result.error.details)) {
+              if (tools.ytDlp) {
+                handBack.push(byUrl.get(url)!)
+                return
               }
-              results.set(url, result)
-              opts.onResult?.(url, result)
-            },
-          })
-        }),
-      )
+              // no yt-dlp to hand it to: the source's reason
+              result = {ok: false, error: sourceFailure(result.error).toJSON()}
+            }
+            // thorough: a failure that may pass is checked again; only the last answer is final
+            if (!result.ok && attempt < attempts && retriesAnalysis(result.error)) {
+              again.push(byUrl.get(url)!)
+              return
+            }
+            results.set(url, result)
+            opts.onResult?.(url, result)
+          },
+        })
+        if (again.length === 0 || analysis.signal.aborted) return
+        const wait = opts.retryWaitMs?.(attempt + 1) ?? jittered(ANALYZE_RETRY_WAITS_MS[attempt - 1] ?? [8_000, 15_000])
+        this.#log(
+          'info',
+          `preflight: ${again.length} item(s) checked again in ${(wait / 1000).toFixed(1)} s (try ${attempt + 1}/${attempts})`,
+        )
+        await sleep(wait, undefined, {signal: analysis.signal}).catch(() => {})
+        if (!analysis.signal.aborted) await checkNative(source, again, attempt + 1)
+      }
+      const native = Promise.all([...bySource].map(([source, own]) => checkNative(source, own, 1)))
 
       // a chunk of urls through one yt-dlp process. YouTube chunks go through YouTube's gate
       // and ask politely (yt-dlp's own "sleep" pace between requests): a burst of checks is what
@@ -2065,6 +2146,33 @@ const noYtDlp = (): DownloadError =>
  */
 function sourceFailure(error: JobError): DownloadError {
   return new DownloadError('unavailable', error.message, error.details, error.params, error.hint ?? 'retry-later')
+}
+
+/** Hints that are the answer: another try would say the same. */
+const FINAL_HINTS: ReadonlySet<string> = new Set([
+  'removed',
+  'private',
+  'needs-sign-in',
+  'unsupported-url',
+  'format-unavailable',
+  'bot-check',
+])
+
+/**
+ * Whether an analysis that failed this way may pass on another try: a failure
+ * that can (network, refusal, a page without its data), not a final answer,
+ * and not a cool-down longer than the caller would wait (it says when to come back).
+ */
+function retriesAnalysis(error: Pick<JobError, 'code' | 'hint' | 'details'>): boolean {
+  if (error.details === COOLING_DOWN) return false
+  if (error.hint && FINAL_HINTS.has(error.hint)) return false
+  // a native source's failure where there is no yt-dlp to hand it to: 'unavailable', to try later
+  return isRetryable(error.code) || error.hint === 'retry-later'
+}
+
+/** A random point in [min, max]: retries of many clients don't line up. */
+function jittered([min, max]: readonly [number, number]): number {
+  return min + Math.random() * (max - min)
 }
 
 /** yt-dlp's "Unsupported URL" (no extractor, not even its generic one, reads the page). */

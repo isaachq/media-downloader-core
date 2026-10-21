@@ -50,11 +50,29 @@ export function isInstagramHost(host: string): boolean {
   return host === 'instagram.com' || host.endsWith('.instagram.com') || host === 'instagr.am'
 }
 
+/**
+ * Instagram's outbound link wrapper (`l.instagram.com/?u=<url>`, `lm.…`) → the
+ * url it wraps, when that is http(s); any other url as it is. No request: the
+ * target is in the link. O(L) for its length.
+ */
+export function unwrapInstagramRedirect(raw: string): string {
+  let url: URL
+  try {
+    url = new URL(raw)
+  } catch {
+    return raw
+  }
+  const host = url.hostname.toLowerCase()
+  if (host !== 'l.instagram.com' && host !== 'lm.instagram.com') return raw
+  const target = url.searchParams.get('u')
+  return target && /^https?:\/\//i.test(target) ? target : raw
+}
+
 /** What a url points at, or undefined when it isn't an Instagram url this module understands. */
 export function parseInstagramLink(raw: string, extraHost?: string): InstagramLink | undefined {
   let url: URL
   try {
-    url = new URL(raw)
+    url = new URL(unwrapInstagramRedirect(raw))
   } catch {
     return undefined
   }

@@ -10,7 +10,7 @@ import {profileProblem} from './core/formats.js'
 import {newId} from './core/ids.js'
 import {isTerminal} from './core/job.js'
 import {QueueStore} from './core/queue-store.js'
-import type {MediaDownloader} from './downloader.js'
+import {ANALYZE_ATTEMPTS, type MediaDownloader} from './downloader.js'
 import {isTikTokProfile} from './sources/tiktok/links.js'
 import {slideshowOptions} from './sources/tiktok/slideshow.js'
 import {TIKTOK_PROFILE_DEFAULT_ITEMS} from './sources/tiktok/source.js'
@@ -556,6 +556,7 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
       unknown.map(item => ({url: item.url, id: item.mediaId})),
       {
         signal,
+        attempts: batch.request.retries === 'thorough' ? ANALYZE_ATTEMPTS : 1,
         keepMetadata: () => batch.cached++ < this.#maxCached,
         onResult: (url, result) => {
           const position = batch.positions.get(url)

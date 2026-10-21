@@ -31,10 +31,18 @@ export type FakeInstagramConfig = {
   readonly music?: readonly number[]
   /** The app's media info API answers 404, as if Instagram retired it. */
   readonly noAppApi?: boolean
+  /** The web_info query ids answer errors, as if Instagram rotated them. */
+  readonly noWebInfo?: boolean
+  /** The app's media info API answers 403 login_required without a session (as instagram.com does since 2026). */
+  readonly appApiNeedsSession?: boolean
+  /** Post pages name the logged-out query in expectedPreloaders (with an LSD token); its answer is the item. */
+  readonly preloaders?: boolean
   /** The first N page / API answers are rate limited ("please wait a few minutes"). */
   readonly refusals?: number
   /** Every page and API answer is 403 (a client the site won't serve). */
   readonly forbidden?: boolean
+  /** The first N page / API answers are 403 (a visitor turned away for a while). */
+  readonly forbiddenFirst?: number
   /** The listing queries' ids changed: GraphQL answers errors for them. */
   readonly rotatedQueries?: boolean
   /** API answers a checkpoint (HTML) until a browser visited a page (cookie ig_ok=1). */
@@ -63,6 +71,9 @@ export type FakeInstagram = {
     | 'app'
     | 'profile'
     | 'graphql'
+    | 'webInfo'
+    | 'loggedOut'
+    | 'oembed'
     | 'feed'
     | 'stories'
     | 'media'
@@ -78,6 +89,8 @@ export type FakeInstagram = {
 const BASE_TIME = 1_790_000_000
 const USER_ID = '7777'
 export const SESSION_COOKIE = 'sessionid=fake-session'
+const LOGGED_OUT_DOC = '27776306792043877'
+const LSD_TOKEN = 'AdFakeLsdToken0001'
 
 export async function startFakeInstagram(config: FakeInstagramConfig = {}): Promise<FakeInstagram> {
   const user = config.user ?? 'fakeuser'
@@ -92,6 +105,9 @@ export async function startFakeInstagram(config: FakeInstagramConfig = {}): Prom
     app: 0,
     profile: 0,
     graphql: 0,
+    webInfo: 0,
+    loggedOut: 0,
+    oembed: 0,
     feed: 0,
     stories: 0,
     media: 0,
@@ -101,6 +117,7 @@ export async function startFakeInstagram(config: FakeInstagramConfig = {}): Prom
     short: 0,
   }
   let refusalsLeft = config.refusals ?? 0
+  let forbiddenLeft = config.forbiddenFirst ?? 0
   let listCalls = 0
   let origin = ''
 
@@ -134,10 +151,10 @@ export async function startFakeInstagram(config: FakeInstagramConfig = {}): Prom
     },
   })
   /** A post as a v1 item (the API, the timeline query, the post page). */
-  const v1 = (index: number) => {
+  const v1 = (index: number, withSong = true) => {
     const id = ids[index]!
     const base = {
-      ...(config.music?.includes(index) && song(id)),
+      ...(withSong && config.music?.includes(index) && song(id)),
       pk: id,
       id: `${id}_${USER_ID}`,
       code: codes[index]!,
@@ -237,6 +254,13 @@ export async function startFakeInstagram(config: FakeInstagramConfig = {}): Prom
     const cookie = req.headers.cookie ?? ''
     const signedIn = cookie.includes(SESSION_COOKIE)
     const isApi = parts[0] === 'api' || parts[0] === 'graphql'
+    const formOf = (then: (form: URLSearchParams) => void) => {
+      let body = ''
+      req.on('data', chunk => {
+        body += chunk
+      })
+      req.on('end', () => then(new URLSearchParams(body)))
+    }
     const isPage =
       !isApi && parts[0] !== 'media' && parts[0] !== 'image' && parts[0] !== 'audio' && parts[0] !== 'accounts'
 
@@ -282,6 +306,20 @@ export async function startFakeInstagram(config: FakeInstagramConfig = {}): Prom
       return send(200, body, {'Content-Length': String(size), 'Content-Type': 'video/mp4'})
     }
 
+    // oEmbed: whether a public post exists, without a session (asked when everything else was walled)
+    if (parts[0] === 'api' && parts[2] === 'oembed') {
+      hits.oembed++
+      const code = /\/p\/([^/]+)/.exec(url.searchParams.get('url') ?? '')?.[1] ?? ''
+      const index = codes.indexOf(code)
+      if (index === -1) return send(404, 'not found')
+      return json(200, {media_id: `${ids[index]}_${USER_ID}`, author_name: user})
+    }
+
+    if (forbiddenLeft > 0 && (isApi || isPage)) {
+      forbiddenLeft--
+      hits.refused++
+      return send(403, 'forbidden')
+    }
     if (config.forbidden && (isApi || isPage)) {
       hits.refused++
       return send(403, 'forbidden')
@@ -307,11 +345,27 @@ export async function startFakeInstagram(config: FakeInstagramConfig = {}): Prom
 
     if (isApi && req.headers['x-ig-app-id'] !== '936619743392459') return send(400, 'missing app id')
 
+    // the logged-out client's post query (POST /api/graphql, the page's LSD token)
+    if (parts[0] === 'api' && parts[1] === 'graphql' && req.method === 'POST') {
+      hits.loggedOut++
+      formOf(form => {
+        if (!config.preloaders || form.get('doc_id') !== LOGGED_OUT_DOC || form.get('lsd') !== LSD_TOKEN)
+          return json(200, {errors: [{message: 'Unknown query'}], data: null})
+        const variables = JSON.parse(form.get('variables') ?? '{}') as Record<string, unknown>
+        const index = codes.findIndex(code => codeToPk(code) === String(variables['media_id']))
+        if (index === -1) return json(200, {data: {xig_polaris_media: null}})
+        return json(200, {data: {xig_polaris_media: {if_not_gated_logged_out: v1(index, signedIn)}}})
+      })
+      return
+    }
+
     // the app's own API, asked as the app: /api/v1/media/<pk>/info/
     if (parts[0] === 'api' && parts[2] === 'media' && parts[4] === 'info') {
       hits.app++
       if (config.noAppApi) return send(404, 'not found')
-      if (!String(req.headers['user-agent']).startsWith('Instagram '))
+      if (config.appApiNeedsSession && !signedIn) return json(403, {message: 'login_required', status: 'fail'})
+      // the web client with a session asks it too (its own user agent)
+      if (!signedIn && !String(req.headers['user-agent']).startsWith('Instagram '))
         return json(400, {message: 'useragent mismatch', status: 'fail'})
       const index = codes.findIndex(code => codeToPk(code) === parts[3])
       if (index === -1) return json(400, {message: 'Media not found or unavailable', status: 'fail'})
@@ -384,6 +438,14 @@ export async function startFakeInstagram(config: FakeInstagramConfig = {}): Prom
         const form = new URLSearchParams(body)
         const docId = form.get('doc_id')
         const variables = JSON.parse(form.get('variables') ?? '{}') as Record<string, unknown>
+        if (docId === '27128499623469141' || docId === '24368985919464652') {
+          hits.graphql--
+          hits.webInfo++
+          if (config.noWebInfo) return json(200, {errors: [{message: 'Query not found'}], data: null})
+          const index = codes.indexOf(String(variables['shortcode']))
+          if (index === -1) return json(200, {data: {xdt_api__v1__media__shortcode__web_info: {items: []}}})
+          return json(200, {data: {xdt_api__v1__media__shortcode__web_info: {items: [v1(index, signedIn)]}}})
+        }
         if (docId === '8845758582119845') {
           const index = codes.indexOf(String(variables['shortcode']))
           if (index === -1) return json(200, {data: {xdt_shortcode_media: null}, status: 'ok'})
@@ -454,10 +516,16 @@ export async function startFakeInstagram(config: FakeInstagramConfig = {}): Prom
       }
       // a logged-out visitor: the item as xig_polaris_media (every picture of a carousel, the song)
       if (!signedIn) {
-        if (config.noPage) return send(200, '<html><head><title>Post</title></head><body></body></html>')
+        if (config.noPage) {
+          // the page without the item, but naming what its client preloads (as instagram.com does)
+          const named = config.preloaders
+            ? `<script>{"expectedPreloaders":[{"actorID":"0","preloaderID":"adp_1","queryID":"${LOGGED_OUT_DOC}","variables":{"media_id":"${ids[index]}"},"queryName":"PolarisLoggedOutDesktopWWWPostRootContentQuery"}]}["LSD",[],{"token":"${LSD_TOKEN}"},323]</script>`
+            : ''
+          return send(200, `<html><head><title>Post</title></head><body>${named}</body></html>`)
+        }
         return send(
           200,
-          sjs({xig_polaris_media: {__typename: 'XIGPolarisImageMedia', if_not_gated_logged_out: v1(index)}}),
+          sjs({xig_polaris_media: {__typename: 'XIGPolarisImageMedia', if_not_gated_logged_out: v1(index, false)}}),
           {
             'Content-Type': 'text/html',
             'Set-Cookie': 'csrftoken=csrf-1; Path=/',

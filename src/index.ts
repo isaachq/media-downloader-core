@@ -112,9 +112,17 @@ export {
 } from './core/pool.js'
 export {searchTrace} from './core/trace-log.js'
 export {ffprobe, summarizeProbe, validateFile} from './core/validate.js'
-export {ANALYZE_PATIENCE_MS, type ArchiveCheck, MediaDownloader, relaxProfile, retryDelay} from './downloader.js'
+export {
+  ANALYZE_ATTEMPTS,
+  ANALYZE_PATIENCE_MS,
+  type ArchiveCheck,
+  MediaDownloader,
+  relaxProfile,
+  retryDelay,
+} from './downloader.js'
 export {BatchScheduler} from './scheduler.js'
 export type {BrowserAssist, BrowserPage, MediaResolver, PlayerMedia} from './sources/browser.js'
+export {DIRECT_NAME, DirectFileSource, type DirectOptions, directFile} from './sources/direct/source.js'
 export type {FacebookQueries} from './sources/facebook/endpoints.js'
 export {type FacebookLink, isFacebookListing, parseFacebookLink} from './sources/facebook/links.js'
 export {
@@ -125,7 +133,12 @@ export {
 export {HttpSession} from './sources/http.js'
 export {codeToPk, pkToCode} from './sources/instagram/data.js'
 export type {InstagramQueries} from './sources/instagram/endpoints.js'
-export {type InstagramLink, isInstagramListing, parseInstagramLink} from './sources/instagram/links.js'
+export {
+  type InstagramLink,
+  isInstagramListing,
+  parseInstagramLink,
+  unwrapInstagramRedirect,
+} from './sources/instagram/links.js'
 export {
   INSTAGRAM_PROFILE_DEFAULT_ITEMS,
   type InstagramOptions,

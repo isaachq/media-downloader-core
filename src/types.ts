@@ -1,5 +1,6 @@
 import type {YtDlpPolicy} from './binaries/manager.js'
 import type {FileNameStyle} from './core/files.js'
+import type {DirectOptions} from './sources/direct/source.js'
 import type {FacebookOptions} from './sources/facebook/source.js'
 import type {InstagramOptions} from './sources/instagram/source.js'
 import type {MediaSource} from './sources/source.js'
@@ -73,9 +74,16 @@ export type MediaSummary = {
    * A photo post (TikTok slideshow) or a carousel: its items and whether it
    * has sound. `videos`: a carousel that has videos too — always a folder of
    * everything as the site serves it, whatever `SlideshowOptions.mode` says.
+   * `songNeedsSession`: read without a session, which never carries a photo
+   * post's song (Instagram) — it may have one; signing in gets it.
    */
   readonly slideshow?:
-    | {readonly images: number; readonly audio: boolean; readonly videos?: boolean | undefined}
+    | {
+        readonly images: number
+        readonly audio: boolean
+        readonly videos?: boolean | undefined
+        readonly songNeedsSession?: boolean | undefined
+      }
     | undefined
   /** yt-dlp extractor key, e.g. "Youtube". */
   readonly extractor: string
@@ -580,6 +588,14 @@ export type BatchRequest = {
    * (failed downloads tried again together) keeps each where it belonged.
    */
   readonly targets?: readonly BatchTarget[] | undefined
+  /**
+   * How hard the batch tries before an item counts as failed. 'fast' (default):
+   * each item is checked once before it downloads (its download still retries).
+   * 'thorough': an item whose check fails in a way that may pass is checked up to
+   * 3 times, each after a longer pause and another way in — slower, but more of the
+   * list gets downloaded.
+   */
+  readonly retries?: 'fast' | 'thorough' | undefined
 }
 
 export type BatchTarget = {
@@ -716,6 +732,12 @@ export type DownloaderOptions = {
    * (signed-in session, as for Instagram). `false` hands Facebook urls to yt-dlp.
    */
   readonly facebook?: false | FacebookOptions | undefined
+  /**
+   * Links straight to a media file (`…/clip.mp4`, `…/song.mp3`) on any other
+   * site, read natively (one ranged request, then the file): extractor "Web".
+   * `false` hands them to yt-dlp.
+   */
+  readonly direct?: false | DirectOptions | undefined
   /**
    * YouTube when it asks to confirm this is not a bot. Requests go a second
    * apart; a bot check climbs a ladder only as far as needed: PO tokens from

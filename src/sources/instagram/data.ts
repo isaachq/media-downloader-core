@@ -474,32 +474,47 @@ export function readMediaInfo(json: unknown): MetaPost {
 }
 
 /**
- * Reads the web JSON info endpoint (?__a=1&__d=dis) used by Instaloader.
- * Supports both v1 items format and GraphQL shortcode_media format.
+ * The web client's `web_info` query → its v1 item. No items: the post is gone
+ * or private; no `data`: the query id no longer answers (the next one is tried).
  *
- * Time Complexity: O(M) where M is the media components (images, video versions, carousel children).
- * Space Complexity: O(M) for the extracted MetaPost representation.
+ * Time Complexity: O(Q) for a Q-byte answer (parsed once by the client).
  */
-export function readWebInfo(json: unknown): MetaPost {
+export function readWebInfoQuery(json: unknown): MetaPost {
   checkStatus(json)
-  if (!isObject(json)) throw new MetaError('format-changed', 'Instagram web info answered with invalid payload.')
+  const info = dig(json, 'data', 'xdt_api__v1__media__shortcode__web_info')
+  if (info === null) throw new MetaError('removed', 'This Instagram post no longer exists, or is private.')
+  if (!isObject(info)) throw queryFailed(json, 'Instagram web_info query without its data.')
+  const items = list(info['items'])
+  if (items.length === 0) throw new MetaError('removed', 'This Instagram post no longer exists, or is private.')
+  return readV1Item(items[0])
+}
 
-  // v1 items format
-  const items = list(dig(json, 'items'))
-  if (items.length > 0 && isObject(items[0])) {
-    return readV1Item(items[0])
-  }
+/**
+ * The logged-out post query (what the post page preloads) → its v1 item, kept
+ * under `xig_polaris_media.if_not_gated_logged_out` (absent when Instagram
+ * gates the post for visitors without a session).
+ */
+export function readLoggedOutPostQuery(json: unknown): MetaPost {
+  checkStatus(json)
+  const media = dig(json, 'data', 'xig_polaris_media')
+  if (media === null) throw new MetaError('removed', 'This Instagram post no longer exists, or is private.')
+  if (!isObject(media)) throw queryFailed(json, 'Instagram logged-out post query without its data.')
+  const item = media['if_not_gated_logged_out']
+  if (!isObject(item)) throw new MetaError('login-required', 'Instagram shows this post to signed-in accounts only.')
+  return readV1Item(item)
+}
 
-  // GraphQL shortcode_media format
-  const graphNode = dig(json, 'graphql', 'shortcode_media') ?? dig(json, 'data', 'xdt_shortcode_media')
-  if (isObject(graphNode)) {
-    return readGraphNode(graphNode)
-  }
+/** oEmbed's answer: the post exists and is public (its id), or undefined when the answer says nothing. */
+export function readOembed(json: unknown): {readonly mediaId?: string | undefined} {
+  return isObject(json) ? {mediaId: text(json['media_id'])} : {}
+}
 
-  if (items.length === 0 && !graphNode) {
-    throw new MetaError('removed', 'This Instagram post no longer exists, or is private.')
+/** A query whose answer has no data: its errors, or what was expected. */
+function queryFailed(json: unknown, otherwise: string): MetaError {
+  if (isObject(json) && Array.isArray(json['errors'])) {
+    return new MetaError('format-changed', `Instagram query failed: ${JSON.stringify(json['errors']).slice(0, 200)}`)
   }
-  throw new MetaError('format-changed', 'Instagram web info without recognized media payload.')
+  return new MetaError('format-changed', otherwise)
 }
 
 /** `reels_media` → the stories of the asked reel (a user id or `highlight:<id>`), newest last as Instagram lists them. */

@@ -2,6 +2,61 @@
 
 ## Unreleased
 
+## App 0.2.0-beta.17 · library 1.17.0
+
+Beta 17: a link that fails for a moment is tried again by itself, another way each time;
+batches can be thorough; Instagram reads posts in more ways without a session and says when
+a photo's song needs one.
+
+**Library**
+
+- **An analysis someone is waiting for is tried up to 3 times** (`ANALYZE_ATTEMPTS`). A
+  failure that may pass (network, a refusal, a page without its data — and, with no yt-dlp,
+  a native source's "try later") is tried again after 2–5 s, then 8–15 s, each try another
+  way: the sources rank their routes by what just answered and rest the ones that refused,
+  and Instagram goes in with the user's session first on the third. A final answer (gone,
+  private, needs a session, unsupported) or a cool-down longer than the caller waits
+  (`COOLING_DOWN`) is answered at once. `analyze(url, {attempts, onRetry})`; sources get
+  `attempt` in `analyze()` and `preflight()`.
+- **Links straight to a media file download natively** (`DirectFileSource`, extractor
+  "Web"): a link whose path ends in a video or audio extension (`.mp4`, `.webm`, `.mkv`,
+  `.mov`, `.m4a`, `.mp3`, `.opus`, `.flac`, `.wav`…) on any site is checked with one ranged
+  request (there, its type and size; a web page behind the extension says so) and streamed
+  to disk, resumed on a retry — on the phone too, with no yt-dlp. `direct: false` hands them
+  to yt-dlp.
+- **The archive's search finds a file by its SHA-256** — the whole fingerprint or its first
+  characters, besides its title and file name.
+- **Thorough batches** (`BatchRequest.retries: 'thorough'`, default `'fast'`): an item whose
+  check fails in a way that may pass is checked up to 3 times, only the last answer counting
+  (`preflight(items, {attempts})`).
+- **Instagram: two more routes without a session, and the current query ids from Instagram's
+  own page.**
+  - The web client's `web_info` query (`27128499623469141`, then `24368985919464652`, ~15 KB
+    of JSON with the v1 item; a host's own first via `queries.webInfo`) is the second
+    anonymous route.
+  - The post page names the query ids its client preloads (`expectedPreloaders`, by
+    `queryName`) and its LSD token: `QueryBook` keeps them (24 h / 30 min) and the
+    logged-out post query (`PolarisLoggedOutDesktopWWWPostRootContentQuery`,
+    `POST /api/graphql`) reads a post whose page came without its item. One pass over a
+    page the source fetched anyway: O(H), lookups O(1).
+  - The retired `?__a=1&__d=dis` route (404) is gone; the post query `8845758582119845`,
+    which asks for a session nowadays, is tried after every anonymous route.
+- **Instagram: each route keeps its own standing** (`RouteHealth`). A 401 / 403 rests that
+  route (1 min, doubling, at most 30 min) while the others go on; a 429 still cools the whole
+  network down, without counting against the route. Routes are tried best first by a score
+  that decays back to neutral (half-life 30 min), so a route that failed once is tried again
+  later by itself. O(1) per update, O(R log R) to order R ≤ 5 routes.
+- **Instagram: a photo post's song is honest.** No logged-out answer carries it: without a
+  session the summary says `slideshow.songNeedsSession: true` (sign in to get it); with one,
+  the app API is asked once more for the song (`music_metadata`).
+- **Instagram: when every route is walled**, the post's oEmbed (a few KB, no session) tells
+  "this post is gone" from "this network is limited".
+- **Instagram: fewer requests.** Reads of one post at the same time share one request (by its
+  numeric id, whatever link named it); a read post is kept until its media links expire (the
+  CDN's `oe`, less 10 min) instead of 10 min; a share link is followed once (its redirect
+  only); `l.instagram.com/?u=` links are unwrapped without a request
+  (`unwrapInstagramRedirect`).
+
 ## App 0.2.0-beta.16 · library 1.16.0
 
 Beta 16: a link pasted while a site rate-limits this network answers at once — "try again

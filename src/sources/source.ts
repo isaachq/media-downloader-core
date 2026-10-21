@@ -34,6 +34,11 @@ export interface MediaSource {
       readonly onProgress?: (progress: ListingProgress) => void
       /** Entry ids already had: a source that can, lists only what is newer (an incremental sync). */
       readonly known?: ReadonlySet<string>
+      /**
+       * Which try of the engine's analysis this is (1-based; see MediaDownloader.analyze):
+       * a source may go another way on a later one (Instagram: the user's session first on the third).
+       */
+      readonly attempt?: number
     },
   ): Promise<AnalysisResult>
   /** Check many items (preflight); results stream through `onResult`. */
@@ -42,6 +47,8 @@ export interface MediaSource {
     opts: {
       readonly signal?: AbortSignal | undefined
       readonly onResult?: ((url: string, result: ExtractResult) => void) | undefined
+      /** Which check of the engine's this is (1-based): a source may go another way on a later one. */
+      readonly attempt?: number | undefined
     },
   ): Promise<Map<string, ExtractResult>>
   /** Fetch the media for `profile` into `workDir`; the engine converts / extracts / validates it. */

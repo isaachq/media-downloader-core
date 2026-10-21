@@ -45,6 +45,14 @@ the ⌊CPUs/2⌋ pool and verified file by file.
 
 ![Paste a link, download it as MP4, check its integrity report, find it in Finished, open the run report](docs/demo.gif)
 
+### What's new in beta 17 (library 1.17.0)
+
+- **A link that fails for a moment is tried again by itself** — up to 3 times, each another way in, instead of "failed" now and working on the next tap. Gone, private or sign-in-only posts still answer at once.
+- **A link straight to a video or audio file downloads** — any site, shown as "Web".
+- **Batches can be thorough** — a thorough batch checks again, up to 3 times, the items that failed in a way that may pass: slower, but more of the list gets downloaded.
+- **Instagram reads posts in more ways without signing in** — two new routes, and the query ids Instagram's own page uses are picked up from it, so a rotation doesn't break reading. A route Instagram turns away rests on its own instead of slowing everything down.
+- **An Instagram photo's song is honest** — without a session Instagram never gives a photo post's song; the post now says so ("sign in to get its song") instead of a silent slideshow, and with a session the song is fetched.
+
 ### What's new in beta 16 (library 1.16.0)
 
 - **No more waiting minutes for an answer** — when a site limits this network, a pasted link says "try again in about N" at once instead of hanging for up to ten minutes. Batches and Sync Up still wait their turn on their own.

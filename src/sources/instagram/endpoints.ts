@@ -23,8 +23,13 @@ export const ASBD_ID = '129477'
  * query (what yt-dlp, cobalt, gallery-dl, and Instaloader read):
  *  - `/p/<code>/embed/captioned/`: the embed page, the post as `contextJSON`
  *    → `gql_data.shortcode_media` (a GraphQL node);
- *  - `/p/<code>/?__a=1&__d=dis`: the web JSON info endpoint (Instaloader route)
- *    which returns either v1 items or GraphQL shortcode_media directly;
+ *  - the web client's `web_info` query (`POST /graphql/query`, a query id from
+ *    `WEB_INFO_QUERIES` → `xdt_api__v1__media__shortcode__web_info.items`, a v1
+ *    item in ~15 KB of JSON): answers without a session for public posts;
+ *  - the post page a logged-out visitor gets, which also names the query ids
+ *    its own client preloads right now (see QueryBook);
+ *  - the logged-out post query (`POST /api/graphql`, the page's LSD token and
+ *    the query id the page named → `xig_polaris_media.if_not_gated_logged_out`);
  *  - `<API_ORIGIN>/api/v1/media/<pk>/info/`: the Android app's API, which
  *    answers anonymously for public posts when asked as the app (a v1 item).
  *
@@ -32,8 +37,18 @@ export const ASBD_ID = '129477'
  * Space Complexity: O(1) allocation.
  */
 export const EMBED_PATH = (code: string): string => `/p/${code}/embed/captioned/`
-export const WEB_INFO = (code: string): string => `/p/${code}/?__a=1&__d=dis`
-export const REEL_INFO = (code: string): string => `/reel/${code}/?__a=1&__d=dis`
+/**
+ * Query ids of the web client's `web_info` query that answer without a session
+ * (verified 2026-10-20 on a public photo post): tried in order, the next when
+ * one stops answering. A host can put its own first (`InstagramOptions.queries.webInfo`).
+ */
+export const WEB_INFO_QUERIES: readonly string[] = ['27128499623469141', '24368985919464652']
+/** The logged-out post query a post page preloads, by the name the page gives it. */
+export const LOGGED_OUT_POST_QUERY = 'PolarisLoggedOutDesktopWWWPostRootContentQuery'
+/** Where the logged-out client sends its queries (with the page's LSD token). */
+export const API_GRAPHQL = '/api/graphql'
+/** `?url=<post url>` → whether a public post exists (author, id), in a few KB: a probe, never the media. */
+export const OEMBED = '/api/v1/oembed/'
 export const API_ORIGIN = 'https://i.instagram.com'
 export const MEDIA_INFO = (pk: string): string => `/api/v1/media/${pk}/info/`
 /** The Android app, as cobalt and gallery-dl present themselves to its API. */
@@ -52,8 +67,10 @@ export const USER_FEED = '/api/v1/feed/user/'
 export const GRAPHQL = '/graphql/query'
 
 export type InstagramQueries = {
-  /** One post by shortcode → `data.xdt_shortcode_media`. */
+  /** One post by shortcode → `data.xdt_shortcode_media` (asks a session nowadays: tried last). */
   readonly post: string
+  /** A `web_info` query id to try before the built-in ones (WEB_INFO_QUERIES). */
+  readonly webInfo?: string | undefined
   /** A profile's posts, first page → `data.xdt_api__v1__feed__user_timeline_graphql_connection`. */
   readonly profilePosts: string
   /** The next pages of the same connection (`after`, `first`). */

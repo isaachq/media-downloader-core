@@ -223,7 +223,7 @@ export class DownloadArchive {
   readonly #sorted = new Map<ArchiveSort, readonly ArchiveEntry[]>()
   /** Bumped by every add / update / remove: a host caches what it derives from the archive by it. */
   #version = 0
-  /** Folded title + file name per entry, for searching (computed once per entry). */
+  /** Folded title + file name + SHA-256 per entry, for searching (computed once per entry). */
   readonly #haystacks = new WeakMap<ArchiveEntry, string>()
 
   constructor(readonly file: string) {}
@@ -537,7 +537,8 @@ export class DownloadArchive {
   #haystack(entry: ArchiveEntry): string {
     let text = this.#haystacks.get(entry)
     if (text === undefined) {
-      text = fold(`${entry.title ?? ''} ${path.basename(entry.filepath)}`)
+      // the file's SHA-256 too: a fingerprint (or its first characters) finds the file it belongs to
+      text = fold(`${entry.title ?? ''} ${path.basename(entry.filepath)} ${entry.sha256 ?? ''}`)
       this.#haystacks.set(entry, text)
     }
     return text

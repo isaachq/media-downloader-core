@@ -22,13 +22,7 @@ import {
 } from 'antd'
 import type {DamagedEntry, ValidationLevel} from 'media-downloader-core'
 import {useEffect, useState} from 'react'
-import {
-  type AppSettings,
-  BROWSERS,
-  concurrencyCap,
-  RESTART_SETTINGS,
-  type ThemeMode,
-} from '../../../shared/contract'
+import {type AppSettings, BROWSERS, concurrencyCap, RESTART_SETTINGS, type ThemeMode} from '../../../shared/contract'
 import {api} from '../api'
 import {useApp} from '../context'
 import {moment} from '../format'
@@ -54,8 +48,7 @@ export function SettingsDrawer({open, onClose, onDoctor, onReinstall}: Props) {
   const cap = concurrencyCap(info, settings)
 
   const change = (patch: Partial<AppSettings>) => {
-    if (Object.keys(patch).some(key => RESTART_SETTINGS.includes(key as keyof AppSettings)))
-      setRestartNeeded(true)
+    if (Object.keys(patch).some(key => RESTART_SETTINGS.includes(key as keyof AppSettings))) setRestartNeeded(true)
     void updateSettings(patch)
   }
   const chooseFolder = async () => {
@@ -225,11 +218,7 @@ export function SettingsDrawer({open, onClose, onDoctor, onReinstall}: Props) {
               {t('settings.notifications')}
             </SwitchRow>
             <div>
-              <SwitchRow
-                id="opt-sync"
-                checked={settings.syncEnabled}
-                onChange={value => change({syncEnabled: value})}
-              >
+              <SwitchRow id="opt-sync" checked={settings.syncEnabled} onChange={value => change({syncEnabled: value})}>
                 {t('settings.sync')}
               </SwitchRow>
               <Typography.Paragraph type="secondary" className="switch-help">

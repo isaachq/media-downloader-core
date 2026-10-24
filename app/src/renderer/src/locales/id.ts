@@ -14,7 +14,8 @@ export const id: Readonly<Record<MessageKey, string>> = {
   'tour.2.title': '2 · Pilih yang Anda inginkan',
   'tour.2.text': 'MP4 untuk ditonton di mana saja, MP3 untuk didengarkan, lalu kualitas dan folder tujuan file.',
   'tour.3.title': '3 · Unduh',
-  'tour.3.text': 'Daftar akan membuka pratinjau dulu agar Anda bisa memilih yang diinginkan. Setiap file diperiksa sebelum diserahkan ke Anda. Temukan semuanya di tab Selesai, siap diputar.',
+  'tour.3.text':
+    'Daftar akan membuka pratinjau dulu agar Anda bisa memilih yang diinginkan. Setiap file diperiksa sebelum diserahkan ke Anda. Temukan semuanya di tab Selesai, siap diputar.',
   'header.language': 'Bahasa',
   'header.theme': 'Tema',
   'theme.system': 'Sistem',
@@ -47,7 +48,8 @@ export const id: Readonly<Record<MessageKey, string>> = {
   'download.change': 'Ubah',
   'download.start': 'Unduh',
   'download.schedule': 'Jadwalkan',
-  'download.scheduledHint': 'Ada batch yang sedang berjalan. Tautan baru masuk antrean dan mulai sendiri setelah batch itu selesai (yang ini akan menjadi #{position} dalam antrean).',
+  'download.scheduledHint':
+    'Ada batch yang sedang berjalan. Tautan baru masuk antrean dan mulai sendiri setelah batch itu selesai (yang ini akan menjadi #{position} dalam antrean).',
   'download.capacity': 'Hingga {normal} unduhan sekaligus dengan {cpus} CPU · {long} untuk video panjang',
   'download.scheduled': 'Dijadwalkan: {title}',
   'download.video': 'Video',
@@ -73,7 +75,8 @@ export const id: Readonly<Record<MessageKey, string>> = {
   'finished.openDownloads': 'Buka folder unduhan',
   'finished.summary': 'File: {count} · {bytes}',
   'finished.summaryOne': '1 file · {bytes}',
-  'finished.empty': 'Belum ada yang selesai. Setiap file yang sudah selesai dan terverifikasi muncul di sini, dari semua sesi.',
+  'finished.empty':
+    'Belum ada yang selesai. Setiap file yang sudah selesai dan terverifikasi muncul di sini, dari semua sesi.',
   'finished.noMatch': 'Tidak ada file selesai yang cocok.',
   'finished.col.finishedAt': 'Selesai',
   'finished.col.size': 'Ukuran',
@@ -105,7 +108,8 @@ export const id: Readonly<Record<MessageKey, string>> = {
   'slides.noAudio': 'Tanpa suara: {count}',
   'slides.confirm': 'Unduh',
   'many.title': '{count} tautan',
-  'many.hint': 'Setiap tautan menjadi satu batch dengan format, kualitas, dan folder yang dipilih di formulir. Daftar dan profil diproses tanpa pratinjau dan memuat jumlah bawaannya (500 untuk profil dan pencarian situs).',
+  'many.hint':
+    'Setiap tautan menjadi satu batch dengan format, kualitas, dan folder yang dipilih di formulir. Daftar dan profil diproses tanpa pratinjau dan memuat jumlah bawaannya (500 untuk profil dan pencarian situs).',
   'many.schedule': 'Jadwalkan {count}',
   'many.scheduled': '{count} batch dijadwalkan',
   'many.repeated': '{count} tautan duplikat dilewati.',
@@ -117,7 +121,8 @@ export const id: Readonly<Record<MessageKey, string>> = {
   'finished.verifySelected': 'Periksa yang dipilih ({count})',
   'finished.verifying': 'Memeriksa file… {done} dari {total}',
   'finished.checking': 'Memeriksa…',
-  'finished.verifyResult': 'Diperiksa {checked}: {ok} utuh · {missing} hilang · {changed} ukurannya berubah · {corrupted} rusak',
+  'finished.verifyResult':
+    'Diperiksa {checked}: {ok} utuh · {missing} hilang · {changed} ukurannya berubah · {corrupted} rusak',
   'finished.remove': 'Hapus dari daftar ({count})',
   'finished.removeConfirm': 'File tetap ada di disk Anda, hanya dihapus dari daftar ini.',
   'finished.removed': '{count} dihapus dari daftar',
@@ -263,7 +268,8 @@ export const id: Readonly<Record<MessageKey, string>> = {
   'integrity.size': 'Ukuran',
   'integrity.sha256': 'SHA-256',
   'integrity.issues': 'Masalah yang ditemukan',
-  'hint.needs-sign-in': 'Perlu masuk. Masuk di browser Anda, lalu pilih browser itu di Pengaturan → Cookie (“Cara masuk” menunjukkan langkahnya)',
+  'hint.needs-sign-in':
+    'Perlu masuk. Masuk di browser Anda, lalu pilih browser itu di Pengaturan → Cookie (“Cara masuk” menunjukkan langkahnya)',
   'hint.private': 'Video privat',
   'hint.removed': 'Dihapus atau tidak tersedia',
   'hint.geo-blocked': 'Diblokir di negara Anda',
@@ -276,7 +282,8 @@ export const id: Readonly<Record<MessageKey, string>> = {
   'settings.downloads': 'Unduhan',
   'settings.folder': 'Folder unduhan',
   'settings.threads': 'Unduhan bersamaan',
-  'settings.threadsHelp': 'Dibatasi setengah dari CPU Anda ({max} dari {cpus}) agar komputer tetap responsif. Video panjang dihitung 1,5, video berat 2.',
+  'settings.threadsHelp':
+    'Dibatasi setengah dari CPU Anda ({max} dari {cpus}) agar komputer tetap responsif. Video panjang dihitung 1,5, video berat 2.',
   'settings.validation': 'Pemeriksaan integritas',
   'settings.validation.full': 'Penuh: dekode setiap frame (disarankan)',
   'settings.validation.quick': 'Cepat: baca setiap paket',
@@ -288,7 +295,8 @@ export const id: Readonly<Record<MessageKey, string>> = {
   'settings.thumbnail': 'Sematkan thumbnail sebagai sampul',
   'settings.notifications': 'Beri tahu saat batch selesai',
   'settings.portableNames': 'Nama ramah mobil & USB (hanya huruf, angka, dan tanda hubung)',
-  'settings.portableNamesHelp': 'Contoh: 001-Cancion-Nandu-k1gsZ.mp3. Tanpa aksen, simbol, atau emoji, agar head unit mobil, TV, dan flashdisk USB bisa membaca setiap file.',
+  'settings.portableNamesHelp':
+    'Contoh: 001-Cancion-Nandu-k1gsZ.mp3. Tanpa aksen, simbol, atau emoji, agar head unit mobil, TV, dan flashdisk USB bisa membaca setiap file.',
   'settings.appearance': 'Tampilan',
   'settings.tools': 'Alat',
   'settings.doctor': 'Jalankan diagnostik',
@@ -296,7 +304,8 @@ export const id: Readonly<Record<MessageKey, string>> = {
   'settings.restart': 'Berlaku saat aplikasi dibuka lagi.',
   'settings.saved': 'Pengaturan disimpan',
   'setup.title': 'Penyiapan awal',
-  'setup.intro': 'Media Download Core membutuhkan yt-dlp dan FFmpeg. Keduanya diunduh dari sumber resminya, diverifikasi dengan checksum, lalu diuji. Tidak ada hal lain di komputer Anda yang diubah.',
+  'setup.intro':
+    'Media Download Core membutuhkan yt-dlp dan FFmpeg. Keduanya diunduh dari sumber resminya, diverifikasi dengan checksum, lalu diuji. Tidak ada hal lain di komputer Anda yang diubah.',
   'setup.install': 'Instal alat',
   'setup.installing': 'Menginstal…',
   'setup.ready': 'Semua siap. Alat sudah terinstal dan terverifikasi.',
@@ -327,7 +336,8 @@ export const id: Readonly<Record<MessageKey, string>> = {
   'analyze.cancel': 'Batal',
   'update.label': 'Pembaruan',
   'update.available': 'Versi {version} tersedia',
-  'update.availableHint': 'Diunduh di latar belakang ({size}), diinstal, lalu aplikasi dimulai ulang. Unduhan yang sedang berjalan berlanjut setelah dimulai ulang.',
+  'update.availableHint':
+    'Diunduh di latar belakang ({size}), diinstal, lalu aplikasi dimulai ulang. Unduhan yang sedang berjalan berlanjut setelah dimulai ulang.',
   'update.install': 'Perbarui sekarang',
   'update.whatsNew': 'Yang baru',
   'update.downloading': 'Mengunduh versi {version}…',
@@ -361,8 +371,10 @@ export const id: Readonly<Record<MessageKey, string>> = {
   'preview.partial': 'Menampilkan {count} dari {total}.',
   'preview.loadAll': 'Muat semua ({total})',
   'preview.loadEverything': 'Muat semua',
-  'preview.hidden': 'Semua {count} postingan publik ada di sini. TikTok menghitung {total}, tetapi {missing} lainnya tidak tercantum secara publik (privat, dihapus, atau hanya terlihat oleh pembuatnya), jadi tidak bisa diunduh.',
-  'preview.stopped': 'Daftar TikTok berhenti di {count} dari {total} (ditolak atau macet). Yang sudah terdaftar tetap disimpan: Muat semua melanjutkan dari situ.',
+  'preview.hidden':
+    'Semua {count} postingan publik ada di sini. TikTok menghitung {total}, tetapi {missing} lainnya tidak tercantum secara publik (privat, dihapus, atau hanya terlihat oleh pembuatnya), jadi tidak bisa diunduh.',
+  'preview.stopped':
+    'Daftar TikTok berhenti di {count} dari {total} (ditolak atau macet). Yang sudah terdaftar tetap disimpan: Muat semua melanjutkan dari situ.',
   'preview.col.published': 'Dipublikasikan',
   'preview.load': 'Muat',
   'preview.reload': 'Muat ulang',
@@ -378,7 +390,8 @@ export const id: Readonly<Record<MessageKey, string>> = {
   'preview.col.channel': 'Channel',
   'preview.col.duration': 'Durasi',
   'about.title': 'Tentang',
-  'about.description': 'Unduhan video dan audio secara batch, dibuat untuk beban berat, dengan pemeriksaan integritas penuh untuk setiap file. Proyek edukasi.',
+  'about.description':
+    'Unduhan video dan audio secara batch, dibuat untuk beban berat, dengan pemeriksaan integritas penuh untuk setiap file. Proyek edukasi.',
   'about.thanks': 'Terima kasih kepada proyek open source yang memungkinkan semua ini',
   'about.antd': 'Ant Design: komponen antarmuka aplikasi ini (MIT). Terima kasih!',
   'about.credits': 'Kredit open source',
@@ -389,16 +402,23 @@ export const id: Readonly<Record<MessageKey, string>> = {
   'notify.batchFailed': 'Batch gagal',
   'notify.diskFull': 'Ruang disk tidak cukup',
   'ytpause.title': 'YouTube meminta konfirmasi bahwa Anda bukan bot',
-  'ytpause.text': 'Terlalu banyak permintaan dari koneksi ini dalam waktu singkat, jadi YouTube menjedanya untuk sementara. Unduhan YouTube menunggu dan mencoba lagi sendiri pukul {at}.',
+  'ytpause.text':
+    'Terlalu banyak permintaan dari koneksi ini dalam waktu singkat, jadi YouTube menjedanya untuk sementara. Unduhan YouTube menunggu dan mencoba lagi sendiri pukul {at}.',
   'ytpause.continue': 'Untuk melanjutkan sekarang, gunakan sesi browser tempat Anda sudah masuk ke YouTube:',
   'ytpause.use': 'Gunakan dan lanjutkan',
-  'ytpause.using': 'Menggunakan sesi {browser}. Jika YouTube terus meminta, buka YouTube di {browser}, pastikan Anda sudah masuk, dan selesaikan verifikasinya jika muncul.',
-  'ytpause.safari': 'Safari: Media Download Core memerlukan Akses Disk Penuh untuk membaca cookie-nya (Pengaturan Sistem → Privasi & Keamanan → Akses Disk Penuh). Chrome, Firefox, Edge, dan Brave tidak memerlukannya.',
-  'ytpause.tokens': 'Unduhan YouTube berlanjut sendiri pukul {at}, dengan token verifikasi yang dibuat aplikasi. Anda tidak perlu melakukan apa pun.',
+  'ytpause.using':
+    'Menggunakan sesi {browser}. Jika YouTube terus meminta, buka YouTube di {browser}, pastikan Anda sudah masuk, dan selesaikan verifikasinya jika muncul.',
+  'ytpause.safari':
+    'Safari: Media Download Core memerlukan Akses Disk Penuh untuk membaca cookie-nya (Pengaturan Sistem → Privasi & Keamanan → Akses Disk Penuh). Chrome, Firefox, Edge, dan Brave tidak memerlukannya.',
+  'ytpause.tokens':
+    'Unduhan YouTube berlanjut sendiri pukul {at}, dengan token verifikasi yang dibuat aplikasi. Anda tidak perlu melakukan apa pun.',
   'ytheld.title': 'YouTube meminta Anda masuk untuk melanjutkan',
-  'ytheld.why': 'YouTube terus meminta konfirmasi bahwa Anda bukan bot di koneksi ini, beberapa kali berturut-turut, bahkan dengan token verifikasi aplikasi. Ini terjadi setelah banyak permintaan dalam waktu singkat dan hilang sendiri setelah beberapa saat (beberapa menit hingga beberapa jam).',
-  'ytheld.paused': 'Unduhan YouTube Anda dijeda, bukan hilang: unduhan berlanjut dari posisi terakhir begitu Anda memilih.',
-  'ytheld.account': 'Masuk ke YouTube di dalam aplikasi langsung mengatasinya. Sesi masuk tetap di aplikasi ini, bukan di browser Anda. YouTube bisa membatasi akun yang banyak mengunduh: akun kedua lebih aman.',
+  'ytheld.why':
+    'YouTube terus meminta konfirmasi bahwa Anda bukan bot di koneksi ini, beberapa kali berturut-turut, bahkan dengan token verifikasi aplikasi. Ini terjadi setelah banyak permintaan dalam waktu singkat dan hilang sendiri setelah beberapa saat (beberapa menit hingga beberapa jam).',
+  'ytheld.paused':
+    'Unduhan YouTube Anda dijeda, bukan hilang: unduhan berlanjut dari posisi terakhir begitu Anda memilih.',
+  'ytheld.account':
+    'Masuk ke YouTube di dalam aplikasi langsung mengatasinya. Sesi masuk tetap di aplikasi ini, bukan di browser Anda. YouTube bisa membatasi akun yang banyak mengunduh: akun kedua lebih aman.',
   'ytheld.signIn': 'Masuk dan lanjutkan',
   'ytheld.continueAccount': 'Lanjutkan dengan akun YouTube saya',
   'ytheld.browser': 'Atau gunakan browser tempat Anda sudah masuk ke YouTube:',
@@ -412,34 +432,47 @@ export const id: Readonly<Record<MessageKey, string>> = {
   'cause.bot-check': 'verifikasi bot',
   'cause.blocked': 'diblokir sementara',
   'cause.cookies-unreadable': 'cookie tidak terbaca',
-  'hint.bot-check': 'YouTube meminta konfirmasi bahwa Anda bukan bot. Aplikasi mencoba lagi sendiri, atau Anda bisa memakai sesi browser Anda',
-  'hint.cookies-unreadable': 'Tidak dapat membaca cookie browser. Safari memerlukan Akses Disk Penuh, atau pilih browser lain di Pengaturan',
-  'settings.cookiesHelp': 'Sesi masuk Anda, untuk video privat, khusus anggota, atau yang dibatasi usia, dan untuk saat YouTube meminta konfirmasi bahwa Anda bukan bot. Langsung berlaku.',
-  'about.star': 'Jika Media Download Core bermanfaat, beri bintang di GitHub: gratis, hanya sedetik, dan membantu orang lain menemukannya.',
+  'hint.bot-check':
+    'YouTube meminta konfirmasi bahwa Anda bukan bot. Aplikasi mencoba lagi sendiri, atau Anda bisa memakai sesi browser Anda',
+  'hint.cookies-unreadable':
+    'Tidak dapat membaca cookie browser. Safari memerlukan Akses Disk Penuh, atau pilih browser lain di Pengaturan',
+  'settings.cookiesHelp':
+    'Sesi masuk Anda, untuk video privat, khusus anggota, atau yang dibatasi usia, dan untuk saat YouTube meminta konfirmasi bahwa Anda bukan bot. Langsung berlaku.',
+  'about.star':
+    'Jika Media Download Core bermanfaat, beri bintang di GitHub: gratis, hanya sedetik, dan membantu orang lain menemukannya.',
   'about.starButton': 'Beri bintang di GitHub',
   'common.close': 'Tutup',
   'common.copy': 'Salin',
   'common.copied': 'Disalin',
   'common.unknown': 'tidak diketahui',
   'settings.sync': 'Jalankan sinkronisasi terjadwal (Sync Up)',
-  'settings.syncHelp': 'Sinkronisasi terjadwal berjalan sendiri selama aplikasi terbuka. Nonaktif: Sync Up hanya berjalan saat Anda menekan Sinkronkan sekarang.',
+  'settings.syncHelp':
+    'Sinkronisasi terjadwal berjalan sendiri selama aplikasi terbuka. Nonaktif: Sync Up hanya berjalan saat Anda menekan Sinkronkan sekarang.',
   'common.cancel': 'Batal',
   'common.save': 'Simpan',
   'sync.title': 'Sync Up',
-  'sync.intro': 'Jaga akun TikTok tetap selaras dengan foldernya: setiap sinkronisasi hanya mengunduh yang belum ada di folder, sebagai batch biasa.',
+  'sync.intro':
+    'Jaga akun TikTok tetap selaras dengan foldernya: setiap sinkronisasi hanya mengunduh yang belum ada di folder, sebagai batch biasa.',
   'sync.empty': 'Belum ada akun. Tambahkan satu: foldernya boleh sudah berisi videonya.',
   'sync.addOnly': 'Tambah',
   'sync.addAndSync': 'Tambah dan sinkronkan',
-  'sync.firstSync': 'Menyinkronkan @{user}: sinkronisasi pertama membaca seluruh akun, untuk mengisi kekosongan di folder.',
+  'sync.firstSync':
+    'Menyinkronkan @{user}: sinkronisasi pertama membaca seluruh akun, untuk mengisi kekosongan di folder.',
   'sync.field.accountHint': '@nama atau tautan profil.',
   'sync.field.accountInvalid': 'Tulis akun TikTok: @nama atau https://www.tiktok.com/@nama',
-  'sync.field.folderHint': 'Disarankan berdasarkan akun. Jika videonya sudah ada di suatu folder, pilih folder itu: file dikenali dari nomor postingan di nama atau metadatanya.',
-  'sync.field.formatLocked': 'Satu folder hanya berisi satu format: postingan baru masuk dalam format file yang sudah ada di sana.',
-  'sync.field.scheduleHint': 'Sinkronisasi terjadwal berjalan selama aplikasi terbuka (yang terlewat dijalankan saat aplikasi dibuka). Tanpa aplikasi: "mdc sync run --due" dari cron, launchd, atau Penjadwal Tugas.',
-  'sync.folder.has': 'Folder ini berisi {count} file {format}: Sync Up tetap memakai {format} dan hanya mengunduh yang belum ada.',
+  'sync.field.folderHint':
+    'Disarankan berdasarkan akun. Jika videonya sudah ada di suatu folder, pilih folder itu: file dikenali dari nomor postingan di nama atau metadatanya.',
+  'sync.field.formatLocked':
+    'Satu folder hanya berisi satu format: postingan baru masuk dalam format file yang sudah ada di sana.',
+  'sync.field.scheduleHint':
+    'Sinkronisasi terjadwal berjalan selama aplikasi terbuka (yang terlewat dijalankan saat aplikasi dibuka). Tanpa aplikasi: "mdc sync run --due" dari cron, launchd, atau Penjadwal Tugas.',
+  'sync.folder.has':
+    'Folder ini berisi {count} file {format}: Sync Up tetap memakai {format} dan hanya mengunduh yang belum ada.',
   'sync.folder.empty': 'Folder kosong atau baru: pilih format filenya.',
-  'sync.folder.mixed': 'Folder ini mencampur file {formats}. Folder yang disinkronkan hanya berisi satu format: pilih folder lain, atau sisakan satu format saja di folder ini.',
-  'sync.folder.unsupported': 'Folder ini berisi file {formats}, format yang tidak diunduh oleh Sync Up. Pilih folder lain.',
+  'sync.folder.mixed':
+    'Folder ini mencampur file {formats}. Folder yang disinkronkan hanya berisi satu format: pilih folder lain, atau sisakan satu format saja di folder ini.',
+  'sync.folder.unsupported':
+    'Folder ini berisi file {formats}, format yang tidak diunduh oleh Sync Up. Pilih folder lain.',
   'sync.checking': 'Membandingkan folder dengan akun…',
   'sync.checkingDeep': 'Membaca seluruh akun (akun besar butuh beberapa menit)…',
   'sync.more': 'Lainnya',
@@ -475,7 +508,8 @@ export const id: Readonly<Record<MessageKey, string>> = {
   'sync.incremental': 'sampai yang terbaru yang sudah ada',
   'sync.checkNew': 'Baru: {count}',
   'sync.checkCounts': 'Dibaca dari TikTok: {listed} · di folder: {inFolder}',
-  'sync.goneHint': '{count} file di folder sudah tidak ada di akun (dihapus atau privat). File tersebut tetap di folder.',
+  'sync.goneHint':
+    '{count} file di folder sudah tidak ada di akun (dihapus atau privat). File tersebut tetap di folder.',
   'sync.downloadNew': 'Unduh {count}',
   'sync.upToDate': 'Sudah terbaru: tidak ada yang baru',
   'sync.started': 'Mengunduh {count} yang baru',
@@ -501,7 +535,8 @@ export const id: Readonly<Record<MessageKey, string>> = {
   'sync.col.status': 'Status',
   'stats.failedOpen': 'Gagal: lihat daftarnya dan coba lagi',
   'failed.title': 'Unduhan gagal ({count})',
-  'failed.hint': 'Setiap unduhan yang gagal dalam sesi ini, dari semua batch. Pilih yang ingin dicoba lagi: semuanya masuk bersama ke satu batch baru, dan masing-masing ke folder asalnya.',
+  'failed.hint':
+    'Setiap unduhan yang gagal dalam sesi ini, dari semua batch. Pilih yang ingin dicoba lagi: semuanya masuk bersama ke satu batch baru, dan masing-masing ke folder asalnya.',
   'failed.batches': 'Batch',
   'failed.selectAll': 'Pilih semua ({count})',
   'failed.retry': 'Batch baru dengan {count} yang dipilih',
@@ -511,27 +546,39 @@ export const id: Readonly<Record<MessageKey, string>> = {
   'failed.unknown': 'Kesalahan tidak diketahui',
   'failed.created': 'Batch baru dijadwalkan dengan {count} unduhan gagal',
   'integrity.damaged': 'Rusak dari sumbernya',
-  'integrity.damagedTip': 'File yang diberikan situs ini rusak, jadi tidak bisa diunduh: mencoba lagi hanya membuang waktu, bandwidth, dan ruang disk. File ini tidak akan diunduh lagi (Pengaturan → Rusak dari sumbernya memungkinkan untuk mencobanya lagi).',
+  'integrity.damagedTip':
+    'File yang diberikan situs ini rusak, jadi tidak bisa diunduh: mencoba lagi hanya membuang waktu, bandwidth, dan ruang disk. File ini tidak akan diunduh lagi (Pengaturan → Rusak dari sumbernya memungkinkan untuk mencobanya lagi).',
   'integrity.later': 'Periksa di akhir',
-  'integrity.laterTip': 'Diunduh lebih dulu: pemeriksaan integritasnya berjalan setelah semua unduhan dalam batch selesai (Pengaturan → Unduh dulu, periksa kemudian).',
+  'integrity.laterTip':
+    'Diunduh lebih dulu: pemeriksaan integritasnya berjalan setelah semua unduhan dalam batch selesai (Pengaturan → Unduh dulu, periksa kemudian).',
   'hint.damaged-source': 'Rusak dari sumbernya, tidak diunduh lagi',
   'cause.damaged-source': 'rusak dari sumbernya',
+  'hint.no-video': 'Postingan ini berisi foto atau teks, tetapi tidak ada video',
+  'hint.live-now': 'Sedang siaran langsung. Unduh setelah selesai, sebagai rekaman.',
+  'hint.stream-only': 'Hanya tersedia sebagai streaming, yang belum bisa disimpan aplikasi ini',
+  'cause.no-video': 'tanpa video',
+  'cause.live-now': 'sedang siaran langsung',
+  'cause.stream-only': 'hanya streaming',
   'job.cancelOne': 'Batalkan unduhan ini saja (batch tetap berjalan)',
   'batch.status.validating': 'Memeriksa file',
   'batch.cancelledCount': '{count} dibatalkan',
   'batch.validating': 'Unduhan selesai. Memeriksa file: {done}/{total}',
-  'batch.cancelWhole': 'Menghentikan seluruh batch. Untuk membatalkan satu unduhan saja, gunakan Batal di barisnya (Item atau Unduhan).',
+  'batch.cancelWhole':
+    'Menghentikan seluruh batch. Untuk membatalkan satu unduhan saja, gunakan Batal di barisnya (Item atau Unduhan).',
   'finished.prune': 'Hapus catatan file yang hilang',
   'finished.pruneSelected': 'Hapus yang hilang dari pilihan ({count})',
-  'finished.pruneConfirm': 'Melupakan file yang sudah tidak ada di tempat unduhannya (dihapus atau dipindahkan), beserta tautan asalnya. File yang masih Anda miliki tidak disentuh. Untuk mendapatkannya kembali, gunakan "Unduh lagi yang hilang" terlebih dahulu.',
+  'finished.pruneConfirm':
+    'Melupakan file yang sudah tidak ada di tempat unduhannya (dihapus atau dipindahkan), beserta tautan asalnya. File yang masih Anda miliki tidak disentuh. Untuk mendapatkannya kembali, gunakan "Unduh lagi yang hilang" terlebih dahulu.',
   'finished.pruneOk': 'Hapus',
   'finished.redownload': 'Unduh lagi yang hilang',
   'finished.redownloadSelected': 'Unduh lagi yang hilang ({count})',
-  'finished.redownloadConfirm': 'Mengunduh lagi file yang sudah tidak ada di tempatnya (dihapus atau dipindahkan), dari tautan yang disimpan masing-masing: setiap file kembali ke folder dan format lamanya, dalam batch baru. File yang masih Anda miliki tidak disentuh.',
+  'finished.redownloadConfirm':
+    'Mengunduh lagi file yang sudah tidak ada di tempatnya (dihapus atau dipindahkan), dari tautan yang disimpan masing-masing: setiap file kembali ke folder dan format lamanya, dalam batch baru. File yang masih Anda miliki tidak disentuh.',
   'finished.redownloadOk': 'Unduh',
   'finished.redownloaded': '{count} file masuk antrean untuk diunduh lagi',
   'finished.redownloadNone': 'Semua file masih di tempatnya: tidak ada yang perlu diunduh',
-  'finished.verifyNoneThere': 'File ini sudah tidak ada di disk, jadi tidak ada yang perlu diperiksa. Unduh lagi atau hapus catatannya.',
+  'finished.verifyNoneThere':
+    'File ini sudah tidak ada di disk, jadi tidak ada yang perlu diperiksa. Unduh lagi atau hapus catatannya.',
   'finished.verifyFailed': 'Pemeriksaan tidak bisa diselesaikan. Coba lagi.',
   'finished.pruned': '{count} catatan file yang hilang dihapus',
   'finished.prunedNone': 'Semua file masih di tempatnya: tidak ada yang perlu dihapus',
@@ -552,26 +599,38 @@ export const id: Readonly<Record<MessageKey, string>> = {
   'settings.env.platform': 'Platform:',
   'settings.threadsHelpBoost': 'Hingga {max} sekaligus (60% dari {cpus} prosesor).',
   'settings.cpuBoost': 'Izinkan hingga 60% prosesor',
-  'settings.cpuBoostHelp': 'Setengah ({half} dari {cpus}) secara default. Aktif: hingga {boosted} unduhan sekaligus, sekitar 40% tetap tersedia untuk pekerjaan Anda yang lain.',
-  'settings.cpuBoostSame': 'Di komputer ini, 60% dari {cpus} prosesor tetap {half} unduhan sekaligus: sama dengan setengah.',
+  'settings.cpuBoostHelp':
+    'Setengah ({half} dari {cpus}) secara default. Aktif: hingga {boosted} unduhan sekaligus, sekitar 40% tetap tersedia untuk pekerjaan Anda yang lain.',
+  'settings.cpuBoostSame':
+    'Di komputer ini, 60% dari {cpus} prosesor tetap {half} unduhan sekaligus: sama dengan setengah.',
   'settings.validateAfter': 'Unduh dulu, periksa kemudian',
-  'settings.validateAfterHelp': 'Batch mengunduh tanpa jeda, lalu memeriksa semua filenya sekaligus. File yang rusak dari sumbernya ditandai “rusak dari sumbernya” dan tidak akan pernah diunduh lagi.',
+  'settings.validateAfterHelp':
+    'Batch mengunduh tanpa jeda, lalu memeriksa semua filenya sekaligus. File yang rusak dari sumbernya ditandai “rusak dari sumbernya” dan tidak akan pernah diunduh lagi.',
   'settings.damaged': 'Rusak dari sumbernya…',
   'damaged.title': 'Rusak dari sumbernya',
-  'damaged.hint': 'Video yang filenya sudah rusak dari asalnya: video ini tidak diunduh lagi. Izinkan lagi jika menurut Anda situs mungkin sudah memperbaikinya.',
+  'damaged.hint':
+    'Video yang filenya sudah rusak dari asalnya: video ini tidak diunduh lagi. Izinkan lagi jika menurut Anda situs mungkin sudah memperbaikinya.',
   'damaged.empty': 'Tidak ada video yang rusak dari sumbernya',
   'damaged.when': 'Ditemukan',
   'damaged.forget': 'Izinkan lagi',
   'batch.forecastUnknown': 'Ukuran tidak diberikan situs · {free} tersedia',
   'signin.open': 'Cara masuk',
   'signin.title': 'Gunakan sesi Anda yang sudah masuk',
-  'signin.intro': 'Video privat atau khusus anggota, video dengan batasan usia, profil dan story Instagram, video dari halaman Facebook, serta YouTube saat meminta konfirmasi bahwa Anda bukan bot, memerlukan sesi akun Anda sendiri. Aplikasi membacanya dari browser Anda: tidak ada yang perlu disalin atau ditempel.',
-  'signin.step1': 'Buka browser yang biasa Anda pakai (Chrome, Edge, Firefox, Safari, Brave…) dan masuk di sana seperti biasa: ke Google / YouTube, Instagram, atau Facebook.',
+  'signin.intro':
+    'Video privat atau khusus anggota, video dengan batasan usia, profil dan story Instagram, video dari halaman Facebook, serta YouTube saat meminta konfirmasi bahwa Anda bukan bot, memerlukan sesi akun Anda sendiri. Aplikasi membacanya dari browser Anda: tidak ada yang perlu disalin atau ditempel.',
+  'signin.step1':
+    'Buka browser yang biasa Anda pakai (Chrome, Edge, Firefox, Safari, Brave…) dan masuk di sana seperti biasa: ke Google / YouTube, Instagram, atau Facebook.',
   'signin.step2': 'Di sini, di Pengaturan → Cookie dari browser, pilih browser yang sama.',
-  'signin.step3': 'Pertama kali, sistem Anda meminta izin (lihat di bawah). Izinkan. Permintaan ini hanya muncul sekali.',
-  'signin.step4': 'Tempel tautannya lagi: file diunduh dengan sesi Anda. Sudah keluar dari akun di browser? Masuk lagi di sana.',
-  'signin.mac': 'macOS: jendela Keychain meminta izin agar aplikasi bisa membaca “Chrome Safe Storage” (atau milik browser Anda): ketik kata sandi Mac Anda dan klik “Selalu Izinkan”. Safari: Pengaturan Sistem → Privasi & Keamanan → Akses Disk Penuh → aktifkan Media Download Core.',
-  'signin.windows': 'Windows: tutup browser sebelum mengunduh (Chrome dan Edge mengunci cookie-nya selama terbuka). Jika Chrome tetap tidak bisa dibaca (Chrome melindungi cookie-nya di Windows), gunakan Firefox: masuk di sana dan pilih Firefox di sini.',
-  'signin.linux': 'Linux (Fedora, Ubuntu…): keyring Anda (GNOME Keyring / KWallet) mungkin meminta izin akses ke data tersimpan browser: izinkan. Firefox tidak memerlukan izin.',
-  'signin.privacy': 'Cookie Anda tetap di komputer Anda: cookie dibaca sekali ke salinan pribadi yang hanya dipakai aplikasi untuk mengunduh, dan tidak pernah dikirim ke tempat lain.',
+  'signin.step3':
+    'Pertama kali, sistem Anda meminta izin (lihat di bawah). Izinkan. Permintaan ini hanya muncul sekali.',
+  'signin.step4':
+    'Tempel tautannya lagi: file diunduh dengan sesi Anda. Sudah keluar dari akun di browser? Masuk lagi di sana.',
+  'signin.mac':
+    'macOS: jendela Keychain meminta izin agar aplikasi bisa membaca “Chrome Safe Storage” (atau milik browser Anda): ketik kata sandi Mac Anda dan klik “Selalu Izinkan”. Safari: Pengaturan Sistem → Privasi & Keamanan → Akses Disk Penuh → aktifkan Media Download Core.',
+  'signin.windows':
+    'Windows: tutup browser sebelum mengunduh (Chrome dan Edge mengunci cookie-nya selama terbuka). Jika Chrome tetap tidak bisa dibaca (Chrome melindungi cookie-nya di Windows), gunakan Firefox: masuk di sana dan pilih Firefox di sini.',
+  'signin.linux':
+    'Linux (Fedora, Ubuntu…): keyring Anda (GNOME Keyring / KWallet) mungkin meminta izin akses ke data tersimpan browser: izinkan. Firefox tidak memerlukan izin.',
+  'signin.privacy':
+    'Cookie Anda tetap di komputer Anda: cookie dibaca sekali ke salinan pribadi yang hanya dipakai aplikasi untuk mengunduh, dan tidak pernah dikirim ke tempat lain.',
 }

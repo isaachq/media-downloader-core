@@ -1,4 +1,3 @@
-import type {Language} from '../shared/contract'
 import {appendFileSync, readFileSync} from 'node:fs'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
@@ -28,10 +27,12 @@ import {
   TIKTOK_PROFILE_DEFAULT_ITEMS,
   type VideoAnalysis,
 } from 'media-downloader-core'
+import type {Language} from '../shared/contract'
 import {
   type AppInfo,
   type AppSettings,
   CHANNEL,
+  detectLink,
   type FailedRetry,
   FINISHED_INTEGRITY,
   type FinishedEntry,
@@ -40,7 +41,6 @@ import {
   type FinishedPage,
   type FinishedQuery,
   type FinishedSort,
-  detectLink,
   type LinkSite,
   type Preview,
   RESTART_SETTINGS,
@@ -71,13 +71,46 @@ import {runProbe} from './youtube/probe'
 
 /** The titles the app gives the batches it starts itself (download again, retry failed), per language. */
 const HOST_TITLES = {
-  again: {en: 'Downloaded again', es: 'Descargados de nuevo', pt: 'Baixados de novo', it: 'Scaricati di nuovo', ru: 'Скачано заново', zh: '重新下载', id: 'Diunduh ulang', hi: 'फिर से डाउनलोड किए गए', vi: 'Tải lại', th: 'ดาวน์โหลดอีกครั้ง', tr: 'Yeniden indirilenler', ar: 'تنزيل مجدد', fr: 'Téléchargés à nouveau', de: 'Erneut heruntergeladen'},
-  retried: {en: 'Failed, retried', es: 'Fallidos reintentados', pt: 'Falhas tentadas de novo', it: 'Non riusciti, riprovati', ru: 'Повтор неудачных', zh: '重试失败项', id: 'Yang gagal dicoba lagi', hi: 'विफल, फिर से कोशिश', vi: 'Thử lại mục lỗi', th: 'ลองรายการที่ล้มเหลวอีกครั้ง', tr: 'Başarısızlar yeniden denendi', ar: 'إعادة محاولة الفاشلة', fr: 'Échecs relancés', de: 'Fehlgeschlagene, erneut versucht'},
+  again: {
+    en: 'Downloaded again',
+    es: 'Descargados de nuevo',
+    pt: 'Baixados de novo',
+    it: 'Scaricati di nuovo',
+    ru: 'Скачано заново',
+    zh: '重新下载',
+    id: 'Diunduh ulang',
+    hi: 'फिर से डाउनलोड किए गए',
+    vi: 'Tải lại',
+    th: 'ดาวน์โหลดอีกครั้ง',
+    tr: 'Yeniden indirilenler',
+    ar: 'تنزيل مجدد',
+    fr: 'Téléchargés à nouveau',
+    de: 'Erneut heruntergeladen',
+  },
+  retried: {
+    en: 'Failed, retried',
+    es: 'Fallidos reintentados',
+    pt: 'Falhas tentadas de novo',
+    it: 'Non riusciti, riprovati',
+    ru: 'Повтор неудачных',
+    zh: '重试失败项',
+    id: 'Yang gagal dicoba lagi',
+    hi: 'विफल, फिर से कोशिश',
+    vi: 'Thử lại mục lỗi',
+    th: 'ลองรายการที่ล้มเหลวอีกครั้ง',
+    tr: 'Başarısızlar yeniden denendi',
+    ar: 'إعادة محاولة الفاشلة',
+    fr: 'Échecs relancés',
+    de: 'Fehlgeschlagene, erneut versucht',
+  },
 } as const satisfies Record<string, Record<Language, string>>
 const hostTitle = (which: keyof typeof HOST_TITLES, language: Language): string => HOST_TITLES[which][language]
 /** Now, in the language’s date and time (Electron ships a full ICU). */
-const stamp = (language: Language): string => new Date().toLocaleString(language === 'pt' ? 'pt-BR' : language === 'zh' ? 'zh-CN' : language, {dateStyle: 'medium', timeStyle: 'short'})
-
+const stamp = (language: Language): string =>
+  new Date().toLocaleString(language === 'pt' ? 'pt-BR' : language === 'zh' ? 'zh-CN' : language, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  })
 
 // Test hooks: e2e runs point the app at a temp data folder and fake tools.
 if (process.env['MDC_DATA_DIR']) app.setPath('userData', path.resolve(process.env['MDC_DATA_DIR']))

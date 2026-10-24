@@ -16,7 +16,7 @@ import viVN from 'antd/locale/vi_VN'
 import zhCN from 'antd/locale/zh_CN'
 import type {BatchSnapshot, Diagnosis} from 'media-downloader-core'
 import {type ReactNode, useCallback, useEffect, useMemo, useRef, useState} from 'react'
-import {type AppInfo, type AppSettings, pickLanguage, isRtl, type Language} from '../../shared/contract'
+import {type AppInfo, type AppSettings, isRtl, type Language, pickLanguage} from '../../shared/contract'
 import {api} from './api'
 import {BOOT_PHASES, type BootPhase, type BootProgress, bootErrorMessage, retrying} from './boot'
 import {AboutModal} from './components/AboutModal'
@@ -42,9 +42,21 @@ import {AppStore, BATCH_FINISHED, StoreContext, useStoreValue, WORKING} from './
 
 /** antd's own words (date pickers, tables, empty states) in the interface language. */
 const ANTD_LOCALES: Readonly<Record<Language, Locale>> = {
-  en: enUS, es: esES, pt: ptBR, id: idID, hi: hiIN, vi: viVN, th: thTH, tr: trTR, ar: arEG, fr: frFR, de: deDE, ru: ruRU, zh: zhCN, it: itIT,
+  en: enUS,
+  es: esES,
+  pt: ptBR,
+  id: idID,
+  hi: hiIN,
+  vi: viVN,
+  th: thTH,
+  tr: trTR,
+  ar: arEG,
+  fr: frFR,
+  de: deDE,
+  ru: ruRU,
+  zh: zhCN,
+  it: itIT,
 }
-
 
 const CYAN = '#13a8e0'
 const FINISHED = new Set(['completed', 'completed-with-errors', 'failed', 'cancelled'])

@@ -117,13 +117,11 @@ describe('one link box for every site', () => {
     const dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByText('Schedule 5')).toBeInTheDocument()
     expect(within(dialog).queryByTestId('many-other-mode')).not.toBeInTheDocument()
-    expect(within(dialog).getAllByTestId('site-tag').map(tag => tag.getAttribute('data-site'))).toEqual([
-      'instagram',
-      'facebook',
-      'tiktok',
-      'youtube',
-      'vk',
-    ])
+    expect(
+      within(dialog)
+        .getAllByTestId('site-tag')
+        .map(tag => tag.getAttribute('data-site')),
+    ).toEqual(['instagram', 'facebook', 'tiktok', 'youtube', 'vk'])
     await user.click(within(dialog).getByTestId('many-schedule'))
     await waitFor(() => expect(api.schedule).toHaveBeenCalledTimes(5))
   })
@@ -346,7 +344,11 @@ describe('finished: header filters and missing records', () => {
       entry(1, {extractor: 'Vimeo'}),
     ]
     const {list} = await openFinished(api)
-    expect(within(list).getAllByTestId('site-tag').map(tag => tag.textContent)).toEqual(['VK', 'TikTok', 'Website'])
+    expect(
+      within(list)
+        .getAllByTestId('site-tag')
+        .map(tag => tag.textContent),
+    ).toEqual(['VK', 'TikTok', 'Website'])
     // another website's extractor still names it
     expect(within(list).getByText(/Vimeo · Clip-1\.mp4/)).toBeInTheDocument()
   })

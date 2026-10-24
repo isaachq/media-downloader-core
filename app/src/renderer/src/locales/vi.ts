@@ -10,11 +10,13 @@ export const vi: Readonly<Record<MessageKey, string>> = {
   'header.report': 'Báo cáo',
   'header.guide': 'Hướng dẫn',
   'tour.1.title': '1 · Dán liên kết',
-  'tour.1.text': 'Một video, một danh sách phát, một kênh hoặc một trang cá nhân TikTok. Dán nhiều liên kết cùng lúc cũng được: cứ dán hết vào.',
+  'tour.1.text':
+    'Một video, một danh sách phát, một kênh hoặc một trang cá nhân TikTok. Dán nhiều liên kết cùng lúc cũng được: cứ dán hết vào.',
   'tour.2.title': '2 · Chọn thứ bạn muốn',
   'tour.2.text': 'MP4 để xem ở bất cứ đâu, MP3 để nghe; rồi chọn chất lượng và thư mục lưu tệp.',
   'tour.3.title': '3 · Tải xuống',
-  'tour.3.text': 'Với một danh sách, bản xem trước sẽ mở ra trước để bạn chọn thứ mình muốn. Mọi tệp đều được kiểm tra trước khi đến tay bạn. Tất cả nằm trong thẻ Đã xong, sẵn sàng để phát.',
+  'tour.3.text':
+    'Với một danh sách, bản xem trước sẽ mở ra trước để bạn chọn thứ mình muốn. Mọi tệp đều được kiểm tra trước khi đến tay bạn. Tất cả nằm trong thẻ Đã xong, sẵn sàng để phát.',
   'header.language': 'Ngôn ngữ',
   'header.theme': 'Giao diện',
   'theme.system': 'Theo hệ thống',
@@ -47,7 +49,8 @@ export const vi: Readonly<Record<MessageKey, string>> = {
   'download.change': 'Đổi',
   'download.start': 'Tải xuống',
   'download.schedule': 'Lên lịch',
-  'download.scheduledHint': 'Đang có một lô chạy. Liên kết mới sẽ vào hàng chờ và tự bắt đầu sau lô đó (liên kết này sẽ ở vị trí số {position}).',
+  'download.scheduledHint':
+    'Đang có một lô chạy. Liên kết mới sẽ vào hàng chờ và tự bắt đầu sau lô đó (liên kết này sẽ ở vị trí số {position}).',
   'download.capacity': 'Tối đa {normal} lượt tải cùng lúc trên {cpus} CPU · {long} với video dài',
   'download.scheduled': 'Đã lên lịch: {title}',
   'download.video': 'Video',
@@ -105,7 +108,8 @@ export const vi: Readonly<Record<MessageKey, string>> = {
   'slides.noAudio': 'Không có tiếng: {count}',
   'slides.confirm': 'Tải xuống',
   'many.title': '{count} liên kết',
-  'many.hint': 'Mỗi liên kết thành một lô, với định dạng, chất lượng và thư mục đã chọn trong biểu mẫu. Danh sách và trang cá nhân bỏ qua bước xem trước và tải theo số lượng mặc định (500 với trang cá nhân và kết quả tìm kiếm trên trang web).',
+  'many.hint':
+    'Mỗi liên kết thành một lô, với định dạng, chất lượng và thư mục đã chọn trong biểu mẫu. Danh sách và trang cá nhân bỏ qua bước xem trước và tải theo số lượng mặc định (500 với trang cá nhân và kết quả tìm kiếm trên trang web).',
   'many.schedule': 'Lên lịch {count}',
   'many.scheduled': 'Đã lên lịch {count} lô',
   'many.repeated': 'Đã bỏ qua {count} liên kết trùng lặp.',
@@ -117,7 +121,8 @@ export const vi: Readonly<Record<MessageKey, string>> = {
   'finished.verifySelected': 'Kiểm tra mục đã chọn ({count})',
   'finished.verifying': 'Đang kiểm tra tệp… {done}/{total}',
   'finished.checking': 'Đang kiểm tra…',
-  'finished.verifyResult': 'Đã kiểm tra {checked}: {ok} nguyên vẹn · {missing} bị mất · {changed} đổi dung lượng · {corrupted} bị hỏng',
+  'finished.verifyResult':
+    'Đã kiểm tra {checked}: {ok} nguyên vẹn · {missing} bị mất · {changed} đổi dung lượng · {corrupted} bị hỏng',
   'finished.remove': 'Xóa khỏi danh sách ({count})',
   'finished.removeConfirm': 'Các tệp vẫn nằm trên ổ đĩa của bạn, chỉ bị xóa khỏi danh sách này.',
   'finished.removed': 'Đã xóa {count} mục khỏi danh sách',
@@ -263,7 +268,8 @@ export const vi: Readonly<Record<MessageKey, string>> = {
   'integrity.size': 'Dung lượng',
   'integrity.sha256': 'SHA-256',
   'integrity.issues': 'Vấn đề phát hiện được',
-  'hint.needs-sign-in': 'Cần đăng nhập. Hãy đăng nhập trên trình duyệt, rồi chọn trình duyệt đó trong Cài đặt → Cookie (mục “Cách đăng nhập” có hướng dẫn từng bước)',
+  'hint.needs-sign-in':
+    'Cần đăng nhập. Hãy đăng nhập trên trình duyệt, rồi chọn trình duyệt đó trong Cài đặt → Cookie (mục “Cách đăng nhập” có hướng dẫn từng bước)',
   'hint.private': 'Video riêng tư',
   'hint.removed': 'Đã bị gỡ hoặc không khả dụng',
   'hint.geo-blocked': 'Bị chặn ở quốc gia của bạn',
@@ -276,7 +282,8 @@ export const vi: Readonly<Record<MessageKey, string>> = {
   'settings.downloads': 'Tải xuống',
   'settings.folder': 'Thư mục tải xuống',
   'settings.threads': 'Số lượt tải cùng lúc',
-  'settings.threadsHelp': 'Tối đa bằng một nửa số CPU ({max}/{cpus}) để máy tính vẫn phản hồi mượt. Video dài tính là 1,5, video nặng tính là 2.',
+  'settings.threadsHelp':
+    'Tối đa bằng một nửa số CPU ({max}/{cpus}) để máy tính vẫn phản hồi mượt. Video dài tính là 1,5, video nặng tính là 2.',
   'settings.validation': 'Kiểm tra toàn vẹn',
   'settings.validation.full': 'Đầy đủ: giải mã từng khung hình (khuyên dùng)',
   'settings.validation.quick': 'Nhanh: đọc từng gói dữ liệu',
@@ -288,7 +295,8 @@ export const vi: Readonly<Record<MessageKey, string>> = {
   'settings.thumbnail': 'Nhúng ảnh thu nhỏ làm ảnh bìa',
   'settings.notifications': 'Thông báo khi một lô xong',
   'settings.portableNames': 'Tên tệp hợp với ô tô và USB (chỉ chữ cái, chữ số và dấu gạch nối)',
-  'settings.portableNamesHelp': 'Ví dụ: 001-Cancion-Nandu-k1gsZ.mp3. Không dấu, không ký hiệu hay emoji, để đầu phát trên ô tô, TV và USB đọc được mọi tệp.',
+  'settings.portableNamesHelp':
+    'Ví dụ: 001-Cancion-Nandu-k1gsZ.mp3. Không dấu, không ký hiệu hay emoji, để đầu phát trên ô tô, TV và USB đọc được mọi tệp.',
   'settings.appearance': 'Giao diện',
   'settings.tools': 'Công cụ',
   'settings.doctor': 'Chạy chẩn đoán',
@@ -296,7 +304,8 @@ export const vi: Readonly<Record<MessageKey, string>> = {
   'settings.restart': 'Áp dụng từ lần mở ứng dụng tiếp theo.',
   'settings.saved': 'Đã lưu cài đặt',
   'setup.title': 'Thiết lập lần đầu',
-  'setup.intro': 'Media Download Core cần yt-dlp và FFmpeg. Cả hai được tải từ nguồn chính thức, được xác minh mã kiểm tra và chạy thử. Không có gì khác trên máy tính của bạn bị thay đổi.',
+  'setup.intro':
+    'Media Download Core cần yt-dlp và FFmpeg. Cả hai được tải từ nguồn chính thức, được xác minh mã kiểm tra và chạy thử. Không có gì khác trên máy tính của bạn bị thay đổi.',
   'setup.install': 'Cài đặt công cụ',
   'setup.installing': 'Đang cài đặt…',
   'setup.ready': 'Xong. Công cụ đã được cài đặt và xác minh.',
@@ -327,7 +336,8 @@ export const vi: Readonly<Record<MessageKey, string>> = {
   'analyze.cancel': 'Hủy',
   'update.label': 'Cập nhật',
   'update.available': 'Đã có phiên bản {version}',
-  'update.availableHint': 'Tải về trong nền ({size}), cài đặt rồi khởi động lại ứng dụng. Các lượt tải đang chạy sẽ tiếp tục sau khi khởi động lại.',
+  'update.availableHint':
+    'Tải về trong nền ({size}), cài đặt rồi khởi động lại ứng dụng. Các lượt tải đang chạy sẽ tiếp tục sau khi khởi động lại.',
   'update.install': 'Cập nhật ngay',
   'update.whatsNew': 'Có gì mới',
   'update.downloading': 'Đang tải phiên bản {version}…',
@@ -356,13 +366,16 @@ export const vi: Readonly<Record<MessageKey, string>> = {
   'boot.retry': 'Thử lại',
   'preview.title': 'Chọn nội dung để tải xuống',
   'preview.items': '{count} mục · {duration}',
-  'preview.mix': 'YouTube Mix: được tạo tức thì từ video này và gần như không có điểm dừng. Đang hiện {count} mục đầu tiên.',
+  'preview.mix':
+    'YouTube Mix: được tạo tức thì từ video này và gần như không có điểm dừng. Đang hiện {count} mục đầu tiên.',
   'preview.capped': 'Danh sách dài. Đang hiện {count} mục đầu tiên.',
   'preview.partial': 'Đang hiện {count}/{total}.',
   'preview.loadAll': 'Tải tất cả ({total})',
   'preview.loadEverything': 'Tải tất cả',
-  'preview.hidden': 'Đây là toàn bộ {count} bài công khai. TikTok đếm được {total}, nhưng {missing} bài còn lại không được liệt kê công khai (riêng tư, đã xóa hoặc chỉ tác giả xem được), nên không thể tải xuống.',
-  'preview.stopped': 'Danh sách của TikTok dừng ở {count}/{total} (bị từ chối hoặc bị treo). Những gì đã liệt kê vẫn được giữ: Tải tất cả sẽ tiếp tục từ đó.',
+  'preview.hidden':
+    'Đây là toàn bộ {count} bài công khai. TikTok đếm được {total}, nhưng {missing} bài còn lại không được liệt kê công khai (riêng tư, đã xóa hoặc chỉ tác giả xem được), nên không thể tải xuống.',
+  'preview.stopped':
+    'Danh sách của TikTok dừng ở {count}/{total} (bị từ chối hoặc bị treo). Những gì đã liệt kê vẫn được giữ: Tải tất cả sẽ tiếp tục từ đó.',
   'preview.col.published': 'Ngày đăng',
   'preview.load': 'Tải',
   'preview.reload': 'Tải lại',
@@ -378,7 +391,8 @@ export const vi: Readonly<Record<MessageKey, string>> = {
   'preview.col.channel': 'Kênh',
   'preview.col.duration': 'Thời lượng',
   'about.title': 'Giới thiệu',
-  'about.description': 'Tải video và âm thanh hàng loạt, được xây dựng cho khối lượng lớn, với bước kiểm tra toàn vẹn đầy đủ cho từng tệp. Dự án giáo dục.',
+  'about.description':
+    'Tải video và âm thanh hàng loạt, được xây dựng cho khối lượng lớn, với bước kiểm tra toàn vẹn đầy đủ cho từng tệp. Dự án giáo dục.',
   'about.thanks': 'Cảm ơn các dự án mã nguồn mở đã giúp điều này thành hiện thực',
   'about.antd': 'Ant Design: các thành phần giao diện của ứng dụng này (MIT). Xin cảm ơn!',
   'about.credits': 'Ghi công mã nguồn mở',
@@ -389,16 +403,23 @@ export const vi: Readonly<Record<MessageKey, string>> = {
   'notify.batchFailed': 'Lô thất bại',
   'notify.diskFull': 'Không đủ dung lượng ổ đĩa',
   'ytpause.title': 'YouTube yêu cầu xác nhận bạn không phải bot',
-  'ytpause.text': 'Có quá nhiều yêu cầu từ kết nối này trong thời gian ngắn, nên YouTube tạm dừng nó một lúc. Các lượt tải YouTube sẽ chờ và tự thử lại lúc {at}.',
+  'ytpause.text':
+    'Có quá nhiều yêu cầu từ kết nối này trong thời gian ngắn, nên YouTube tạm dừng nó một lúc. Các lượt tải YouTube sẽ chờ và tự thử lại lúc {at}.',
   'ytpause.continue': 'Để tiếp tục ngay, hãy dùng phiên của một trình duyệt mà bạn đã đăng nhập YouTube:',
   'ytpause.use': 'Dùng và tiếp tục',
-  'ytpause.using': 'Đang dùng phiên của {browser}. Nếu YouTube vẫn hỏi, hãy mở YouTube trong {browser}, kiểm tra xem bạn đã đăng nhập chưa và vượt qua bước xác minh nếu có.',
-  'ytpause.safari': 'Safari: Media Download Core cần quyền Truy cập toàn bộ ổ đĩa để đọc cookie của Safari (Cài đặt hệ thống → Quyền riêng tư & bảo mật → Truy cập toàn bộ ổ đĩa). Chrome, Firefox, Edge và Brave thì không cần.',
-  'ytpause.tokens': 'Các lượt tải YouTube sẽ tự tiếp tục lúc {at}, bằng mã xác minh do ứng dụng tạo. Bạn không cần làm gì.',
+  'ytpause.using':
+    'Đang dùng phiên của {browser}. Nếu YouTube vẫn hỏi, hãy mở YouTube trong {browser}, kiểm tra xem bạn đã đăng nhập chưa và vượt qua bước xác minh nếu có.',
+  'ytpause.safari':
+    'Safari: Media Download Core cần quyền Truy cập toàn bộ ổ đĩa để đọc cookie của Safari (Cài đặt hệ thống → Quyền riêng tư & bảo mật → Truy cập toàn bộ ổ đĩa). Chrome, Firefox, Edge và Brave thì không cần.',
+  'ytpause.tokens':
+    'Các lượt tải YouTube sẽ tự tiếp tục lúc {at}, bằng mã xác minh do ứng dụng tạo. Bạn không cần làm gì.',
   'ytheld.title': 'YouTube cần bạn đăng nhập để tiếp tục',
-  'ytheld.why': 'YouTube liên tục yêu cầu xác nhận bạn không phải bot trên kết nối này, nhiều lần liên tiếp, kể cả khi có mã xác minh của ứng dụng. Điều này xảy ra sau nhiều yêu cầu trong thời gian ngắn và sẽ tự hết sau một lúc (từ vài phút đến vài giờ).',
-  'ytheld.paused': 'Các lượt tải YouTube của bạn đang tạm dừng chứ không mất: chúng sẽ tiếp tục từ chỗ dở ngay khi bạn chọn.',
-  'ytheld.account': 'Đăng nhập YouTube ngay trong ứng dụng sẽ vượt qua được ngay. Phiên đăng nhập nằm trong ứng dụng này, không nằm trong trình duyệt của bạn. YouTube có thể giới hạn tài khoản tải nhiều: dùng một tài khoản phụ sẽ an toàn hơn.',
+  'ytheld.why':
+    'YouTube liên tục yêu cầu xác nhận bạn không phải bot trên kết nối này, nhiều lần liên tiếp, kể cả khi có mã xác minh của ứng dụng. Điều này xảy ra sau nhiều yêu cầu trong thời gian ngắn và sẽ tự hết sau một lúc (từ vài phút đến vài giờ).',
+  'ytheld.paused':
+    'Các lượt tải YouTube của bạn đang tạm dừng chứ không mất: chúng sẽ tiếp tục từ chỗ dở ngay khi bạn chọn.',
+  'ytheld.account':
+    'Đăng nhập YouTube ngay trong ứng dụng sẽ vượt qua được ngay. Phiên đăng nhập nằm trong ứng dụng này, không nằm trong trình duyệt của bạn. YouTube có thể giới hạn tài khoản tải nhiều: dùng một tài khoản phụ sẽ an toàn hơn.',
   'ytheld.signIn': 'Đăng nhập và tiếp tục',
   'ytheld.continueAccount': 'Tiếp tục với tài khoản YouTube của tôi',
   'ytheld.browser': 'Hoặc dùng một trình duyệt mà bạn đã đăng nhập YouTube:',
@@ -412,33 +433,44 @@ export const vi: Readonly<Record<MessageKey, string>> = {
   'cause.bot-check': 'xác minh chống bot',
   'cause.blocked': 'bị chặn tạm thời',
   'cause.cookies-unreadable': 'không đọc được cookie',
-  'hint.bot-check': 'YouTube yêu cầu xác nhận bạn không phải bot. Ứng dụng sẽ tự thử lại, hoặc bạn có thể dùng phiên của trình duyệt',
-  'hint.cookies-unreadable': 'Không đọc được cookie của trình duyệt. Safari cần quyền Truy cập toàn bộ ổ đĩa; hoặc hãy chọn trình duyệt khác trong Cài đặt',
-  'settings.cookiesHelp': 'Phiên đăng nhập của bạn, dùng cho video riêng tư, chỉ dành cho hội viên hoặc giới hạn độ tuổi, và khi YouTube yêu cầu xác nhận bạn không phải bot. Áp dụng ngay.',
-  'about.star': 'Nếu Media Download Core có ích cho bạn, hãy tặng một sao trên GitHub: miễn phí, chỉ mất một giây và giúp nhiều người khác tìm thấy ứng dụng.',
+  'hint.bot-check':
+    'YouTube yêu cầu xác nhận bạn không phải bot. Ứng dụng sẽ tự thử lại, hoặc bạn có thể dùng phiên của trình duyệt',
+  'hint.cookies-unreadable':
+    'Không đọc được cookie của trình duyệt. Safari cần quyền Truy cập toàn bộ ổ đĩa; hoặc hãy chọn trình duyệt khác trong Cài đặt',
+  'settings.cookiesHelp':
+    'Phiên đăng nhập của bạn, dùng cho video riêng tư, chỉ dành cho hội viên hoặc giới hạn độ tuổi, và khi YouTube yêu cầu xác nhận bạn không phải bot. Áp dụng ngay.',
+  'about.star':
+    'Nếu Media Download Core có ích cho bạn, hãy tặng một sao trên GitHub: miễn phí, chỉ mất một giây và giúp nhiều người khác tìm thấy ứng dụng.',
   'about.starButton': 'Tặng sao trên GitHub',
   'common.close': 'Đóng',
   'common.copy': 'Sao chép',
   'common.copied': 'Đã sao chép',
   'common.unknown': 'không rõ',
   'settings.sync': 'Chạy đồng bộ theo lịch (Sync Up)',
-  'settings.syncHelp': 'Các lần đồng bộ theo lịch tự chạy khi ứng dụng đang mở. Tắt: Sync Up chỉ chạy khi bạn nhấn Đồng bộ ngay.',
+  'settings.syncHelp':
+    'Các lần đồng bộ theo lịch tự chạy khi ứng dụng đang mở. Tắt: Sync Up chỉ chạy khi bạn nhấn Đồng bộ ngay.',
   'common.cancel': 'Hủy',
   'common.save': 'Lưu',
   'sync.title': 'Sync Up',
-  'sync.intro': 'Giữ các tài khoản TikTok luôn khớp với thư mục của chúng: mỗi lần đồng bộ chỉ tải những gì thư mục còn thiếu, như một lô bình thường.',
+  'sync.intro':
+    'Giữ các tài khoản TikTok luôn khớp với thư mục của chúng: mỗi lần đồng bộ chỉ tải những gì thư mục còn thiếu, như một lô bình thường.',
   'sync.empty': 'Chưa có tài khoản nào. Hãy thêm một tài khoản: thư mục của nó có thể đã có sẵn video.',
   'sync.addOnly': 'Thêm',
   'sync.addAndSync': 'Thêm và đồng bộ ngay',
-  'sync.firstSync': 'Đang đồng bộ @{user}: lần đồng bộ đầu tiên đọc toàn bộ tài khoản để lấp mọi chỗ trống trong thư mục.',
+  'sync.firstSync':
+    'Đang đồng bộ @{user}: lần đồng bộ đầu tiên đọc toàn bộ tài khoản để lấp mọi chỗ trống trong thư mục.',
   'sync.field.accountHint': '@tên hoặc liên kết trang cá nhân.',
   'sync.field.accountInvalid': 'Nhập một tài khoản TikTok: @tên hoặc https://www.tiktok.com/@tên',
-  'sync.field.folderHint': 'Gợi ý dựa trên tài khoản. Nếu video của tài khoản đã nằm trong một thư mục, hãy chọn thư mục đó: tệp được nhận ra nhờ số bài đăng trong tên hoặc siêu dữ liệu.',
+  'sync.field.folderHint':
+    'Gợi ý dựa trên tài khoản. Nếu video của tài khoản đã nằm trong một thư mục, hãy chọn thư mục đó: tệp được nhận ra nhờ số bài đăng trong tên hoặc siêu dữ liệu.',
   'sync.field.formatLocked': 'Mỗi thư mục chỉ chứa một định dạng: bài mới sẽ có định dạng giống các tệp đã có.',
-  'sync.field.scheduleHint': 'Đồng bộ theo lịch chạy khi ứng dụng đang mở (lần nào bị lỡ sẽ chạy khi ứng dụng mở). Không cần ứng dụng: "mdc sync run --due" từ cron, launchd hoặc Bộ lập lịch tác vụ (Task Scheduler).',
-  'sync.folder.has': 'Thư mục này có {count} tệp {format}: Sync Up giữ định dạng {format} và chỉ tải những gì còn thiếu.',
+  'sync.field.scheduleHint':
+    'Đồng bộ theo lịch chạy khi ứng dụng đang mở (lần nào bị lỡ sẽ chạy khi ứng dụng mở). Không cần ứng dụng: "mdc sync run --due" từ cron, launchd hoặc Bộ lập lịch tác vụ (Task Scheduler).',
+  'sync.folder.has':
+    'Thư mục này có {count} tệp {format}: Sync Up giữ định dạng {format} và chỉ tải những gì còn thiếu.',
   'sync.folder.empty': 'Thư mục trống hoặc mới: hãy chọn định dạng cho các tệp.',
-  'sync.folder.mixed': 'Thư mục này lẫn các tệp {formats}. Thư mục đồng bộ chỉ chứa một định dạng: hãy chọn thư mục khác, hoặc chỉ giữ một định dạng trong thư mục này.',
+  'sync.folder.mixed':
+    'Thư mục này lẫn các tệp {formats}. Thư mục đồng bộ chỉ chứa một định dạng: hãy chọn thư mục khác, hoặc chỉ giữ một định dạng trong thư mục này.',
   'sync.folder.unsupported': 'Thư mục này chứa tệp {formats}, định dạng mà Sync Up không tải. Hãy chọn thư mục khác.',
   'sync.checking': 'Đang so sánh thư mục với tài khoản…',
   'sync.checkingDeep': 'Đang đọc toàn bộ tài khoản (tài khoản lớn mất vài phút)…',
@@ -475,7 +507,8 @@ export const vi: Readonly<Record<MessageKey, string>> = {
   'sync.incremental': 'đến bài mới nhất đã có',
   'sync.checkNew': 'Mới: {count}',
   'sync.checkCounts': 'Đọc từ TikTok: {listed} · trong thư mục: {inFolder}',
-  'sync.goneHint': '{count} tệp trong thư mục không còn trên tài khoản (đã xóa hoặc riêng tư). Chúng vẫn nằm trong thư mục.',
+  'sync.goneHint':
+    '{count} tệp trong thư mục không còn trên tài khoản (đã xóa hoặc riêng tư). Chúng vẫn nằm trong thư mục.',
   'sync.downloadNew': 'Tải xuống {count}',
   'sync.upToDate': 'Đã cập nhật đầy đủ: không có gì mới',
   'sync.started': 'Đang tải {count} mục mới',
@@ -501,7 +534,8 @@ export const vi: Readonly<Record<MessageKey, string>> = {
   'sync.col.status': 'Trạng thái',
   'stats.failedOpen': 'Thất bại: xem danh sách và thử lại',
   'failed.title': 'Tải xuống thất bại ({count})',
-  'failed.hint': 'Mọi lượt tải thất bại trong phiên này, từ tất cả các lô. Chọn những mục muốn thử lại: chúng sẽ vào chung một lô mới, mỗi mục về đúng thư mục của nó.',
+  'failed.hint':
+    'Mọi lượt tải thất bại trong phiên này, từ tất cả các lô. Chọn những mục muốn thử lại: chúng sẽ vào chung một lô mới, mỗi mục về đúng thư mục của nó.',
   'failed.batches': 'Lô',
   'failed.selectAll': 'Chọn tất cả ({count})',
   'failed.retry': 'Lô mới với {count} mục đã chọn',
@@ -511,11 +545,19 @@ export const vi: Readonly<Record<MessageKey, string>> = {
   'failed.unknown': 'Lỗi không xác định',
   'failed.created': 'Đã lên lịch lô mới với {count} lượt tải thất bại',
   'integrity.damaged': 'Hỏng từ nguồn',
-  'integrity.damagedTip': 'Tệp mà trang cung cấp đã bị hỏng nên không thể tải xuống: thử lại chỉ tốn thời gian, băng thông và dung lượng ổ đĩa. Tệp sẽ không được tải lại nữa (Cài đặt → Hỏng từ nguồn cho phép thử lại).',
+  'integrity.damagedTip':
+    'Tệp mà trang cung cấp đã bị hỏng nên không thể tải xuống: thử lại chỉ tốn thời gian, băng thông và dung lượng ổ đĩa. Tệp sẽ không được tải lại nữa (Cài đặt → Hỏng từ nguồn cho phép thử lại).',
   'integrity.later': 'Kiểm tra sau cùng',
-  'integrity.laterTip': 'Đã tải xuống trước: việc kiểm tra toàn vẹn sẽ chạy khi mọi lượt tải của lô đã kết thúc (Cài đặt → Tải trước, kiểm tra sau).',
+  'integrity.laterTip':
+    'Đã tải xuống trước: việc kiểm tra toàn vẹn sẽ chạy khi mọi lượt tải của lô đã kết thúc (Cài đặt → Tải trước, kiểm tra sau).',
   'hint.damaged-source': 'Hỏng từ nguồn, không tải lại',
   'cause.damaged-source': 'hỏng từ nguồn',
+  'hint.no-video': 'Bài đăng này có ảnh hoặc chữ nhưng không có video',
+  'hint.live-now': 'Đang phát trực tiếp. Hãy tải về khi kết thúc, dưới dạng bản ghi.',
+  'hint.stream-only': 'Chỉ có ở dạng phát trực tuyến, ứng dụng chưa thể lưu',
+  'cause.no-video': 'không có video',
+  'cause.live-now': 'đang phát trực tiếp',
+  'cause.stream-only': 'chỉ phát trực tuyến',
   'job.cancelOne': 'Chỉ hủy lượt tải này (lô vẫn tiếp tục)',
   'batch.status.validating': 'Đang kiểm tra tệp',
   'batch.cancelledCount': 'Đã hủy: {count}',
@@ -523,15 +565,18 @@ export const vi: Readonly<Record<MessageKey, string>> = {
   'batch.cancelWhole': 'Dừng cả lô. Để bỏ một lượt tải duy nhất, hãy dùng Hủy ở hàng của nó (Mục hoặc Lượt tải).',
   'finished.prune': 'Xóa bản ghi của tệp bị thiếu',
   'finished.pruneSelected': 'Xóa mục bị thiếu trong số đã chọn ({count})',
-  'finished.pruneConfirm': 'Quên các tệp không còn ở nơi đã tải xuống (đã bị xóa hoặc di chuyển), cùng với liên kết gốc của chúng. Các tệp bạn vẫn còn sẽ không bị ảnh hưởng. Để lấy lại chúng, hãy dùng "Tải lại tệp bị thiếu" trước.',
+  'finished.pruneConfirm':
+    'Quên các tệp không còn ở nơi đã tải xuống (đã bị xóa hoặc di chuyển), cùng với liên kết gốc của chúng. Các tệp bạn vẫn còn sẽ không bị ảnh hưởng. Để lấy lại chúng, hãy dùng "Tải lại tệp bị thiếu" trước.',
   'finished.pruneOk': 'Xóa',
   'finished.redownload': 'Tải lại tệp bị thiếu',
   'finished.redownloadSelected': 'Tải lại tệp bị thiếu ({count})',
-  'finished.redownloadConfirm': 'Tải lại các tệp không còn ở chỗ cũ (đã bị xóa hoặc di chuyển), từ liên kết mà mỗi tệp đã lưu: mỗi tệp về thư mục và định dạng cũ của nó, trong một lô mới. Các tệp bạn vẫn còn sẽ không bị ảnh hưởng.',
+  'finished.redownloadConfirm':
+    'Tải lại các tệp không còn ở chỗ cũ (đã bị xóa hoặc di chuyển), từ liên kết mà mỗi tệp đã lưu: mỗi tệp về thư mục và định dạng cũ của nó, trong một lô mới. Các tệp bạn vẫn còn sẽ không bị ảnh hưởng.',
   'finished.redownloadOk': 'Tải xuống',
   'finished.redownloaded': 'Đã xếp hàng tải lại tệp: {count}',
   'finished.redownloadNone': 'Mọi tệp vẫn ở đúng chỗ: không có gì để tải',
-  'finished.verifyNoneThere': 'Các tệp này không còn trên ổ đĩa nên không có gì để kiểm tra. Hãy tải lại hoặc xóa bản ghi của chúng.',
+  'finished.verifyNoneThere':
+    'Các tệp này không còn trên ổ đĩa nên không có gì để kiểm tra. Hãy tải lại hoặc xóa bản ghi của chúng.',
   'finished.verifyFailed': 'Không thể hoàn tất việc kiểm tra. Hãy thử lại.',
   'finished.pruned': 'Đã xóa bản ghi của tệp bị thiếu: {count}',
   'finished.prunedNone': 'Mọi tệp vẫn ở đúng chỗ: không có gì để xóa',
@@ -552,26 +597,37 @@ export const vi: Readonly<Record<MessageKey, string>> = {
   'settings.env.platform': 'Nền tảng:',
   'settings.threadsHelpBoost': 'Tối đa {max} cùng lúc (60% của {cpus} bộ xử lý).',
   'settings.cpuBoost': 'Cho phép dùng tới 60% bộ xử lý',
-  'settings.cpuBoostHelp': 'Mặc định là một nửa ({half} trên {cpus}). Bật: tối đa {boosted} lượt tải cùng lúc, còn khoảng 40% trống cho các việc khác của bạn.',
-  'settings.cpuBoostSame': 'Trên máy tính này, 60% của {cpus} bộ xử lý vẫn là {half} lượt tải cùng lúc: bằng với một nửa.',
+  'settings.cpuBoostHelp':
+    'Mặc định là một nửa ({half} trên {cpus}). Bật: tối đa {boosted} lượt tải cùng lúc, còn khoảng 40% trống cho các việc khác của bạn.',
+  'settings.cpuBoostSame':
+    'Trên máy tính này, 60% của {cpus} bộ xử lý vẫn là {half} lượt tải cùng lúc: bằng với một nửa.',
   'settings.validateAfter': 'Tải trước, kiểm tra sau',
-  'settings.validateAfterHelp': 'Một lô tải liền một mạch, rồi kiểm tra tất cả tệp cùng lúc. Tệp bị hỏng từ nguồn sẽ được đánh dấu “hỏng từ nguồn” và không bao giờ được tải lại.',
+  'settings.validateAfterHelp':
+    'Một lô tải liền một mạch, rồi kiểm tra tất cả tệp cùng lúc. Tệp bị hỏng từ nguồn sẽ được đánh dấu “hỏng từ nguồn” và không bao giờ được tải lại.',
   'settings.damaged': 'Hỏng từ nguồn…',
   'damaged.title': 'Hỏng từ nguồn',
-  'damaged.hint': 'Các video có tệp bị hỏng ngay từ nguồn: chúng không được tải lại. Hãy cho phép thử lại một video nếu trang có thể đã sửa nó.',
+  'damaged.hint':
+    'Các video có tệp bị hỏng ngay từ nguồn: chúng không được tải lại. Hãy cho phép thử lại một video nếu trang có thể đã sửa nó.',
   'damaged.empty': 'Không có video nào hỏng từ nguồn',
   'damaged.when': 'Phát hiện',
   'damaged.forget': 'Cho phép lại',
   'batch.forecastUnknown': 'Trang không cho biết dung lượng · còn trống {free}',
   'signin.open': 'Cách đăng nhập',
   'signin.title': 'Dùng phiên đã đăng nhập của bạn',
-  'signin.intro': 'Video riêng tư hoặc chỉ dành cho hội viên, video giới hạn độ tuổi, trang cá nhân và tin trên Instagram, video của một trang Facebook, và cả YouTube khi yêu cầu xác nhận bạn không phải bot, đều cần phiên tài khoản của chính bạn. Ứng dụng đọc phiên từ trình duyệt: không cần sao chép hay dán gì cả.',
-  'signin.step1': 'Mở trình duyệt bạn hay dùng (Chrome, Edge, Firefox, Safari, Brave…) và đăng nhập ở đó như mọi khi: vào Google / YouTube, Instagram hoặc Facebook.',
+  'signin.intro':
+    'Video riêng tư hoặc chỉ dành cho hội viên, video giới hạn độ tuổi, trang cá nhân và tin trên Instagram, video của một trang Facebook, và cả YouTube khi yêu cầu xác nhận bạn không phải bot, đều cần phiên tài khoản của chính bạn. Ứng dụng đọc phiên từ trình duyệt: không cần sao chép hay dán gì cả.',
+  'signin.step1':
+    'Mở trình duyệt bạn hay dùng (Chrome, Edge, Firefox, Safari, Brave…) và đăng nhập ở đó như mọi khi: vào Google / YouTube, Instagram hoặc Facebook.',
   'signin.step2': 'Tại đây, trong Cài đặt → Cookie từ trình duyệt, chọn đúng trình duyệt đó.',
   'signin.step3': 'Cho phép quyền mà hệ thống hỏi trong lần đầu (xem bên dưới). Hệ thống chỉ hỏi một lần.',
-  'signin.step4': 'Dán lại liên kết: tệp sẽ được tải bằng phiên của bạn. Đã đăng xuất trên trình duyệt? Hãy đăng nhập lại ở đó.',
-  'signin.mac': 'macOS: một cửa sổ Chuỗi khóa (Keychain) sẽ hỏi có cho ứng dụng đọc “Chrome Safe Storage” (hoặc mục của trình duyệt bạn dùng) không: nhập mật khẩu Mac và bấm “Luôn cho phép”. Safari: Cài đặt hệ thống → Quyền riêng tư & bảo mật → Truy cập toàn bộ ổ đĩa → bật Media Download Core.',
-  'signin.windows': 'Windows: đóng trình duyệt trước khi tải (Chrome và Edge khóa cookie khi đang mở). Nếu vẫn không đọc được Chrome (trên Windows, Chrome bảo vệ cookie của nó), hãy dùng Firefox: đăng nhập ở đó và chọn Firefox tại đây.',
-  'signin.linux': 'Linux (Fedora, Ubuntu…): keyring của bạn (GNOME Keyring / KWallet) có thể hỏi quyền truy cập dữ liệu đã lưu của trình duyệt: hãy cho phép. Firefox không cần cấp quyền.',
-  'signin.privacy': 'Cookie của bạn ở lại trên máy tính: chúng được đọc một lần vào một bản sao riêng mà ứng dụng chỉ dùng để tải xuống, và không bao giờ được gửi đi nơi khác.',
+  'signin.step4':
+    'Dán lại liên kết: tệp sẽ được tải bằng phiên của bạn. Đã đăng xuất trên trình duyệt? Hãy đăng nhập lại ở đó.',
+  'signin.mac':
+    'macOS: một cửa sổ Chuỗi khóa (Keychain) sẽ hỏi có cho ứng dụng đọc “Chrome Safe Storage” (hoặc mục của trình duyệt bạn dùng) không: nhập mật khẩu Mac và bấm “Luôn cho phép”. Safari: Cài đặt hệ thống → Quyền riêng tư & bảo mật → Truy cập toàn bộ ổ đĩa → bật Media Download Core.',
+  'signin.windows':
+    'Windows: đóng trình duyệt trước khi tải (Chrome và Edge khóa cookie khi đang mở). Nếu vẫn không đọc được Chrome (trên Windows, Chrome bảo vệ cookie của nó), hãy dùng Firefox: đăng nhập ở đó và chọn Firefox tại đây.',
+  'signin.linux':
+    'Linux (Fedora, Ubuntu…): keyring của bạn (GNOME Keyring / KWallet) có thể hỏi quyền truy cập dữ liệu đã lưu của trình duyệt: hãy cho phép. Firefox không cần cấp quyền.',
+  'signin.privacy':
+    'Cookie của bạn ở lại trên máy tính: chúng được đọc một lần vào một bản sao riêng mà ứng dụng chỉ dùng để tải xuống, và không bao giờ được gửi đi nơi khác.',
 }

@@ -44,7 +44,9 @@ describe('the site a link belongs to (the core’s detection, as the app uses it
   })
 
   it('finds the link in shared text, a look-alike host is not the site, a fake counts by its alias', () => {
-    expect(detectLink('Look at this! https://www.tiktok.com/@a/video/1 :)')?.url).toBe('https://www.tiktok.com/@a/video/1')
+    expect(detectLink('Look at this! https://www.tiktok.com/@a/video/1 :)')?.url).toBe(
+      'https://www.tiktok.com/@a/video/1',
+    )
     expect(site('https://nottiktok.com/@x')).toBe('web')
     expect(site('https://tiktok.com.evil.test/@x')).toBe('web')
     expect(site('http://127.0.0.1:4100/@a', {'127.0.0.1:4100': 'tiktok'})).toBe('tiktok')

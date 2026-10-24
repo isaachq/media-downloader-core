@@ -14,7 +14,8 @@ export const zh: Readonly<Record<MessageKey, string>> = {
   'tour.2.title': '2 · 选择你要的内容',
   'tour.2.text': 'MP4 可随处观看，MP3 用来听；再选好画质，以及文件保存的文件夹。',
   'tour.3.title': '3 · 下载',
-  'tour.3.text': '列表会先打开预览，方便你挑选想要的内容。每个文件交给你之前都会经过检查。在“已完成”标签页可以找到所有文件，随时播放。',
+  'tour.3.text':
+    '列表会先打开预览，方便你挑选想要的内容。每个文件交给你之前都会经过检查。在“已完成”标签页可以找到所有文件，随时播放。',
   'header.language': '语言',
   'header.theme': '主题',
   'theme.system': '跟随系统',
@@ -105,7 +106,8 @@ export const zh: Readonly<Record<MessageKey, string>> = {
   'slides.noAudio': '{count} 个没有声音',
   'slides.confirm': '下载',
   'many.title': '{count} 个链接',
-  'many.hint': '每个链接都会按你选择的格式、画质和文件夹生成一个批次。列表和主页会跳过预览，按默认数量加载（主页和站内搜索为 500 个）。',
+  'many.hint':
+    '每个链接都会按你选择的格式、画质和文件夹生成一个批次。列表和主页会跳过预览，按默认数量加载（主页和站内搜索为 500 个）。',
   'many.schedule': '排队 {count} 个',
   'many.scheduled': '已排队 {count} 个批次',
   'many.repeated': '已略过 {count} 个重复链接。',
@@ -117,7 +119,8 @@ export const zh: Readonly<Record<MessageKey, string>> = {
   'finished.verifySelected': '检查所选（{count}）',
   'finished.verifying': '正在检查文件… {done}/{total}',
   'finished.checking': '正在检查…',
-  'finished.verifyResult': '已检查 {checked} 个：{ok} 个完好 · {missing} 个缺失 · {changed} 个大小有变 · {corrupted} 个已损坏',
+  'finished.verifyResult':
+    '已检查 {checked} 个：{ok} 个完好 · {missing} 个缺失 · {changed} 个大小有变 · {corrupted} 个已损坏',
   'finished.remove': '从列表中移除（{count}）',
   'finished.removeConfirm': '文件仍保留在你的磁盘上，只是从这个列表中移除。',
   'finished.removed': '已从列表中移除 {count} 个',
@@ -263,7 +266,8 @@ export const zh: Readonly<Record<MessageKey, string>> = {
   'integrity.size': '大小',
   'integrity.sha256': 'SHA-256',
   'integrity.issues': '发现的问题',
-  'hint.needs-sign-in': '需要登录。请在浏览器中登录，然后在“设置 → 浏览器 Cookie”中选择该浏览器（“如何登录”中有操作步骤）',
+  'hint.needs-sign-in':
+    '需要登录。请在浏览器中登录，然后在“设置 → 浏览器 Cookie”中选择该浏览器（“如何登录”中有操作步骤）',
   'hint.private': '私密视频',
   'hint.removed': '已删除或不可用',
   'hint.geo-blocked': '在你所在地区被屏蔽',
@@ -276,7 +280,8 @@ export const zh: Readonly<Record<MessageKey, string>> = {
   'settings.downloads': '下载',
   'settings.folder': '下载文件夹',
   'settings.threads': '同时下载数',
-  'settings.threadsHelp': '上限为 CPU 数的一半（{cpus} 个中的 {max} 个），确保电脑运行流畅。长视频按 1.5 计，大视频按 2 计。',
+  'settings.threadsHelp':
+    '上限为 CPU 数的一半（{cpus} 个中的 {max} 个），确保电脑运行流畅。长视频按 1.5 计，大视频按 2 计。',
   'settings.validation': '完整性检查',
   'settings.validation.full': '完整：解码每一帧（推荐）',
   'settings.validation.quick': '快速：读取每个数据包',
@@ -288,7 +293,8 @@ export const zh: Readonly<Record<MessageKey, string>> = {
   'settings.thumbnail': '嵌入缩略图作为封面',
   'settings.notifications': '批次完成时通知',
   'settings.portableNames': '适合车载和 U 盘的文件名（仅字母、数字和连字符）',
-  'settings.portableNamesHelp': '示例：001-Cancion-Nandu-k1gsZ.mp3。不含重音符号、特殊符号或表情，车载音响、电视和 U 盘都能读取每个文件。',
+  'settings.portableNamesHelp':
+    '示例：001-Cancion-Nandu-k1gsZ.mp3。不含重音符号、特殊符号或表情，车载音响、电视和 U 盘都能读取每个文件。',
   'settings.appearance': '外观',
   'settings.tools': '工具',
   'settings.doctor': '运行诊断',
@@ -296,7 +302,8 @@ export const zh: Readonly<Record<MessageKey, string>> = {
   'settings.restart': '下次启动应用时生效。',
   'settings.saved': '设置已保存',
   'setup.title': '首次设置',
-  'setup.intro': 'Media Download Core 需要 yt-dlp 和 FFmpeg。它们均来自官方来源，每个都经过校验和验证与测试。你电脑上的其他内容不会有任何改动。',
+  'setup.intro':
+    'Media Download Core 需要 yt-dlp 和 FFmpeg。它们均来自官方来源，每个都经过校验和验证与测试。你电脑上的其他内容不会有任何改动。',
   'setup.install': '安装工具',
   'setup.installing': '正在安装…',
   'setup.ready': '一切就绪。工具已安装并验证。',
@@ -361,8 +368,10 @@ export const zh: Readonly<Record<MessageKey, string>> = {
   'preview.partial': '显示 {count}/{total} 个。',
   'preview.loadAll': '全部加载（{total}）',
   'preview.loadEverything': '全部加载',
-  'preview.hidden': '全部 {count} 个公开作品都在这里。TikTok 显示共 {total} 个，但另外 {missing} 个不公开（私密、已删除或仅作者可见），因此无法下载。',
-  'preview.stopped': 'TikTok 在 {total} 个中列出 {count} 个后停止了（被拒绝或卡住）。已列出的内容会保留，点“全部加载”会从那里继续。',
+  'preview.hidden':
+    '全部 {count} 个公开作品都在这里。TikTok 显示共 {total} 个，但另外 {missing} 个不公开（私密、已删除或仅作者可见），因此无法下载。',
+  'preview.stopped':
+    'TikTok 在 {total} 个中列出 {count} 个后停止了（被拒绝或卡住）。已列出的内容会保留，点“全部加载”会从那里继续。',
   'preview.col.published': '发布时间',
   'preview.load': '加载',
   'preview.reload': '重新加载',
@@ -389,16 +398,21 @@ export const zh: Readonly<Record<MessageKey, string>> = {
   'notify.batchFailed': '批次失败',
   'notify.diskFull': '磁盘空间不足',
   'ytpause.title': 'YouTube 要求确认你不是机器人',
-  'ytpause.text': '这个网络连接在短时间内发出了太多请求，YouTube 暂时将其暂停。YouTube 下载会等待，并在 {at} 自动重试。',
+  'ytpause.text':
+    '这个网络连接在短时间内发出了太多请求，YouTube 暂时将其暂停。YouTube 下载会等待，并在 {at} 自动重试。',
   'ytpause.continue': '要立即继续，请使用已登录 YouTube 的浏览器会话：',
   'ytpause.use': '使用并继续',
-  'ytpause.using': '正在使用 {browser} 的会话。如果 YouTube 仍然要求验证，请在 {browser} 中打开 YouTube，确认你已登录，如出现验证请完成它。',
-  'ytpause.safari': 'Safari：Media Download Core 需要“完全磁盘访问权限”才能读取它的 Cookie（系统设置 → 隐私与安全性 → 完全磁盘访问权限）。Chrome、Firefox、Edge 和 Brave 则不需要。',
+  'ytpause.using':
+    '正在使用 {browser} 的会话。如果 YouTube 仍然要求验证，请在 {browser} 中打开 YouTube，确认你已登录，如出现验证请完成它。',
+  'ytpause.safari':
+    'Safari：Media Download Core 需要“完全磁盘访问权限”才能读取它的 Cookie（系统设置 → 隐私与安全性 → 完全磁盘访问权限）。Chrome、Firefox、Edge 和 Brave 则不需要。',
   'ytpause.tokens': 'YouTube 下载会在 {at} 自动继续，使用应用生成的验证令牌。你无需任何操作。',
   'ytheld.title': 'YouTube 需要你登录才能继续',
-  'ytheld.why': 'YouTube 在这个网络连接上一直要求确认你不是机器人。即使使用了应用的验证令牌，它仍连续要求了好几次。这通常发生在短时间内请求过多之后，过一段时间（几分钟到几小时）会自行解除。',
+  'ytheld.why':
+    'YouTube 在这个网络连接上一直要求确认你不是机器人。即使使用了应用的验证令牌，它仍连续要求了好几次。这通常发生在短时间内请求过多之后，过一段时间（几分钟到几小时）会自行解除。',
   'ytheld.paused': '你的 YouTube 下载只是暂停，并未丢失：一旦你做出选择，就会从中断处继续。',
-  'ytheld.account': '在应用内登录 YouTube 可以立即解决。登录状态仅保存在本应用中，不会在你的浏览器里。YouTube 可能会限制大量下载的账号：使用备用账号更安全。',
+  'ytheld.account':
+    '在应用内登录 YouTube 可以立即解决。登录状态仅保存在本应用中，不会在你的浏览器里。YouTube 可能会限制大量下载的账号：使用备用账号更安全。',
   'ytheld.signIn': '登录并继续',
   'ytheld.continueAccount': '使用我的 YouTube 账号继续',
   'ytheld.browser': '或者使用已登录 YouTube 的浏览器：',
@@ -414,7 +428,8 @@ export const zh: Readonly<Record<MessageKey, string>> = {
   'cause.cookies-unreadable': '无法读取 Cookie',
   'hint.bot-check': 'YouTube 要求确认你不是机器人。应用会自动重试，你也可以使用浏览器的会话',
   'hint.cookies-unreadable': '无法读取浏览器的 Cookie。Safari 需要“完全磁盘访问权限”，或在设置中选择其他浏览器',
-  'settings.cookiesHelp': '你的登录会话，用于私密、仅限会员或有年龄限制的视频，以及 YouTube 要求确认你不是机器人时。立即生效。',
+  'settings.cookiesHelp':
+    '你的登录会话，用于私密、仅限会员或有年龄限制的视频，以及 YouTube 要求确认你不是机器人时。立即生效。',
   'about.star': '如果 Media Download Core 帮到了你，请在 GitHub 上给它点个星：免费，只需一秒，还能帮助更多人发现它。',
   'about.starButton': '在 GitHub 上点星',
   'common.close': '关闭',
@@ -433,12 +448,15 @@ export const zh: Readonly<Record<MessageKey, string>> = {
   'sync.firstSync': '正在同步 @{user}：首次同步会读取整个账号，以补齐文件夹中的缺漏。',
   'sync.field.accountHint': '@用户名或主页链接。',
   'sync.field.accountInvalid': '请填写 TikTok 账号：@用户名 或 https://www.tiktok.com/@用户名',
-  'sync.field.folderHint': '根据账号推荐。如果它的视频已经在某个文件夹中，请选择那个文件夹：系统会通过文件名或元数据中的作品编号识别文件。',
+  'sync.field.folderHint':
+    '根据账号推荐。如果它的视频已经在某个文件夹中，请选择那个文件夹：系统会通过文件名或元数据中的作品编号识别文件。',
   'sync.field.formatLocked': '一个文件夹只保存一种格式：新作品会使用文件夹中已有文件的格式。',
-  'sync.field.scheduleHint': '定时同步在应用打开时运行（错过的同步会在打开时运行）。不打开应用：通过 cron、launchd 或任务计划程序运行 "mdc sync run --due"。',
+  'sync.field.scheduleHint':
+    '定时同步在应用打开时运行（错过的同步会在打开时运行）。不打开应用：通过 cron、launchd 或任务计划程序运行 "mdc sync run --due"。',
   'sync.folder.has': '此文件夹中有 {count} 个 {format} 文件：Sync Up 会保持 {format} 格式，只下载缺少的内容。',
   'sync.folder.empty': '空文件夹或新文件夹：请选择其中文件的格式。',
-  'sync.folder.mixed': '此文件夹混有 {formats} 文件。同步的文件夹只能保存一种格式：请选择其他文件夹，或在此文件夹中只保留一种格式。',
+  'sync.folder.mixed':
+    '此文件夹混有 {formats} 文件。同步的文件夹只能保存一种格式：请选择其他文件夹，或在此文件夹中只保留一种格式。',
   'sync.folder.unsupported': '此文件夹中是 {formats} 文件，Sync Up 不下载这种格式。请选择其他文件夹。',
   'sync.checking': '正在对比文件夹和账号…',
   'sync.checkingDeep': '正在读取整个账号（大账号需要几分钟）…',
@@ -511,11 +529,18 @@ export const zh: Readonly<Record<MessageKey, string>> = {
   'failed.unknown': '未知错误',
   'failed.created': '已安排新批次，包含 {count} 个失败的下载',
   'integrity.damaged': '源文件已损坏',
-  'integrity.damagedTip': '网站提供的文件已损坏，无法下载：再试只会浪费时间、带宽和磁盘空间。它不会再被下载（可在“设置 → 源文件已损坏”中允许重试）。',
+  'integrity.damagedTip':
+    '网站提供的文件已损坏，无法下载：再试只会浪费时间、带宽和磁盘空间。它不会再被下载（可在“设置 → 源文件已损坏”中允许重试）。',
   'integrity.later': '最后检查',
   'integrity.laterTip': '先下载：整个批次的所有下载结束后，再进行完整性检查（“设置 → 先下载，后检查”）。',
   'hint.damaged-source': '源文件已损坏，不再重新下载',
   'cause.damaged-source': '源文件已损坏',
+  'hint.no-video': '这条帖子只有图片或文字，没有视频',
+  'hint.live-now': '正在直播。结束后可作为录像下载。',
+  'hint.stream-only': '仅以流媒体形式提供，本应用暂时无法保存',
+  'cause.no-video': '无视频',
+  'cause.live-now': '正在直播',
+  'cause.stream-only': '仅流媒体',
   'job.cancelOne': '只取消这个下载（批次继续）',
   'batch.status.validating': '正在检查文件',
   'batch.cancelledCount': '已取消 {count} 个',
@@ -523,11 +548,13 @@ export const zh: Readonly<Record<MessageKey, string>> = {
   'batch.cancelWhole': '停止整个批次。如只想移除一个下载，请在它所在的行（“项目”或“下载”中）点击“取消”。',
   'finished.prune': '移除丢失文件的记录',
   'finished.pruneSelected': '移除所选中丢失的文件（{count}）',
-  'finished.pruneConfirm': '清除已不在原下载位置的文件（已删除或已移动）及其来源链接。你仍保留的文件不受影响。如果想找回它们，请先使用“重新下载丢失的文件”。',
+  'finished.pruneConfirm':
+    '清除已不在原下载位置的文件（已删除或已移动）及其来源链接。你仍保留的文件不受影响。如果想找回它们，请先使用“重新下载丢失的文件”。',
   'finished.pruneOk': '移除',
   'finished.redownload': '重新下载丢失的文件',
   'finished.redownloadSelected': '重新下载丢失的文件（{count}）',
-  'finished.redownloadConfirm': '使用每个文件保存的链接，重新下载已不在原位置的文件（已删除或已移动）：它们会放进一个新批次，各自按原来的文件夹和格式保存。你仍保留的文件不受影响。',
+  'finished.redownloadConfirm':
+    '使用每个文件保存的链接，重新下载已不在原位置的文件（已删除或已移动）：它们会放进一个新批次，各自按原来的文件夹和格式保存。你仍保留的文件不受影响。',
   'finished.redownloadOk': '下载',
   'finished.redownloaded': '已将 {count} 个文件加入队列重新下载',
   'finished.redownloadNone': '所有文件都还在原位，无需下载',
@@ -552,10 +579,12 @@ export const zh: Readonly<Record<MessageKey, string>> = {
   'settings.env.platform': '平台：',
   'settings.threadsHelpBoost': '最多同时 {max} 个（{cpus} 个处理器的 60%）。',
   'settings.cpuBoost': '允许使用最多 60% 的处理器',
-  'settings.cpuBoostHelp': '默认使用一半（{cpus} 个中的 {half} 个）。开启后：最多同时下载 {boosted} 个，约 40% 留给你的其他任务。',
+  'settings.cpuBoostHelp':
+    '默认使用一半（{cpus} 个中的 {half} 个）。开启后：最多同时下载 {boosted} 个，约 40% 留给你的其他任务。',
   'settings.cpuBoostSame': '在这台电脑上，{cpus} 个处理器的 60% 仍是同时下载 {half} 个，与一半相同。',
   'settings.validateAfter': '先下载，后检查',
-  'settings.validateAfterHelp': '批次会连续下载，然后一次性检查所有文件。源文件已损坏的文件会标记为“源文件已损坏”，不再重新下载。',
+  'settings.validateAfterHelp':
+    '批次会连续下载，然后一次性检查所有文件。源文件已损坏的文件会标记为“源文件已损坏”，不再重新下载。',
   'settings.damaged': '源文件已损坏…',
   'damaged.title': '源文件已损坏',
   'damaged.hint': '这些视频的文件在来源处就已损坏：不会再次下载。如果网站可能已经修复了某个视频，可以允许它重新下载。',
@@ -565,13 +594,18 @@ export const zh: Readonly<Record<MessageKey, string>> = {
   'batch.forecastUnknown': '网站未提供大小 · 剩余 {free}',
   'signin.open': '如何登录',
   'signin.title': '使用已登录的会话',
-  'signin.intro': '私密或仅限会员的视频、有年龄限制的视频、Instagram 主页和快拍，以及 Facebook 公共主页的视频，都需要你自己账号的会话。YouTube 要求确认你不是机器人时也需要。应用会从你的浏览器读取会话，无需复制粘贴任何内容。',
-  'signin.step1': '打开你常用的浏览器（Chrome、Edge、Firefox、Safari、Brave…），像平常一样登录 Google / YouTube、Instagram 或 Facebook。',
+  'signin.intro':
+    '私密或仅限会员的视频、有年龄限制的视频、Instagram 主页和快拍，以及 Facebook 公共主页的视频，都需要你自己账号的会话。YouTube 要求确认你不是机器人时也需要。应用会从你的浏览器读取会话，无需复制粘贴任何内容。',
+  'signin.step1':
+    '打开你常用的浏览器（Chrome、Edge、Firefox、Safari、Brave…），像平常一样登录 Google / YouTube、Instagram 或 Facebook。',
   'signin.step2': '在这里的“设置 → 浏览器 Cookie”中，选择同一个浏览器。',
   'signin.step3': '首次使用时，请允许系统请求的权限（见下文）。只会询问一次。',
   'signin.step4': '再次粘贴链接：会使用你的会话下载。在浏览器中退出登录了？请在那里重新登录。',
-  'signin.mac': 'macOS：钥匙串窗口会请求允许应用读取“Chrome Safe Storage”（或你所用浏览器的对应项）：输入 Mac 密码并点击“始终允许”。Safari：系统设置 → 隐私与安全性 → 完全磁盘访问权限 → 打开 Media Download Core。',
-  'signin.windows': 'Windows：下载前请关闭浏览器（Chrome 和 Edge 打开时会锁定 Cookie）。如果仍无法读取 Chrome（它在 Windows 上会保护 Cookie），请改用 Firefox：在 Firefox 中登录，然后在这里选择 Firefox。',
-  'signin.linux': 'Linux（Fedora、Ubuntu…）：密钥环（GNOME Keyring / KWallet）可能会请求允许访问浏览器保存的数据，请允许。Firefox 不需要权限。',
+  'signin.mac':
+    'macOS：钥匙串窗口会请求允许应用读取“Chrome Safe Storage”（或你所用浏览器的对应项）：输入 Mac 密码并点击“始终允许”。Safari：系统设置 → 隐私与安全性 → 完全磁盘访问权限 → 打开 Media Download Core。',
+  'signin.windows':
+    'Windows：下载前请关闭浏览器（Chrome 和 Edge 打开时会锁定 Cookie）。如果仍无法读取 Chrome（它在 Windows 上会保护 Cookie），请改用 Firefox：在 Firefox 中登录，然后在这里选择 Firefox。',
+  'signin.linux':
+    'Linux（Fedora、Ubuntu…）：密钥环（GNOME Keyring / KWallet）可能会请求允许访问浏览器保存的数据，请允许。Firefox 不需要权限。',
   'signin.privacy': '你的 Cookie 留在你的电脑上：只读取一次，存入应用仅用于下载的私有副本，绝不会发送到其他任何地方。',
 }

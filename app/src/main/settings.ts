@@ -1,6 +1,17 @@
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
-import {type AppSettings, AUDIO_FORMATS, BROWSERS, type Format, pickLanguage, QUALITIES, type Quality, type ThemeMode, VIDEO_FORMATS, isLanguage} from '../shared/contract'
+import {
+  type AppSettings,
+  AUDIO_FORMATS,
+  BROWSERS,
+  type Format,
+  isLanguage,
+  pickLanguage,
+  QUALITIES,
+  type Quality,
+  type ThemeMode,
+  VIDEO_FORMATS,
+} from '../shared/contract'
 
 /** First-run settings; `languages` are the system's preferred languages, in order. */
 export function defaultSettings(

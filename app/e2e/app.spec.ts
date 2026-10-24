@@ -289,11 +289,7 @@ test('previews a list and downloads only the picked items', async () => {
 test('backs up picked posts of a TikTok profile as MP3 (built-in extractor)', async () => {
   const site = await startFakeTikTok({posts: 6, pinned: true})
   try {
-    const {app, page, outDir} = await launch(
-      'tiktok',
-      {format: 'mp3'},
-      {MDC_TIKTOK_ORIGIN: site.origin},
-    )
+    const {app, page, outDir} = await launch('tiktok', {format: 'mp3'}, {MDC_TIKTOK_ORIGIN: site.origin})
     await page.getByLabel('Video, playlist or profile URL').fill(`${site.origin}/@${site.user}`)
     await page
       .getByRole('button', {name: /download/i})
@@ -326,11 +322,7 @@ test('Sync Up keeps a TikTok account in step with its folder, in the format of t
     const folder = path.join(root, 'sync', 'out', 'TikTok-fakeuser')
     await fs.mkdir(folder, {recursive: true})
     for (const id of site.ids.slice(2)) await fs.writeFile(path.join(folder, `old-${id}.mp3`), 'audio')
-    const {app, page} = await launch(
-      'sync',
-      {format: 'm4a', syncEnabled: true},
-      {MDC_TIKTOK_ORIGIN: site.origin},
-    )
+    const {app, page} = await launch('sync', {format: 'm4a', syncEnabled: true}, {MDC_TIKTOK_ORIGIN: site.origin})
     await page.getByRole('tab', {name: 'Sync Up'}).click()
     await page.getByTestId('sync-add').click()
     const dialog = page.locator('.ant-modal').filter({hasText: 'TikTok account'})
@@ -379,11 +371,7 @@ test('a TikTok profile behind a verification page opens through the built-in bro
   // plain requests get a "please wait" page whose script sets a cookie and reloads: only a browser passes
   const site = await startFakeTikTok({posts: 6, jsChallenge: true})
   try {
-    const {app, page, outDir} = await launch(
-      'tiktok-browser',
-      {format: 'mp3'},
-      {MDC_TIKTOK_ORIGIN: site.origin},
-    )
+    const {app, page, outDir} = await launch('tiktok-browser', {format: 'mp3'}, {MDC_TIKTOK_ORIGIN: site.origin})
     await page.getByLabel('Video, playlist or profile URL').fill(`${site.origin}/@${site.user}`)
     await page
       .getByRole('button', {name: /download/i})
@@ -478,7 +466,10 @@ test('reports unavailable items with a reason and finishes with errors', async (
 
 test('remembers language and theme across restarts', async () => {
   const first = await launch('prefs')
-  await first.page.getByText('ES', {exact: true}).click()
+  // the language select (fourteen languages, with search): Español by its own name
+  await first.page.getByTestId('language-select').first().click()
+  await first.page.keyboard.type('espa')
+  await first.page.keyboard.press('Enter')
   await expect(first.page.getByText('Nueva descarga')).toBeVisible()
   await first.page.getByLabel('Oscuro').click()
   await expect(first.page.getByTestId('theme-mode')).toHaveText('dark')
@@ -554,7 +545,7 @@ test('failed downloads of several batches go into one new batch from the Failed 
   await expect(cards.nth(0)).toHaveAttribute('data-status', 'completed-with-errors', {timeout: 60_000})
   await page.locator('.ant-notification-notice-close').first().click()
 
-  await page.getByRole('button', {name: 'Failed — see the list and retry'}).click()
+  await page.getByRole('button', {name: 'Failed: see the list and retry'}).click()
   const modal = page.getByTestId('failed-modal')
   await expect(modal.locator('.ant-table-row')).toHaveCount(2)
   await page.waitForTimeout(400)

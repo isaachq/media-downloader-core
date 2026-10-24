@@ -25,7 +25,8 @@ const en = {
   'tour.2.title': '2 · Choose what you get',
   'tour.2.text': 'MP4 to watch anywhere or MP3 to listen. Then pick the quality and the folder for your files.',
   'tour.3.title': '3 · Download',
-  'tour.3.text': 'A list opens a preview first, so you pick what you want. Every file is checked before it\'s yours. You\'ll find them all in the Finished tab, ready to play.',
+  'tour.3.text':
+    "A list opens a preview first, so you pick what you want. Every file is checked before it's yours. You'll find them all in the Finished tab, ready to play.",
   'header.language': 'Language',
   'header.theme': 'Theme',
   'theme.system': 'System',
@@ -59,7 +60,8 @@ const en = {
   'download.change': 'Change',
   'download.start': 'Download',
   'download.schedule': 'Schedule',
-  'download.scheduledHint': 'A batch is running. New links wait in line and start on their own when it ends (this one would be #{position}).',
+  'download.scheduledHint':
+    'A batch is running. New links wait in line and start on their own when it ends (this one would be #{position}).',
   'download.capacity': 'Up to {normal} downloads at once on {cpus} CPUs · {long} for long videos',
   'download.scheduled': 'Scheduled: {title}',
   'download.video': 'Video',
@@ -286,7 +288,8 @@ const en = {
   'integrity.sha256': 'SHA-256',
   'integrity.issues': 'Problems found',
 
-  'hint.needs-sign-in': 'Sign-in required. Sign in on your browser, then choose it in Settings → Cookies (“How to sign in” shows the steps).',
+  'hint.needs-sign-in':
+    'Sign-in required. Sign in on your browser, then choose it in Settings → Cookies (“How to sign in” shows the steps).',
   'hint.private': 'Private video',
   'hint.removed': 'Removed or unavailable',
   'hint.geo-blocked': 'Blocked in your country',
@@ -313,7 +316,8 @@ const en = {
   'settings.thumbnail': 'Embed thumbnail as cover',
   'settings.notifications': 'Notify when a batch finishes',
   'settings.portableNames': 'Car & USB friendly names (letters, numbers and hyphens only)',
-  'settings.portableNamesHelp': 'Example: 001-Cancion-Nandu-k1gsZ.mp3. No accents, symbols or emoji, so car stereos, TVs and USB sticks can read every file.',
+  'settings.portableNamesHelp':
+    'Example: 001-Cancion-Nandu-k1gsZ.mp3. No accents, symbols or emoji, so car stereos, TVs and USB sticks can read every file.',
   'settings.appearance': 'Appearance',
   'settings.tools': 'Tools',
   'settings.doctor': 'Run diagnostics',
@@ -322,7 +326,8 @@ const en = {
   'settings.saved': 'Settings saved',
 
   'setup.title': 'One-time setup',
-  'setup.intro': 'Media Download Core needs yt-dlp and FFmpeg. They\'re downloaded from their official sources, then checksum-verified and tested. Nothing else on your computer changes.',
+  'setup.intro':
+    "Media Download Core needs yt-dlp and FFmpeg. They're downloaded from their official sources, then checksum-verified and tested. Nothing else on your computer changes.",
   'setup.install': 'Install tools',
   'setup.installing': 'Installing…',
   'setup.ready': 'All set. Tools installed and verified.',
@@ -384,12 +389,14 @@ const en = {
   'boot.retry': 'Retry',
   'preview.title': 'Choose what to download',
   'preview.items': '{count} items · {duration}',
-  'preview.mix': 'This is a YouTube Mix: it’s built on the fly from this video and almost never ends. Showing the first {count}.',
+  'preview.mix':
+    'This is a YouTube Mix: it’s built on the fly from this video and almost never ends. Showing the first {count}.',
   'preview.capped': 'Long list. Showing the first {count}.',
   'preview.partial': 'Showing {count} of {total}.',
   'preview.loadAll': 'Load all ({total})',
   'preview.loadEverything': 'Load all',
-  'preview.hidden': 'All {count} public posts are here. TikTok counts {total}, but the other {missing} aren\'t listed publicly (private, deleted, or visible only to their author), so they can\'t be downloaded.',
+  'preview.hidden':
+    "All {count} public posts are here. TikTok counts {total}, but the other {missing} aren't listed publicly (private, deleted, or visible only to their author), so they can't be downloaded.",
   'preview.stopped':
     'TikTok’s listing stopped at {count} of {total} (it refused or stalled). What was listed is kept: Load all continues from there.',
   'preview.col.published': 'Published',
@@ -429,11 +436,15 @@ const en = {
     "Using {browser}'s session. If YouTube keeps asking, open YouTube in {browser}, check that you're signed in and pass the check if it shows one.",
   'ytpause.safari':
     "Safari: Media Download Core needs Full Disk Access to read its cookies (System Settings → Privacy & Security → Full Disk Access). Chrome, Firefox, Edge and Brave don't.",
-  'ytpause.tokens': 'YouTube downloads resume on their own at {at}, using verification tokens the app makes. You don’t need to do anything.',
+  'ytpause.tokens':
+    'YouTube downloads resume on their own at {at}, using verification tokens the app makes. You don’t need to do anything.',
   'ytheld.title': 'Sign in to YouTube to continue',
-  'ytheld.why': 'YouTube keeps asking to confirm you\'re not a bot on this connection, several times in a row, even with the app\'s verification tokens. This happens after many requests in a short time and clears up on its own after a while (minutes to hours).',
-  'ytheld.paused': 'Your YouTube downloads are paused, not lost. They pick up where they left off as soon as you choose.',
-  'ytheld.account': 'Signing in to YouTube inside the app gets you past this now. The sign-in stays in this app, not in your browser. YouTube may limit an account that downloads a lot, so a second account is safer.',
+  'ytheld.why':
+    "YouTube keeps asking to confirm you're not a bot on this connection, several times in a row, even with the app's verification tokens. This happens after many requests in a short time and clears up on its own after a while (minutes to hours).",
+  'ytheld.paused':
+    'Your YouTube downloads are paused, not lost. They pick up where they left off as soon as you choose.',
+  'ytheld.account':
+    'Signing in to YouTube inside the app gets you past this now. The sign-in stays in this app, not in your browser. YouTube may limit an account that downloads a lot, so a second account is safer.',
   'ytheld.signIn': 'Sign in and continue',
   'ytheld.continueAccount': 'Continue with my YouTube account',
   'ytheld.browser': "Or use a browser where you're signed in to YouTube:",
@@ -447,9 +458,12 @@ const en = {
   'cause.bot-check': 'bot check',
   'cause.blocked': 'blocked for a while',
   'cause.cookies-unreadable': 'cookies unreadable',
-  'hint.bot-check': 'YouTube asks to confirm you\'re not a bot. It tries again on its own, or you can use your browser\'s session.',
-  'hint.cookies-unreadable': 'Couldn\'t read the browser\'s cookies. Safari needs Full Disk Access, or choose another browser in Settings.',
-  'settings.cookiesHelp': 'Your signed-in session, for private, members-only or age-restricted videos, and for when YouTube asks to confirm you\'re not a bot. Applies right away.',
+  'hint.bot-check':
+    "YouTube asks to confirm you're not a bot. It tries again on its own, or you can use your browser's session.",
+  'hint.cookies-unreadable':
+    "Couldn't read the browser's cookies. Safari needs Full Disk Access, or choose another browser in Settings.",
+  'settings.cookiesHelp':
+    "Your signed-in session, for private, members-only or age-restricted videos, and for when YouTube asks to confirm you're not a bot. Applies right away.",
   'about.star':
     "If Media Download Core helped you, give it a star on GitHub: it's free, takes a second and helps other people find it.",
   'about.starButton': 'Star it on GitHub',
@@ -458,11 +472,13 @@ const en = {
   'common.copied': 'Copied',
   'common.unknown': 'unknown',
   'settings.sync': 'Run scheduled syncs (Sync Up)',
-  'settings.syncHelp': 'Scheduled syncs run on their own while the app is open. When off, Sync Up only runs when you press Sync now.',
+  'settings.syncHelp':
+    'Scheduled syncs run on their own while the app is open. When off, Sync Up only runs when you press Sync now.',
   'common.cancel': 'Cancel',
   'common.save': 'Save',
   'sync.title': 'Sync Up',
-  'sync.intro': 'Keep TikTok accounts matched to their folders. Each sync downloads only what the folder is missing, as a regular batch.',
+  'sync.intro':
+    'Keep TikTok accounts matched to their folders. Each sync downloads only what the folder is missing, as a regular batch.',
   'sync.empty': 'No accounts yet. Add one. Its folder can already have videos in it.',
   'sync.addOnly': 'Add',
   'sync.addAndSync': 'Add and sync now',
@@ -543,7 +559,8 @@ const en = {
   'sync.col.status': 'Status',
   'stats.failedOpen': 'Failed: see the list and retry',
   'failed.title': 'Failed downloads ({count})',
-  'failed.hint': 'Every failed download from this session, across all batches. Pick the ones to retry. They go together into one new batch, each to its original folder.',
+  'failed.hint':
+    'Every failed download from this session, across all batches. Pick the ones to retry. They go together into one new batch, each to its original folder.',
   'failed.batches': 'Batches',
   'failed.selectAll': 'Select all ({count})',
   'failed.retry': 'New batch with {count} selected',
@@ -553,11 +570,19 @@ const en = {
   'failed.unknown': 'Unknown error',
   'failed.created': 'New batch scheduled with {count} failed download(s)',
   'integrity.damaged': 'Damaged at the source',
-  'integrity.damagedTip': 'The file the site serves is broken, so it can’t be downloaded. Retrying would only waste time, bandwidth and disk space, so it won’t be downloaded again. To allow it, go to Settings → Damaged at the source.',
+  'integrity.damagedTip':
+    'The file the site serves is broken, so it can’t be downloaded. Retrying would only waste time, bandwidth and disk space, so it won’t be downloaded again. To allow it, go to Settings → Damaged at the source.',
   'integrity.later': 'Check at the end',
-  'integrity.laterTip': 'Downloaded first. Its integrity check runs once the whole batch has finished downloading (Settings → Download first, check after).',
+  'integrity.laterTip':
+    'Downloaded first. Its integrity check runs once the whole batch has finished downloading (Settings → Download first, check after).',
   'hint.damaged-source': 'Damaged at the source, won’t be downloaded again',
   'cause.damaged-source': 'damaged at the source',
+  'hint.no-video': 'This post has pictures or text, but no video',
+  'hint.live-now': 'Live right now. Download it once it ends, as a recording.',
+  'hint.stream-only': 'Offered only as a stream, which this app can’t save yet',
+  'cause.no-video': 'no video',
+  'cause.live-now': 'live now',
+  'cause.stream-only': 'stream only',
   'job.cancelOne': 'Cancel only this download (the batch goes on)',
   'batch.status.validating': 'Checking files',
   'batch.cancelledCount': '{count} cancelled',
@@ -565,15 +590,18 @@ const en = {
   'batch.cancelWhole': 'Stops the whole batch. To drop just one download, use Cancel on its row (Items or Downloads).',
   'finished.prune': 'Remove missing records',
   'finished.pruneSelected': 'Remove missing among selected ({count})',
-  'finished.pruneConfirm': 'Forgets files that are no longer where they were downloaded (deleted or moved), along with the links they came from. Files you still have aren’t touched. To get them back, use "Download missing again" first.',
+  'finished.pruneConfirm':
+    'Forgets files that are no longer where they were downloaded (deleted or moved), along with the links they came from. Files you still have aren’t touched. To get them back, use "Download missing again" first.',
   'finished.pruneOk': 'Remove',
   'finished.redownload': 'Download missing again',
   'finished.redownloadSelected': 'Download missing again ({count})',
-  'finished.redownloadConfirm': 'Downloads the files that are no longer where they were (deleted or moved) again, from the link saved for each one. Each goes back to its old folder and format, in a new batch. Files you still have aren’t touched.',
+  'finished.redownloadConfirm':
+    'Downloads the files that are no longer where they were (deleted or moved) again, from the link saved for each one. Each goes back to its old folder and format, in a new batch. Files you still have aren’t touched.',
   'finished.redownloadOk': 'Download',
   'finished.redownloaded': '{count} file(s) queued to download again',
   'finished.redownloadNone': 'Every file is still in its place: nothing to download',
-  'finished.verifyNoneThere': 'These files are no longer on disk, so there’s nothing to check. Download them again or remove their records.',
+  'finished.verifyNoneThere':
+    'These files are no longer on disk, so there’s nothing to check. Download them again or remove their records.',
   'finished.verifyFailed': 'The check could not finish. Try again.',
   'finished.pruned': '{count} record(s) of missing files removed',
   'finished.prunedNone': 'Every file is still in its place: nothing to remove',
@@ -594,20 +622,25 @@ const en = {
   'settings.env.platform': 'Platform:',
   'settings.threadsHelpBoost': 'Up to {max} at once (60% of {cpus} processors).',
   'settings.cpuBoost': 'Allow up to 60% of the processors',
-  'settings.cpuBoostHelp': 'By default it uses half ({half} of {cpus}). When on, up to {boosted} downloads run at once and about 40% stays free for your other work.',
-  'settings.cpuBoostSame': 'On this computer, 60% of {cpus} processors is still {half} downloads at once, the same as half.',
+  'settings.cpuBoostHelp':
+    'By default it uses half ({half} of {cpus}). When on, up to {boosted} downloads run at once and about 40% stays free for your other work.',
+  'settings.cpuBoostSame':
+    'On this computer, 60% of {cpus} processors is still {half} downloads at once, the same as half.',
   'settings.validateAfter': 'Download first, check after',
-  'settings.validateAfterHelp': 'A batch downloads everything back to back, then checks all its files at the end. A file that’s broken at the source is marked “damaged at the source” and is never downloaded again.',
+  'settings.validateAfterHelp':
+    'A batch downloads everything back to back, then checks all its files at the end. A file that’s broken at the source is marked “damaged at the source” and is never downloaded again.',
   'settings.damaged': 'Damaged at the source…',
   'damaged.title': 'Damaged at the source',
-  'damaged.hint': 'Videos whose file is broken at the source. They aren’t downloaded again. Allow one again if the site may have fixed it.',
+  'damaged.hint':
+    'Videos whose file is broken at the source. They aren’t downloaded again. Allow one again if the site may have fixed it.',
   'damaged.empty': 'No video damaged at the source',
   'damaged.when': 'Found',
   'damaged.forget': 'Allow again',
   'batch.forecastUnknown': 'Size not given by the site · {free} free',
   'signin.open': 'How to sign in',
   'signin.title': 'Use your signed-in session',
-  'signin.intro': 'Some downloads need your own account’s session: private or members-only videos, age-restricted ones, Instagram profiles and stories, a Facebook page’s videos, and YouTube when it asks to confirm you’re not a bot. The app reads the session from your browser, so there’s nothing to copy or paste.',
+  'signin.intro':
+    'Some downloads need your own account’s session: private or members-only videos, age-restricted ones, Instagram profiles and stories, a Facebook page’s videos, and YouTube when it asks to confirm you’re not a bot. The app reads the session from your browser, so there’s nothing to copy or paste.',
   'signin.step1':
     'Open your usual browser (Chrome, Edge, Firefox, Safari, Brave…) and sign in there as always: to Google / YouTube, Instagram or Facebook.',
   'signin.step2': 'Here, in Settings → Cookies from browser, choose that same browser.',
@@ -616,10 +649,12 @@ const en = {
     'Paste the link again: it downloads with your session. Signed out in the browser? Sign in again there.',
   'signin.mac':
     'macOS: a Keychain window asks to let the app read “Chrome Safe Storage” (or your browser’s): type your Mac password and click “Always Allow”. Safari: System Settings → Privacy & Security → Full Disk Access → turn on Media Download Core.',
-  'signin.windows': 'Windows: close the browser before downloading (Chrome and Edge lock their cookies while open). If Chrome still can’t be read (it protects its cookies on Windows), use Firefox: sign in there and choose Firefox here.',
+  'signin.windows':
+    'Windows: close the browser before downloading (Chrome and Edge lock their cookies while open). If Chrome still can’t be read (it protects its cookies on Windows), use Firefox: sign in there and choose Firefox here.',
   'signin.linux':
     'Linux (Fedora, Ubuntu…): your keyring (GNOME Keyring / KWallet) may ask to allow access to the browser’s saved data: allow it. Firefox needs no permission.',
-  'signin.privacy': 'Your cookies stay on your computer. They’re read once into a private copy the app uses only to download, and they’re never sent anywhere else.',
+  'signin.privacy':
+    'Your cookies stay on your computer. They’re read once into a private copy the app uses only to download, and they’re never sent anywhere else.',
 } as const
 
 export type MessageKey = keyof typeof en
@@ -636,9 +671,11 @@ const es: Record<MessageKey, string> = {
   'tour.1.text':
     'Un video, una playlist, un canal o un perfil de TikTok. También funcionan varios enlaces a la vez: pégalos todos.',
   'tour.2.title': '2 · Elige qué quieres',
-  'tour.2.text': 'MP4 para verlo donde sea o MP3 para escucharlo. Luego elige la calidad y la carpeta para tus archivos.',
+  'tour.2.text':
+    'MP4 para verlo donde sea o MP3 para escucharlo. Luego elige la calidad y la carpeta para tus archivos.',
   'tour.3.title': '3 · Descarga',
-  'tour.3.text': 'Una lista abre primero una vista previa para que elijas. Cada archivo se revisa antes de entregártelo. Los encuentras todos en la pestaña Terminados, listos para reproducir.',
+  'tour.3.text':
+    'Una lista abre primero una vista previa para que elijas. Cada archivo se revisa antes de entregártelo. Los encuentras todos en la pestaña Terminados, listos para reproducir.',
   'header.language': 'Idioma',
   'header.theme': 'Tema',
   'theme.system': 'Sistema',
@@ -672,7 +709,8 @@ const es: Record<MessageKey, string> = {
   'download.change': 'Cambiar',
   'download.start': 'Descargar',
   'download.schedule': 'Agendar',
-  'download.scheduledHint': 'Hay un lote en curso. Los enlaces nuevos esperan su turno y empiezan solos cuando termine (este sería el n.º {position} en la fila).',
+  'download.scheduledHint':
+    'Hay un lote en curso. Los enlaces nuevos esperan su turno y empiezan solos cuando termine (este sería el n.º {position} en la fila).',
   'download.capacity': 'Hasta {normal} descargas a la vez con {cpus} CPUs · {long} con videos largos',
   'download.scheduled': 'Agendado: {title}',
   'download.video': 'Video',
@@ -701,7 +739,8 @@ const es: Record<MessageKey, string> = {
   'finished.openDownloads': 'Abrir carpeta de descargas',
   'finished.summary': '{count} archivos · {bytes}',
   'finished.summaryOne': '1 archivo · {bytes}',
-  'finished.empty': 'Aún no hay nada terminado. Aquí aparece cada archivo completado y verificado, de todas las sesiones.',
+  'finished.empty':
+    'Aún no hay nada terminado. Aquí aparece cada archivo completado y verificado, de todas las sesiones.',
   'finished.noMatch': 'Ningún archivo terminado coincide.',
   'finished.col.finishedAt': 'Terminado',
   'finished.col.size': 'Tamaño',
@@ -899,7 +938,8 @@ const es: Record<MessageKey, string> = {
   'integrity.sha256': 'SHA-256',
   'integrity.issues': 'Problemas encontrados',
 
-  'hint.needs-sign-in': 'Requiere iniciar sesión. Inicia sesión en tu navegador y elígelo en Configuración → Cookies (“Cómo iniciar sesión” muestra los pasos).',
+  'hint.needs-sign-in':
+    'Requiere iniciar sesión. Inicia sesión en tu navegador y elígelo en Configuración → Cookies (“Cómo iniciar sesión” muestra los pasos).',
   'hint.private': 'Video privado',
   'hint.removed': 'Eliminado o no disponible',
   'hint.geo-blocked': 'Bloqueado en tu país',
@@ -926,7 +966,8 @@ const es: Record<MessageKey, string> = {
   'settings.thumbnail': 'Incrustar miniatura como portada',
   'settings.notifications': 'Avisar cuando termine un lote',
   'settings.portableNames': 'Nombres compatibles con autos y USB (solo letras, números y guiones)',
-  'settings.portableNamesHelp': 'Ejemplo: 001-Cancion-Nandu-k1gsZ.mp3. Sin acentos, símbolos ni emojis, para que estéreos de auto, TVs y memorias USB lean todos los archivos.',
+  'settings.portableNamesHelp':
+    'Ejemplo: 001-Cancion-Nandu-k1gsZ.mp3. Sin acentos, símbolos ni emojis, para que estéreos de auto, TVs y memorias USB lean todos los archivos.',
   'settings.appearance': 'Apariencia',
   'settings.tools': 'Herramientas',
   'settings.doctor': 'Ejecutar diagnóstico',
@@ -935,7 +976,8 @@ const es: Record<MessageKey, string> = {
   'settings.saved': 'Configuración guardada',
 
   'setup.title': 'Configuración inicial',
-  'setup.intro': 'Media Download Core necesita yt-dlp y FFmpeg. Se descargan de sus fuentes oficiales, se verifica su checksum y se prueban. No se cambia nada más en tu computadora.',
+  'setup.intro':
+    'Media Download Core necesita yt-dlp y FFmpeg. Se descargan de sus fuentes oficiales, se verifica su checksum y se prueban. No se cambia nada más en tu computadora.',
   'setup.install': 'Instalar herramientas',
   'setup.installing': 'Instalando…',
   'setup.ready': 'Listo. Herramientas instaladas y verificadas.',
@@ -980,7 +1022,8 @@ const es: Record<MessageKey, string> = {
   'update.check': 'Buscar actualizaciones',
   'update.checking': 'Buscando…',
   'update.upToDate': 'Tienes la versión más reciente',
-  'update.unsupported': 'Esta copia no se puede actualizar sola. Descarga las versiones nuevas desde la página de versiones.',
+  'update.unsupported':
+    'Esta copia no se puede actualizar sola. Descarga las versiones nuevas desde la página de versiones.',
   'settings.autoUpdate': 'Buscar actualizaciones automáticamente',
   'batch.eta': 'Faltan aprox. {left} · termina cerca de las {at} (estimado según la velocidad de esta computadora)',
   'batch.etaMeasuring': 'Calculando el tiempo restante…',
@@ -997,7 +1040,8 @@ const es: Record<MessageKey, string> = {
   'boot.retry': 'Reintentar',
   'preview.title': 'Elige qué descargar',
   'preview.items': '{count} elementos · {duration}',
-  'preview.mix': 'Es un Mix de YouTube: se arma al momento a partir de este video y casi no tiene fin. Mostrando los primeros {count}.',
+  'preview.mix':
+    'Es un Mix de YouTube: se arma al momento a partir de este video y casi no tiene fin. Mostrando los primeros {count}.',
   'preview.capped': 'Lista larga. Mostrando los primeros {count}.',
   'preview.partial': 'Mostrando {count} de {total}.',
   'preview.loadAll': 'Cargar todo ({total})',
@@ -1046,9 +1090,11 @@ const es: Record<MessageKey, string> = {
   'ytpause.tokens':
     'Las descargas de YouTube siguen solas a las {at}, con tokens de verificación que genera la app. No tienes que hacer nada.',
   'ytheld.title': 'Inicia sesión en YouTube para continuar',
-  'ytheld.why': 'YouTube sigue pidiendo confirmar que no eres un bot en esta conexión, varias veces seguidas, incluso con los tokens de verificación de la app. Pasa tras muchas solicitudes en poco tiempo y se quita solo después de un rato (de minutos a horas).',
+  'ytheld.why':
+    'YouTube sigue pidiendo confirmar que no eres un bot en esta conexión, varias veces seguidas, incluso con los tokens de verificación de la app. Pasa tras muchas solicitudes en poco tiempo y se quita solo después de un rato (de minutos a horas).',
   'ytheld.paused': 'Tus descargas de YouTube están en pausa, no perdidas. Siguen donde se quedaron en cuanto elijas.',
-  'ytheld.account': 'Iniciar sesión en YouTube dentro de la app lo resuelve de inmediato. La sesión queda en esta app, no en tu navegador. YouTube puede limitar una cuenta que descarga mucho, así que una cuenta secundaria es más segura.',
+  'ytheld.account':
+    'Iniciar sesión en YouTube dentro de la app lo resuelve de inmediato. La sesión queda en esta app, no en tu navegador. YouTube puede limitar una cuenta que descarga mucho, así que una cuenta secundaria es más segura.',
   'ytheld.signIn': 'Iniciar sesión y continuar',
   'ytheld.continueAccount': 'Continuar con mi cuenta de YouTube',
   'ytheld.browser': 'O usa un navegador donde ya iniciaste sesión en YouTube:',
@@ -1062,9 +1108,12 @@ const es: Record<MessageKey, string> = {
   'cause.bot-check': 'verificación anti-bot',
   'cause.blocked': 'bloqueo temporal',
   'cause.cookies-unreadable': 'cookies ilegibles',
-  'hint.bot-check': 'YouTube pide confirmar que no eres un bot. Reintenta solo, o puedes usar la sesión de tu navegador.',
-  'hint.cookies-unreadable': 'No se pudieron leer las cookies del navegador. Safari necesita Acceso total al disco, o elige otro navegador en Configuración.',
-  'settings.cookiesHelp': 'Tu sesión iniciada, para videos privados, de miembros o con restricción de edad, y para cuando YouTube pide confirmar que no eres un bot. Se aplica al instante.',
+  'hint.bot-check':
+    'YouTube pide confirmar que no eres un bot. Reintenta solo, o puedes usar la sesión de tu navegador.',
+  'hint.cookies-unreadable':
+    'No se pudieron leer las cookies del navegador. Safari necesita Acceso total al disco, o elige otro navegador en Configuración.',
+  'settings.cookiesHelp':
+    'Tu sesión iniciada, para videos privados, de miembros o con restricción de edad, y para cuando YouTube pide confirmar que no eres un bot. Se aplica al instante.',
   'about.star':
     'Si Media Download Core te sirvió, regálanos una estrella en GitHub: es gratis, toma un segundo y ayuda a que más gente lo encuentre.',
   'about.starButton': 'Dar una estrella en GitHub',
@@ -1073,11 +1122,13 @@ const es: Record<MessageKey, string> = {
   'common.copied': 'Copiado',
   'common.unknown': 'desconocido',
   'settings.sync': 'Ejecutar sincronizaciones programadas (Sync Up)',
-  'settings.syncHelp': 'Las sincronizaciones programadas corren solas mientras la app está abierta. Si lo apagas, Sync Up solo corre cuando presionas Sincronizar ahora.',
+  'settings.syncHelp':
+    'Las sincronizaciones programadas corren solas mientras la app está abierta. Si lo apagas, Sync Up solo corre cuando presionas Sincronizar ahora.',
   'common.cancel': 'Cancelar',
   'common.save': 'Guardar',
   'sync.title': 'Sync Up',
-  'sync.intro': 'Mantén cuentas de TikTok al día con sus carpetas. Cada sincronización descarga solo lo que le falta a la carpeta, como un lote normal.',
+  'sync.intro':
+    'Mantén cuentas de TikTok al día con sus carpetas. Cada sincronización descarga solo lo que le falta a la carpeta, como un lote normal.',
   'sync.empty': 'Aún no hay cuentas. Agrega una. Su carpeta ya puede tener videos.',
   'sync.addOnly': 'Agregar',
   'sync.addAndSync': 'Agregar y sincronizar',
@@ -1087,7 +1138,8 @@ const es: Record<MessageKey, string> = {
   'sync.field.accountInvalid': 'Escribe una cuenta de TikTok: @nombre o https://www.tiktok.com/@nombre',
   'sync.field.folderHint':
     'Sugerida a partir de la cuenta. Elige la carpeta donde ya están sus videos, si existe: los archivos se reconocen por el número de publicación en su nombre o metadatos.',
-  'sync.field.formatLocked': 'Una carpeta tiene un solo formato. Lo nuevo llega en el mismo formato de los archivos que ya están.',
+  'sync.field.formatLocked':
+    'Una carpeta tiene un solo formato. Lo nuevo llega en el mismo formato de los archivos que ya están.',
   'sync.field.scheduleHint':
     'Lo programado corre mientras la app está abierta (si se perdió uno, corre al abrirla). Sin la app: "mdc sync run --due" desde cron, launchd o el Programador de tareas.',
   'sync.folder.has':
@@ -1160,7 +1212,8 @@ const es: Record<MessageKey, string> = {
 
   'stats.failedOpen': 'Fallidas: revisa la lista y reintenta',
   'failed.title': 'Descargas fallidas ({count})',
-  'failed.hint': 'Todas las descargas fallidas de esta sesión, de todos los lotes. Elige cuáles reintentar. Van juntas en un solo lote nuevo, cada una a su carpeta original.',
+  'failed.hint':
+    'Todas las descargas fallidas de esta sesión, de todos los lotes. Elige cuáles reintentar. Van juntas en un solo lote nuevo, cada una a su carpeta original.',
   'failed.batches': 'Lotes',
   'failed.selectAll': 'Seleccionar todas ({count})',
   'failed.retry': 'Nuevo lote con {count} seleccionadas',
@@ -1170,27 +1223,39 @@ const es: Record<MessageKey, string> = {
   'failed.unknown': 'Error desconocido',
   'failed.created': 'Nuevo lote programado con {count} descarga(s) fallida(s)',
   'integrity.damaged': 'Dañado en origen',
-  'integrity.damagedTip': 'El archivo que entrega el sitio está dañado, así que no se puede descargar. Reintentar solo gastaría tiempo, red y disco, así que no se volverá a descargar. Para permitirlo, ve a Configuración → Dañados en origen.',
+  'integrity.damagedTip':
+    'El archivo que entrega el sitio está dañado, así que no se puede descargar. Reintentar solo gastaría tiempo, red y disco, así que no se volverá a descargar. Para permitirlo, ve a Configuración → Dañados en origen.',
   'integrity.later': 'Revisión al final',
-  'integrity.laterTip': 'Se descargó primero. Su revisión de integridad corre cuando termina de descargarse todo el lote (Configuración → Primero descargar, después validar).',
+  'integrity.laterTip':
+    'Se descargó primero. Su revisión de integridad corre cuando termina de descargarse todo el lote (Configuración → Primero descargar, después validar).',
   'hint.damaged-source': 'Dañado en origen, no se volverá a descargar',
   'cause.damaged-source': 'dañados en origen',
+  'hint.no-video': 'Esta publicación tiene fotos o texto, pero no video',
+  'hint.live-now': 'Está en vivo ahora. Descárgalo cuando termine, como grabación.',
+  'hint.stream-only': 'Solo se ofrece como transmisión, y la app aún no puede guardarla',
+  'cause.no-video': 'sin video',
+  'cause.live-now': 'en vivo ahora',
+  'cause.stream-only': 'solo transmisión',
   'job.cancelOne': 'Cancelar solo esta descarga (el lote continúa)',
   'batch.status.validating': 'Validando archivos',
   'batch.cancelledCount': '{count} cancelada(s)',
   'batch.validating': 'Descargas terminadas. Validando archivos: {done}/{total}',
-  'batch.cancelWhole': 'Detiene todo el lote. Para quitar solo una descarga, usa Cancelar en su fila (Elementos o Descargas).',
+  'batch.cancelWhole':
+    'Detiene todo el lote. Para quitar solo una descarga, usa Cancelar en su fila (Elementos o Descargas).',
   'finished.prune': 'Quitar registros faltantes',
   'finished.pruneSelected': 'Quitar faltantes de los seleccionados ({count})',
-  'finished.pruneConfirm': 'Olvida los archivos que ya no están donde se descargaron (borrados o movidos), junto con el enlace de donde vinieron. Los archivos que sí tienes no se tocan. Para recuperarlos, usa primero "Descargar faltantes de nuevo".',
+  'finished.pruneConfirm':
+    'Olvida los archivos que ya no están donde se descargaron (borrados o movidos), junto con el enlace de donde vinieron. Los archivos que sí tienes no se tocan. Para recuperarlos, usa primero "Descargar faltantes de nuevo".',
   'finished.pruneOk': 'Quitar',
   'finished.redownload': 'Descargar faltantes de nuevo',
   'finished.redownloadSelected': 'Descargar faltantes de nuevo ({count})',
-  'finished.redownloadConfirm': 'Vuelve a descargar los archivos que ya no están donde estaban (borrados o movidos), desde el enlace que guardó cada uno. Cada uno vuelve a su carpeta y formato de antes, en un lote nuevo. Los archivos que sí tienes no se tocan.',
+  'finished.redownloadConfirm':
+    'Vuelve a descargar los archivos que ya no están donde estaban (borrados o movidos), desde el enlace que guardó cada uno. Cada uno vuelve a su carpeta y formato de antes, en un lote nuevo. Los archivos que sí tienes no se tocan.',
   'finished.redownloadOk': 'Descargar',
   'finished.redownloaded': '{count} archivo(s) en cola para descargarse de nuevo',
   'finished.redownloadNone': 'Todos los archivos siguen en su lugar: nada que descargar',
-  'finished.verifyNoneThere': 'Estos archivos ya no están en el disco, así que no hay nada que revisar. Descárgalos de nuevo o quita sus registros.',
+  'finished.verifyNoneThere':
+    'Estos archivos ya no están en el disco, así que no hay nada que revisar. Descárgalos de nuevo o quita sus registros.',
   'finished.verifyFailed': 'La revisión no pudo terminar. Inténtalo de nuevo.',
   'finished.pruned': 'Se quitaron {count} registro(s) de archivos que ya no existen',
   'finished.prunedNone': 'Todos los archivos siguen en su lugar: nada que quitar',
@@ -1211,21 +1276,25 @@ const es: Record<MessageKey, string> = {
   'settings.env.platform': 'Plataforma:',
   'settings.threadsHelpBoost': 'Hasta {max} a la vez (60% de {cpus} procesadores).',
   'settings.cpuBoost': 'Permitir hasta el 60% de los procesadores',
-  'settings.cpuBoostHelp': 'Por defecto usa la mitad ({half} de {cpus}). Si lo activas, corren hasta {boosted} descargas a la vez y queda cerca del 40% libre para tus otras tareas.',
-  'settings.cpuBoostSame': 'En esta computadora, el 60% de {cpus} procesadores sigue siendo {half} descargas a la vez, lo mismo que la mitad.',
+  'settings.cpuBoostHelp':
+    'Por defecto usa la mitad ({half} de {cpus}). Si lo activas, corren hasta {boosted} descargas a la vez y queda cerca del 40% libre para tus otras tareas.',
+  'settings.cpuBoostSame':
+    'En esta computadora, el 60% de {cpus} procesadores sigue siendo {half} descargas a la vez, lo mismo que la mitad.',
   'settings.validateAfter': 'Primero descargar, después validar',
   'settings.validateAfterHelp':
     'Un lote descarga todo de corrido y al final valida todos sus archivos. Un archivo dañado desde el origen se marca como “dañado en origen” y ya no se vuelve a descargar.',
   'settings.damaged': 'Dañados en origen…',
   'damaged.title': 'Dañados en origen',
-  'damaged.hint': 'Videos cuyo archivo viene dañado desde el sitio. Ya no se vuelven a descargar. Permite uno de nuevo si el sitio pudo haberlo corregido.',
+  'damaged.hint':
+    'Videos cuyo archivo viene dañado desde el sitio. Ya no se vuelven a descargar. Permite uno de nuevo si el sitio pudo haberlo corregido.',
   'damaged.empty': 'Ningún video dañado en origen',
   'damaged.when': 'Detectado',
   'damaged.forget': 'Permitir de nuevo',
   'batch.forecastUnknown': 'El sitio no informa el tamaño · {free} libres',
   'signin.open': 'Cómo iniciar sesión',
   'signin.title': 'Usa tu sesión iniciada',
-  'signin.intro': 'Algunas descargas necesitan la sesión de tu propia cuenta: videos privados o de miembros, los que tienen restricción de edad, perfiles e historias de Instagram, los videos de una página de Facebook, y YouTube cuando pide confirmar que no eres un bot. La app toma la sesión de tu navegador, así que no hay que copiar ni pegar nada.',
+  'signin.intro':
+    'Algunas descargas necesitan la sesión de tu propia cuenta: videos privados o de miembros, los que tienen restricción de edad, perfiles e historias de Instagram, los videos de una página de Facebook, y YouTube cuando pide confirmar que no eres un bot. La app toma la sesión de tu navegador, así que no hay que copiar ni pegar nada.',
   'signin.step1':
     'Abre tu navegador de siempre (Chrome, Edge, Firefox, Safari, Brave…) e inicia sesión ahí como siempre: en Google / YouTube, Instagram o Facebook.',
   'signin.step2': 'Aquí, en Configuración → Cookies del navegador, elige ese mismo navegador.',
@@ -1234,13 +1303,30 @@ const es: Record<MessageKey, string> = {
     'Vuelve a pegar el enlace: se descarga con tu sesión. ¿Cerraste sesión en el navegador? Inicia sesión otra vez ahí.',
   'signin.mac':
     'macOS: una ventana del Llavero pide dejar que la app lea “Chrome Safe Storage” (o el de tu navegador): escribe la contraseña de tu Mac y haz clic en “Permitir siempre”. Safari: Configuración del Sistema → Privacidad y seguridad → Acceso total al disco → activa Media Download Core.',
-  'signin.windows': 'Windows: cierra el navegador antes de descargar (Chrome y Edge bloquean sus cookies mientras están abiertos). Si Chrome aún no se puede leer (en Windows protege sus cookies), usa Firefox: inicia sesión ahí y elige Firefox aquí.',
+  'signin.windows':
+    'Windows: cierra el navegador antes de descargar (Chrome y Edge bloquean sus cookies mientras están abiertos). Si Chrome aún no se puede leer (en Windows protege sus cookies), usa Firefox: inicia sesión ahí y elige Firefox aquí.',
   'signin.linux':
     'Linux (Fedora, Ubuntu…): tu llavero (GNOME Keyring / KWallet) puede pedir permiso para acceder a los datos guardados del navegador: permítelo. Firefox no pide permiso.',
-  'signin.privacy': 'Tus cookies se quedan en tu computadora. Se leen una vez a una copia privada que la app usa solo para descargar, y nunca se envían a ningún otro lado.',
+  'signin.privacy':
+    'Tus cookies se quedan en tu computadora. Se leen una vez a una copia privada que la app usa solo para descargar, y nunca se envían a ningún otro lado.',
 }
 
-export const MESSAGES: Readonly<Record<Language, Readonly<Record<MessageKey, string>>>> = {en, es, pt, id, hi, vi, th, tr, ar, fr, de, ru, zh, it}
+export const MESSAGES: Readonly<Record<Language, Readonly<Record<MessageKey, string>>>> = {
+  en,
+  es,
+  pt,
+  id,
+  hi,
+  vi,
+  th,
+  tr,
+  ar,
+  fr,
+  de,
+  ru,
+  zh,
+  it,
+}
 
 export type Translate = (key: MessageKey, params?: Readonly<Record<string, string | number>>) => string
 

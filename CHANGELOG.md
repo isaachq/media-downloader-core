@@ -2,6 +2,72 @@
 
 ## Unreleased
 
+## App 0.2.0-beta.18 · library 1.18.0
+
+Beta 18: VK and X videos natively; one box for every site, which the core names; Facebook
+share links work again; the desktop in fourteen languages.
+
+**Library**
+
+- **Facebook share links open as a page load.** facebook.com answers `/share/r/<x>/` with
+  400 Bad Request to a Chrome whose request says `Sec-Fetch-Mode: cors` (the only mode
+  Node's fetch sends), so every reel shared from the Facebook app failed with "This short
+  link leads nowhere." `MetaClient.redirectOf` now sends a hop as a top-level navigation
+  (`navigationFetch`, `Sec-Fetch-*` as given, no cookies) and falls back to the site's
+  session: at most 2 requests a hop, O(hops) as before.
+- **`detectLink(text, aliases?)`**: the site of a pasted or shared link (`youtube`,
+  `tiktok`, `instagram`, `facebook`, `vk`, `x` or `web`), the link taken out of the text
+  around it and unwrapped from `l.instagram.com` / `l.facebook.com`, and whether it points
+  straight at a media file. Regular expressions only (no URL class, for Hermes), O(n). Also
+  its own pure entry, `media-downloader-core/detect`, for the apps' renderers.
+- **X (Twitter) videos natively** (`XSource`, `x: false` turns it off): the anonymous
+  syndication answer behind embedded posts (`tweet-result` with react-tweet's token). MP4
+  variants ranked by the shared renditions code; a post with several videos is a list
+  (`/video/<n>` names one); GIFs as silent videos; a quoted post's video; video cards;
+  `t.co` followed (its meta-refresh page too); the fixer hosts (fxtwitter, vxtwitter…)
+  read as X. Images-only posts ("This post has no video."), deleted / protected posts,
+  profiles and links of other sites fail with their own messages; an answer of another
+  shape hands over to yt-dlp. Posts kept 10 min, at most 1000.
+- **VK videos natively** (`VkSource`, `vk: false` turns it off): `al_video.php?act=show`
+  without a session, progressive MP4 up to 1080 / 1440, its windows-1251 answers decoded by
+  a table (no ICU needed on the phone). Videos and clips on vk.com, vk.ru, vkvideo.ru (and
+  `m.`), `?z=video…` on any page, the embed, access keys, `vk.cc`, playlists, albums and a
+  community's videos (paged, capped by `maxListItems`). Private, deleted and live videos
+  fail with their own messages; HLS-only goes to yt-dlp. Paced (2 at a time, ~1 s apart);
+  a captcha sends VK to yt-dlp for 10 min; caches bounded (2000 entries, 10 min).
+- **Reads of one item at the same time are made once** (`Coalescer`): a post with k videos
+  checked in parallel, or an analysis, its check and its download landing together, send 1
+  request to the site instead of k. Each caller waits with its own signal: one that gives up
+  leaves alone, and the request is aborted only when every caller has left. Used by X and VK.
+- **New failure hints** for the apps to say what happened: `no-video` (a post of pictures or
+  text), `live-now` (a stream on the air: download it as a recording once it ends) and
+  `stream-only` (only offered as HLS, which needs yt-dlp). All three are final: no retries.
+  A video only the full extractor reads (an X post with an external player) goes to yt-dlp
+  where there is one and says `unsupported-url` without it (the phone), not "try later".
+- **Share links: the session is asked when the anonymous visit ends at the login wall**, not
+  only when it gets no redirect (one request in the common case, at most 2).
+- **detectLink names the X "fixer" hosts (fxtwitter, vxtwitter, fixupx, fixvx) and
+  vkontakte.ru**, as the sources take them, and keeps a parenthesis the link opened
+  (`wiki/Foo_(bar)`). Still one pass: O(n), also on 200 000 trailing ")".
+- **Portable names write Cyrillic in Latin letters** (ICAO 9303, as Russian passports do):
+  "Привет, мир" → "Privet-mir", where the title used to vanish and leave the id alone; й and ё
+  are in the table too, for a runtime without Unicode data.
+
+**App (desktop)**
+
+- **One link box for every site.** The run mode (YouTube and websites, TikTok, Instagram or
+  Facebook, chosen in Settings with a restart) is gone: every site's source is built at
+  start, the box tags the link's site (YouTube, TikTok, Instagram, Facebook, VK, X,
+  Website, File), Finished lists every site with its tag, and many links pasted at once
+  all go to the review. Sync Up and YouTube's account are always there. An old
+  settings.json with `mode` still loads.
+- **Fourteen languages**: es, en, pt, id, hi, vi, th, tr, ar, fr, de, ru, zh, it, chosen in
+  a select with search (by any language's name for it); the system language first, else
+  English; antd's own words follow, and Arabic mirrors the window. Plainer en/es copy, with
+  no long dashes.
+- **The new failure hints in every language** ("This post has pictures or text, but no
+  video", "Live right now…", "Offered only as a stream…").
+
 ## App 0.2.0-beta.17 · library 1.17.0
 
 Beta 17: a link that fails for a moment is tried again by itself, another way each time;

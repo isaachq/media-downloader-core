@@ -45,6 +45,14 @@ the ⌊CPUs/2⌋ pool and verified file by file.
 
 ![Paste a link, download it as MP4, check its integrity report, find it in Finished, open the run report](docs/demo.gif)
 
+### What's new in beta 18 (library 1.18.0)
+
+- **VK and X (Twitter) videos** download natively, without signing in, on the phone too: VK videos, clips, playlists and a community's videos up to 1080p; X posts with one or several videos, GIFs and quoted videos up to 1080p.
+- **One box for every site** on the desktop: paste any link and the app tells which site it is (YouTube, TikTok, Instagram, Facebook, VK, X or a website). No more one site per run, no restart to switch.
+- **Facebook links shared from the app download again**: `facebook.com/share/r/…` failed with "This short link leads nowhere".
+- **The desktop speaks 14 languages**: Spanish, English, Portuguese, Indonesian, Hindi, Vietnamese, Thai, Turkish, Arabic (right to left), French, German, Russian, Chinese and Italian.
+- **Russian titles keep their words** in file names, in Latin letters ("Privet-mir"), instead of only the video's id.
+
 ### What's new in beta 17 (library 1.17.0)
 
 - **A link that fails for a moment is tried again by itself** — up to 3 times, each another way in, instead of "failed" now and working on the next tap. Gone, private or sign-in-only posts still answer at once.

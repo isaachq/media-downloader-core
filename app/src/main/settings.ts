@@ -5,12 +5,10 @@ import {
   AUDIO_FORMATS,
   BROWSERS,
   type Format,
-  type Language,
+  isLanguage,
   pickLanguage,
   QUALITIES,
   type Quality,
-  RUN_MODES,
-  type RunMode,
   type ThemeMode,
   VIDEO_FORMATS,
 } from '../shared/contract'
@@ -40,7 +38,6 @@ export function defaultSettings(
     slideshowSeconds: 3,
     tourDone: false,
     syncEnabled: false,
-    mode: 'web',
     validateAfter: false,
     cpuBoost: false,
   }
@@ -53,7 +50,8 @@ const FORMATS: readonly string[] = [...VIDEO_FORMATS, ...AUDIO_FORMATS]
 
 /**
  * Merge an untrusted patch (it comes from the renderer) into settings: every
- * field is type- and range-checked, unknown or invalid values are ignored.
+ * field is type- and range-checked, unknown or invalid values are ignored
+ * (so is a settings.json of an older version: its `mode`, one site per run, is gone).
  */
 export function mergeSettings(current: AppSettings, patch: unknown, limits: ConcurrencyLimits): AppSettings {
   if (typeof patch !== 'object' || patch === null) return current
@@ -62,7 +60,7 @@ export function mergeSettings(current: AppSettings, patch: unknown, limits: Conc
   // the boost first: it decides how many downloads at once are allowed
   if (typeof p['cpuBoost'] === 'boolean') next.cpuBoost = p['cpuBoost']
   const maxConcurrency = next.cpuBoost ? limits.boosted : limits.half
-  if (p['language'] === 'en' || p['language'] === 'es') next.language = p['language'] as Language
+  if (isLanguage(p['language'])) next.language = p['language']
   if (p['theme'] === 'system' || p['theme'] === 'light' || p['theme'] === 'dark') next.theme = p['theme'] as ThemeMode
   if (typeof p['downloadDir'] === 'string' && path.isAbsolute(p['downloadDir'])) next.downloadDir = p['downloadDir']
   if (typeof p['format'] === 'string' && FORMATS.includes(p['format'])) next.format = p['format'] as Format
@@ -72,8 +70,6 @@ export function mergeSettings(current: AppSettings, patch: unknown, limits: Conc
     next.concurrency = Math.min(maxConcurrency, Math.max(1, p['concurrency'] as number))
   // boost off: what was allowed only with it comes down to the new ceiling
   next.concurrency = Math.min(maxConcurrency, next.concurrency)
-  if (typeof p['mode'] === 'string' && (RUN_MODES as readonly string[]).includes(p['mode']))
-    next.mode = p['mode'] as RunMode
   if (typeof p['validateAfter'] === 'boolean') next.validateAfter = p['validateAfter']
   if (p['validation'] === 'full' || p['validation'] === 'quick' || p['validation'] === 'none')
     next.validation = p['validation']

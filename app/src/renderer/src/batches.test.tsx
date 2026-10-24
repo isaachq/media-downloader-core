@@ -81,6 +81,7 @@ describe('downloads and finished, one batch at a time', () => {
     sizeBytes: 1000,
     extractor: 'Youtube',
     url: `https://example.com/${key}`,
+    site: 'web',
     completedAt: 1,
     sha256: 'a'.repeat(64),
     validation: 'full',
@@ -268,7 +269,7 @@ describe('TikTok slideshows', () => {
   })
 
   it('a list with slideshows asks what they become, remembers it, and schedules with it', async () => {
-    const api = new FakeApi({info: {mode: 'tiktok'}})
+    const api = new FakeApi()
     api.preview = {
       kind: 'playlist',
       title: 'TikTok @a',
@@ -291,7 +292,7 @@ describe('TikTok slideshows', () => {
   })
 
   it('a single slideshow link asks first, with the seconds per image for a video', async () => {
-    const api = new FakeApi({info: {mode: 'tiktok'}})
+    const api = new FakeApi()
     api.preview = {kind: 'video', title: 'My carousel', slideshow: {images: 4, audio: true}}
     const {user} = await mount(api)
     await user.type(screen.getByLabelText('Video, playlist or profile URL'), 'https://www.tiktok.com/@a/photo/1')
@@ -308,7 +309,7 @@ describe('TikTok slideshows', () => {
   })
 
   it('with an audio format there is nothing to choose: only the soundtrack (Spanish)', async () => {
-    const api = new FakeApi({info: {mode: 'tiktok'}, settings: {language: 'es', format: 'mp3'}})
+    const api = new FakeApi({settings: {language: 'es', format: 'mp3'}})
     api.preview = {
       kind: 'playlist',
       title: 'TikTok @a',

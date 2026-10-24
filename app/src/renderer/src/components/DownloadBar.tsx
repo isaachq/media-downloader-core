@@ -1,12 +1,12 @@
 import {CloudDownloadOutlined, FolderOpenOutlined, ScheduleOutlined, SnippetsOutlined} from '@ant-design/icons'
 import {App as AntApp, Button, Card, Col, Form, Input, Row, Select, Space, Tag, Typography} from 'antd'
-import {type DragEvent, useRef, useState} from 'react'
+import {type DragEvent, useMemo, useRef, useState} from 'react'
 import {
   AUDIO_FORMATS,
   concurrencyCap,
+  detectLink,
   type Format,
   isAudioFormat,
-  platformOf,
   QUALITIES,
   type Quality,
   type ScheduleInput,
@@ -14,13 +14,13 @@ import {
 } from '../../../shared/contract'
 import {api} from '../api'
 import {useApp} from '../context'
-import {errorText, extractUrls, isHttpUrl} from '../format'
+import {errorText, extractUrls} from '../format'
 import {type MessageKey, useT} from '../i18n'
-import {mismatchText, modeName} from '../mode'
 import {type AppStore, useAppStore, useStoreValue} from '../store'
 import {AnalyzeLoader} from './AnalyzeLoader'
 import {ManyLinksModal} from './ManyLinksModal'
 import {type PlaylistPreview, type PreviewChoice, PreviewModal} from './PreviewModal'
+import {SiteTag} from './SiteTag'
 import {SlideshowModal} from './SlideshowChoice'
 import {SyncPanel} from './SyncPanel'
 
@@ -55,25 +55,18 @@ export function DownloadBar() {
   const [preview, setPreview] = useState<{url: string; data: PlaylistPreview} | undefined>()
   const [reloading, setReloading] = useState(false)
   /** Several links pasted or dropped at once, under review. */
-  const [many, setMany] = useState<{urls: string[]; repeated: number; otherMode: number} | undefined>()
+  const [many, setMany] = useState<{urls: string[]; repeated: number} | undefined>()
   const [dropping, setDropping] = useState(false)
   // set when the user stops the reading: its rejection is not an error to show
   const cancelled = useRef(false)
 
   const audio = isAudioFormat(settings.format)
-  const mode = info.mode
-  const http = isHttpUrl(url)
-  // a link of another site than this run's: said under the field, before anything is asked
-  const otherMode = http ? platformOf(url.trim(), info.siteAliases) : undefined
-  const wrongMode = otherMode !== undefined && otherMode !== mode
-  const valid = http && !wrongMode
+  // the site of the link in the field (found in shared text too, unwrapped from a
+  // tracker): once per change of the text, not per render
+  const detected = useMemo(() => detectLink(url, info.siteAliases), [url, info.siteAliases])
+  const valid = detected !== undefined
 
   const fail = (error: unknown) => {
-    const mismatch = mismatchText(t, error, mode)
-    if (mismatch) {
-      void message.error(mismatch)
-      return
-    }
     const text = errorText(error)
     // YouTube's bot check: one line here; the banner above says when it goes on, and how to go on now
     if (/not a (?:ro)?bot/i.test(text)) void message.error(t('hint.bot-check'))
@@ -105,10 +98,10 @@ export function DownloadBar() {
   // a single video starts right away; a list opens the preview to pick from
   const submit = async () => {
     setTouched(true)
-    if (!valid || busy) return
+    if (!detected || busy) return
     setBusy(true)
     cancelled.current = false
-    const target = url.trim()
+    const target = detected.url
     try {
       const result = await api().analyze(target)
       if (result.kind === 'playlist') setPreview({url: target, data: result})
@@ -149,14 +142,13 @@ export function DownloadBar() {
   }
 
   /**
-   * One link fills the field; several open the review of many links — only
-   * this mode's (the others are counted, not scheduled). True when it took the text.
+   * One link fills the field; several open the review of many links, of
+   * whatever sites they are. True when it took the text.
    */
   const take = (text: string): boolean => {
     const found = extractUrls(text)
     if (found.urls.length < 2) return false
-    const ours = found.urls.filter(link => platformOf(link, info.siteAliases) === mode)
-    setMany({urls: ours, repeated: found.repeated, otherMode: found.urls.length - ours.length})
+    setMany({urls: found.urls, repeated: found.repeated})
     return true
   }
 
@@ -216,10 +208,8 @@ export function DownloadBar() {
   const cap = concurrencyCap(info, settings)
   const longAtOnce = Math.max(1, Math.floor(cap / 1.5))
 
-  // TikTok mode only: the card has two sections, New download and Sync Up
-  const withSync = mode === 'tiktok'
-  const syncing = withSync && section === 'sync'
-  if (syncing) {
+  // two sections: New download and Sync Up (TikTok accounts kept in step with folders)
+  if (section === 'sync') {
     return (
       <Card className="download-card" {...sections}>
         <SyncPanel />
@@ -230,7 +220,7 @@ export function DownloadBar() {
   return (
     <Card
       className={dropping ? 'download-card dropping' : 'download-card'}
-      {...(withSync ? sections : {title: t('download.titleMode', {mode: modeName(t, mode)})})}
+      {...sections}
       onDragOver={event => {
         event.preventDefault()
         setDropping(true)
@@ -241,22 +231,16 @@ export function DownloadBar() {
     >
       <Form layout="vertical" onFinish={() => void submit()} requiredMark={false}>
         <Form.Item
-          label={t(`download.url.${mode}` as MessageKey)}
-          validateStatus={(touched && !valid) || wrongMode ? 'error' : ''}
-          help={
-            wrongMode
-              ? t('mode.wrongLink', {site: modeName(t, otherMode), mode: modeName(t, mode)})
-              : touched && !valid
-                ? t('download.invalidUrl')
-                : undefined
-          }
+          label={t('download.urlLabel')}
+          validateStatus={touched && !valid ? 'error' : ''}
+          help={touched && !valid ? t('download.invalidUrl') : undefined}
         >
           <Space.Compact block data-tour="url">
             <Input
               size="large"
               allowClear
               aria-label={t('download.url')}
-              placeholder={t(`download.urlPlaceholder.${mode}` as MessageKey)}
+              placeholder={t('download.urlPlaceholder')}
               value={url}
               onChange={event => setUrl(event.target.value)}
               onPaste={event => {
@@ -269,25 +253,14 @@ export function DownloadBar() {
             </Button>
           </Space.Compact>
         </Form.Item>
-        {valid &&
-          (() => {
-            const isYouTube = otherMode === 'web' && /youtube\.com|youtu\.be/i.test(url)
-            const tagColor = isYouTube
-              ? 'red'
-              : otherMode === 'tiktok'
-                ? 'cyan'
-                : otherMode === 'instagram'
-                  ? 'purple'
-                  : 'blue'
-            const tagLabel = isYouTube ? 'YOUTUBE' : otherMode ? otherMode.toUpperCase() : 'URL'
-            return (
-              <div style={{marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap'}}>
-                <Tag color={tagColor}>{tagLabel}</Tag>
-                {/playlist|\/sets\/|\/album\//i.test(url) && <Tag color="gold">{t('download.tag.list')}</Tag>}
-                {/@[\w.-]+/.test(url) && <Tag color="geekblue">{t('download.tag.profile')}</Tag>}
-              </div>
-            )
-          })()}
+        {detected ? (
+          <div className="link-tags" data-testid="link-tags">
+            {/* a link straight to a media file of any other site is a file; a named site stays itself */}
+            <SiteTag site={detected.file && detected.site === 'web' ? 'file' : detected.site} />
+            {/playlist|\/sets\/|\/album\//i.test(detected.url) && <Tag color="gold">{t('download.tag.list')}</Tag>}
+            {/@[\w.-]+/.test(detected.url) && <Tag color="lime">{t('download.tag.profile')}</Tag>}
+          </div>
+        ) : null}
         <div style={{marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap'}}>
           <Typography.Text type="secondary" style={{fontSize: 12}}>
             {t('download.presets')}
@@ -402,7 +375,6 @@ export function DownloadBar() {
         <ManyLinksModal
           urls={many.urls}
           repeated={many.repeated}
-          otherMode={many.otherMode}
           onSchedule={scheduleMany}
           onCancel={() => setMany(undefined)}
         />

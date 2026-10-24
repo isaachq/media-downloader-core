@@ -22,59 +22,60 @@ import type {
   ValidationLevel,
   VideoContainer,
 } from 'media-downloader-core'
+import type {LinkSite} from 'media-downloader-core/detect'
 
-export type Language = 'en' | 'es'
+/**
+ * The languages the interface speaks (the same fourteen as the Android app):
+ * Portuguese is Brazil's, Chinese is Simplified, Arabic reads right to left.
+ * The library itself stays in English.
+ */
+export const LANGUAGES = ['es', 'en', 'pt', 'id', 'hi', 'vi', 'th', 'tr', 'ar', 'fr', 'de', 'ru', 'zh', 'it'] as const
+export type Language = (typeof LANGUAGES)[number]
+
+/** Each language by its own name, as the picker lists it. */
+export const LANGUAGE_NAMES: Readonly<Record<Language, string>> = {
+  es: 'Español',
+  en: 'English',
+  pt: 'Português (Brasil)',
+  id: 'Bahasa Indonesia',
+  hi: 'हिन्दी',
+  vi: 'Tiếng Việt',
+  th: 'ไทย',
+  tr: 'Türkçe',
+  ar: 'العربية',
+  fr: 'Français',
+  de: 'Deutsch',
+  ru: 'Русский',
+  zh: '中文（简体）',
+  it: 'Italiano',
+}
+
+export const isLanguage = (value: unknown): value is Language => (LANGUAGES as readonly unknown[]).includes(value)
+
+/** Languages written right to left: the window mirrors. */
+export const isRtl = (language: Language): boolean => language === 'ar'
 
 /**
  * The interface language for a system's preferred languages, in the user's
- * order (e.g. ["es-MX", "en-US"]): the first one the app speaks wins, English
- * when none is Spanish or English. O(n).
+ * order (e.g. ["es-MX", "en-US"]): the first one the app speaks wins (any
+ * Chinese reads Simplified), English when it speaks none of them. O(n).
  */
 export function pickLanguage(preferred: readonly string[]): Language {
   for (const tag of preferred) {
     const base = tag.toLowerCase().split(/[-_]/, 1)[0]
-    if (base === 'es' || base === 'en') return base
+    if (isLanguage(base)) return base
   }
   return 'en'
 }
 export type ThemeMode = 'system' | 'light' | 'dark'
 
 /**
- * What one run of the app downloads: YouTube and other web sites, TikTok,
- * Instagram or Facebook — one per run, each with only its own screens and
- * controls (TikTok's Sync Up exists only in TikTok mode, YouTube's sign-in
- * only in web mode…), so a feature of one site can never act in another's.
- * Changing it restarts the app.
+ * Which site a link is (YouTube, TikTok, Instagram, Facebook, VK, X, or any
+ * other website): the core answers it, the same for the desktop and Android
+ * apps. Every site is read in every run; the link box tags what it found.
+ * Pure and browser-safe (regular expressions, no URL class), O(n) in the text.
  */
-export type RunMode = 'web' | 'tiktok' | 'instagram' | 'facebook'
-export const RUN_MODES: readonly RunMode[] = ['web', 'tiktok', 'instagram', 'facebook']
-
-const inDomain = (host: string, domains: readonly string[]): boolean =>
-  domains.some(domain => host === domain || host.endsWith(`.${domain}`))
-
-/**
- * The mode a link belongs to; undefined when it isn't an http(s) link. O(1).
- * `aliases` maps more hosts ("host:port") to a mode: the local fakes of e2e runs.
- */
-export function platformOf(url: string, aliases?: Readonly<Record<string, RunMode>>): RunMode | undefined {
-  let host: string
-  try {
-    const parsed = new URL(url.trim())
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return undefined
-    host = parsed.hostname.toLowerCase()
-    const alias = aliases?.[parsed.host.toLowerCase()]
-    if (alias) return alias
-  } catch {
-    return undefined
-  }
-  if (inDomain(host, ['tiktok.com'])) return 'tiktok'
-  if (inDomain(host, ['instagram.com', 'instagr.am'])) return 'instagram'
-  if (inDomain(host, ['facebook.com', 'fb.watch', 'fb.com', 'fb.me', 'fb.gg'])) return 'facebook'
-  return 'web'
-}
-
-/** Thrown by the main process for a link of another mode; the renderer shows its own words for it. */
-export const MODE_MISMATCH = 'mode-mismatch'
+export {detectLink, LINK_SITES, type LinkSite} from 'media-downloader-core/detect'
 export type Format = VideoContainer | AudioContainer
 export type Quality = 'best' | '2160' | '1440' | '1080' | '720' | '480' | '360'
 
@@ -120,10 +121,8 @@ export type AppSettings = {
   readonly slideshowSeconds: number
   /** The first-steps guide was finished or closed (it shows once; Header → Guide replays it). */
   readonly tourDone: boolean
-  /** TikTok mode: Sync Up's schedule runs while the app is open (the tab is always there in that mode). */
+  /** Sync Up's (TikTok) schedule runs while the app is open; the tab is always there. */
   readonly syncEnabled: boolean
-  /** What the next run downloads (see RunMode); the run in progress keeps `AppInfo.mode`. */
-  readonly mode: RunMode
   /**
    * Download a batch first and check its files once every download ended
    * (instead of each file before it finishes). Files broken at the source
@@ -176,7 +175,6 @@ export const RESTART_SETTINGS: ReadonlyArray<keyof AppSettings> = [
   'embedMetadata',
   'embedThumbnail',
   'longVideoMinutes',
-  'mode',
 ]
 
 export type AppInfo = {
@@ -187,10 +185,8 @@ export type AppInfo = {
   readonly maxConcurrency: number
   /** With up to 60% of them (`cpuBoost`): on small machines the same as `maxConcurrency`. */
   readonly boostedConcurrency: number
-  /** This run's mode (settings.mode applies from the next run). */
-  readonly mode: RunMode
-  /** Hosts ("host:port") standing in for a site: e2e runs point a mode at a local fake. */
-  readonly siteAliases?: Readonly<Record<string, RunMode>> | undefined
+  /** Hosts ("host:port") standing in for a site: e2e runs point a site at a local fake. */
+  readonly siteAliases?: Readonly<Record<string, LinkSite>> | undefined
   readonly dataDir: string
   /** This run's id: in every log line of it (the report shows it, the logs search it). */
   readonly sessionId: string
@@ -302,6 +298,8 @@ export type FinishedEntry = {
   readonly duration?: number | undefined
   readonly extractor: string
   readonly url: string
+  /** The site of its link (detected once per record by the main process). */
+  readonly site: LinkSite
   readonly completedAt: number
   /** The SHA-256 recorded when the file was finished. */
   readonly sha256?: string | undefined
@@ -477,7 +475,7 @@ export type MdcApi = {
   damagedList(): Promise<readonly DamagedEntry[]>
   /** Let one be downloaded again. */
   damagedForget(key: string): Promise<void>
-  /** Restart the app (a new mode applies). */
+  /** Restart the app. */
   relaunch(): Promise<void>
   /** Save the matching history as a CSV the user picks; its path, or undefined when cancelled. */
   exportFinished(target: FinishedTarget): Promise<string | undefined>

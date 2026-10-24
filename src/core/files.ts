@@ -57,6 +57,56 @@ const TRANSLITERATE: Readonly<Record<string, string>> = {
   ŋ: 'ng',
   Ŋ: 'NG',
 }
+/**
+ * Cyrillic (Russian, Ukrainian, Belarusian) as Russian passports write it
+ * (ICAO 9303): "Привет, мир" → "Privet, mir". After NFKD, й and ё arrive as
+ * и and е; they are listed too, for a runtime without Unicode data (no ICU),
+ * where normalize() changes nothing.
+ */
+const CYRILLIC: Readonly<Record<string, string>> = {
+  а: 'a',
+  б: 'b',
+  в: 'v',
+  г: 'g',
+  ґ: 'g',
+  д: 'd',
+  е: 'e',
+  ё: 'e',
+  є: 'ie',
+  ж: 'zh',
+  з: 'z',
+  и: 'i',
+  й: 'i',
+  і: 'i',
+  ї: 'i',
+  к: 'k',
+  л: 'l',
+  м: 'm',
+  н: 'n',
+  о: 'o',
+  п: 'p',
+  р: 'r',
+  с: 's',
+  т: 't',
+  у: 'u',
+  ў: 'u',
+  ф: 'f',
+  х: 'kh',
+  ц: 'ts',
+  ч: 'ch',
+  ш: 'sh',
+  щ: 'shch',
+  ъ: 'ie',
+  ы: 'y',
+  ь: '',
+  э: 'e',
+  ю: 'iu',
+  я: 'ia',
+}
+for (const [lower, latin] of Object.entries(CYRILLIC)) {
+  ;(TRANSLITERATE as Record<string, string>)[lower] = latin
+  ;(TRANSLITERATE as Record<string, string>)[lower.toUpperCase()] = latin.charAt(0).toUpperCase() + latin.slice(1)
+}
 const TRANSLITERABLE = new RegExp(`[${Object.keys(TRANSLITERATE).join('')}]`, 'g')
 
 /**
@@ -64,8 +114,8 @@ const TRANSLITERABLE = new RegExp(`[${Object.keys(TRANSLITERATE).join('')}]`, 'g
  * NFKD splits accented letters and compatibility forms (full-width, ligatures,
  * circled digits) into ASCII + marks, the marks are dropped, apostrophes
  * vanish ("Don't" → "Dont") and every other run of non-alphanumerics becomes
- * one hyphen. Scripts with no ASCII form (Japanese, Cyrillic…) end up empty —
- * callers fall back to the media id.
+ * one hyphen. Cyrillic is transliterated ("Привет" → "Privet"); scripts with
+ * no ASCII form (Japanese, Arabic…) end up empty: callers fall back to the media id.
  */
 export function portableName(text: string, maxLength = 120): string {
   let name = text

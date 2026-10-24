@@ -44,7 +44,6 @@ export const INFO: AppInfo = {
   cpus: 12,
   maxConcurrency: 6,
   boostedConcurrency: 7,
-  mode: 'web',
   dataDir: '/data',
   sessionId: 'S'.repeat(32),
   startedAt: Date.UTC(2026, 9, 11, 15, 0),
@@ -70,7 +69,6 @@ export const SETTINGS: AppSettings = {
   // tests start past the first-steps guide (its own tests turn it back on)
   tourDone: true,
   syncEnabled: false,
-  mode: 'web',
   validateAfter: false,
   cpuBoost: false,
 }
@@ -152,11 +150,11 @@ export class FakeApi implements MdcApi {
       settings?: Partial<AppSettings>
       diagnosis?: Diagnosis
       state?: {batches: BatchSnapshot[]; jobs: JobSnapshot[]}
-      /** This run's info (e.g. another mode than the web one). */
+      /** This run's info. */
       info?: Partial<AppInfo>
     } = {},
   ) {
-    this.settings = {...SETTINGS, ...(opts.info?.mode && {mode: opts.info.mode}), ...opts.settings}
+    this.settings = {...SETTINGS, ...opts.settings}
     this.appInfo = {...INFO, ...opts.info}
     this.diagnosis = opts.diagnosis ?? READY
     this.state = vi.fn(async () => opts.state ?? {batches: [], jobs: []})

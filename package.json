@@ -1,6 +1,6 @@
 {
   "name": "media-downloader-core",
-  "version": "1.17.0",
+  "version": "1.18.0",
   "description": "Download engine for heavy workloads (many videos, huge playlists): yt-dlp + ffmpeg on a CPUs/2 worker pool, O(1) hot paths, codec-guaranteed formats and full integrity validation.",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -19,6 +19,16 @@
       "require": {
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
+      }
+    },
+    "./detect": {
+      "import": {
+        "types": "./dist/detect.d.ts",
+        "default": "./dist/detect.js"
+      },
+      "require": {
+        "types": "./dist/detect.d.cts",
+        "default": "./dist/detect.cjs"
       }
     }
   },

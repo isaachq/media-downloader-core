@@ -1,5 +1,5 @@
 import type {BrowserAssist} from '../browser.js'
-import {type Fetch, HttpSession} from '../http.js'
+import {DOCUMENT_NAVIGATION_HEADERS, type Fetch, HttpSession, navigationFetch} from '../http.js'
 import {Pacer, type PacerOptions} from '../pacer.js'
 import {HostSession, type SessionCookies, type SessionProvider, type SiteSession} from '../session.js'
 import {MetaError} from './errors.js'
@@ -16,6 +16,9 @@ import {MetaError} from './errors.js'
  * instead of each carrying its own copy.
  */
 export type {SessionCookies, SessionProvider, SiteSession}
+
+/** Where a site sends a visitor it won't show a page to: its login or checkpoint page. */
+const WALL_PAGE = /^\/(?:login|checkpoint|accounts\/login)(?:\.php)?(?:[/?#]|$)/
 
 export type MetaClientOptions = {
   /** Shown in messages ("Instagram answered…"). */
@@ -92,12 +95,19 @@ export class MetaClient {
   readonly #log: (level: 'info' | 'warn', message: string) => void
   readonly #now: () => number
   #blockedUntil = 0
+  /**
+   * Share-link hops as a page load (Sec-Fetch-* navigate, sent as given):
+   * Facebook answers /share/r/… with a 400 to a Chrome that says `cors`, the
+   * only mode Node's fetch sends. Cookieless, like the visitor who opened it.
+   */
+  readonly #hops: HttpSession
 
   constructor(options: MetaClientOptions) {
     this.site = options.site
     this.origin = options.origin.replace(/\/$/, '')
     this.host = new URL(this.origin).hostname
     this.session = new HttpSession({fetch: options.fetch})
+    this.#hops = new HttpSession({fetch: options.fetch ?? navigationFetch})
     this.pacer = new Pacer(options.pacing, options.site)
     this.#sessionCookie = options.sessionCookie
     this.#browser = options.browser
@@ -216,11 +226,24 @@ export class MetaClient {
     }
   }
 
-  /** Follow one redirect hop of a short link; undefined when it doesn't redirect. */
+  /**
+   * Follow one redirect hop of a short link; undefined when it doesn't
+   * redirect. First as a page load (anonymous); then with the site's session
+   * when that led nowhere useful: no redirect, or one to the login /
+   * checkpoint page (a link only a signed-in visitor may open). One request
+   * in the common case, at most 2.
+   */
   async redirectOf(url: string, signal?: AbortSignal): Promise<string | undefined> {
-    const response = await this.pacer.run(() => this.session.get(url, {redirect: 'manual', signal}), signal)
-    const target = response.headers.get('location')
-    return target ? new URL(target, url).href : undefined
+    const location = async (session: HttpSession, headers?: Readonly<Record<string, string>>) =>
+      this.pacer.run(async () => {
+        const response = await session.get(url, {redirect: 'manual', headers, signal})
+        void response.body?.cancel()
+        const target = response.headers.get('location')
+        return target ? new URL(target, url).href : undefined
+      }, signal)
+    const asPage = await location(this.#hops, DOCUMENT_NAVIGATION_HEADERS)
+    if (asPage && !WALL_PAGE.test(new URL(asPage).pathname)) return asPage
+    return (await location(this.session)) ?? asPage
   }
 
   /**

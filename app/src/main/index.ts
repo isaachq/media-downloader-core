@@ -27,10 +27,12 @@ import {
   TIKTOK_PROFILE_DEFAULT_ITEMS,
   type VideoAnalysis,
 } from 'media-downloader-core'
+import type {Language} from '../shared/contract'
 import {
   type AppInfo,
   type AppSettings,
   CHANNEL,
+  detectLink,
   type FailedRetry,
   FINISHED_INTEGRITY,
   type FinishedEntry,
@@ -39,11 +41,9 @@ import {
   type FinishedPage,
   type FinishedQuery,
   type FinishedSort,
-  MODE_MISMATCH,
+  type LinkSite,
   type Preview,
-  platformOf,
   RESTART_SETTINGS,
-  type RunMode,
   type ScheduleInput,
   type SetupOutcome,
   SIZE_LIMITS,
@@ -69,6 +69,49 @@ import {MIN_SIZE, readWindowState, restoreBounds, writeWindowState} from './wind
 import {YouTubeController} from './youtube/controller'
 import {runProbe} from './youtube/probe'
 
+/** The titles the app gives the batches it starts itself (download again, retry failed), per language. */
+const HOST_TITLES = {
+  again: {
+    en: 'Downloaded again',
+    es: 'Descargados de nuevo',
+    pt: 'Baixados de novo',
+    it: 'Scaricati di nuovo',
+    ru: 'Скачано заново',
+    zh: '重新下载',
+    id: 'Diunduh ulang',
+    hi: 'फिर से डाउनलोड किए गए',
+    vi: 'Tải lại',
+    th: 'ดาวน์โหลดอีกครั้ง',
+    tr: 'Yeniden indirilenler',
+    ar: 'تنزيل مجدد',
+    fr: 'Téléchargés à nouveau',
+    de: 'Erneut heruntergeladen',
+  },
+  retried: {
+    en: 'Failed, retried',
+    es: 'Fallidos reintentados',
+    pt: 'Falhas tentadas de novo',
+    it: 'Non riusciti, riprovati',
+    ru: 'Повтор неудачных',
+    zh: '重试失败项',
+    id: 'Yang gagal dicoba lagi',
+    hi: 'विफल, फिर से कोशिश',
+    vi: 'Thử lại mục lỗi',
+    th: 'ลองรายการที่ล้มเหลวอีกครั้ง',
+    tr: 'Başarısızlar yeniden denendi',
+    ar: 'إعادة محاولة الفاشلة',
+    fr: 'Échecs relancés',
+    de: 'Fehlgeschlagene, erneut versucht',
+  },
+} as const satisfies Record<string, Record<Language, string>>
+const hostTitle = (which: keyof typeof HOST_TITLES, language: Language): string => HOST_TITLES[which][language]
+/** Now, in the language’s date and time (Electron ships a full ICU). */
+const stamp = (language: Language): string =>
+  new Date().toLocaleString(language === 'pt' ? 'pt-BR' : language === 'zh' ? 'zh-CN' : language, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  })
+
 // Test hooks: e2e runs point the app at a temp data folder and fake tools.
 if (process.env['MDC_DATA_DIR']) app.setPath('userData', path.resolve(process.env['MDC_DATA_DIR']))
 
@@ -92,11 +135,9 @@ let sync: SyncManager
 let settings: SettingsStore
 /** Settles once the batches pending at last shutdown are back; the renderer's restore phase waits for it. */
 let restoring: Promise<void> = Promise.resolve()
-/** What this run downloads (settings.mode at launch): only that site's sources, screens and schedules. */
-let activeMode: RunMode = 'web'
 /** Hidden Chromium for TikTok pages that only open in a browser. */
 const tiktokBrowser = createTikTokBrowser(process.env['MDC_TIKTOK_ORIGIN'])
-/** The same for Instagram and Facebook pages (made only in their mode). */
+/** The same for Instagram and Facebook pages. */
 const metaBrowsers: Array<ReturnType<typeof createMetaBrowser>> = []
 /** YouTube's attestation (after a bot check) and the account the user may choose to sign in with. */
 const youtube = new YouTubeController(state => send(CHANNEL.youtube, state))
@@ -238,39 +279,28 @@ function metaBrowser(partition: string, hosts: readonly string[]) {
 }
 
 /**
- * Only the active mode's native source is built: in TikTok mode nothing reads
- * Instagram, in web mode nothing reads TikTok, and so on (links of other modes
- * are refused before they get here).
+ * Every site is read in every run: TikTok, Instagram and Facebook through
+ * their hidden browsers, the player-page sites, any other host tried as a
+ * player page, and the engine's own defaults for the rest (YouTube, VK, X,
+ * links straight to a file…). The link decides which one reads it.
  */
-function modeSources(mode: RunMode) {
-  const web = mode === 'web'
+function siteSources() {
   return {
     // TikTok pages that need a real browser go through the app's Chromium; e2e runs
     // point TikTok at a local fake site, without pacing delays
-    tiktok:
-      mode === 'tiktok'
-        ? {
-            browser: tiktokBrowser.render,
-            ...(process.env['MDC_TIKTOK_ORIGIN'] && {
-              origin: process.env['MDC_TIKTOK_ORIGIN'],
-              pacing: {spacingMs: 0, jitterMs: 0},
-            }),
-          }
-        : (false as const),
-    instagram:
-      mode === 'instagram'
-        ? {browser: metaBrowser('instagram-reader', ['instagram.com']), ...metaOrigin('MDC_INSTAGRAM_ORIGIN')}
-        : (false as const),
-    facebook:
-      mode === 'facebook'
-        ? {browser: metaBrowser('facebook-reader', ['facebook.com']), ...metaOrigin('MDC_FACEBOOK_ORIGIN')}
-        : (false as const),
-    // player-page sites (configured, or tried by host) belong to the web mode
+    tiktok: {
+      browser: tiktokBrowser.render,
+      ...(process.env['MDC_TIKTOK_ORIGIN'] && {
+        origin: process.env['MDC_TIKTOK_ORIGIN'],
+        pacing: {spacingMs: 0, jitterMs: 0},
+      }),
+    },
+    instagram: {browser: metaBrowser('instagram-reader', ['instagram.com']), ...metaOrigin('MDC_INSTAGRAM_ORIGIN')},
+    facebook: {browser: metaBrowser('facebook-reader', ['facebook.com']), ...metaOrigin('MDC_FACEBOOK_ORIGIN')},
+    // player-page sites (configured, or tried by host);
     // the engine's log isn't there yet: messages wait for it
-    sources: web ? playerSources((level, message) => queueMicrotask(() => engine.log(level, message))) : [],
-    ...(web && {
-      unsupportedUrlSource: (url: URL) => hostSource(url, (level, message) => engine.log(level, message)),
-    }),
+    sources: playerSources((level, message) => queueMicrotask(() => engine.log(level, message))),
+    unsupportedUrlSource: (url: URL) => hostSource(url, (level, message) => engine.log(level, message)),
   }
 }
 
@@ -292,7 +322,7 @@ function createEngine(current: AppSettings): void {
     embedMetadata: current.embedMetadata,
     embedThumbnail: current.embedThumbnail,
     fileNames: current.portableNames ? 'portable' : 'original',
-    ...modeSources(activeMode),
+    ...siteSources(),
     longVideoMinutes: current.longVideoMinutes,
     // a bot check: PO tokens from the app's own Chromium, then a hold for the user (sign in, or wait)
     youtube: {attestation: youtube.strategies, askUser: true},
@@ -386,7 +416,6 @@ function registerIpc(): void {
       cpus: MediaDownloader.cpuCount(),
       maxConcurrency: MediaDownloader.maxConcurrency(),
       boostedConcurrency: MediaDownloader.maxConcurrency(MAX_CPU_SHARE),
-      mode: activeMode,
       ...(Object.keys(SITE_ALIASES).length > 0 && {siteAliases: SITE_ALIASES}),
       dataDir: engine.dataDir,
       sessionId: engine.sessionId,
@@ -407,8 +436,8 @@ function registerIpc(): void {
     if (next.portableNames !== before.portableNames) engine.setFileNames(next.portableNames ? 'portable' : 'original')
     // a browser's session at once: YouTube requests paused by a bot check go on with it
     if (next.cookiesFromBrowser !== before.cookiesFromBrowser) engine.setCookiesFromBrowser(next.cookiesFromBrowser)
-    // Sync Up exists only in TikTok mode: in any other mode its schedule never runs
-    if (next.syncEnabled !== before.syncEnabled && activeMode === 'tiktok') {
+    // Sync Up's schedule runs whenever it is on
+    if (next.syncEnabled !== before.syncEnabled) {
       if (next.syncEnabled) sync.startSchedule()
       else sync.stopSchedule()
     }
@@ -441,7 +470,6 @@ function registerIpc(): void {
   })
   ipcMain.handle(CHANNEL.analyze, async (_event, url: unknown, maxItems: unknown): Promise<Preview> => {
     if (typeof url !== 'string') throw new Error('Invalid request.')
-    assertMode(url)
     const mix = isYouTubeMix(url)
     const valid = Number.isInteger(maxItems) && (maxItems as number) >= 1 && (maxItems as number) <= MAX_REQUESTED_ITEMS
     const cap = valid
@@ -493,8 +521,6 @@ function registerIpc(): void {
   ipcMain.handle(CHANNEL.analyzeCancel, () => reading?.abort())
   ipcMain.handle(CHANNEL.schedule, (_event, input: ScheduleInput) => {
     if (typeof input?.url !== 'string' || typeof input.outDir !== 'string') throw new Error('Invalid request.')
-    assertMode(input.url)
-    for (const entry of input.selection?.entries ?? []) assertMode(entry.url)
     return scheduler.schedule({
       url: input.url,
       profile: toProfile(input),
@@ -572,6 +598,7 @@ function registerIpc(): void {
           duration: entry.duration,
           extractor: entry.extractor,
           url: entry.url,
+          site: siteOf(entry),
           completedAt: entry.completedAt,
           sha256: entry.sha256,
           validation: entry.validation,
@@ -667,11 +694,7 @@ function registerIpc(): void {
   ipcMain.handle(CHANNEL.redownloadFinished, async (_event, target: unknown) => {
     // damaged at the source: never downloaded again (the Damaged list lets one go)
     const gone = (await missingOf(target)).filter(entry => !entry.damaged).slice(0, MAX_REQUESTED_ITEMS)
-    const stamp = new Date().toLocaleString(settings.current.language === 'es' ? 'es' : 'en', {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    })
-    const title = settings.current.language === 'es' ? `Descargados de nuevo · ${stamp}` : `Downloaded again · ${stamp}`
+    const title = `${hostTitle('again', settings.current.language)} · ${stamp(settings.current.language)}`
     const request = redownloadRequest(gone, title)
     if (!request) return 0
     engine.log('info', `history: downloading again ${request.targets.length} file(s) no longer where they were`)
@@ -761,27 +784,21 @@ const opener = process.env['MDC_OPEN_LOG']
     }
 
 /** Test hooks: the local fakes e2e runs point TikTok / Instagram / Facebook at count as those sites. */
-const SITE_ALIASES: Readonly<Record<string, RunMode>> = Object.fromEntries(
+const SITE_ALIASES: Readonly<Record<string, LinkSite>> = Object.fromEntries(
   (
     [
       ['MDC_TIKTOK_ORIGIN', 'tiktok'],
       ['MDC_INSTAGRAM_ORIGIN', 'instagram'],
       ['MDC_FACEBOOK_ORIGIN', 'facebook'],
     ] as const
-  ).flatMap(([variable, mode]) => {
+  ).flatMap(([variable, site]) => {
     try {
-      return process.env[variable] ? [[new URL(process.env[variable]!).host.toLowerCase(), mode]] : []
+      return process.env[variable] ? [[new URL(process.env[variable]!).host.toLowerCase(), site]] : []
     } catch {
       return []
     }
   }),
 )
-
-/** A link of another mode than this run's: refused, with a code the renderer words itself. */
-function assertMode(url: string): void {
-  const platform = platformOf(url, SITE_ALIASES)
-  if (platform && platform !== activeMode) throw new Error(`${MODE_MISMATCH}:${platform}`)
-}
 
 /** A filter of the history from the renderer, validated: words, batch, integrity states, size ranges. */
 function filterOf(target: unknown): FinishedFilter | undefined {
@@ -810,15 +827,15 @@ async function fileState(entry: Pick<ArchiveRecord, 'filepath' | 'sizeBytes'>): 
 }
 
 /**
- * The mode a finished file belongs to, by its link — worked out once per
- * record (records are kept and reused by the archive): a refresh of the
- * history every 2 s during a batch doesn't parse every link again.
+ * The site a finished file came from, by its link: worked out once per
+ * record (records are kept and reused by the archive), so a refresh of the
+ * history every 2 s during a batch doesn't read every link again.
  */
-const sites = new WeakMap<ArchiveRecord, RunMode>()
-function siteOf(entry: ArchiveRecord): RunMode {
+const sites = new WeakMap<ArchiveRecord, LinkSite>()
+function siteOf(entry: ArchiveRecord): LinkSite {
   let site = sites.get(entry)
   if (site === undefined) {
-    site = platformOf(entry.url, SITE_ALIASES) ?? 'web'
+    site = detectLink(entry.url, SITE_ALIASES)?.site ?? 'web'
     sites.set(entry, site)
   }
   return site
@@ -843,8 +860,8 @@ async function eachLimited<T>(items: readonly T[], limit: number, task: (item: T
 }
 
 /**
- * The archive query for a history filter: only this mode's files (by the
- * link's site), the size ranges, the integrity states. Missing / changed
+ * The archive query for a history filter: the size ranges, the integrity
+ * states (files of every site). Missing / changed
  * files need a look at the disk: those are found first (stats in parallel).
  */
 async function archiveFilter(
@@ -854,8 +871,7 @@ async function archiveFilter(
   const wanted = new Set(filter.integrity ?? [])
   const onDisk = wanted.has('missing') || wanted.has('changed')
   const base = (entry: ArchiveRecord) =>
-    siteOf(entry) === activeMode &&
-    (ranges.length === 0 || ranges.some(([min, max]) => entry.sizeBytes >= min && entry.sizeBytes < max))
+    ranges.length === 0 || ranges.some(([min, max]) => entry.sizeBytes >= min && entry.sizeBytes < max)
   let disk: DiskStates | undefined
   if (onDisk) {
     // one pass over the archive (not one per 500-record page), and the stats of the last scan reused
@@ -951,7 +967,6 @@ function retryRequest(items: readonly FailedRetry[]) {
   const targets: BatchTarget[] = []
   for (const [position, item] of items.entries()) {
     if (typeof item?.url !== 'string') throw new Error('Invalid request.')
-    assertMode(item.url)
     const known = typeof item.jobId === 'string' ? engine.request(item.jobId as JobId) : undefined
     const index = position + 1
     entries.push({
@@ -965,11 +980,7 @@ function retryRequest(items: readonly FailedRetry[]) {
     })
     targets.push(retryTarget(index, known, {outDir: settings.current.downloadDir, profile: item.profile}))
   }
-  const stamp = new Date().toLocaleString(settings.current.language === 'es' ? 'es' : 'en', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  })
-  const title = settings.current.language === 'es' ? `Fallidos reintentados · ${stamp}` : `Failed, retried · ${stamp}`
+  const title = `${hostTitle('retried', settings.current.language)} · ${stamp(settings.current.language)}`
   return {
     url: items[0]!.url,
     profile: targets[0]!.profile,
@@ -985,7 +996,7 @@ async function selectionOf(target: unknown): Promise<{keys?: readonly string[]; 
   const t = target as {keys?: unknown; batchId?: unknown; all?: unknown; search?: unknown}
   if (Array.isArray(t.keys)) return {keys: t.keys.filter((key): key is string => typeof key === 'string')}
   if (t.all !== true) return typeof t.batchId === 'string' ? {batchId: t.batchId} : undefined
-  // always as keys: the history shown holds only this mode's files
+  // always as keys: the records the history shows for this filter
   return {keys: (await allFinished(filterOf(target)!)).map(entry => entry.key)}
 }
 
@@ -1034,8 +1045,7 @@ async function missingOf(target: unknown): Promise<ArchiveRecord[]> {
   if (only.keys) {
     // from the records in memory, one pass — not a read of the whole log from disk
     const keys = new Set(only.keys)
-    scope = (await engine.archive.matching({match: entry => keys.has(entry.key) && siteOf(entry) === activeMode}))
-      .entries
+    scope = (await engine.archive.matching({match: entry => keys.has(entry.key)})).entries
   } else scope = await allFinished({batchId: only.batchId})
   const gone: ArchiveRecord[] = []
   await eachLimited(scope, 16, async entry => {
@@ -1044,7 +1054,7 @@ async function missingOf(target: unknown): Promise<ArchiveRecord[]> {
   return gone
 }
 
-/** Every record of this mode matching a filter, read a page (500) at a time. */
+/** Every record matching a filter, in one pass. */
 async function allFinished(filter: FinishedFilter): Promise<readonly ArchiveRecord[]> {
   // one pass, O(n): paging 500 at a time filtered the whole history again for every page
   return (await engine.archive.matching(await archiveFilter(filter))).entries
@@ -1144,7 +1154,6 @@ else {
     )
     const current = await settings.load()
     phase('start: settings loaded')
-    activeMode = current.mode
     nativeTheme.themeSource = current.theme
     createEngine(current)
     phase('start: engine created')
@@ -1162,8 +1171,8 @@ else {
     phase('start: updater ready')
     await restoring
     phase('start: pending batches restored')
-    // scheduled syncs (and any missed while the app was closed) once pending batches are back — TikTok mode only
-    if (activeMode === 'tiktok' && current.syncEnabled) sync.startSchedule()
+    // scheduled syncs (and any missed while the app was closed) once pending batches are back
+    if (current.syncEnabled) sync.startSchedule()
     // YouTube breaks old yt-dlp versions: refresh in the background once tools are in place
     void firstDiagnosis
       .then(d => (d.ready && !process.env['MDC_BINARIES'] ? engine.updateYtDlp() : undefined))

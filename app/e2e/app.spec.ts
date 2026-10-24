@@ -289,11 +289,7 @@ test('previews a list and downloads only the picked items', async () => {
 test('backs up picked posts of a TikTok profile as MP3 (built-in extractor)', async () => {
   const site = await startFakeTikTok({posts: 6, pinned: true})
   try {
-    const {app, page, outDir} = await launch(
-      'tiktok',
-      {format: 'mp3', mode: 'tiktok'},
-      {MDC_TIKTOK_ORIGIN: site.origin},
-    )
+    const {app, page, outDir} = await launch('tiktok', {format: 'mp3'}, {MDC_TIKTOK_ORIGIN: site.origin})
     await page.getByLabel('Video, playlist or profile URL').fill(`${site.origin}/@${site.user}`)
     await page
       .getByRole('button', {name: /download/i})
@@ -326,11 +322,7 @@ test('Sync Up keeps a TikTok account in step with its folder, in the format of t
     const folder = path.join(root, 'sync', 'out', 'TikTok-fakeuser')
     await fs.mkdir(folder, {recursive: true})
     for (const id of site.ids.slice(2)) await fs.writeFile(path.join(folder, `old-${id}.mp3`), 'audio')
-    const {app, page} = await launch(
-      'sync',
-      {format: 'm4a', syncEnabled: true, mode: 'tiktok'},
-      {MDC_TIKTOK_ORIGIN: site.origin},
-    )
+    const {app, page} = await launch('sync', {format: 'm4a', syncEnabled: true}, {MDC_TIKTOK_ORIGIN: site.origin})
     await page.getByRole('tab', {name: 'Sync Up'}).click()
     await page.getByTestId('sync-add').click()
     const dialog = page.locator('.ant-modal').filter({hasText: 'TikTok account'})
@@ -379,11 +371,7 @@ test('a TikTok profile behind a verification page opens through the built-in bro
   // plain requests get a "please wait" page whose script sets a cookie and reloads: only a browser passes
   const site = await startFakeTikTok({posts: 6, jsChallenge: true})
   try {
-    const {app, page, outDir} = await launch(
-      'tiktok-browser',
-      {format: 'mp3', mode: 'tiktok'},
-      {MDC_TIKTOK_ORIGIN: site.origin},
-    )
+    const {app, page, outDir} = await launch('tiktok-browser', {format: 'mp3'}, {MDC_TIKTOK_ORIGIN: site.origin})
     await page.getByLabel('Video, playlist or profile URL').fill(`${site.origin}/@${site.user}`)
     await page
       .getByRole('button', {name: /download/i})
@@ -478,7 +466,10 @@ test('reports unavailable items with a reason and finishes with errors', async (
 
 test('remembers language and theme across restarts', async () => {
   const first = await launch('prefs')
-  await first.page.getByText('ES', {exact: true}).click()
+  // the language select (fourteen languages, with search): Español by its own name
+  await first.page.getByTestId('language-select').first().click()
+  await first.page.keyboard.type('espa')
+  await first.page.keyboard.press('Enter')
   await expect(first.page.getByText('Nueva descarga')).toBeVisible()
   await first.page.getByLabel('Oscuro').click()
   await expect(first.page.getByTestId('theme-mode')).toHaveText('dark')
@@ -497,32 +488,29 @@ test('remembers language and theme across restarts', async () => {
 
 // ─── beta 10 ────────────────────────────────────────────────────────────────
 
-test('one site per run: TikTok mode has Sync Up and refuses other links; web mode has no Sync Up', async () => {
+test('one link box for every site: an old settings.json with a mode loads, Sync Up is there, links are tagged', async () => {
   const site = await startFakeTikTok({posts: 2})
   try {
-    const tiktok = await launch('mode-tiktok', {mode: 'tiktok', syncEnabled: true}, {MDC_TIKTOK_ORIGIN: site.origin})
-    await expect(tiktok.page.getByTestId('mode-tag')).toHaveText('Mode: TikTok')
-    await expect(tiktok.page.getByRole('tab', {name: 'Sync Up'})).toBeVisible()
-    await tiktok.page.getByLabel('Video, playlist or profile URL').fill('https://www.youtube.com/watch?v=x')
-    await expect(
-      tiktok.page.getByText(/This is a YouTube and websites link — this run is in TikTok mode/),
-    ).toBeVisible()
-    await tiktok.page.screenshot({path: path.join(APP_DIR, 'test-results', 'mode-tiktok.png')})
-    await close(tiktok.app)
-
-    // a scheduled sync never runs outside TikTok mode, and its controls are not there
-    const web = await launch('mode-web', {mode: 'web', syncEnabled: true}, {MDC_TIKTOK_ORIGIN: site.origin})
-    await expect(web.page.getByTestId('mode-tag')).toHaveText('Mode: YouTube and websites')
-    await expect(web.page.getByRole('tab', {name: 'Sync Up'})).toHaveCount(0)
-    await web.page.getByLabel('Video, playlist or profile URL').fill(`${site.origin}/@${site.user}`)
-    await expect(web.page.getByText(/This is a TikTok link — this run is in YouTube and websites mode/)).toBeVisible()
-    await web.page.getByRole('button', {name: /settings/i}).click()
-    await expect(web.page.getByTestId('settings-mode')).toBeVisible()
-    await expect(web.page.getByRole('switch', {name: 'Run scheduled syncs (Sync Up)'})).toHaveCount(0)
-    await web.page.waitForTimeout(500)
-    await web.page.screenshot({path: path.join(APP_DIR, 'test-results', 'settings-mode.png')})
-    expect(site.hits.list + site.hits.profile).toBe(0)
-    await close(web.app)
+    // settings of a version with one site per run: its mode is ignored
+    const {app, page} = await launch('every-site', {mode: 'web', syncEnabled: true}, {MDC_TIKTOK_ORIGIN: site.origin})
+    await expect(page.getByTestId('mode-tag')).toHaveCount(0)
+    await expect(page.getByRole('tab', {name: 'New download'})).toBeVisible()
+    await expect(page.getByRole('tab', {name: 'Sync Up'})).toBeVisible()
+    const field = page.getByLabel('Video, playlist or profile URL')
+    await field.fill(`${site.origin}/@${site.user}`)
+    await expect(page.getByTestId('site-tag')).toHaveAttribute('data-site', 'tiktok')
+    await field.fill('https://www.youtube.com/watch?v=x')
+    await expect(page.getByTestId('site-tag')).toHaveAttribute('data-site', 'youtube')
+    await field.fill('https://vk.com/video-1_2')
+    await expect(page.getByTestId('site-tag')).toHaveText('VK')
+    await page.screenshot({path: path.join(APP_DIR, 'test-results', 'every-site.png')})
+    await page.getByRole('button', {name: /settings/i}).click()
+    await expect(page.getByRole('switch', {name: 'Run scheduled syncs (Sync Up)'})).toBeChecked()
+    await expect(page.getByTestId('settings-mode')).toHaveCount(0)
+    await expect(page.getByTestId('youtube-account')).toBeVisible()
+    await page.waitForTimeout(500)
+    await page.screenshot({path: path.join(APP_DIR, 'test-results', 'settings-no-site.png')})
+    await close(app)
   } finally {
     await site.close()
   }
@@ -557,7 +545,7 @@ test('failed downloads of several batches go into one new batch from the Failed 
   await expect(cards.nth(0)).toHaveAttribute('data-status', 'completed-with-errors', {timeout: 60_000})
   await page.locator('.ant-notification-notice-close').first().click()
 
-  await page.getByRole('button', {name: 'Failed — see the list and retry'}).click()
+  await page.getByRole('button', {name: 'Failed: see the list and retry'}).click()
   const modal = page.getByTestId('failed-modal')
   await expect(modal.locator('.ant-table-row')).toHaveCount(2)
   await page.waitForTimeout(400)

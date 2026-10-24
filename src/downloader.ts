@@ -53,6 +53,8 @@ import {COOLING_DOWN, withPatience} from './sources/pacer.js'
 import {type ListingProgress, type MediaSource, needsFallback} from './sources/source.js'
 import {DEFAULT_SLIDESHOW, slideshowOptions} from './sources/tiktok/slideshow.js'
 import {TikTokSource} from './sources/tiktok/source.js'
+import {VkSource} from './sources/vk/source.js'
+import {XSource} from './sources/x/source.js'
 import type {
   AnalysisResult,
   AttemptStrategy,
@@ -287,6 +289,8 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       ...(options.facebook === false
         ? []
         : [new FacebookSource({log, cookies: () => this.#siteCookies(['facebook.com']), ...options.facebook})]),
+      ...(options.x === false ? [] : [new XSource({log, ...options.x})]),
+      ...(options.vk === false ? [] : [new VkSource({log, ...options.vk})]),
       ...(options.sources ?? []),
       // a link straight to a media file, on any other site: last, after every site's own source
       ...(options.direct === false ? [] : [new DirectFileSource(options.direct)]),
@@ -2156,6 +2160,9 @@ const FINAL_HINTS: ReadonlySet<string> = new Set([
   'unsupported-url',
   'format-unavailable',
   'bot-check',
+  'no-video',
+  'live-now',
+  'stream-only',
 ])
 
 /**

@@ -1,4 +1,4 @@
-import {act, cleanup, render, screen, waitFor, within} from '@testing-library/react'
+import {act, render, screen, waitFor, within} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type {SubscriptionView} from 'media-downloader-core'
 import {afterEach, describe, expect, it} from 'vitest'
@@ -62,8 +62,8 @@ describe('account names and folders', () => {
 })
 
 describe('Sync Up', () => {
-  it('exists only in TikTok mode: a section next to New download, its schedule switch in Settings', async () => {
-    const {api, user} = await mount(new FakeApi({info: {mode: 'tiktok'}}))
+  it('is always a section next to New download, its schedule switch in Settings', async () => {
+    const {api, user} = await mount(new FakeApi())
     expect(await screen.findByRole('tab', {name: 'New download'})).toHaveAttribute('aria-selected', 'true')
     await openSync(user)
     expect(screen.queryByLabelText('Video, playlist or profile URL')).not.toBeInTheDocument()
@@ -75,20 +75,16 @@ describe('Sync Up', () => {
     expect(api.setSettings).toHaveBeenCalledWith({syncEnabled: true})
   })
 
-  it('does not exist in any other mode, even with its schedule on', async () => {
-    for (const mode of ['web', 'instagram', 'facebook'] as const) {
-      const {user} = await mount(new FakeApi({info: {mode}, settings: {syncEnabled: true}}))
-      expect(screen.queryByRole('tab', {name: 'Sync Up'})).not.toBeInTheDocument()
-      expect(screen.queryByTestId('sync-panel')).not.toBeInTheDocument()
-      await user.click(screen.getByRole('button', {name: /settings/i}))
-      expect(await screen.findByTestId('settings-mode')).toBeInTheDocument()
-      expect(screen.queryByRole('switch', {name: 'Run scheduled syncs (Sync Up)'})).not.toBeInTheDocument()
-      cleanup()
-    }
+  it('is there in every run, its schedule switch showing whether it is on', async () => {
+    const {user} = await mount(new FakeApi({settings: {syncEnabled: true}}))
+    expect(screen.getByRole('tab', {name: 'Sync Up'})).toBeInTheDocument()
+    await user.click(screen.getByRole('button', {name: /settings/i}))
+    expect(await screen.findByRole('switch', {name: 'Run scheduled syncs (Sync Up)'})).toBeChecked()
+    expect(screen.queryByTestId('settings-mode')).not.toBeInTheDocument()
   })
 
   it('adds an account into the folder that already has its videos, keeping their format, and syncs it', async () => {
-    const api = new FakeApi({info: {mode: 'tiktok'}, settings: {syncEnabled: true, format: 'mp3'}})
+    const api = new FakeApi({settings: {syncEnabled: true, format: 'mp3'}})
     api.syncFolderResult = {files: 835, formats: ['mp4'], format: 'mp4'}
     const {user} = await mount(api)
     await openSync(user)
@@ -118,7 +114,7 @@ describe('Sync Up', () => {
   })
 
   it('an empty folder takes the format chosen; a folder mixing formats cannot be synced', async () => {
-    const api = new FakeApi({info: {mode: 'tiktok'}, settings: {syncEnabled: true}})
+    const api = new FakeApi({settings: {syncEnabled: true}})
     const {user} = await mount(api)
     await openSync(user)
     await user.click(screen.getByTestId('sync-add'))
@@ -153,7 +149,7 @@ describe('Sync Up', () => {
   })
 
   it('checks what is new without downloading, then downloads it', async () => {
-    const api = new FakeApi({info: {mode: 'tiktok'}, settings: {syncEnabled: true}})
+    const api = new FakeApi({settings: {syncEnabled: true}})
     api.syncs = [account()]
     api.syncCheckResult = {
       listed: 20,
@@ -181,7 +177,7 @@ describe('Sync Up', () => {
   })
 
   it('follows a run live and opens its batch in Downloads and Finished', async () => {
-    const api = new FakeApi({info: {mode: 'tiktok'}, settings: {syncEnabled: true}})
+    const api = new FakeApi({settings: {syncEnabled: true}})
     const item = account()
     api.syncs = [item]
     const {user} = await mount(api)
@@ -216,7 +212,7 @@ describe('Sync Up', () => {
   })
 
   it('changes the schedule, opens the folder, and removes an account keeping its files', async () => {
-    const api = new FakeApi({info: {mode: 'tiktok'}, settings: {syncEnabled: true}})
+    const api = new FakeApi({settings: {syncEnabled: true}})
     const item = account()
     api.syncs = [item]
     const {user} = await mount(api)

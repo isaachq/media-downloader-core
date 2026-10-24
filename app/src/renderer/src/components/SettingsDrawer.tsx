@@ -1,4 +1,4 @@
-import {FolderOpenOutlined, MedicineBoxOutlined, ReloadOutlined, ToolOutlined, WarningOutlined} from '@ant-design/icons'
+import {FolderOpenOutlined, MedicineBoxOutlined, ToolOutlined, WarningOutlined} from '@ant-design/icons'
 import {
   Alert,
   Button,
@@ -22,29 +22,14 @@ import {
 } from 'antd'
 import type {DamagedEntry, ValidationLevel} from 'media-downloader-core'
 import {useEffect, useState} from 'react'
-import {
-  type AppSettings,
-  BROWSERS,
-  concurrencyCap,
-  RESTART_SETTINGS,
-  RUN_MODES,
-  type RunMode,
-  type ThemeMode,
-} from '../../../shared/contract'
+import {type AppSettings, BROWSERS, concurrencyCap, RESTART_SETTINGS, type ThemeMode} from '../../../shared/contract'
 import {api} from '../api'
 import {useApp} from '../context'
 import {moment} from '../format'
-import {type MessageKey, useT} from '../i18n'
-import {modeName} from '../mode'
-import {type AppStore, BATCH_FINISHED, useStoreValue} from '../store'
+import {useT} from '../i18n'
+import {useStoreValue} from '../store'
+import {LanguageSelect} from './LanguageSelect'
 import {SignInHelp} from './SignInHelp'
-
-/** Batches not closed yet (scheduled, checking, running, validating): the mode can't change under them. */
-const openBatches = (store: AppStore): number => {
-  let open = 0
-  for (const batch of store.batches.values()) if (!BATCH_FINISHED.has(batch.status)) open++
-  return open
-}
 
 type Props = {
   readonly open: boolean
@@ -60,13 +45,10 @@ export function SettingsDrawer({open, onClose, onDoctor, onReinstall}: Props) {
 
   const [damagedOpen, setDamagedOpen] = useState(false)
   const [signInOpen, setSignInOpen] = useState(false)
-  const busy = useStoreValue(openBatches)
   const cap = concurrencyCap(info, settings)
 
   const change = (patch: Partial<AppSettings>) => {
-    // the mode has its own notice (with a restart button)
-    if (Object.keys(patch).some(key => key !== 'mode' && RESTART_SETTINGS.includes(key as keyof AppSettings)))
-      setRestartNeeded(true)
+    if (Object.keys(patch).some(key => RESTART_SETTINGS.includes(key as keyof AppSettings))) setRestartNeeded(true)
     void updateSettings(patch)
   }
   const chooseFolder = async () => {
@@ -105,49 +87,6 @@ export function SettingsDrawer({open, onClose, onDoctor, onReinstall}: Props) {
             </Flex>
           </Space>
         </div>
-        <Divider titlePlacement="start">{t('settings.mode')}</Divider>
-        <Form.Item extra={t('settings.modeHelp')} data-testid="settings-mode">
-          <Radio.Group
-            value={settings.mode}
-            disabled={busy > 0}
-            onChange={event => change({mode: event.target.value as RunMode})}
-            aria-label={t('settings.mode')}
-          >
-            <Space orientation="vertical">
-              {RUN_MODES.map(mode => (
-                <Radio key={mode} value={mode} data-testid={`mode-${mode}`}>
-                  <Typography.Text strong>{modeName(t, mode)}</Typography.Text>
-                  <br />
-                  <Typography.Text type="secondary">{t(`mode.${mode}.help` as MessageKey)}</Typography.Text>
-                </Radio>
-              ))}
-            </Space>
-          </Radio.Group>
-        </Form.Item>
-        {busy > 0 ? (
-          <Alert type="info" showIcon title={t('settings.modeBusy', {count: busy})} className="restart-alert" />
-        ) : null}
-        {settings.mode !== info.mode ? (
-          <Alert
-            type="warning"
-            showIcon
-            className="restart-alert"
-            data-testid="mode-restart"
-            title={t('settings.modeRestart', {mode: modeName(t, settings.mode)})}
-            action={
-              <Button
-                size="small"
-                type="primary"
-                icon={<ReloadOutlined />}
-                disabled={busy > 0}
-                onClick={() => void api().relaunch()}
-              >
-                {t('settings.restartNow')}
-              </Button>
-            }
-          />
-        ) : null}
-
         <Divider titlePlacement="start">{t('settings.downloads')}</Divider>
         <Form.Item label={t('settings.folder')}>
           <Space.Compact block>
@@ -252,11 +191,9 @@ export function SettingsDrawer({open, onClose, onDoctor, onReinstall}: Props) {
             options={[{value: '', label: t('settings.cookies.none')}, ...BROWSERS.map(b => ({value: b, label: b}))]}
           />
         </Form.Item>
-        {info.mode === 'web' ? (
-          <Form.Item label={t('settings.youtubeAccount')} data-testid="youtube-account">
-            <YouTubeAccountRow />
-          </Form.Item>
-        ) : null}
+        <Form.Item label={t('settings.youtubeAccount')} data-testid="youtube-account">
+          <YouTubeAccountRow />
+        </Form.Item>
         <Form.Item>
           <Space orientation="vertical" size="middle">
             <SwitchRow
@@ -280,20 +217,14 @@ export function SettingsDrawer({open, onClose, onDoctor, onReinstall}: Props) {
             >
               {t('settings.notifications')}
             </SwitchRow>
-            {info.mode === 'tiktok' ? (
-              <div>
-                <SwitchRow
-                  id="opt-sync"
-                  checked={settings.syncEnabled}
-                  onChange={value => change({syncEnabled: value})}
-                >
-                  {t('settings.sync')}
-                </SwitchRow>
-                <Typography.Paragraph type="secondary" className="switch-help">
-                  {t('settings.syncHelp')}
-                </Typography.Paragraph>
-              </div>
-            ) : null}
+            <div>
+              <SwitchRow id="opt-sync" checked={settings.syncEnabled} onChange={value => change({syncEnabled: value})}>
+                {t('settings.sync')}
+              </SwitchRow>
+              <Typography.Paragraph type="secondary" className="switch-help">
+                {t('settings.syncHelp')}
+              </Typography.Paragraph>
+            </div>
             <SwitchRow id="opt-update" checked={settings.autoUpdate} onChange={value => change({autoUpdate: value})}>
               {t('settings.autoUpdate')}
             </SwitchRow>
@@ -314,14 +245,7 @@ export function SettingsDrawer({open, onClose, onDoctor, onReinstall}: Props) {
 
         <Divider titlePlacement="start">{t('settings.appearance')}</Divider>
         <Form.Item label={t('header.language')}>
-          <Segmented
-            value={settings.language}
-            options={[
-              {label: 'English', value: 'en'},
-              {label: 'Español', value: 'es'},
-            ]}
-            onChange={value => change({language: value as 'en' | 'es'})}
-          />
+          <LanguageSelect />
         </Form.Item>
         <Form.Item label={t('header.theme')}>
           <Segmented

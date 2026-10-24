@@ -186,6 +186,7 @@ describe('finished tab', () => {
     duration: 60 * i,
     extractor: 'Youtube',
     url: `https://example.com/${i}`,
+    site: 'web',
     completedAt: Date.UTC(2026, 9, 11, 12, i),
     sha256: 'a'.repeat(64),
     validation: 'full',
@@ -370,7 +371,7 @@ describe('preview of a profile whose count includes posts it does not list', () 
   })
 
   it('explains it instead of offering a load that brings nothing (Spanish)', async () => {
-    const api = new FakeApi({info: {mode: 'tiktok'}, settings: {language: 'es'}})
+    const api = new FakeApi({settings: {language: 'es'}})
     api.preview = {
       kind: 'playlist',
       title: 'TikTok @a',
@@ -390,7 +391,7 @@ describe('preview of a profile whose count includes posts it does not list', () 
   })
 
   it('a listing that stopped short offers to continue', async () => {
-    const api = new FakeApi({info: {mode: 'tiktok'}})
+    const api = new FakeApi()
     api.preview = {
       kind: 'playlist',
       title: 'TikTok @a',

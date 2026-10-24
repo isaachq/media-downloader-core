@@ -258,6 +258,18 @@ describe('portable file names (car stereos, TVs, USB sticks)', () => {
     assert.equal(portableName('Подъезд объявление'), 'Podieezd-obieiavlenie')
   })
 
+  it('й and ё stay letters where normalize() does nothing (a runtime without ICU)', () => {
+    const normalize = String.prototype.normalize
+    String.prototype.normalize = function (this: string) {
+      return String(this)
+    }
+    try {
+      assert.equal(portableName('Йошкар-Ола, Ёж'), 'Ioshkar-Ola-Ezh')
+    } finally {
+      String.prototype.normalize = normalize
+    }
+  })
+
   it('falls back to the id when a title has no ASCII form', () => {
     assert.equal(portableName('東京 🎌 مرحبا'), '')
     assert.equal(mediaFileStem('portable', {title: '東京', id: 'abc_123', index: 7}), '007-abc-123')

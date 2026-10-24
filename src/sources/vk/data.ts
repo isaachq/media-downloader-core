@@ -31,6 +31,8 @@ export type VkProblem =
   | 'blocked'
   | 'refused'
   | 'live'
+  /** Only an HLS stream, or played from another site: no file this extractor fetches (yt-dlp may). */
+  | 'stream-only'
   | 'format-changed'
   | 'no-media'
 
@@ -188,7 +190,10 @@ export function problemOf(code: unknown, data: readonly unknown[]): VkError {
   } catch {}
   message = plain(message) ?? `error ${String(code)}`
   const says = (pattern: RegExp) => pattern.test(message)
+  // transient wordings first: "access temporarily restricted, try later" is a wait, not a private video
   if (says(/captcha|robot|бот|подтверд/i)) return new VkError('blocked', `VK asks to confirm this is not a bot.`)
+  if (says(/temporar|try again|later|too many|временно|позже|слишком много/i))
+    return new VkError('refused', `VK: ${message}`)
   if (says(/deleted|removed|no longer available|not found|удал[её]н|изъят|не найден/i))
     return new VkError('removed', 'This VK video has been deleted or is no longer available.')
   if (says(/region|country|стран|регион/i)) return new VkError('geo-blocked', 'This VK video is not available here.')
@@ -196,8 +201,8 @@ export function problemOf(code: unknown, data: readonly unknown[]): VkError {
     return new VkError('login-required', 'This VK video can only be watched signed in (age-restricted?).')
   if (says(/restricted|denied|private|access|доступ|ограничен|приват/i))
     return new VkError('private', 'This VK video is private (access restricted by its owner).')
-  if (says(/temporar|try again|later|временно|позже/i)) return new VkError('refused', `VK: ${message}`)
-  return new VkError('removed', `This VK video is not available (${message}).`)
+  // a wording this extractor doesn't know: not a verdict (yt-dlp, where there is one, reads it again)
+  return new VkError('format-changed', `VK refused this video: ${message}`)
 }
 
 // ─── a video ────────────────────────────────────────────────────────────────
@@ -271,6 +276,99 @@ export function readVideo(data: readonly unknown[], oid: string, id: string): Vk
   }
 }
 
+// ─── the embedded player ────────────────────────────────────────────────────
+
+const PREFETCH = '"apiPrefetchCache":'
+const EMBED_QUALITY = /^mp4_(\d{3,4})$/
+
+/**
+ * The JSON value that starts at `from` in `text` (an array or an object),
+ * found by matching brackets outside strings: one pass, O(n) for the n
+ * characters scanned. Undefined when it doesn't close.
+ */
+export function jsonAt(text: string, from: number): string | undefined {
+  let depth = 0
+  let inString = false
+  let escaped = false
+  for (let i = from; i < text.length; i++) {
+    const c = text[i]
+    if (inString) {
+      if (escaped) escaped = false
+      else if (c === '\\') escaped = true
+      else if (c === '"') inString = false
+      continue
+    }
+    if (c === '"') inString = true
+    else if (c === '[' || c === '{') depth++
+    else if (c === ']' || c === '}') {
+      depth--
+      if (depth === 0) return text.slice(from, i + 1)
+      if (depth < 0) return undefined
+    }
+  }
+  return undefined
+}
+
+/**
+ * The video of the embed page (`video_ext.php?oid=&id=&hash=`), which an
+ * embed of a hidden video opens with its hash. The page prefetches the API's
+ * `video.get` for its player (`window.cur.apiPrefetchCache`): `files.mp4_144`…
+ * `mp4_1080`, `hls`, the title, duration and date (no author). O(n) in the
+ * page's length.
+ */
+export function readEmbed(html: string, oid: string, id: string): VkVideo {
+  const at = html.indexOf(PREFETCH)
+  const raw = at >= 0 ? jsonAt(html, at + PREFETCH.length) : undefined
+  let cache: unknown
+  try {
+    cache = raw ? JSON.parse(raw) : undefined
+  } catch {}
+  if (!Array.isArray(cache)) {
+    if (/video_ext_msg|This video is (?:private|unavailable)|has been deleted|was deleted/i.test(html)) {
+      throw new VkError('removed', 'This embedded VK video is not available (removed, or the link is no longer valid).')
+    }
+    throw new VkError('format-changed', 'VK embed page without the player data where it used to be.')
+  }
+  const get = cache.find(entry => isObject(entry) && entry['method'] === 'video.get') as Json | undefined
+  const response = get?.['response']
+  const items = isObject(response) && Array.isArray(response['items']) ? response['items'] : undefined
+  const item = items?.find(isObject)
+  if (!item) {
+    if (get && (items?.length === 0 || isObject(get['error'])))
+      throw new VkError('removed', 'This embedded VK video is not available (removed, or the link is no longer valid).')
+    throw new VkError('format-changed', 'VK embed page without the video where it used to be.')
+  }
+  const files = isObject(item['files']) ? item['files'] : {}
+  const renditions: Rendition[] = []
+  for (const [key, value] of Object.entries(files)) {
+    const quality = EMBED_QUALITY.exec(key)
+    const href = text(value)
+    if (!quality || !href || !/^https?:\/\//.test(href)) continue
+    const resolution = Number(quality[1])
+    renditions.push({codec: 'h264', width: 0, height: 0, resolution, bitrate: resolution, urls: [href]})
+  }
+  renditions.sort((a, b) => b.resolution - a.resolution)
+  const images = Array.isArray(item['image']) ? item['image'].filter(isObject) : []
+  const status = text(item['live_status'])
+  return {
+    oid: String(num(item['owner_id']) ?? oid),
+    id: String(num(item['id']) ?? id),
+    title: plain(item['title']),
+    duration: num(item['duration']) || undefined,
+    date: num(item['date']) || undefined,
+    thumbnail: text(images.at(-1)?.['url']),
+    renditions,
+    hls: text(files['hls']),
+    live:
+      status === 'started' ||
+      status === 'upcoming' ||
+      text(files['hls_live']) !== undefined ||
+      text(files['live_mp4']) !== undefined ||
+      (num(item['live']) === 1 && renditions.length === 0),
+    external: text(files['external']) !== undefined && renditions.length === 0,
+  }
+}
+
 // ─── listings ───────────────────────────────────────────────────────────────
 
 export type ListedVideo = {
@@ -282,6 +380,8 @@ export type ListedVideo = {
   readonly date?: number | undefined
   readonly thumbnail?: string | undefined
   readonly clip: boolean
+  /** The access key the entry's own link carries (a hidden video in an album). */
+  readonly list?: string | undefined
 }
 
 export type ListingPage = {
@@ -292,6 +392,15 @@ export type ListingPage = {
   readonly total?: number | undefined
   /** The album's name, when the answer lists the owner's albums. */
   readonly albumName?: string | undefined
+}
+
+/** The access key in an entry's path: `/video-1_2?list=<key>` or `/video-1_2_<key>`. */
+const ENTRY_KEY =
+  /^\/(?:video|clip)-?\d+_\d+(?:_([0-9a-f]{4,40})|\?(?:[^#]*&)?list=([0-9a-f]{4,40}|ln-[\da-zA-Z]{1,40}))/
+
+const keyOf = (path: string): string | undefined => {
+  const match = ENTRY_KEY.exec(path)
+  return match?.[1] ?? match?.[2]
 }
 
 /**
@@ -322,6 +431,7 @@ export function readListing(data: readonly unknown[], section: string, oid: stri
       duration: num(entry[19]) || undefined,
       thumbnail: text(entry[2]),
       clip: path.startsWith('/clip'),
+      list: keyOf(path),
     })
   }
   return {

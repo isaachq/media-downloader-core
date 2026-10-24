@@ -23,6 +23,12 @@ describe('detectLink: the site of a pasted or shared link', () => {
     assert.equal(site('https://twitter.com/nasa/status/1585341984679469056?s=20'), 'x')
     assert.equal(site('https://mobile.twitter.com/i/status/1585341984679469056'), 'x')
     assert.equal(site('https://t.co/D68z4K2wq7'), 'x')
+    // what XSource and VkSource take, detection names the same
+    assert.equal(site('https://fxtwitter.com/a/status/1585341984679469056'), 'x')
+    assert.equal(site('https://vxtwitter.com/a/status/1'), 'x')
+    assert.equal(site('https://fixupx.com/a/status/1'), 'x')
+    assert.equal(site('https://fixvx.com/a/status/1'), 'x')
+    assert.equal(site('https://vkontakte.ru/video1_2'), 'vk')
   })
 
   it('any other site is "web", and a link straight to a file says so', () => {
@@ -49,6 +55,13 @@ describe('detectLink: the site of a pasted or shared link', () => {
     assert.equal(shared?.url, 'https://www.facebook.com/share/r/19qKig4dBU/')
     assert.equal(shared?.site, 'facebook')
     assert.equal(detectLink('(https://x.com/a/status/1)')?.url, 'https://x.com/a/status/1')
+    // a parenthesis the link opened is its own; one the sentence opened is not
+    assert.equal(detectLink('https://en.wikipedia.org/wiki/Foo_(bar)')?.url, 'https://en.wikipedia.org/wiki/Foo_(bar)')
+    assert.equal(
+      detectLink('(ver https://en.wikipedia.org/wiki/Foo_(bar)).')?.url,
+      'https://en.wikipedia.org/wiki/Foo_(bar)',
+    )
+    assert.equal(detectLink('¿Viste esto? https://x.com/a/status/1?!')?.url, 'https://x.com/a/status/1')
     assert.equal(detectLink('  https://vk.com/video1_2\n')?.url, 'https://vk.com/video1_2')
   })
 
@@ -73,6 +86,8 @@ describe('detectLink: the site of a pasted or shared link', () => {
     const started = performance.now()
     assert.equal(detectLink(long)?.site, 'web')
     assert.equal(detectLink(`${' '.repeat(200_000)}x`), undefined)
+    assert.equal(detectLink(`https://x.com/a${')'.repeat(200_000)}`)?.url, 'https://x.com/a')
+    assert.equal(detectLink(`https://x.com/a${'.)'.repeat(100_000)}`)?.url, 'https://x.com/a')
     assert.ok(performance.now() - started < 500)
   })
 })

@@ -59,8 +59,9 @@ const TRANSLITERATE: Readonly<Record<string, string>> = {
 }
 /**
  * Cyrillic (Russian, Ukrainian, Belarusian) as Russian passports write it
- * (ICAO 9303): "Привет, мир" → "Privet, mir". After NFKD, so й and ё arrive
- * as и and е (their marks are dropped later).
+ * (ICAO 9303): "Привет, мир" → "Privet, mir". After NFKD, й and ё arrive as
+ * и and е; they are listed too, for a runtime without Unicode data (no ICU),
+ * where normalize() changes nothing.
  */
 const CYRILLIC: Readonly<Record<string, string>> = {
   а: 'a',
@@ -70,10 +71,12 @@ const CYRILLIC: Readonly<Record<string, string>> = {
   ґ: 'g',
   д: 'd',
   е: 'e',
+  ё: 'e',
   є: 'ie',
   ж: 'zh',
   з: 'z',
   и: 'i',
+  й: 'i',
   і: 'i',
   ї: 'i',
   к: 'k',

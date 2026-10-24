@@ -17,6 +17,9 @@ import {MetaError} from './errors.js'
  */
 export type {SessionCookies, SessionProvider, SiteSession}
 
+/** Where a site sends a visitor it won't show a page to: its login or checkpoint page. */
+const WALL_PAGE = /^\/(?:login|checkpoint|accounts\/login)(?:\.php)?(?:[/?#]|$)/
+
 export type MetaClientOptions = {
   /** Shown in messages ("Instagram answered…"). */
   readonly site: string
@@ -225,23 +228,22 @@ export class MetaClient {
 
   /**
    * Follow one redirect hop of a short link; undefined when it doesn't
-   * redirect. First as a page load, then with the site's session (a link only
-   * a signed-in visitor may open). At most 2 requests.
+   * redirect. First as a page load (anonymous); then with the site's session
+   * when that led nowhere useful: no redirect, or one to the login /
+   * checkpoint page (a link only a signed-in visitor may open). One request
+   * in the common case, at most 2.
    */
   async redirectOf(url: string, signal?: AbortSignal): Promise<string | undefined> {
-    const asPage = await this.pacer.run(
-      () => this.#hops.get(url, {redirect: 'manual', headers: DOCUMENT_NAVIGATION_HEADERS, signal}),
-      signal,
-    )
-    void asPage.body?.cancel()
-    const target =
-      asPage.headers.get('location') ??
-      (await this.pacer.run(async () => {
-        const response = await this.session.get(url, {redirect: 'manual', signal})
+    const location = async (session: HttpSession, headers?: Readonly<Record<string, string>>) =>
+      this.pacer.run(async () => {
+        const response = await session.get(url, {redirect: 'manual', headers, signal})
         void response.body?.cancel()
-        return response.headers.get('location')
-      }, signal))
-    return target ? new URL(target, url).href : undefined
+        const target = response.headers.get('location')
+        return target ? new URL(target, url).href : undefined
+      }, signal)
+    const asPage = await location(this.#hops, DOCUMENT_NAVIGATION_HEADERS)
+    if (asPage && !WALL_PAGE.test(new URL(asPage).pathname)) return asPage
+    return (await location(this.session)) ?? asPage
   }
 
   /**

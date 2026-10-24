@@ -8,10 +8,26 @@ import {MediaDownloader} from '../src/downloader.js'
 import {BatchScheduler} from '../src/scheduler.js'
 import {rankRenditions} from '../src/sources/renditions.js'
 import {SOURCE_FORMAT_CHANGED} from '../src/sources/source.js'
-import {decodeBody, decodeWindows1251, problemOf, readAnswer, readVideo} from '../src/sources/vk/data.js'
-import {isVkListing, parseVkLink} from '../src/sources/vk/links.js'
+import {
+  decodeBody,
+  decodeWindows1251,
+  jsonAt,
+  problemOf,
+  readAnswer,
+  readEmbed,
+  readVideo,
+} from '../src/sources/vk/data.js'
+import {isVkListing, linkUrl, parseVkLink} from '../src/sources/vk/links.js'
 import {type VkOptions, VkSource} from '../src/sources/vk/source.js'
-import {DELETED_VIDEO, encodeWindows1251, FAKE_VK_ALBUM, PRIVATE_VIDEO, startFakeVk} from './helpers/fake-vk.js'
+import {
+  DELETED_VIDEO,
+  EMBED_HASH,
+  encodeWindows1251,
+  FAKE_VK_ALBUM,
+  HIDDEN_KEY,
+  PRIVATE_VIDEO,
+  startFakeVk,
+} from './helpers/fake-vk.js'
 import {type FakeBinaries, writeFakes} from './helpers/fakes.js'
 
 const mp4 = {kind: 'video', container: 'mp4'} as const
@@ -89,7 +105,9 @@ describe('VK links', () => {
       kind: 'video',
       oid: '-22822305',
       id: '456242110',
+      hash: 'e037414127166efe',
     })
+    assert.deepEqual(parseVkLink('https://vk.com/video_ext.php?oid=-1&id=2'), {kind: 'video', oid: '-1', id: '2'})
     assert.equal(parseVkLink('https://vk.com/video_ext.php?oid=abc&id=1'), undefined)
     assert.deepEqual(parseVkLink('https://vk.com/video/playlist/-22822305_1'), {
       kind: 'playlist',
@@ -116,6 +134,18 @@ describe('VK links', () => {
       {kind: 'video', oid: '-1', id: '2'},
       'where a vk.cc link leads',
     )
+  })
+
+  it('a video’s url keeps its access key or embed hash: what the engine queues reads back the same', () => {
+    for (const link of [
+      {kind: 'video', oid: '-1', id: '2'},
+      {kind: 'video', oid: '-1', id: '2', list: 'abcdef12'},
+      {kind: 'video', oid: '5', id: '2', list: 'ln-AbC123'},
+      {kind: 'video', oid: '-1', id: '2', clip: true, list: 'abcdef12'},
+      {kind: 'video', oid: '-1', id: '2', hash: 'abc123'},
+    ] as const) {
+      assert.deepEqual(parseVkLink(linkUrl('https://vk.com', link)), link, JSON.stringify(link))
+    }
   })
 
   it('leaves other pages and sites alone', () => {
@@ -234,7 +264,42 @@ describe('VK answers', () => {
     assert.equal(reason('This video is not available in your region.'), 'geo-blocked')
     assert.equal(reason('Please log in to watch this video'), 'login-required')
     assert.equal(reason('Enter the captcha'), 'blocked')
-    assert.equal(reason('Error'), 'removed')
+    // transient wordings are a wait, whatever else they say
+    assert.equal(reason('Access temporarily restricted, try again later'), 'refused')
+    assert.equal(reason('Доступ временно ограничен, попробуйте позже'), 'refused')
+    assert.equal(reason('Too many requests'), 'refused')
+    // a wording this extractor doesn't know is no verdict: yt-dlp gets to read it
+    assert.equal(reason('Error'), 'format-changed')
+    assert.equal(reason('Something new happened'), 'format-changed')
+  })
+
+  it('reads the embed page’s prefetched video, brackets inside strings and all', () => {
+    const items = [
+      {
+        files: {mp4_360: 'https://a/360', mp4_720: 'https://a/720', hls: 'https://a/x.m3u8'},
+        title: 'A ] "b" \\ {',
+        duration: 7,
+        date: 5,
+        id: 2,
+        owner_id: -1,
+        image: [{url: 'https://a/s'}, {url: 'https://a/l'}],
+      },
+    ]
+    const html = `<script>x({"apiPrefetchCache":${JSON.stringify([{method: 'video.get', response: {items}}])},"z":[1]})</script>`
+    assert.equal(jsonAt('{"a":"]"}tail', 0), '{"a":"]"}')
+    assert.equal(jsonAt('[1,[2', 0), undefined)
+    const video = readEmbed(html, '-1', '2')
+    assert.equal(video.title, 'A ] "b" \\ {')
+    assert.deepEqual(
+      video.renditions.map(r => r.resolution),
+      [720, 360],
+    )
+    assert.equal(video.thumbnail, 'https://a/l')
+    assert.equal(video.duration, 7)
+    assert.throws(
+      () => readEmbed('<html>nothing here</html>', '-1', '2'),
+      (e: {problem: string}) => e.problem === 'format-changed',
+    )
   })
 
   it('an answer without its player data is a changed format', () => {
@@ -316,6 +381,13 @@ describe('VK, end to end (local fake)', () => {
     assert.equal(site.hits.refusedMedia, 0, 'the media came with the browser’s user agent')
   })
 
+  it('reads of one video at the same time make one request', async () => {
+    const {site, engine} = await setup('together')
+    const analyses = await Promise.all(Array.from({length: 5}, () => engine.analyze(videoLink(site))))
+    assert.ok(analyses.every(a => a.kind === 'video'))
+    assert.equal(site.hits.show, 1, '5 callers, 1 request')
+  })
+
   it('a resolution cap picks the size within it; an audio format gets the soundtrack of the smallest', async () => {
     const {site, scheduler, out} = await setup('caps', {videos: 2})
     scheduler.schedule({url: videoLink(site, 0), profile: sd, outDir: path.join(out, 'sd')})
@@ -370,6 +442,7 @@ describe('VK, end to end (local fake)', () => {
     const failed = engine.jobs().find(j => j.id === live.id)!
     assert.equal(failed.status, 'failed')
     assert.match(failed.error?.message ?? '', /live streams cannot be downloaded/)
+    assert.equal(failed.error?.hint, 'live-now', 'not "the chosen format is not offered"')
     const hls = engine.add({url: videoLink(site, 1), profile: mp4, outDir: out})
     await engine.whenIdle()
     const finished = engine.jobs().find(j => j.id === hls.id)!
@@ -410,6 +483,84 @@ describe('VK, end to end (local fake)', () => {
       fetch: (input, init) => fetch(input.replace('https://vk.cc/nowhere', `${site.origin}/cc-nowhere`), init),
     })
     await assert.rejects(source.analyze('https://vk.cc/nowhere'), (e: DownloadError) => e.hint === 'removed')
+  })
+
+  it('a hidden video keeps its access key through a retry (fresh read) and in a listing’s entries', async () => {
+    const {site, scheduler, engine, out} = await setup('hidden', {videos: 2, hidden: [0, 1], staleMedia: 4})
+    const batch = scheduler.schedule({
+      url: `${site.origin}/video${site.oid}_${site.ids[0]}?list=${HIDDEN_KEY}`,
+      profile: mp4,
+      outDir: path.join(out, 'one'),
+    })
+    await scheduler.whenIdle()
+    const done = scheduler.batch(batch.id)!
+    assert.equal(done.status, 'completed', JSON.stringify(done.error))
+    assert.ok(site.hits.refusedMedia >= 1, 'the first attempt’s links were stale')
+    const reads = site.shows.filter(s => s.video === `${site.oid}_${site.ids[0]}`)
+    assert.ok(reads.length >= 2, 'the retry read the video again')
+    assert.ok(
+      reads.every(s => s.list === HIDDEN_KEY),
+      JSON.stringify(reads),
+    )
+    const listing = await engine.analyze(`${site.origin}/videos${site.oid}`)
+    assert.equal(listing.kind, 'playlist')
+    if (listing.kind !== 'playlist') return
+    assert.ok(
+      listing.entries.every(e => e.url.endsWith(`?list=${HIDDEN_KEY}`)),
+      listing.entries.map(e => e.url).join(' '),
+    )
+    const all = scheduler.schedule({
+      url: `${site.origin}/videos${site.oid}`,
+      profile: mp4,
+      outDir: path.join(out, 'all'),
+    })
+    await scheduler.whenIdle()
+    assert.equal(scheduler.batch(all.id)!.status, 'completed', JSON.stringify(scheduler.batch(all.id)!.error))
+    assert.equal(scheduler.batch(all.id)!.jobs.succeeded, 2)
+  })
+
+  it('an embed with its hash is read from the embed page (act=show refuses it) and downloads', async () => {
+    const {site, engine, scheduler, out} = await setup('embed', {videos: 1, embedOnly: [0]})
+    const url = `${site.origin}/video_ext.php?oid=${site.oid}&id=${site.ids[0]}&hash=${EMBED_HASH}`
+    const analysis = await engine.analyze(url)
+    assert.equal(analysis.kind, 'video')
+    if (analysis.kind !== 'video') return
+    assert.equal(analysis.media.title, `${site.title(0)} [embed] "x"`)
+    assert.equal(
+      analysis.media.url,
+      `https://vk.com/video_ext.php?oid=${site.oid}&id=${site.ids[0]}&hash=${EMBED_HASH}`,
+    )
+    const batch = scheduler.schedule({url, profile: sd, outDir: out})
+    await scheduler.whenIdle()
+    assert.equal(scheduler.batch(batch.id)!.status, 'completed', JSON.stringify(scheduler.batch(batch.id)!.error))
+    assert.equal((await fs.readFile(path.join(out, (await fs.readdir(out))[0]!), 'utf8')).slice(0, 4), 'q480')
+    assert.equal(site.hits.show, 0, 'never act=show for an embed with its hash')
+    // without the hash it is the private video it is
+    const plain = new VkSource({origin: site.origin, pacing: fast})
+    await assert.rejects(
+      plain.analyze(`${site.origin}/video_ext.php?oid=${site.oid}&id=${site.ids[0]}`),
+      (e: DownloadError) => e.hint === 'private',
+    )
+  })
+
+  it('an HLS-only video, with no yt-dlp to hand it to, says it is offered only as a stream (not "try later")', async () => {
+    const site = await startFakeVk({hlsOnly: [0]})
+    cleanups.push(() => site.close())
+    const source = new VkSource({origin: site.origin, pacing: fast})
+    const checked = (await source.preflight([{url: videoLink(site)}], {})).get(videoLink(site))
+    assert.equal(checked?.ok, false)
+    if (checked?.ok !== false) return
+    assert.equal(checked.error.details, SOURCE_FORMAT_CHANGED, 'desktop still falls back to yt-dlp')
+    assert.equal(checked.error.hint, 'stream-only')
+  })
+
+  it('a listing that ignores its offset stops at the first page with nothing new', async () => {
+    const site = await startFakeVk({videos: 10, pageSize: 4, ignoreOffset: true})
+    cleanups.push(() => site.close())
+    const source = new VkSource({origin: site.origin, pacing: fast})
+    const result = await source.analyze(`${site.origin}/videos${site.oid}`)
+    assert.equal(result.kind === 'playlist' && result.entries.length, 4)
+    assert.equal(site.hits.listing, 2, 'the repeat is seen on the second page, not after 200')
   })
 
   it('lists an owner’s videos page by page, capped by maxEntries', async () => {

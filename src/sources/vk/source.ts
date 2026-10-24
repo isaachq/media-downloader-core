@@ -5,6 +5,7 @@ import type {MediaTags} from '../../core/convert.js'
 import {cancelledError, DownloadError} from '../../core/errors.js'
 import {genericChoices} from '../../core/formats.js'
 import type {AnalysisResult, MediaSummary, PlaylistAnalysis, VideoAnalysis} from '../../types.js'
+import {Coalescer} from '../coalesce.js'
 import {type Fetch, HttpSession} from '../http.js'
 import {fetchMedia} from '../media-fetch.js'
 import {Pacer, type PacerOptions} from '../pacer.js'
@@ -17,12 +18,13 @@ import {
   type ListedVideo,
   PUBLIC_ORIGIN,
   readAnswer,
+  readEmbed,
   readListing,
   readVideo,
   VkError,
   type VkVideo,
 } from './data.js'
-import {parseVkLink, playlistUrl, type VkLink, videoUrl} from './links.js'
+import {linkUrl, parseVkLink, playlistUrl, type VkLink, videoUrl} from './links.js'
 
 export type VkOptions = {
   /** Albums and owners' video lists load at most this many videos unless asked otherwise. Default 500. */
@@ -71,6 +73,8 @@ export class VkSource implements MediaSource {
   readonly #log: (level: 'info' | 'warn', message: string) => void
   /** `<oid>_<id>` → the last read (insertion order = age: oldest evicted first). */
   readonly #videos = new Map<string, Cached>()
+  /** Reads of one video at the same time share one request (analysis, preflight and download landing together). */
+  readonly #reading = new Coalescer<string, VkVideo>()
   #blockedUntil = 0
 
   constructor(options: VkOptions = {}) {
@@ -101,7 +105,7 @@ export class VkSource implements MediaSource {
     try {
       const link = await this.#resolve(url, opts.signal)
       if (link.kind === 'playlist') return await this.#listing(link, opts.maxEntries, opts.signal, opts.onProgress)
-      return this.#videoAnalysis(await this.#video(link, opts.signal))
+      return this.#videoAnalysis(await this.#video(link, opts.signal), link)
     } catch (error) {
       throw this.#toDownloadError(error, opts.signal)
     }
@@ -121,7 +125,7 @@ export class VkSource implements MediaSource {
             throw new DownloadError('invalid-request', 'A VK playlist is not a single video.')
           const video = await this.#video(link, opts.signal)
           downloadable(video)
-          result = {ok: true, analysis: this.#videoAnalysis(video)}
+          result = {ok: true, analysis: this.#videoAnalysis(video, link)}
         } catch (error) {
           if (opts.signal?.aborted) return
           result = {ok: false, error: this.#toDownloadError(error, opts.signal).toJSON()}
@@ -143,7 +147,7 @@ export class VkSource implements MediaSource {
       downloadable(video)
       const id = `${video.oid}_${video.id}`
       const title = video.title ?? `VK video ${id}`
-      const url = videoUrl(PUBLIC_ORIGIN, video.oid, video.id, link.kind === 'video' && link.clip)
+      const url = linkUrl(PUBLIC_ORIGIN, {...link, oid: video.oid, id: video.id})
       const info = {id, title, duration: video.duration ?? null, extractor: this.name, publishedAt: video.date ?? null}
       task.onInfo(info)
       const audioOnly = task.profile.kind === 'audio'
@@ -226,31 +230,42 @@ export class VkSource implements MediaSource {
     const key = `${link.oid}_${link.id}`
     const cached = this.#videos.get(key)
     if (!fresh && cached && Date.now() - cached.at < VIDEO_FRESH_MS) return cached.video
-    const data = await this.#al(
-      'show',
-      {act: 'show', al: '1', video: key, ...(link.list && {list: link.list})},
-      videoUrl(this.#origin, link.oid, link.id, link.clip),
-      signal,
-    )
-    const video = readVideo(data, link.oid, link.id)
-    this.#videos.delete(key)
-    this.#videos.set(key, {video, at: Date.now()})
-    if (this.#videos.size > CACHE_LIMIT) this.#videos.delete(this.#videos.keys().next().value!)
-    return video
+    return this.#reading.run(key, signal, async shared => {
+      // an embed's hash opens what act=show refuses (an embedded hidden video): its page has the files
+      const video = link.hash
+        ? readEmbed(await this.#embedPage(link.oid, link.id, link.hash, shared), link.oid, link.id)
+        : readVideo(
+            await this.#al(
+              'show',
+              {act: 'show', al: '1', video: key, ...(link.list && {list: link.list})},
+              videoUrl(this.#origin, link.oid, link.id, link.clip),
+              shared,
+            ),
+            link.oid,
+            link.id,
+          )
+      this.#videos.delete(key)
+      this.#videos.set(key, {video, at: Date.now()})
+      if (this.#videos.size > CACHE_LIMIT) this.#videos.delete(this.#videos.keys().next().value!)
+      return video
+    })
   }
 
-  #videoAnalysis(video: VkVideo): VideoAnalysis {
+  /** The analysis of a video, its url carrying the link's access key or embed hash (retries need them). */
+  #videoAnalysis(video: VkVideo, link: Extract<VkLink, {kind: 'video'}>): VideoAnalysis {
     return {
       kind: 'video',
-      media: this.#summary({...video, clip: false}),
+      media: this.#summary({...video, clip: link.clip ?? false, list: link.list, hash: link.hash}),
       choices: video.live ? [] : renditionChoices(video.renditions, video.duration),
     }
   }
 
-  #summary(video: Omit<ListedVideo, 'clip'> & {readonly clip: boolean; readonly live?: boolean}): MediaSummary {
+  #summary(
+    video: ListedVideo & {readonly hash?: string | undefined; readonly live?: boolean | undefined},
+  ): MediaSummary {
     return {
       id: `${video.oid}_${video.id}`,
-      url: videoUrl(PUBLIC_ORIGIN, video.oid, video.id, video.clip),
+      url: linkUrl(PUBLIC_ORIGIN, video),
       title: video.title ?? `VK video ${video.oid}_${video.id}`,
       uploader: video.author,
       duration: video.duration,
@@ -302,15 +317,23 @@ export class VkSource implements MediaSource {
       const listing = readListing(data, section, link.oid, link.album)
       total = listing.total ?? total
       albumName ??= listing.albumName
+      let fresh = 0
       for (const video of listing.videos) {
         const key = `${video.oid}_${video.id}`
-        if (videos.length >= max || seen.has(key)) continue
+        if (seen.has(key)) continue
         seen.add(key)
-        videos.push(video)
+        fresh++
+        if (videos.length < max) videos.push(video)
       }
       offset += listing.count
       onProgress?.({listed: videos.length, expected: total !== undefined ? Math.min(total, max) : max})
       if (listing.count === 0 || listing.videos.length === 0 || (total !== undefined && offset >= total)) {
+        complete = true
+        break
+      }
+      // a page with nothing new: VK ignores the offset (or repeats its last page); going on would read the same
+      if (fresh === 0) {
+        this.#log('warn', `VK: the listing repeats itself at offset ${offset}: stopped at ${videos.length}`)
         complete = true
         break
       }
@@ -340,23 +363,50 @@ export class VkSource implements MediaSource {
    * unwrapped. 429 / 5xx back every request off together and are retried.
    */
   async #al(act: string, form: Record<string, string>, referer: string, signal?: AbortSignal): Promise<unknown[]> {
-    if (!this.available) throw new VkError('blocked', 'VK asked to confirm this is not a bot: waiting a while.')
     const body = new URLSearchParams(form).toString()
+    return this.#read(
+      () =>
+        this.#session.request(`${this.#origin}/al_video.php?act=${act}`, {
+          method: 'POST',
+          body,
+          headers: {
+            Accept: '*/*',
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-Requested-With': 'XMLHttpRequest',
+            Origin: this.#origin,
+            Referer: referer,
+          },
+          signal,
+        }),
+      readAnswer,
+      signal,
+    )
+  }
+
+  /** The embedded player's page for a video and its hash (HTML, windows-1251), paced like the endpoint. */
+  #embedPage(oid: string, id: string, hash: string, signal?: AbortSignal): Promise<string> {
+    return this.#read(
+      () =>
+        this.#session.get(linkUrl(this.#origin, {oid, id, hash}), {
+          headers: {Accept: 'text/html,application/xhtml+xml', Referer: `${this.#origin}/`},
+          signal,
+        }),
+      html => html,
+      signal,
+    )
+  }
+
+  /**
+   * One paced request, its answer decoded (windows-1251 unless it says
+   * otherwise) and read by `parse`. 429 / 5xx back every request off together
+   * and are retried, READ_ATTEMPTS times at most.
+   */
+  async #read<T>(send: () => Promise<Response>, parse: (text: string) => T, signal?: AbortSignal): Promise<T> {
+    if (!this.available) throw new VkError('blocked', 'VK asked to confirm this is not a bot: waiting a while.')
     for (let attempt = 1; ; attempt++) {
       try {
         return await this.#pacer.run(async () => {
-          const response = await this.#session.request(`${this.#origin}/al_video.php?act=${act}`, {
-            method: 'POST',
-            body,
-            headers: {
-              Accept: '*/*',
-              'Content-Type': 'application/x-www-form-urlencoded',
-              'X-Requested-With': 'XMLHttpRequest',
-              Origin: this.#origin,
-              Referer: referer,
-            },
-            signal,
-          })
+          const response = await send()
           if (response.status === 429 || response.status >= 500) {
             await response.body?.cancel()
             this.#pacer.refused()
@@ -367,7 +417,7 @@ export class VkSource implements MediaSource {
             throw new VkError('format-changed', `VK's video endpoint answered HTTP ${response.status}.`)
           }
           const text = decodeBody(new Uint8Array(await response.arrayBuffer()), response.headers.get('content-type'))
-          const data = readAnswer(text)
+          const data = parse(text)
           this.#pacer.succeeded()
           return data
         }, signal)
@@ -398,8 +448,12 @@ export class VkSource implements MediaSource {
       case 'geo-blocked':
         return new DownloadError('unavailable', error.message, undefined, undefined, 'geo-blocked')
       case 'live':
+        return new DownloadError('unavailable', error.message, undefined, undefined, 'live-now')
       case 'no-media':
         return new DownloadError('unavailable', error.message, undefined, undefined, 'format-unavailable')
+      case 'stream-only':
+        // yt-dlp reads it where there is one; without it (Android) the hint is what the user sees
+        return new DownloadError('unknown', error.message, SOURCE_FORMAT_CHANGED, undefined, 'stream-only')
       case 'refused':
         return new DownloadError('network', error.message, undefined, undefined, 'retry-later')
       case 'blocked':
@@ -421,11 +475,11 @@ function downloadable(video: VkVideo): void {
   if (video.live) throw new VkError('live', 'VK live streams cannot be downloaded (only finished recordings).')
   if (video.renditions.length > 0) return
   if (video.external) {
-    throw new VkError('format-changed', 'VK: this video plays from another site; VK has no file of its own.')
+    throw new VkError('stream-only', 'VK: this video plays from another site; VK has no file of its own.')
   }
   // an HLS-only video: yt-dlp (desktop) reads HLS; the built-in extractor doesn't
   throw new VkError(
-    'format-changed',
+    video.hls ? 'stream-only' : 'format-changed',
     video.hls
       ? 'VK: this video is only offered as an HLS stream, which the built-in extractor does not download.'
       : 'VK: this video has no downloadable file.',

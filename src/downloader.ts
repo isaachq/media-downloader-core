@@ -2160,6 +2160,9 @@ const FINAL_HINTS: ReadonlySet<string> = new Set([
   'unsupported-url',
   'format-unavailable',
   'bot-check',
+  'no-video',
+  'live-now',
+  'stream-only',
 ])
 
 /**

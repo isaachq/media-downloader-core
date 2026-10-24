@@ -26,8 +26,9 @@ const DOMAINS: ReadonlyArray<readonly [Exclude<LinkSite, 'web'>, readonly string
   ['tiktok', ['tiktok.com']],
   ['instagram', ['instagram.com', 'instagr.am']],
   ['facebook', ['facebook.com', 'fb.watch', 'fb.com', 'fb.me', 'fb.gg']],
-  ['vk', ['vk.com', 'vk.ru', 'vkvideo.ru', 'vk.cc']],
-  ['x', ['x.com', 'twitter.com', 't.co']],
+  ['vk', ['vk.com', 'vk.ru', 'vkvideo.ru', 'vk.cc', 'vkontakte.ru']],
+  // the "fixer" hosts people share X posts through read as X too (XSource takes them)
+  ['x', ['x.com', 'twitter.com', 't.co', 'fxtwitter.com', 'vxtwitter.com', 'fixupx.com', 'fixvx.com']],
 ]
 
 /** The first http(s) link in a text; its end is the first space or quote. */
@@ -37,10 +38,30 @@ const PARTS = /^https?:\/\/(?:[^/?#@]*@)?([^/?#:]+)(:\d+)?(.*)$/i
 const MEDIA_FILE = /^[^?#]*\.(mp4|m4v|mov|webm|mkv|m4a|mp3|opus|ogg|oga|flac|wav|aac)(?:[?#]|$)/i
 /** Outbound wrappers that carry the real link in a parameter: l.instagram.com/?u=, l.facebook.com/l.php?u=. */
 const WRAPPER = /^https?:\/\/(?:l|lm)\.(?:instagram|facebook)\.com\/(?:l\.php)?\?(?:[^#]*&)?u=([^&#]+)/i
-/** Punctuation a sentence puts right after a link. */
-const TRAILING = /[).,;:!?\]]+$/
 
 const inDomain = (host: string, domain: string) => host === domain || host.endsWith(`.${domain}`)
+
+/**
+ * The link without the sentence's punctuation after it: "(see https://a/b_(c))"
+ * keeps "b_(c)" and drops the last ")". One count, then the trailing marks
+ * walked back once: O(n).
+ */
+function trimEnd(link: string): string {
+  let open = 0
+  let close = 0
+  for (const char of link) {
+    if (char === '(') open++
+    else if (char === ')') close++
+  }
+  let end = link.length
+  while (end > 0) {
+    const char = link[end - 1]!
+    if (char === ')' && close > open) close--
+    else if (!'.,;:!?]'.includes(char)) break
+    end--
+  }
+  return link.slice(0, end)
+}
 
 /** The real link inside an outbound wrapper, when it carries an http(s) one. */
 function unwrap(link: string): string {
@@ -61,7 +82,7 @@ function unwrap(link: string): string {
 export function detectLink(text: string, aliases?: Readonly<Record<string, LinkSite>>): DetectedLink | undefined {
   const found = LINK.exec(text)?.[0]
   if (!found) return undefined
-  const url = unwrap(found.replace(TRAILING, ''))
+  const url = unwrap(trimEnd(found))
   const parts = PARTS.exec(url)
   if (!parts) return undefined
   const host = parts[1]!.toLowerCase().replace(/^www\./, '')

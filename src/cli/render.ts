@@ -231,6 +231,9 @@ export const HINT_TEXT: Readonly<Record<FailureHint, string>> = {
   'cookies-unreadable':
     "couldn't read the browser's cookies (Safari: give the terminal Full Disk Access) — or try another browser",
   'damaged-source': 'the file is broken at the source — it is not downloaded again',
+  'no-video': 'this post has pictures or text but no video',
+  'live-now': 'a live stream on the air — download it once it ends, as a recording',
+  'stream-only': 'offered only as a stream, which needs yt-dlp (not available here)',
 }
 
 /** "checking ▰▰▰▱▱ 12/50 · 10 ok · 2 unavailable" — the live preflight row. */

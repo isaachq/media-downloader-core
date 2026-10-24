@@ -100,7 +100,18 @@ describe('X data', () => {
       }
       return undefined
     }
-    assert.deepEqual(problem({__typename: 'TweetTombstone', tombstone: {}})?.[0], 'removed')
+    assert.deepEqual(problem({__typename: 'TweetTombstone', tombstone: {}})?.[0], 'login-required', 'age-restricted')
+    assert.equal(
+      problem({
+        __typename: 'TweetTombstone',
+        tombstone: {text: {text: 'Age-restricted adult content. Learn more'}},
+      })?.[0],
+      'login-required',
+    )
+    assert.equal(
+      problem({__typename: 'TweetTombstone', tombstone: {text: {text: 'This Post is from a suspended account.'}}})?.[0],
+      'removed',
+    )
     assert.deepEqual(problem({__typename: 'TweetTombstone', tombstone: {text: {text: 'Gone. Learn more'}}}), [
       'removed',
       'X: Gone.',
@@ -233,6 +244,14 @@ describe('X, end to end (local fake)', () => {
     assert.ok(site.served.includes('/ext_tw_video/1585341912877146112/pu/vid/480x270/file.mp4'), 'the smallest file')
   })
 
+  it('reads of one post at the same time make one request (its videos checked in parallel)', async () => {
+    const {site, engine} = await setup('together')
+    const links = [1, 2, 1, 2].map(n => `https://x.com/fakeaccount/status/${site.ids.multi}/video/${n}`)
+    const analyses = await Promise.all(links.map(link => engine.analyze(link)))
+    assert.ok(analyses.every(a => a.kind === 'video'))
+    assert.equal(site.hits.post, 1, '4 callers, 1 request')
+  })
+
   it('a post with several videos is a playlist of them (the picture between is not an item)', async () => {
     const {site, engine, scheduler, out} = await setup('multi')
     const analysis = await engine.analyze(postUrl(site.ids.multi))
@@ -315,15 +334,69 @@ describe('X, end to end (local fake)', () => {
     const done = scheduler.batch(batch.id)!
     assert.equal(done.status, 'failed')
     assert.equal(done.error?.message, 'This post has no video.')
-    assert.equal(done.error?.hint, 'format-unavailable')
+    assert.equal(done.error?.hint, 'no-video', 'not "the chosen format is not offered"')
     assert.equal(site.hits.post, 1)
   })
 
-  it('deleted, withdrawn and never-existing posts fail as removed', async () => {
+  it('text with an article link and its preview card has no video either', async () => {
+    const {site, source} = await setup('article')
+    await assert.rejects(source.analyze(postUrl(site.ids.article)), (e: DownloadError) => {
+      assert.equal(e.hint, 'no-video')
+      assert.equal(e.details, undefined, 'final: yt-dlp would find nothing either')
+      return true
+    })
+  })
+
+  it('a video the post data leaves out (amplify link, player card) goes to yt-dlp, not "no video"', async () => {
+    const {site, source} = await setup('hidden')
+    for (const id of [site.ids.amplify, site.ids.playerCard]) {
+      await assert.rejects(source.analyze(postUrl(id)), (e: DownloadError) => {
+        assert.equal(e.details, SOURCE_FORMAT_CHANGED, id)
+        assert.match(e.message, /not in X's public post data/)
+        return true
+      })
+    }
+  })
+
+  it('without yt-dlp (Android), a video the post data leaves out says it is not supported here (not "try later")', async () => {
+    const site = await startFakeX()
+    const saved = process.env['PATH']
+    process.env['PATH'] = path.join(root, 'empty')
+    const engine = new MediaDownloader({
+      dataDir: path.join(root, 'no-ytdlp'),
+      binaries: {ffmpeg: bins.ffmpeg, ffprobe: bins.ffprobe},
+      ytDlp: 'optional',
+      validation: 'none',
+      maxRetries: 2,
+      retryDelayMaxMs: 20,
+      progressIntervalMs: 0,
+      tiktok: false,
+      instagram: false,
+      facebook: false,
+      vk: false,
+      x: {origin: site.origin, fetch: site.fetch, pacing: {spacingMs: 0, jitterMs: 0}},
+    })
+    try {
+      await assert.rejects(engine.analyze(postUrl(site.ids.amplify)), (e: DownloadError) => {
+        assert.equal(e.code, 'unavailable')
+        assert.equal(e.hint, 'unsupported-url')
+        assert.match(e.message, /not in X's public post data/)
+        return true
+      })
+      await assert.rejects(engine.analyze(postUrl(site.ids.photos)), (e: DownloadError) => e.hint === 'no-video')
+    } finally {
+      process.env['PATH'] = saved
+      await engine.dispose()
+      await site.close()
+    }
+  })
+
+  it('deleted, suspended, withheld and never-existing posts fail as removed', async () => {
     const {site, source} = await setup('gone')
     for (const [url, message] of [
       [postUrl(site.ids.deleted), /deleted by the Post author\.$/],
-      [postUrl(site.ids.withdrawn), /not available/],
+      [postUrl(site.ids.suspended), /suspended account\.$/],
+      [postUrl(site.ids.withheld), /withholds this video/],
       [postUrl('1585341984679469057'), /does not exist/],
     ] as const) {
       await assert.rejects(source.analyze(url), (e: DownloadError) => {
@@ -333,6 +406,15 @@ describe('X, end to end (local fake)', () => {
         return true
       })
     }
+  })
+
+  it('a post X shows signed-in accounts only (an empty tombstone) says "sign in", not "removed"', async () => {
+    const {site, source} = await setup('signed-in')
+    await assert.rejects(source.analyze(postUrl(site.ids.withdrawn)), (e: DownloadError) => {
+      assert.equal(e.hint, 'needs-sign-in')
+      assert.match(e.message, /signed-in accounts only/)
+      return true
+    })
   })
 
   it('a changed answer says so, for the engine to hand the url to yt-dlp', async () => {
@@ -362,6 +444,20 @@ describe('X, end to end (local fake)', () => {
     await assert.rejects(source.analyze('https://t.co/deadLink01'), /leads nowhere/)
     await assert.rejects(source.analyze('https://x.com/fakeaccount'), /profiles and timelines are not supported/)
     assert.equal(site.hits.short, 4, 'example.com itself is never asked')
+  })
+
+  it('a t.co refusal (5xx / 429) is retried, then reported as "try later" — never as a link to nowhere', async () => {
+    const brief = await setup('short-busy', {shortRefusals: 2})
+    const analysis = await brief.source.analyze('https://t.co/singleLink')
+    assert.equal(analysis.kind, 'video', 'two refusals, then the hop goes through')
+    assert.equal(brief.site.hits.short, 3)
+    const long = await setup('short-down', {shortRefusals: 100})
+    await assert.rejects(long.source.analyze('https://t.co/singleLink'), (e: DownloadError) => {
+      assert.equal(e.code, 'network')
+      assert.equal(e.hint, 'retry-later')
+      assert.doesNotMatch(e.message, /leads nowhere/)
+      return true
+    })
   })
 
   it('retries refusals after the shared cool-down', async () => {

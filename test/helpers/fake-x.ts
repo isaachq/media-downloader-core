@@ -13,6 +13,8 @@ import {listenLocal} from './listen.js'
 export type FakeXConfig = {
   /** The first N post reads are refused (429). */
   readonly refusals?: number
+  /** The first N t.co requests are refused (503). */
+  readonly shortRefusals?: number
   readonly mediaBytes?: number
 }
 
@@ -30,6 +32,11 @@ export type FakeX = {
     readonly withdrawn: string
     readonly changed: string
     readonly hlsOnly: string
+    readonly amplify: string
+    readonly playerCard: string
+    readonly article: string
+    readonly suspended: string
+    readonly withheld: string
   }
   readonly hits: Record<'post' | 'media' | 'short' | 'refused' | 'badToken', number>
   /** Every media path asked for, in order. */
@@ -50,6 +57,11 @@ const IDS = {
   withdrawn: '643211948184596480',
   changed: '1700000000000000001',
   hlsOnly: '1700000000000000002',
+  amplify: '665052190608723968',
+  playerCard: '1700000000000000004',
+  article: '1700000000000000005',
+  suspended: '852138619213144067',
+  withheld: '1700000000000000006',
 } as const
 
 export async function startFakeX(config: FakeXConfig = {}): Promise<FakeX> {
@@ -57,6 +69,7 @@ export async function startFakeX(config: FakeXConfig = {}): Promise<FakeX> {
   const served: string[] = []
   const hits = {post: 0, media: 0, short: 0, refused: 0, badToken: 0}
   let refusalsLeft = config.refusals ?? 0
+  let shortRefusalsLeft = config.shortRefusals ?? 0
   let origin = ''
 
   const sizes: ReadonlyArray<readonly [number, number, number]> = [
@@ -150,6 +163,32 @@ export async function startFakeX(config: FakeXConfig = {}): Promise<FakeX> {
     [IDS.withdrawn]: {__typename: 'TweetTombstone', tombstone: {}},
     [IDS.changed]: tweet(IDS.changed, 'Moved things around', [{type: 'video', media_url_https: 'x'}]),
     [IDS.hlsOnly]: tweet(IDS.hlsOnly, 'A stream only', [video('1700000000000000003', false, [])]),
+    // what the live endpoint answers for @starwars' 2015 trailer: no media, a link to the amplify player
+    [IDS.amplify]: tweet(IDS.amplify, 'Watch the official 60 second #TV spot https://t.co/OkSqT2fjWJ', undefined, {
+      entities: {
+        urls: [
+          {
+            url: 'https://t.co/OkSqT2fjWJ',
+            expanded_url: 'https://amp.twimg.com/v/93ad3568-03d2-47b9-a57b-624b88693acd',
+          },
+        ],
+      },
+    }),
+    [IDS.playerCard]: tweet(IDS.playerCard, 'A clip in a player card', undefined, {
+      card: {name: 'player', binding_values: {player_url: {type: 'STRING', string_value: 'https://example.com/embed'}}},
+    }),
+    // text, a link to an article and its preview card: no video anywhere
+    [IDS.article]: tweet(IDS.article, 'Read this https://t.co/article01', undefined, {
+      entities: {urls: [{url: 'https://t.co/article01', expanded_url: 'https://example.com/news/1'}]},
+      card: {name: 'summary_large_image', binding_values: {title: {type: 'STRING', string_value: 'News'}}},
+    }),
+    [IDS.suspended]: {
+      __typename: 'TweetTombstone',
+      tombstone: {text: {text: 'This Post is from a suspended account. Learn more', entities: []}},
+    },
+    [IDS.withheld]: tweet(IDS.withheld, 'Withheld', [
+      {...video('1700000000000000007'), ext_media_availability: {status: 'Unavailable', reason: 'Dmcaed'}},
+    ]),
   })
 
   const server = http.createServer((req, res) => {
@@ -176,6 +215,10 @@ export async function startFakeX(config: FakeXConfig = {}): Promise<FakeX> {
     }
     if (url.pathname.startsWith('/tco/')) {
       hits.short++
+      if (shortRefusalsLeft > 0) {
+        shortRefusalsLeft--
+        return send(503, 'Over capacity')
+      }
       const code = url.pathname.slice('/tco/'.length)
       // t.co names a post's first video, whatever the post holds
       const target =

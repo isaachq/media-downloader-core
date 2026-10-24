@@ -76,12 +76,14 @@ export function readTweetResult(body: unknown): XPost {
   const type = body['__typename']
   if (type === 'TweetTombstone') {
     const said = tombstoneText(body['tombstone'])
-    throw new MetaError(
-      'removed',
-      said
-        ? `X: ${said}`
-        : 'This post is not available: deleted, from a protected or suspended account, or shown to signed-in accounts only.',
-    )
+    // an empty tombstone is what an age-restricted post gets (yt-dlp: "requires authentication")
+    if (!said || SIGNED_IN_ONLY.test(said)) {
+      throw new MetaError(
+        'login-required',
+        `X shows this post to signed-in accounts only (age-restricted or protected)${said ? `: ${said}` : '.'}`,
+      )
+    }
+    throw new MetaError('removed', `X: ${said}`)
   }
   if (type === 'TweetUnavailable') {
     const reason = typeof body['reason'] === 'string' ? body['reason'] : ''
@@ -103,7 +105,62 @@ export function readTweetResult(body: unknown): XPost {
       // a quoted post X describes differently: the post itself is still read
     }
   }
+  if (withheld(body) || (isObject(quoted) && withheld(quoted))) {
+    throw new MetaError('removed', 'X withholds this video (removed after a report, or not shown in this country).')
+  }
+  // a video this answer leaves out (an external player, a broadcast): not "no video" — another extractor may read it
+  if (hidesVideo(body) || (isObject(quoted) && hidesVideo(quoted))) {
+    throw new MetaError(
+      'other-extractor',
+      "X: this post's video is not in X's public post data (a player card, a broadcast or an external player).",
+    )
+  }
   return post
+}
+
+/** Tombstone texts of posts X shows signed-in viewers (the rest — deleted, suspended — are gone for everyone). */
+const SIGNED_IN_ONLY = /age[- ]restricted|adult|sensitive|log ?in|sign ?in|limits who can view|protected/i
+/** Links to a video X plays itself, somewhere the embed data does not describe. */
+const VIDEO_LINK =
+  /^https?:\/\/(?:amp\.twimg\.com\/|video\.twimg\.com\/|(?:www\.)?(?:pscp|periscope)\.tv\/|(?:\w+\.)?(?:x|twitter)\.com\/(?:i\/broadcasts\/|i\/videos\/|\w+\/status\/\d+\/video\/))/i
+/** Card names that play a video. */
+const VIDEO_CARD = /player|amplify|video|broadcast|periscope|live_event/i
+
+/** A video of the post marked unavailable (the media list says so per item). O(media). */
+function withheld(tweet: Json): boolean {
+  const media = Array.isArray(tweet['mediaDetails']) ? tweet['mediaDetails'] : []
+  return media.some(
+    item =>
+      isObject(item) &&
+      (item['type'] === 'video' || item['type'] === 'animated_gif') &&
+      isObject(item['ext_media_availability']) &&
+      item['ext_media_availability']['status'] === 'Unavailable',
+  )
+}
+
+/**
+ * Signs that a post has a video its answer leaves out: the widget's own
+ * `video` object, a player card, a link to a video X hosts. O(size of the post).
+ */
+function hidesVideo(tweet: Json): boolean {
+  if (isObject(tweet['video'])) return true
+  const card = tweet['card']
+  if (isObject(card)) {
+    if (typeof card['name'] === 'string' && VIDEO_CARD.test(card['name']) && card['name'] !== 'unified_card')
+      return true
+    const unified = isObject(card['binding_values']) ? card['binding_values']['unified_card'] : undefined
+    if (isObject(unified) && typeof unified['string_value'] === 'string') {
+      try {
+        const parsed: unknown = JSON.parse(unified['string_value'])
+        if (isObject(parsed) && typeof parsed['type'] === 'string' && /video/i.test(parsed['type'])) return true
+      } catch {
+        // an unreadable card is no sign either way
+      }
+    }
+  }
+  const entities = tweet['entities']
+  const urls = isObject(entities) && Array.isArray(entities['urls']) ? entities['urls'] : []
+  return urls.some(u => isObject(u) && typeof u['expanded_url'] === 'string' && VIDEO_LINK.test(u['expanded_url']))
 }
 
 function readTweet(tweet: Json): XPost {

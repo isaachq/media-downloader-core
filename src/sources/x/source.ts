@@ -6,6 +6,7 @@ import type {DownloadedInfo} from '../../core/download.js'
 import {DownloadError} from '../../core/errors.js'
 import {genericChoices} from '../../core/formats.js'
 import type {AnalysisResult, FormatChoice, VideoAnalysis} from '../../types.js'
+import {Coalescer} from '../coalesce.js'
 import {type Fetch, HttpSession} from '../http.js'
 import {fetchMedia} from '../media-fetch.js'
 import {MetaError, toDownloadError} from '../meta/errors.js'
@@ -61,6 +62,8 @@ export class XSource implements MediaSource {
   readonly #origin: string
   readonly #linkHost: string | undefined
   readonly #posts = new Map<string, {readonly post: XPost; readonly at: number}>()
+  /** Reads of one post at the same time share one request (a k-video post checked in parallel: 1, not k). */
+  readonly #reading = new Coalescer<string, XPost>()
   readonly #log: (level: 'info' | 'warn', message: string) => void
 
   constructor(options: XOptions = {}) {
@@ -200,16 +203,31 @@ export class XSource implements MediaSource {
    */
   async #hop(url: string, signal?: AbortSignal): Promise<string | undefined> {
     if (parseXLink(url)?.kind !== 'short') return undefined
-    const response = await this.#session.get(url, {redirect: 'manual', signal})
+    return this.#retrying(() => this.#hopOnce(url, signal), signal)
+  }
+
+  /**
+   * Only a 404 / 410 is a dead end; a refusal (429, 403, 5xx) is a refusal —
+   * retried after the shared cool-down, then reported as "try later", never
+   * as a link that leads nowhere. A network error passes through as one.
+   */
+  async #hopOnce(url: string, signal?: AbortSignal): Promise<string | undefined> {
+    const response = await this.#pacer.run(() => this.#session.get(url, {redirect: 'manual', signal}), signal)
     const location = response.headers.get('location')
     if (response.status >= 300 && response.status < 400) {
       await response.body?.cancel()
       return location ?? undefined
     }
-    if (!response.ok) {
+    if (response.status === 404 || response.status === 410) {
       await response.body?.cancel()
       return undefined
     }
+    if (!response.ok) {
+      await response.body?.cancel()
+      this.#pacer.refused()
+      throw new MetaError('refused', `t.co answered HTTP ${response.status}.`)
+    }
+    this.#pacer.succeeded()
     const html = (await response.text()).slice(0, 64 * 1024)
     const refresh = /<meta[^>]+http-equiv=["']?refresh["']?[^>]*content=["'][^"']*?url=([^"'>]+)/i.exec(html)?.[1]
     return refresh?.replace(/&amp;/g, '&').trim() || undefined
@@ -217,15 +235,21 @@ export class XSource implements MediaSource {
 
   // ─── posts ───────────────────────────────────────────────────────────────
 
-  /** A post's data, a recent read reused (bounded: oldest dropped past CACHE_LIMIT). */
+  /**
+   * A post's data: a recent read reused (bounded: oldest dropped past
+   * CACHE_LIMIT), reads at the same time shared. O(1) requests per post while
+   * it is fresh, whatever the number of callers.
+   */
   async #read(id: string, signal?: AbortSignal, fresh = false): Promise<XPost> {
     const cached = this.#posts.get(id)
     if (!fresh && cached && Date.now() - cached.at < POST_FRESH_MS) return cached.post
-    const post = await this.#retrying(() => this.#readOnce(id, signal), signal)
-    this.#posts.delete(id)
-    this.#posts.set(id, {post, at: Date.now()})
-    if (this.#posts.size > CACHE_LIMIT) this.#posts.delete(this.#posts.keys().next().value!)
-    return post
+    return this.#reading.run(id, signal, async shared => {
+      const post = await this.#retrying(() => this.#readOnce(id, shared), shared)
+      this.#posts.delete(id)
+      this.#posts.set(id, {post, at: Date.now()})
+      if (this.#posts.size > CACHE_LIMIT) this.#posts.delete(this.#posts.keys().next().value!)
+      return post
+    })
   }
 
   async #retrying<T>(read: () => Promise<T>, signal?: AbortSignal): Promise<T> {
@@ -333,7 +357,10 @@ function hostOf(url: string): string | undefined {
 
 /** Which video of the post a link means (1-based), or why none. O(1). */
 function pick(post: XPost, link: PostLink): number {
-  if (post.videos.length === 0) throw new MetaError('no-media', 'This post has no video.')
+  // pictures or text only: final, and not a question of format ('no-video', not 'format-unavailable')
+  if (post.videos.length === 0) {
+    throw new DownloadError('unavailable', 'This post has no video.', undefined, undefined, 'no-video')
+  }
   const index = link.index ?? 1
   if (index > post.videos.length) {
     throw new MetaError(

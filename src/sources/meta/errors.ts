@@ -31,6 +31,11 @@ export type MetaProblem =
   | 'format-changed'
   /** A post with nothing to download for the profile asked (a photo with an audio profile). */
   | 'no-media'
+  /**
+   * The media is there but only the full extractor reads it (an X post whose video plays in an
+   * external player): yt-dlp takes it where there is one; without it, the link is not supported.
+   */
+  | 'other-extractor'
 
 export class MetaError extends Error {
   override readonly name = 'MetaError'
@@ -83,6 +88,15 @@ export function toDownloadError(error: unknown, site: string): DownloadError {
         'unknown',
         error.message.startsWith(site) ? error.message : `${site}: ${error.message}`,
         SOURCE_FORMAT_CHANGED,
+      )
+    case 'other-extractor':
+      // yt-dlp takes it; without one (the phone) "not supported" is the answer, not "try later"
+      return new DownloadError(
+        'unknown',
+        error.message.startsWith(site) ? error.message : `${site}: ${error.message}`,
+        SOURCE_FORMAT_CHANGED,
+        undefined,
+        'unsupported-url',
       )
   }
 }

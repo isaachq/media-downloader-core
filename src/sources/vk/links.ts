@@ -17,6 +17,8 @@ export type VkLink =
       readonly id: string
       /** The access key a hidden video's link carries (`?list=`, `_<key>`, `?z=…/<key>`). */
       readonly list?: string | undefined
+      /** The embedded player's `hash` (an embed of a hidden video: read through the embed page). */
+      readonly hash?: string | undefined
       readonly clip?: boolean | undefined
     }
   | {
@@ -55,6 +57,7 @@ const ALBUM_SECTION = new RegExp(`^album_(-?${ID})$`)
 const OWNER_ONLY = new RegExp(`^${OWNER}$`)
 const ID_ONLY = new RegExp(`^${ID}$`)
 const ACCESS_KEY = /^(?:[0-9a-f]{4,40}|ln-[\da-zA-Z]{1,40})$/
+const EMBED_HASH = /^[0-9a-f]{4,40}$/
 
 export function isVkHost(host: string): boolean {
   return VK_HOSTS.has(host) || SHORT_HOSTS.has(host)
@@ -91,7 +94,9 @@ export function parseVkLink(raw: string, extraHost?: string): VkLink | undefined
   if (path === '/video_ext.php') {
     const oid = query.get('oid')
     const id = query.get('id')
-    return oid && id && OWNER_ONLY.test(oid) && ID_ONLY.test(id) ? {kind: 'video', oid, id} : undefined
+    if (!oid || !id || !OWNER_ONLY.test(oid) || !ID_ONLY.test(id)) return undefined
+    const hash = query.get('hash')
+    return {kind: 'video', oid, id, ...(hash && EMBED_HASH.test(hash) && {hash})}
   }
   const direct = VIDEO_PATH.exec(path)
   if (direct) {
@@ -118,6 +123,26 @@ function video(kind: string, oid: string, id: string, list: string | undefined):
 /** The canonical page of a video (or a clip). */
 export function videoUrl(origin: string, oid: string, id: string, clip = false): string {
   return `${origin}/${clip ? 'clip' : 'video'}${oid}_${id}`
+}
+
+/**
+ * A url that reads as `link` again (parseVkLink round-trips it): the video's
+ * page with its access key (`?list=`), or the embed with its hash. What the
+ * engine queues and retries: a hidden video's key must survive it. O(1).
+ */
+export function linkUrl(
+  origin: string,
+  link: {
+    readonly oid: string
+    readonly id: string
+    readonly list?: string | undefined
+    readonly hash?: string | undefined
+    readonly clip?: boolean | undefined
+  },
+): string {
+  if (link.hash) return `${origin}/video_ext.php?oid=${link.oid}&id=${link.id}&hash=${link.hash}`
+  const page = videoUrl(origin, link.oid, link.id, link.clip)
+  return link.list ? `${page}?list=${encodeURIComponent(link.list)}` : page
 }
 
 /** The canonical page of a listing: an album, or every video of the owner. */

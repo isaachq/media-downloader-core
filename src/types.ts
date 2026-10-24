@@ -186,6 +186,12 @@ export type FailureHint =
    * waste time, bandwidth and disk (see `MediaDownloader.damaged`).
    */
   | 'damaged-source'
+  /** The post has pictures or text but no video (an X post of photos): nothing to download as video. */
+  | 'no-video'
+  /** A live stream on the air: it can be downloaded once it ends, as a recording. */
+  | 'live-now'
+  /** The site offers this video only as a stream (HLS), which the built-in extractor doesn't save (no yt-dlp here). */
+  | 'stream-only'
 
 export type JobError = {
   readonly code: ErrorCode

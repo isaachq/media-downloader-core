@@ -25,6 +25,14 @@ export type FakeVkConfig = {
   readonly live?: readonly number[]
   /** Video ids (by index) that only have HLS. */
   readonly hlsOnly?: readonly number[]
+  /** Video ids (by index) that are hidden: act=show answers them only with HIDDEN_KEY as `list`. */
+  readonly hidden?: readonly number[]
+  /** Video ids (by index) shown only through the embed with EMBED_HASH (act=show: "Access restricted"). */
+  readonly embedOnly?: readonly number[]
+  /** The listing ignores `offset` and never says its total (every page is the first). */
+  readonly ignoreOffset?: boolean
+  /** The first N media requests are refused (the links went stale): the download is retried afresh. */
+  readonly staleMedia?: number
   readonly mediaBytes?: number
 }
 
@@ -34,7 +42,7 @@ export type FakeVk = {
   readonly ids: readonly string[]
   /** A title with Cyrillic, an accent and an entity, as VK escapes them. */
   readonly title: (index: number) => string
-  readonly hits: Record<'show' | 'listing' | 'media' | 'refusedMedia' | 'refused' | 'short', number>
+  readonly hits: Record<'show' | 'listing' | 'media' | 'refusedMedia' | 'refused' | 'short' | 'embed', number>
   /** Every media path asked for, in order. */
   readonly served: readonly string[]
   /** The `video` and `list` fields of every act=show. */
@@ -48,6 +56,8 @@ const BASE_TIME = 1_790_000_000
 export const PRIVATE_VIDEO = '5_456239017'
 export const DELETED_VIDEO = '-1000_1'
 const ALBUM = '7'
+export const HIDDEN_KEY = 'abcdef12'
+export const EMBED_HASH = 'e037414127166efe'
 
 /** Text as windows-1251 bytes (ASCII, Cyrillic А…я, Ёё; anything else as an HTML entity, as VK does). */
 export function encodeWindows1251(value: string): Buffer {
@@ -69,7 +79,8 @@ export async function startFakeVk(config: FakeVkConfig = {}): Promise<FakeVk> {
   const pageSize = config.pageSize ?? 4
   const size = config.mediaBytes ?? 32 * 1024
   const ids = Array.from({length: count}, (_, i) => String(BASE_ID + count - i))
-  const hits = {show: 0, listing: 0, media: 0, refusedMedia: 0, refused: 0, short: 0}
+  const hits = {show: 0, listing: 0, media: 0, refusedMedia: 0, refused: 0, short: 0, embed: 0}
+  let staleLeft = config.staleMedia ?? 0
   const served: string[] = []
   const shows: Array<{video: string; list: string | null}> = []
   let refusalsLeft = config.refusals ?? 0
@@ -119,7 +130,7 @@ export async function startFakeVk(config: FakeVkConfig = {}): Promise<FakeVk> {
     row[8] = `<a href='${origin}/@fake' class='VideoCard__ownerLink'>Фейк Канал</a>`
     row[9] = BASE_TIME - index * 3600
     row[19] = 10 + index
-    row[20] = `/video${OID}_${id}`
+    row[20] = config.hidden?.includes(index) ? `/video${OID}_${id}?list=${HIDDEN_KEY}` : `/video${OID}_${id}`
     return row
   }
 
@@ -137,6 +148,11 @@ export async function startFakeVk(config: FakeVkConfig = {}): Promise<FakeVk> {
         hits.refusedMedia++
         return send(400, 'no')
       }
+      if (staleLeft > 0) {
+        staleLeft--
+        hits.refusedMedia++
+        return send(403, 'expired')
+      }
       const quality = url.pathname.split('/')[3]?.replace('.mp4', '') ?? ''
       const body = Buffer.alloc(size, `q${quality}`)
       const range = /^bytes=(\d+)-$/.exec(req.headers.range ?? '')
@@ -151,6 +167,45 @@ export async function startFakeVk(config: FakeVkConfig = {}): Promise<FakeVk> {
       // vk.cc sends through VK's redirect page, the target in `to`
       const target = `${origin}/video${OID}_${ids[0]}`
       return send(302, '', {Location: `${origin}/away.php?cc_key=x&to=${encodeURIComponent(target)}`})
+    }
+    if (url.pathname === '/video_ext.php') {
+      hits.embed++
+      const index = ids.findIndex(id => url.searchParams.get('oid') === OID && url.searchParams.get('id') === id)
+      if (index === -1 || url.searchParams.get('hash') !== EMBED_HASH) {
+        res.writeHead(200, {'Content-Type': 'text/html; charset=windows-1251'})
+        return res.end(encodeWindows1251('<html><div class="video_ext_msg">This video is unavailable</div></html>'))
+      }
+      const id = ids[index]!
+      const files: Record<string, string> = {hls: `${origin}/media/${id}/video.m3u8`}
+      for (const q of qualities) files[`mp4_${q}`] = `${origin}/media/${id}/${q}.mp4?srcAg=CHROME_MAC&sig=e`
+      const prefetch = [
+        {
+          method: 'video.get',
+          request: {videos: `${OID}_${id}_${EMBED_HASH}`, is_embed: true},
+          response: {
+            count: 1,
+            items: [
+              {
+                files,
+                date: BASE_TIME,
+                duration: 10 + index,
+                image: [
+                  {url: `${origin}/thumb/s.jpg`, width: 130},
+                  {url: `${origin}/thumb/l.jpg`, width: 1280},
+                ],
+                id: Number(id),
+                owner_id: Number(OID),
+                // a quote and a bracket inside a string: the bracket matching must skip them
+                title: `${title(index)} [embed] "x"`,
+              },
+            ],
+          },
+        },
+        {method: 'video.getPlayerConfig', response: {}},
+      ]
+      const html = `<html><head><script>;window.cur = Object.assign(window.cur || {}, {"apiPrefetchCache":${JSON.stringify(prefetch)},"other":{"a":[1]}});</script></head></html>`
+      res.writeHead(200, {'Content-Type': 'text/html; charset=windows-1251'})
+      return res.end(encodeWindows1251(html))
     }
     if (url.pathname === '/cc-nowhere') return send(302, '', {Location: `${origin}/`})
     if (url.pathname === '/al_video.php' && req.method === 'POST') {
@@ -173,6 +228,9 @@ export async function startFakeVk(config: FakeVkConfig = {}): Promise<FakeVk> {
           if (video === PRIVATE_VIDEO) return failure(res, 'Access restricted')
           const index = ids.findIndex(id => `${OID}_${id}` === video)
           if (index === -1) return failure(res, 'This video has been deleted and is no longer available.')
+          if (config.embedOnly?.includes(index)) return failure(res, 'Access restricted')
+          if (config.hidden?.includes(index) && form.get('list') !== HIDDEN_KEY)
+            return failure(res, 'Access restricted')
           const holder = config.changed
             ? {videoPlayer: {sources: []}}
             : {mvData: {oid: Number(OID), vid: Number(ids[index])}, player: player(index), player_unavailable: false}
@@ -181,7 +239,7 @@ export async function startFakeVk(config: FakeVkConfig = {}): Promise<FakeVk> {
         if (act === 'load_videos_silent') {
           hits.listing++
           const section = form.get('section') ?? 'all'
-          const offset = Number(form.get('offset') ?? 0)
+          const offset = config.ignoreOffset ? 0 : Number(form.get('offset') ?? 0)
           if (form.get('oid') !== OID) return answer(res, [0, [{[section]: {list: [], count: 0}}, null]])
           // the album holds every other video
           const indexes = Array.from({length: count}, (_, i) => i).filter(
@@ -192,7 +250,10 @@ export async function startFakeVk(config: FakeVkConfig = {}): Promise<FakeVk> {
             form.get('need_albums') === '1'
               ? [['Лучшее &amp; другое', indexes.length, '', `/video/playlist/${OID}_${ALBUM}`, '', '', Number(ALBUM)]]
               : null
-          return answer(res, [0, [{[section]: {list: page, count: page.length, total: indexes.length}}, albums]])
+          const block = config.ignoreOffset
+            ? {list: page, count: page.length}
+            : {list: page, count: page.length, total: indexes.length}
+          return answer(res, [0, [{[section]: block}, albums]])
         }
         return failure(res, 'Unknown error')
       })

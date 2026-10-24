@@ -7,12 +7,11 @@ import {
   SettingOutlined,
   SunOutlined,
 } from '@ant-design/icons'
-import {Badge, Button, Segmented, Space, Tag, Tooltip, Typography} from 'antd'
+import {Badge, Button, Segmented, Space, Tooltip, Typography} from 'antd'
 import type {ThemeMode} from '../../../shared/contract'
 import {useApp} from '../context'
 import {rate} from '../format'
 import {useT} from '../i18n'
-import {modeName} from '../mode'
 import {useStoreValue} from '../store'
 import {Banner} from './Banner'
 import {LanguageSelect} from './LanguageSelect'
@@ -27,7 +26,7 @@ type Props = {
 
 export function Header({onLogs, onSettings, onAbout, onReport, onGuide}: Props) {
   const t = useT()
-  const {info, settings, updateSettings, dark} = useApp()
+  const {settings, updateSettings, dark} = useApp()
   const liveSpeed = useStoreValue(store => store.speed)
   return (
     <Banner dark={dark}>
@@ -37,23 +36,6 @@ export function Header({onLogs, onSettings, onAbout, onReport, onGuide}: Props) 
             Media Download Core
           </Typography.Title>
           <Typography.Text className="app-tagline">{t('app.tagline')}</Typography.Text>
-          <div>
-            <Tooltip title={t('mode.badgeTip')}>
-              <Tag
-                className="mode-tag"
-                role="button"
-                tabIndex={0}
-                onClick={onSettings}
-                onKeyDown={event => {
-                  if (event.key === 'Enter' || event.key === ' ') onSettings()
-                }}
-                data-testid="mode-tag"
-                data-mode={info.mode}
-              >
-                {t('mode.badge', {mode: modeName(t, info.mode)})}
-              </Tag>
-            </Tooltip>
-          </div>
         </div>
         <Space wrap className="header-actions" align="center">
           {liveSpeed > 0 ? (

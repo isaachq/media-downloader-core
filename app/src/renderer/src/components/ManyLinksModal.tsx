@@ -1,32 +1,40 @@
 import {CloseOutlined, ScheduleOutlined} from '@ant-design/icons'
 import {Alert, Button, Modal, Typography} from 'antd'
 import {useState} from 'react'
+import {detectLink} from '../../../shared/contract'
 import {useApp} from '../context'
 import {useT} from '../i18n'
-import {modeName} from '../mode'
+import type {SiteLabel} from '../site'
 import {Rows} from './Rows'
+import {SiteTag} from './SiteTag'
+
+type Link = {readonly url: string; readonly site: SiteLabel}
 
 /**
- * Several links pasted or dropped at once: review them (drop any), then each
- * becomes a batch with the format, quality and folder chosen in the form.
+ * Several links pasted or dropped at once, of any sites: review them (drop
+ * any), then each becomes a batch with the format, quality and folder chosen
+ * in the form. Each row says its site, detected once when the review opens.
  */
 export function ManyLinksModal({
   urls: initial,
   repeated,
-  otherMode = 0,
   onSchedule,
   onCancel,
 }: {
   readonly urls: readonly string[]
   readonly repeated: number
-  /** Links of other sites than this run's mode: left out. */
-  readonly otherMode?: number
   readonly onSchedule: (urls: readonly string[]) => Promise<void>
   readonly onCancel: () => void
 }) {
   const t = useT()
   const {info} = useApp()
-  const [urls, setUrls] = useState(initial)
+  const [links, setLinks] = useState<readonly Link[]>(() =>
+    initial.map(url => {
+      const found = detectLink(url, info.siteAliases)
+      return {url, site: found?.file && found.site === 'web' ? 'file' : (found?.site ?? 'web')}
+    }),
+  )
+  const urls = links.map(link => link.url)
   const [busy, setBusy] = useState(false)
   return (
     <Modal
@@ -60,33 +68,25 @@ export function ManyLinksModal({
       ]}
     >
       <Alert type="info" showIcon title={t('many.hint')} className="many-hint" />
-      {otherMode > 0 ? (
-        <Alert
-          type="warning"
-          showIcon
-          className="many-hint"
-          title={t('many.otherMode', {count: otherMode, mode: modeName(t, info.mode)})}
-          data-testid="many-other-mode"
-        />
-      ) : null}
       {repeated > 0 ? (
         <Typography.Text type="secondary">{t('many.repeated', {count: repeated})}</Typography.Text>
       ) : null}
       <Rows
         className="many-list"
-        items={urls}
-        rowKey={(url, index) => `${index}:${url}`}
-        render={(url, index) => (
+        items={links}
+        rowKey={(link, index) => `${index}:${link.url}`}
+        render={(link, index) => (
           <>
-            <Typography.Text className="one-line mono" title={url}>
-              {index + 1}. {url}
+            <SiteTag site={link.site} className="many-site" />
+            <Typography.Text className="one-line mono" title={link.url}>
+              {index + 1}. {link.url}
             </Typography.Text>
             <Button
               size="small"
               type="text"
               icon={<CloseOutlined />}
               aria-label={t('many.remove')}
-              onClick={() => setUrls(urls.filter((_, i) => i !== index))}
+              onClick={() => setLinks(links.filter((_, i) => i !== index))}
             />
           </>
         )}

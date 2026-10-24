@@ -45,6 +45,7 @@ import {bytes, clock, moment} from '../format'
 import {type MessageKey, useT} from '../i18n'
 import {useStoreValue} from '../store'
 import {BatchFilter} from './BatchFilter'
+import {SiteTag} from './SiteTag'
 
 const PAGE = 50
 /** A finished download refreshes the page shown at most this often. */
@@ -467,7 +468,13 @@ export function FinishedList({
                   {entry.title}
                 </Typography.Text>
                 <Typography.Text type="secondary" className="one-line mono" title={entry.filepath}>
-                  {[entry.extractor, entry.filepath.split(/[\\/]/).at(-1), batchId ? undefined : entry.batchTitle]
+                  <SiteTag site={entry.site} className="finished-site" />
+                  {/* a named site says it all; another website's extractor names it (Vimeo…) */}
+                  {[
+                    entry.site === 'web' ? entry.extractor : undefined,
+                    entry.filepath.split(/[\\/]/).at(-1),
+                    batchId ? undefined : entry.batchTitle,
+                  ]
                     .filter(Boolean)
                     .join(' · ')}
                 </Typography.Text>

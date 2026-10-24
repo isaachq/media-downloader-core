@@ -1,6 +1,6 @@
 // @vitest-environment node
 import {describe, expect, it} from 'vitest'
-import {pickLanguage, platformOf} from './contract'
+import {detectLink, pickLanguage} from './contract'
 
 describe('default language', () => {
   it('Spanish when Spanish is preferred', () => {
@@ -25,27 +25,35 @@ describe('default language', () => {
   })
 })
 
-describe('the mode a link belongs to', () => {
-  it('tells TikTok, Instagram and Facebook apart; anything else is the web mode', () => {
-    expect(platformOf('https://www.tiktok.com/@someone/video/1')).toBe('tiktok')
-    expect(platformOf('https://vm.tiktok.com/ZM1/')).toBe('tiktok')
-    expect(platformOf('https://www.instagram.com/reel/abc/')).toBe('instagram')
-    expect(platformOf('https://instagr.am/p/abc')).toBe('instagram')
-    expect(platformOf('https://m.facebook.com/watch/?v=1')).toBe('facebook')
-    expect(platformOf('https://fb.watch/xyz/')).toBe('facebook')
-    expect(platformOf('https://www.youtube.com/watch?v=1')).toBe('web')
-    expect(platformOf('https://youtu.be/1')).toBe('web')
-    expect(platformOf('https://videos.example.org/search/videos/x?type=public')).toBe('web')
+describe('the site a link belongs to (the core’s detection, as the app uses it)', () => {
+  const site = (text: string, aliases?: Parameters<typeof detectLink>[1]) => detectLink(text, aliases)?.site
+
+  it('tells YouTube, TikTok, Instagram, Facebook, VK and X apart; anything else is a website', () => {
+    expect(site('https://www.youtube.com/watch?v=1')).toBe('youtube')
+    expect(site('https://youtu.be/1')).toBe('youtube')
+    expect(site('https://www.tiktok.com/@someone/video/1')).toBe('tiktok')
+    expect(site('https://vm.tiktok.com/ZM1/')).toBe('tiktok')
+    expect(site('https://www.instagram.com/reel/abc/')).toBe('instagram')
+    expect(site('https://instagr.am/p/abc')).toBe('instagram')
+    expect(site('https://m.facebook.com/watch/?v=1')).toBe('facebook')
+    expect(site('https://fb.watch/xyz/')).toBe('facebook')
+    expect(site('https://vk.com/video-1_2')).toBe('vk')
+    expect(site('https://x.com/someone/status/1')).toBe('x')
+    expect(site('https://twitter.com/someone/status/1')).toBe('x')
+    expect(site('https://www.trannyvideosx.com/video/81455/ts-havenna-sofia-solo-1')).toBe('web')
   })
 
-  it('a look-alike host is not the site', () => {
-    expect(platformOf('https://nottiktok.com/@x')).toBe('web')
-    expect(platformOf('https://tiktok.com.evil.test/@x')).toBe('web')
+  it('finds the link in shared text, a look-alike host is not the site, a fake counts by its alias', () => {
+    expect(detectLink('Look at this! https://www.tiktok.com/@a/video/1 :)')?.url).toBe('https://www.tiktok.com/@a/video/1')
+    expect(site('https://nottiktok.com/@x')).toBe('web')
+    expect(site('https://tiktok.com.evil.test/@x')).toBe('web')
+    expect(site('http://127.0.0.1:4100/@a', {'127.0.0.1:4100': 'tiktok'})).toBe('tiktok')
+    expect(detectLink('https://cdn.example.org/clip.mp4')?.file).toBe(true)
   })
 
-  it('no mode for what is not an http(s) link', () => {
-    expect(platformOf('ftp://tiktok.com/x')).toBeUndefined()
-    expect(platformOf('not a link')).toBeUndefined()
+  it('no site for what is not an http(s) link', () => {
+    expect(site('ftp://tiktok.com/x')).toBeUndefined()
+    expect(site('not a link')).toBeUndefined()
   })
 })
 

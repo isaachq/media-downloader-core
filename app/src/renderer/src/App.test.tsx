@@ -170,7 +170,7 @@ describe('preview before downloading a list', () => {
   })
 
   it('shows how far a long listing has got, and Cancel stops it without an error', async () => {
-    const api = new FakeApi({info: {mode: 'tiktok'}})
+    const api = new FakeApi()
     let reject!: (error: Error) => void
     api.analyze.mockImplementation(() => new Promise((_resolve, fail) => (reject = fail)))
     api.cancelAnalyze.mockImplementation(async () => reject(new Error('This operation was aborted')))
@@ -258,7 +258,7 @@ describe('language and theme', () => {
     await user.click(screen.getAllByRole('combobox')[0]!)
     await user.click(await screen.findByTitle('Español'))
     await waitFor(() => expect(api.setSettings).toHaveBeenCalledWith({language: 'es'}))
-    expect(await screen.findByText('Nueva descarga · YouTube y sitios web')).toBeInTheDocument()
+    expect(await screen.findByRole('tab', {name: 'Nueva descarga'})).toBeInTheDocument()
     expect(screen.getByRole('button', {name: /descargar/i})).toBeInTheDocument()
   })
 

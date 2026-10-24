@@ -1,4 +1,4 @@
-import {act, cleanup, fireEvent, render, screen, waitFor, within} from '@testing-library/react'
+import {act, fireEvent, render, screen, waitFor, within} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type {BatchId, JobId, PreflightItem} from 'media-downloader-core'
 import {afterEach, describe, expect, it} from 'vitest'
@@ -21,86 +21,121 @@ async function mount(api = new FakeApi()) {
 const failedJob = (patch: Parameters<typeof job>[0] = {}) =>
   job({status: 'failed', outcome: 'failed', progress: {}, error: {code: 'network', message: 'timed out'}, ...patch})
 
-describe('one site per run', () => {
-  it('says so in the header, and refuses a link of another site before asking anything', async () => {
-    const {api, user} = await mount(new FakeApi())
-    expect(screen.getByTestId('mode-tag')).toHaveTextContent('Mode: YouTube and websites')
-    expect(screen.getByText('New download · YouTube and websites')).toBeInTheDocument()
-    await user.type(screen.getByLabelText('Video, playlist or profile URL'), 'https://www.tiktok.com/@someone')
+describe('one link box for every site', () => {
+  const FIELD = 'Video, playlist or profile URL'
+
+  it('has one title and one label naming the sites, and no site badge in the header', async () => {
+    await mount(new FakeApi())
+    expect(screen.queryByTestId('mode-tag')).not.toBeInTheDocument()
+    expect(screen.getByRole('tab', {name: 'New download'})).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', {name: 'Sync Up'})).toBeInTheDocument()
     expect(
-      await screen.findByText(/This is a TikTok link, but this run is in YouTube and websites mode/),
+      screen.getByText('Paste a link from YouTube, TikTok, Instagram, Facebook, VK, X or any website'),
     ).toBeInTheDocument()
-    await user.click(screen.getByRole('button', {name: /download/i}))
-    expect(api.analyze).not.toHaveBeenCalled()
-    // a link of this mode goes through
-    await user.clear(screen.getByLabelText('Video, playlist or profile URL'))
-    await user.type(screen.getByLabelText('Video, playlist or profile URL'), 'https://www.youtube.com/watch?v=x')
-    await user.click(screen.getByRole('button', {name: /download/i}))
-    await waitFor(() => expect(api.analyze).toHaveBeenCalledWith('https://www.youtube.com/watch?v=x'))
+    expect(screen.getByLabelText(FIELD)).toHaveAttribute('placeholder', 'Link to a video, playlist, profile or post')
+    expect(screen.queryByTestId('site-tag')).not.toBeInTheDocument()
   })
 
-  it('in TikTok mode a YouTube link is the one refused, and the main process’s refusal reads the same', async () => {
-    const api = new FakeApi({info: {mode: 'tiktok'}})
-    const {user} = await mount(api)
-    expect(screen.getByTestId('mode-tag')).toHaveAttribute('data-mode', 'tiktok')
-    await user.type(screen.getByLabelText('Video, playlist or profile URL'), 'https://youtu.be/x')
+  it.each([
+    ['https://www.youtube.com/watch?v=x', 'youtube', 'YouTube'],
+    ['https://www.tiktok.com/@someone/video/1', 'tiktok', 'TikTok'],
+    ['https://www.instagram.com/reel/abc/', 'instagram', 'Instagram'],
+    ['https://www.facebook.com/watch/?v=1', 'facebook', 'Facebook'],
+    ['https://vk.com/video-1_2', 'vk', 'VK'],
+    ['https://x.com/someone/status/1', 'x', 'X'],
+    ['https://www.trannyvideosx.com/video/81455/ts-havenna-sofia-solo-1', 'web', 'Website'],
+    ['https://cdn.example.org/media/clip.mp4', 'file', 'File'],
+  ])('tags %s as its site under the field', async (link, site, name) => {
+    const {user} = await mount(new FakeApi())
+    await user.type(screen.getByLabelText(FIELD), link)
+    const tag = await screen.findByTestId('site-tag')
+    expect(tag).toHaveAttribute('data-site', site)
+    expect(tag).toHaveTextContent(name)
+  })
+
+  it('names the site in the language of the app; brands stay brands', async () => {
+    const {user} = await mount(new FakeApi({settings: {language: 'es'}}))
+    const field = screen.getByLabelText('URL del video, playlist o perfil')
+    await user.type(field, 'https://videos.example.org/watch/1')
+    expect(await screen.findByTestId('site-tag')).toHaveTextContent('Sitio web')
+    await user.clear(field)
+    await user.type(field, 'https://vk.com/video-1_2')
+    expect(await screen.findByTestId('site-tag')).toHaveTextContent('VK')
     expect(
-      await screen.findByText(/This is a YouTube and websites link, but this run is in TikTok mode/),
+      screen.getByText('Pega un enlace de YouTube, TikTok, Instagram, Facebook, VK, X o de cualquier sitio web'),
     ).toBeInTheDocument()
-    expect(api.analyze).not.toHaveBeenCalled()
+  })
+
+  it('keeps the list and profile tags next to the site', async () => {
+    const {user} = await mount(new FakeApi())
+    await user.type(screen.getByLabelText(FIELD), 'https://www.tiktok.com/@someone')
+    const tags = await screen.findByTestId('link-tags')
+    expect(tags).toHaveTextContent('TikTok')
+    expect(tags).toHaveTextContent('Profile')
+  })
+
+  it.each([
+    'https://www.tiktok.com/@someone/video/1',
+    'https://www.instagram.com/p/abc/',
+    'https://www.facebook.com/reel/1',
+    'https://www.youtube.com/watch?v=x',
+  ])('refuses no site: %s is read and scheduled', async link => {
+    const {api, user} = await mount(new FakeApi())
+    await user.type(screen.getByLabelText(FIELD), link)
+    expect(screen.queryByText(/this run is in/)).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', {name: /download/i}))
+    await waitFor(() => expect(api.analyze).toHaveBeenCalledWith(link))
+    await waitFor(() => expect(api.schedule).toHaveBeenCalledWith(expect.objectContaining({url: link})))
+  })
+
+  it('reads the link out of shared text', async () => {
+    const {api, user} = await mount(new FakeApi())
+    await user.type(screen.getByLabelText(FIELD), 'Look at this! https://www.instagram.com/reel/abc/')
+    expect(await screen.findByTestId('site-tag')).toHaveAttribute('data-site', 'instagram')
+    await user.click(screen.getByRole('button', {name: /download/i}))
+    await waitFor(() => expect(api.analyze).toHaveBeenCalledWith('https://www.instagram.com/reel/abc/'))
   })
 
   it('an error from the main process reads as words, with how to sign in when the site asks', async () => {
-    const api = new FakeApi({info: {mode: 'instagram'}})
+    const api = new FakeApi()
     api.analyze.mockRejectedValue(
       new Error("Error invoking remote method 'mdc:analyze': DownloadError: Instagram asks to sign in for this."),
     )
     const {user} = await mount(api)
-    await user.type(screen.getByLabelText('Video, playlist or profile URL'), 'https://www.instagram.com/nasa/')
+    await user.type(screen.getByLabelText(FIELD), 'https://www.instagram.com/nasa/')
     await user.click(screen.getByRole('button', {name: /download/i}))
     expect(await screen.findByText(/^Instagram asks to sign in for this\. Sign-in required/)).toBeInTheDocument()
     expect(screen.queryByText(/Error invoking remote method/)).not.toBeInTheDocument()
   })
 
-  it('several links pasted at once: only this site’s are offered, the rest are counted', async () => {
-    const {user} = await mount(new FakeApi({info: {mode: 'instagram'}}))
-    const input = screen.getByLabelText('Video, playlist or profile URL')
-    await user.click(input)
+  it('several links pasted at once, of any sites: all go to the review, each with its site', async () => {
+    const {api, user} = await mount(new FakeApi())
+    await user.click(screen.getByLabelText(FIELD))
     await user.paste(
-      'https://www.instagram.com/reel/a/\nhttps://www.instagram.com/p/b/\nhttps://www.tiktok.com/@c\nhttps://youtu.be/d',
+      'https://www.instagram.com/reel/a/\nhttps://www.facebook.com/reel/b\nhttps://www.tiktok.com/@c\nhttps://youtu.be/d\nhttps://vk.com/video-1_2',
     )
     const dialog = await screen.findByRole('dialog')
-    expect(within(dialog).getByText('Schedule 2')).toBeInTheDocument()
-    expect(within(dialog).getByTestId('many-other-mode')).toHaveTextContent(
-      '2 link(s) of other sites left out: this run is in Instagram mode.',
-    )
+    expect(within(dialog).getByText('Schedule 5')).toBeInTheDocument()
+    expect(within(dialog).queryByTestId('many-other-mode')).not.toBeInTheDocument()
+    expect(within(dialog).getAllByTestId('site-tag').map(tag => tag.getAttribute('data-site'))).toEqual([
+      'instagram',
+      'facebook',
+      'tiktok',
+      'youtube',
+      'vk',
+    ])
+    await user.click(within(dialog).getByTestId('many-schedule'))
+    await waitFor(() => expect(api.schedule).toHaveBeenCalledTimes(5))
   })
 
-  it('changing the site waits for open batches, then asks for a restart', async () => {
-    const running = batch({status: 'running'})
-    const {api, user} = await mount(new FakeApi({state: {batches: [running], jobs: []}}))
+  it('Settings has no Site section; YouTube’s account and the Sync Up schedule are always there', async () => {
+    const {user} = await mount(new FakeApi())
     await user.click(screen.getByRole('button', {name: /settings/i}))
-    const modes = await screen.findByTestId('settings-mode')
-    expect(within(modes).getByRole('radio', {name: /^TikTok/})).toBeDisabled()
-    expect(screen.getByText(/1 batch\(es\) still open/)).toBeInTheDocument()
-    cleanup()
-
-    const free = await mount(new FakeApi())
-    await free.user.click(screen.getByRole('button', {name: /settings/i}))
-    await free.user.click(within(await screen.findByTestId('settings-mode')).getByRole('radio', {name: /^Facebook/}))
-    await waitFor(() => expect(free.api.setSettings).toHaveBeenCalledWith({mode: 'facebook'}))
-    const notice = await screen.findByTestId('mode-restart')
-    expect(notice).toHaveTextContent('Restart to switch to Facebook.')
-    await free.user.click(within(notice).getByRole('button', {name: /Restart now/}))
-    expect(free.api.relaunch).toHaveBeenCalled()
-    expect(api.relaunch).not.toHaveBeenCalled()
-  })
-
-  it('YouTube’s sign-in row exists only in the web mode', async () => {
-    const {user} = await mount(new FakeApi({info: {mode: 'facebook'}}))
-    await user.click(screen.getByRole('button', {name: /settings/i}))
-    await screen.findByTestId('settings-mode')
-    expect(screen.queryByTestId('youtube-account')).not.toBeInTheDocument()
+    expect(await screen.findByTestId('youtube-account')).toBeInTheDocument()
+    expect(screen.queryByTestId('settings-mode')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('mode-restart')).not.toBeInTheDocument()
+    expect(screen.queryByRole('separator', {name: 'Site'})).not.toBeInTheDocument()
+    expect(screen.getByText('Run scheduled syncs (Sync Up)')).toBeInTheDocument()
   })
 })
 
@@ -267,6 +302,7 @@ describe('finished: header filters and missing records', () => {
     sizeBytes: 1_000_000 * 10 ** i,
     extractor: 'Youtube',
     url: `https://example.com/${i}`,
+    site: 'web',
     completedAt: Date.UTC(2026, 9, 11, 12, i),
     sha256: 'a'.repeat(64),
     validation: 'full',
@@ -301,6 +337,19 @@ describe('finished: header filters and missing records', () => {
     for (const value of values) await user.click(within(menu).getByText(value))
     await user.click(within(menu).getByRole('button', {name: 'OK'}))
   }
+
+  it('lists the files of every site, each row with its site', async () => {
+    const api = new FakeApi()
+    api.finishedEntries = [
+      entry(3, {url: 'https://vk.com/video-1_2', site: 'vk', extractor: 'VK'}),
+      entry(2, {url: 'https://www.tiktok.com/@a/video/2', site: 'tiktok', extractor: 'TikTok'}),
+      entry(1, {extractor: 'Vimeo'}),
+    ]
+    const {list} = await openFinished(api)
+    expect(within(list).getAllByTestId('site-tag').map(tag => tag.textContent)).toEqual(['VK', 'TikTok', 'Website'])
+    // another website's extractor still names it
+    expect(within(list).getByText(/Vimeo · Clip-1\.mp4/)).toBeInTheDocument()
+  })
 
   it('filters by Integrity and Size, sorts by Size, and the damaged ones say why on hover', async () => {
     const api = new FakeApi()

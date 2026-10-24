@@ -1,6 +1,6 @@
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
-import {type AppSettings, AUDIO_FORMATS, BROWSERS, type Format, pickLanguage, QUALITIES, type Quality, RUN_MODES, type RunMode, type ThemeMode, VIDEO_FORMATS, isLanguage} from '../shared/contract'
+import {type AppSettings, AUDIO_FORMATS, BROWSERS, type Format, pickLanguage, QUALITIES, type Quality, type ThemeMode, VIDEO_FORMATS, isLanguage} from '../shared/contract'
 
 /** First-run settings; `languages` are the system's preferred languages, in order. */
 export function defaultSettings(
@@ -27,7 +27,6 @@ export function defaultSettings(
     slideshowSeconds: 3,
     tourDone: false,
     syncEnabled: false,
-    mode: 'web',
     validateAfter: false,
     cpuBoost: false,
   }
@@ -40,7 +39,8 @@ const FORMATS: readonly string[] = [...VIDEO_FORMATS, ...AUDIO_FORMATS]
 
 /**
  * Merge an untrusted patch (it comes from the renderer) into settings: every
- * field is type- and range-checked, unknown or invalid values are ignored.
+ * field is type- and range-checked, unknown or invalid values are ignored
+ * (so is a settings.json of an older version: its `mode`, one site per run, is gone).
  */
 export function mergeSettings(current: AppSettings, patch: unknown, limits: ConcurrencyLimits): AppSettings {
   if (typeof patch !== 'object' || patch === null) return current
@@ -59,8 +59,6 @@ export function mergeSettings(current: AppSettings, patch: unknown, limits: Conc
     next.concurrency = Math.min(maxConcurrency, Math.max(1, p['concurrency'] as number))
   // boost off: what was allowed only with it comes down to the new ceiling
   next.concurrency = Math.min(maxConcurrency, next.concurrency)
-  if (typeof p['mode'] === 'string' && (RUN_MODES as readonly string[]).includes(p['mode']))
-    next.mode = p['mode'] as RunMode
   if (typeof p['validateAfter'] === 'boolean') next.validateAfter = p['validateAfter']
   if (p['validation'] === 'full' || p['validation'] === 'quick' || p['validation'] === 'none')
     next.validation = p['validation']

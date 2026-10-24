@@ -211,8 +211,8 @@ function Shell({
         />
         <Layout.Content className="app-content">
           <UpdateBanner />
-          {/* YouTube's sign-in belongs to the web mode only */}
-          {info.mode === 'web' ? <YouTubeAccess /> : null}
+          {/* YouTube's access (a bot check, signing in): always there, it shows only when it has something to say */}
+          <YouTubeAccess />
           {/* Sync Up (in the top card) opens its batches in the tabs below too */}
           <ShowBatchContext.Provider value={showBatch}>
             <DownloadBar />

@@ -317,6 +317,29 @@ h5.ant-typography.preview-heading {
   max-height: 360px;
   overflow: auto;
 }
+/* each link of the review: its site, the link, its remove button */
+.many-list .many-site {
+  flex: none;
+  margin-inline-end: 0;
+}
+.many-list .one-line {
+  flex: 1;
+}
+/* under the link box: the site it was detected as, then list / profile */
+.link-tags {
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.link-tags .ant-tag {
+  margin-inline-end: 0;
+}
+.finished-site {
+  margin-inline-end: 6px;
+  font-family: inherit;
+}
 /* Sync Up: one block per account, a line between them */
 .sync-account {
   padding: 12px 0;

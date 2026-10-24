@@ -1,5 +1,5 @@
 import type {BrowserAssist} from '../browser.js'
-import {type Fetch, HttpSession} from '../http.js'
+import {DOCUMENT_NAVIGATION_HEADERS, type Fetch, HttpSession, navigationFetch} from '../http.js'
 import {Pacer, type PacerOptions} from '../pacer.js'
 import {HostSession, type SessionCookies, type SessionProvider, type SiteSession} from '../session.js'
 import {MetaError} from './errors.js'
@@ -92,12 +92,19 @@ export class MetaClient {
   readonly #log: (level: 'info' | 'warn', message: string) => void
   readonly #now: () => number
   #blockedUntil = 0
+  /**
+   * Share-link hops as a page load (Sec-Fetch-* navigate, sent as given):
+   * Facebook answers /share/r/… with a 400 to a Chrome that says `cors`, the
+   * only mode Node's fetch sends. Cookieless, like the visitor who opened it.
+   */
+  readonly #hops: HttpSession
 
   constructor(options: MetaClientOptions) {
     this.site = options.site
     this.origin = options.origin.replace(/\/$/, '')
     this.host = new URL(this.origin).hostname
     this.session = new HttpSession({fetch: options.fetch})
+    this.#hops = new HttpSession({fetch: options.fetch ?? navigationFetch})
     this.pacer = new Pacer(options.pacing, options.site)
     this.#sessionCookie = options.sessionCookie
     this.#browser = options.browser
@@ -216,10 +223,24 @@ export class MetaClient {
     }
   }
 
-  /** Follow one redirect hop of a short link; undefined when it doesn't redirect. */
+  /**
+   * Follow one redirect hop of a short link; undefined when it doesn't
+   * redirect. First as a page load, then with the site's session (a link only
+   * a signed-in visitor may open). At most 2 requests.
+   */
   async redirectOf(url: string, signal?: AbortSignal): Promise<string | undefined> {
-    const response = await this.pacer.run(() => this.session.get(url, {redirect: 'manual', signal}), signal)
-    const target = response.headers.get('location')
+    const asPage = await this.pacer.run(
+      () => this.#hops.get(url, {redirect: 'manual', headers: DOCUMENT_NAVIGATION_HEADERS, signal}),
+      signal,
+    )
+    void asPage.body?.cancel()
+    const target =
+      asPage.headers.get('location') ??
+      (await this.pacer.run(async () => {
+        const response = await this.session.get(url, {redirect: 'manual', signal})
+        void response.body?.cancel()
+        return response.headers.get('location')
+      }, signal))
     return target ? new URL(target, url).href : undefined
   }
 

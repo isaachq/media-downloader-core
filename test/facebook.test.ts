@@ -514,9 +514,9 @@ describe('Facebook, end to end (local fake)', () => {
     assert.equal(site.hits.stories, 0)
   })
 
-  it('resolves share links and dates the file by the video’s publication', async () => {
+  it('resolves share links (opened as a page load) and dates the file by the video’s publication', async () => {
     const {site, scheduler, out} = await setup('share')
-    const batch = scheduler.schedule({url: `${site.origin}/share/v/abc/`, profile: mp4, outDir: out})
+    const batch = scheduler.schedule({url: `${site.origin}/share/r/19qKig4dBU/`, profile: mp4, outDir: out})
     await scheduler.whenIdle()
     assert.equal(scheduler.batch(batch.id)?.status, 'completed', JSON.stringify(scheduler.batch(batch.id)?.error))
     assert.equal(site.hits.short, 1)

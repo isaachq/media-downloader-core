@@ -209,7 +209,9 @@ export async function startFakeFacebook(config: FakeFacebookConfig = {}): Promis
     }
     if (parts[0] === 'share') {
       hits.short++
-      return send(302, '', {Location: `/watch/?v=${ids[0]}`})
+      // as facebook.com does (October 2026): a Chrome that doesn't say it is a page load gets a 400
+      if (req.headers['sec-fetch-mode'] !== 'navigate') return send(400, 'bad request')
+      return send(302, '', {Location: `/reel/${ids[0]}/?rdid=x&share_url=${encodeURIComponent(url.href)}`})
     }
     if (isMedia) {
       hits.media++

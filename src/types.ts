@@ -5,6 +5,8 @@ import type {FacebookOptions} from './sources/facebook/source.js'
 import type {InstagramOptions} from './sources/instagram/source.js'
 import type {MediaSource} from './sources/source.js'
 import type {TikTokOptions} from './sources/tiktok/source.js'
+import type {VkOptions} from './sources/vk/source.js'
+import type {XOptions} from './sources/x/source.js'
 import type {AttestationOptions, AttestationStrategy} from './youtube/attestation.js'
 import type {YouTubeAccess} from './youtube/gate.js'
 // Public types. Everything a host application (CLI, Electron, server) needs to
@@ -732,6 +734,20 @@ export type DownloaderOptions = {
    * (signed-in session, as for Instagram). `false` hands Facebook urls to yt-dlp.
    */
   readonly facebook?: false | FacebookOptions | undefined
+  /**
+   * X (Twitter) videos through the built-in extractor (the public data X's
+   * embedded posts read; anonymous, no yt-dlp): a post's video or GIF, a post
+   * with several videos as a playlist, t.co short links. Profiles are not
+   * read. `false` hands X urls to yt-dlp.
+   */
+  readonly x?: false | XOptions | undefined
+  /**
+   * VK video through the built-in extractor (VK's own video endpoint, paced;
+   * anonymous, no yt-dlp): videos, clips, videos opened over a wall post,
+   * embeds, vk.cc short links, albums and an owner's videos. `false` hands VK
+   * urls to yt-dlp.
+   */
+  readonly vk?: false | VkOptions | undefined
   /**
    * Links straight to a media file (`…/clip.mp4`, `…/song.mp3`) on any other
    * site, read natively (one ranged request, then the file): extractor "Web".

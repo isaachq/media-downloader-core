@@ -20,6 +20,16 @@
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
       }
+    },
+    "./detect": {
+      "import": {
+        "types": "./dist/detect.d.ts",
+        "default": "./dist/detect.js"
+      },
+      "require": {
+        "types": "./dist/detect.d.cts",
+        "default": "./dist/detect.cjs"
+      }
     }
   },
   "files": [

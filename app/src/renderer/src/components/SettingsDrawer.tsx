@@ -37,6 +37,7 @@ import {moment} from '../format'
 import {type MessageKey, useT} from '../i18n'
 import {modeName} from '../mode'
 import {type AppStore, BATCH_FINISHED, useStoreValue} from '../store'
+import {LanguageSelect} from './LanguageSelect'
 import {SignInHelp} from './SignInHelp'
 
 /** Batches not closed yet (scheduled, checking, running, validating): the mode can't change under them. */
@@ -314,14 +315,7 @@ export function SettingsDrawer({open, onClose, onDoctor, onReinstall}: Props) {
 
         <Divider titlePlacement="start">{t('settings.appearance')}</Divider>
         <Form.Item label={t('header.language')}>
-          <Segmented
-            value={settings.language}
-            options={[
-              {label: 'English', value: 'en'},
-              {label: 'Español', value: 'es'},
-            ]}
-            onChange={value => change({language: value as 'en' | 'es'})}
-          />
+          <LanguageSelect />
         </Form.Item>
         <Form.Item label={t('header.theme')}>
           <Segmented

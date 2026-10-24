@@ -1,9 +1,22 @@
 import {App as AntApp, Button, ConfigProvider, Layout, Tabs, Typography, theme} from 'antd'
+import type {Locale} from 'antd/es/locale'
+import arEG from 'antd/locale/ar_EG'
+import deDE from 'antd/locale/de_DE'
 import enUS from 'antd/locale/en_US'
 import esES from 'antd/locale/es_ES'
+import frFR from 'antd/locale/fr_FR'
+import hiIN from 'antd/locale/hi_IN'
+import idID from 'antd/locale/id_ID'
+import itIT from 'antd/locale/it_IT'
+import ptBR from 'antd/locale/pt_BR'
+import ruRU from 'antd/locale/ru_RU'
+import thTH from 'antd/locale/th_TH'
+import trTR from 'antd/locale/tr_TR'
+import viVN from 'antd/locale/vi_VN'
+import zhCN from 'antd/locale/zh_CN'
 import type {BatchSnapshot, Diagnosis} from 'media-downloader-core'
 import {type ReactNode, useCallback, useEffect, useMemo, useRef, useState} from 'react'
-import {type AppInfo, type AppSettings, pickLanguage} from '../../shared/contract'
+import {type AppInfo, type AppSettings, pickLanguage, isRtl, type Language} from '../../shared/contract'
 import {api} from './api'
 import {BOOT_PHASES, type BootPhase, type BootProgress, bootErrorMessage, retrying} from './boot'
 import {AboutModal} from './components/AboutModal'
@@ -26,6 +39,12 @@ import {YouTubeAccess} from './components/YouTubeAccess'
 import {AppContext, type AppContextValue, useApp} from './context'
 import {I18nContext, type Translate, translator} from './i18n'
 import {AppStore, BATCH_FINISHED, StoreContext, useStoreValue, WORKING} from './store'
+
+/** antd's own words (date pickers, tables, empty states) in the interface language. */
+const ANTD_LOCALES: Readonly<Record<Language, Locale>> = {
+  en: enUS, es: esES, pt: ptBR, id: idID, hi: hiIN, vi: viVN, th: thTH, tr: trTR, ar: arEG, fr: frFR, de: deDE, ru: ruRU, zh: zhCN, it: itIT,
+}
+
 
 const CYAN = '#13a8e0'
 const FINISHED = new Set(['completed', 'completed-with-errors', 'failed', 'cancelled'])
@@ -318,6 +337,14 @@ export function App({target: injected}: {readonly target?: AppStore}) {
     setBoot(current => (current ? {...current, settings} : current))
   }, [])
 
+  // the page's own language and direction (Arabic mirrors the whole window, not only antd's parts)
+  const pageLanguage = boot?.settings.language
+  useEffect(() => {
+    if (!pageLanguage) return
+    document.documentElement.lang = pageLanguage
+    document.documentElement.dir = isRtl(pageLanguage) ? 'rtl' : 'ltr'
+  }, [pageLanguage])
+
   if (!boot) {
     // before settings arrive, follow the system language and theme
     const early = loaded.current.settings
@@ -341,7 +368,8 @@ export function App({target: injected}: {readonly target?: AppStore}) {
   const context: AppContextValue = {info: boot.info, settings: boot.settings, dark, updateSettings}
   return (
     <ConfigProvider
-      locale={boot.settings.language === 'es' ? esES : enUS}
+      locale={ANTD_LOCALES[boot.settings.language]}
+      direction={isRtl(boot.settings.language) ? 'rtl' : 'ltr'}
       theme={{
         algorithm: dark ? theme.darkAlgorithm : theme.defaultAlgorithm,
         token: {

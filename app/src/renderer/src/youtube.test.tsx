@@ -39,7 +39,7 @@ describe("YouTube's bot check", () => {
     const {api} = await mount()
     act(() => api.pushYouTube({level: 'attested', tokens: true, pausedUntil: Date.now() + 90_000}))
     const note = await screen.findByTestId('youtube-pause')
-    expect(note).toHaveTextContent('with verification tokens the app makes. Nothing to do.')
+    expect(note).toHaveTextContent('using verification tokens the app makes. You don’t need to do anything.')
     expect(within(note).queryByRole('button')).not.toBeInTheDocument()
     expect(within(note).queryByRole('combobox')).not.toBeInTheDocument()
     expect(screen.queryByTestId('youtube-held')).not.toBeInTheDocument()

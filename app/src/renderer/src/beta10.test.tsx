@@ -28,7 +28,7 @@ describe('one site per run', () => {
     expect(screen.getByText('New download · YouTube and websites')).toBeInTheDocument()
     await user.type(screen.getByLabelText('Video, playlist or profile URL'), 'https://www.tiktok.com/@someone')
     expect(
-      await screen.findByText(/This is a TikTok link — this run is in YouTube and websites mode/),
+      await screen.findByText(/This is a TikTok link, but this run is in YouTube and websites mode/),
     ).toBeInTheDocument()
     await user.click(screen.getByRole('button', {name: /download/i}))
     expect(api.analyze).not.toHaveBeenCalled()
@@ -45,7 +45,7 @@ describe('one site per run', () => {
     expect(screen.getByTestId('mode-tag')).toHaveAttribute('data-mode', 'tiktok')
     await user.type(screen.getByLabelText('Video, playlist or profile URL'), 'https://youtu.be/x')
     expect(
-      await screen.findByText(/This is a YouTube and websites link — this run is in TikTok mode/),
+      await screen.findByText(/This is a YouTube and websites link, but this run is in TikTok mode/),
     ).toBeInTheDocument()
     expect(api.analyze).not.toHaveBeenCalled()
   })
@@ -137,7 +137,7 @@ describe('failed downloads', () => {
     })
     const ok = job({status: 'completed', outcome: 'success', batchId: a.id})
     const {api, user} = await mount(new FakeApi({state: {batches: [a, b], jobs: [one, two, broken, ok]}}))
-    await user.click(screen.getByRole('button', {name: 'Failed — see the list and retry'}))
+    await user.click(screen.getByRole('button', {name: 'Failed: see the list and retry'}))
     const modal = await screen.findByTestId('failed-modal')
     expect(screen.getByText('Failed downloads (3)')).toBeInTheDocument()
     expect(within(modal).getByText('Clip one')).toBeInTheDocument()
@@ -158,7 +158,7 @@ describe('failed downloads', () => {
     expect(screen.queryByTestId('failed-modal')).not.toBeInTheDocument()
     expect(screen.getByRole('tab', {name: /^Batches/})).toHaveAttribute('aria-selected', 'true')
     expect(await screen.findByText('Failed, retried (2)')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', {name: 'Failed — see the list and retry'}))
+    await user.click(screen.getByRole('button', {name: 'Failed: see the list and retry'}))
     expect(await screen.findByText('Failed downloads (1)')).toBeInTheDocument()
   })
 
@@ -173,7 +173,7 @@ describe('failed downloads', () => {
         },
       }),
     )
-    await user.click(screen.getByRole('button', {name: 'Failed — see the list and retry'}))
+    await user.click(screen.getByRole('button', {name: 'Failed: see the list and retry'}))
     const modal = await screen.findByTestId('failed-modal')
     await user.click(within(modal).getByRole('combobox', {name: 'Batches'}))
     await user.click(await screen.findByTitle('List B · 1'))
@@ -194,7 +194,7 @@ describe('batch cards', () => {
     await mount(new FakeApi({state: {batches: [checking], jobs: []}}))
     const card = await screen.findByTestId('batch-card')
     expect(within(card).getByTestId('batch-status')).toHaveTextContent('Checking files')
-    expect(within(card).getByTestId('batch-validating')).toHaveTextContent('Downloads done — checking files: 2/4')
+    expect(within(card).getByTestId('batch-validating')).toHaveTextContent('Downloads done. Checking files: 2/4')
     expect(card).toHaveTextContent('1 cancelled')
     expect(within(card).queryByTestId('batch-retry-failed')).not.toBeInTheDocument()
   })
@@ -237,7 +237,7 @@ describe('batch cards', () => {
     expect(await screen.findByText(/won’t be downloaded again/)).toBeInTheDocument()
 
     await user.click(within(card).getByRole('button', {name: /Cancel batch/}))
-    expect(await screen.findByText(/Stops the whole batch\. To drop one download only/)).toBeInTheDocument()
+    expect(await screen.findByText(/Stops the whole batch\. To drop just one download/)).toBeInTheDocument()
   })
 
   it('Downloads shows a file waiting for the check after its batch, and one damaged at the source', async () => {
@@ -413,7 +413,7 @@ describe('finished: header filters and missing records', () => {
     api.finishedEntries = [entry(2, {file: 'missing'}), entry(1)]
     const {user, list} = await openFinished(api)
     await user.click(within(list).getByTestId('finished-redownload'))
-    expect(await screen.findByText(/from the link each one kept/)).toBeInTheDocument()
+    expect(await screen.findByText(/from the link saved for each one/)).toBeInTheDocument()
     await user.click(screen.getByRole('button', {name: 'Download'}))
     await waitFor(() => expect(api.redownloadFinished).toHaveBeenCalledWith(expect.objectContaining({all: true})))
     expect(await screen.findByText('1 file(s) queued to download again')).toBeInTheDocument()
@@ -437,7 +437,7 @@ describe('settings', () => {
     const {api, user} = await mount(new FakeApi())
     await user.click(screen.getByRole('button', {name: /settings/i}))
     expect(await screen.findByTestId('cpu-boost-help')).toHaveTextContent(
-      'Half (6 of 12) by default. On: up to 7 downloads at once',
+      'By default it uses half (6 of 12). When on, up to 7 downloads run at once',
     )
     expect(screen.getByText(/Capped at half your CPUs \(6 of 12\)/)).toBeInTheDocument()
     await user.click(screen.getByRole('switch', {name: 'Allow up to 60% of the processors'}))

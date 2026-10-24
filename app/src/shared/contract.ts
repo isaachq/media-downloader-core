@@ -23,17 +23,46 @@ import type {
   VideoContainer,
 } from 'media-downloader-core'
 
-export type Language = 'en' | 'es'
+/**
+ * The languages the interface speaks (the same fourteen as the Android app):
+ * Portuguese is Brazil's, Chinese is Simplified, Arabic reads right to left.
+ * The library itself stays in English.
+ */
+export const LANGUAGES = ['es', 'en', 'pt', 'id', 'hi', 'vi', 'th', 'tr', 'ar', 'fr', 'de', 'ru', 'zh', 'it'] as const
+export type Language = (typeof LANGUAGES)[number]
+
+/** Each language by its own name, as the picker lists it. */
+export const LANGUAGE_NAMES: Readonly<Record<Language, string>> = {
+  es: 'Español',
+  en: 'English',
+  pt: 'Português (Brasil)',
+  id: 'Bahasa Indonesia',
+  hi: 'हिन्दी',
+  vi: 'Tiếng Việt',
+  th: 'ไทย',
+  tr: 'Türkçe',
+  ar: 'العربية',
+  fr: 'Français',
+  de: 'Deutsch',
+  ru: 'Русский',
+  zh: '中文（简体）',
+  it: 'Italiano',
+}
+
+export const isLanguage = (value: unknown): value is Language => (LANGUAGES as readonly unknown[]).includes(value)
+
+/** Languages written right to left: the window mirrors. */
+export const isRtl = (language: Language): boolean => language === 'ar'
 
 /**
  * The interface language for a system's preferred languages, in the user's
- * order (e.g. ["es-MX", "en-US"]): the first one the app speaks wins, English
- * when none is Spanish or English. O(n).
+ * order (e.g. ["es-MX", "en-US"]): the first one the app speaks wins (any
+ * Chinese reads Simplified), English when it speaks none of them. O(n).
  */
 export function pickLanguage(preferred: readonly string[]): Language {
   for (const tag of preferred) {
     const base = tag.toLowerCase().split(/[-_]/, 1)[0]
-    if (base === 'es' || base === 'en') return base
+    if (isLanguage(base)) return base
   }
   return 'en'
 }

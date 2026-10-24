@@ -97,7 +97,7 @@ describe('download bar', () => {
   it('says a new link will be scheduled while a batch is running', async () => {
     await mount(new FakeApi({state: {batches: [batch({status: 'running'})], jobs: []}}))
     expect(screen.getByRole('button', {name: /schedule/i})).toBeInTheDocument()
-    expect(screen.getByText(/a new link is queued and starts on its own after it/)).toBeInTheDocument()
+    expect(screen.getByText(/New links wait in line and start on their own when it ends/)).toBeInTheDocument()
   })
 
   it('shows the capacity rule (N/2, and fewer for long videos)', async () => {
@@ -198,7 +198,7 @@ describe('preview before downloading a list', () => {
 
   it('explains a YouTube Mix and reloads it with another size', async () => {
     const {api, user, dialog} = await open(list({mix: true, maxItems: 50}))
-    expect(within(dialog).getByText(/YouTube Mix — generated on the fly/)).toBeInTheDocument()
+    expect(within(dialog).getByText(/This is a YouTube Mix: it’s built on the fly/)).toBeInTheDocument()
     const size = within(dialog).getByLabelText('Load')
     await user.clear(size)
     await user.type(size, '20')
@@ -227,7 +227,7 @@ describe('preview before downloading a list', () => {
 
   it('a capped list of unknown size can be loaded to its end', async () => {
     const {api, user, dialog} = await open(list({maxItems: 4}))
-    expect(within(dialog).getByText('Long list — showing the first 4.')).toBeInTheDocument()
+    expect(within(dialog).getByText('Long list. Showing the first 4.')).toBeInTheDocument()
     await user.click(within(dialog).getByRole('button', {name: /Load all/}))
     expect(api.analyze).toHaveBeenLastCalledWith(LINK, 50_000)
   })
@@ -255,7 +255,8 @@ describe('preview before downloading a list', () => {
 describe('language and theme', () => {
   it('switches the whole interface to Spanish', async () => {
     const {api, user} = await mount()
-    await user.click(screen.getByText('ES'))
+    await user.click(screen.getAllByRole('combobox')[0]!)
+    await user.click(await screen.findByTitle('Español'))
     await waitFor(() => expect(api.setSettings).toHaveBeenCalledWith({language: 'es'}))
     expect(await screen.findByText('Nueva descarga · YouTube y sitios web')).toBeInTheDocument()
     expect(screen.getByRole('button', {name: /descargar/i})).toBeInTheDocument()
@@ -459,7 +460,7 @@ describe('settings', () => {
     expect(screen.getByText(/Capped at half your CPUs \(6 of 12\)/)).toBeInTheDocument()
     expect(screen.getByRole('slider')).toHaveAttribute('aria-valuemax', '6')
 
-    await user.click(screen.getByLabelText('Quick — read every packet'))
+    await user.click(screen.getByLabelText('Quick: read every packet'))
     await waitFor(() => expect(api.setSettings).toHaveBeenCalledWith({validation: 'quick'}))
 
     await user.click(screen.getByLabelText('Embed thumbnail as cover'))
@@ -500,7 +501,7 @@ describe('setup', () => {
     expect(screen.getByText('Missing')).toBeInTheDocument()
     await user.click(screen.getByTestId('setup-install'))
     await waitFor(() => expect(api.setup).toHaveBeenCalledWith(false))
-    expect(await screen.findByText('All set — tools installed and verified.')).toBeInTheDocument()
+    expect(await screen.findByText('All set. Tools installed and verified.')).toBeInTheDocument()
   })
 })
 
@@ -572,7 +573,7 @@ describe('updates', () => {
     expect(screen.getByTestId('update-banner')).toHaveTextContent('Downloading version 0.3.0-beta.1')
     expect(screen.getByTestId('update-banner')).toHaveTextContent('50%')
     act(() => api.pushUpdate({status: 'installing', version: '0.3.0-beta.1', page: 'p'}))
-    expect(screen.getByTestId('update-banner')).toHaveTextContent('the app restarts in a moment')
+    expect(screen.getByTestId('update-banner')).toHaveTextContent('The app restarts in a moment')
   })
 
   it('stays out of the way when up to date, and explains a failed install', async () => {
@@ -606,7 +607,7 @@ describe('about', () => {
   it('thanks Ant Design and lists the open-source credits', async () => {
     const {user} = await mount()
     await user.click(screen.getByRole('button', {name: 'About'}))
-    expect(await screen.findByText(/Ant Design — the UI components of this app \(MIT\)/)).toBeInTheDocument()
+    expect(await screen.findByText(/Ant Design: the UI components of this app \(MIT\)/)).toBeInTheDocument()
     expect(screen.getByRole('link', {name: 'yt-dlp'})).toHaveAttribute('href', 'https://github.com/yt-dlp/yt-dlp')
   })
 })

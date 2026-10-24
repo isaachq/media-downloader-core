@@ -1,19 +1,6 @@
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
-import {
-  type AppSettings,
-  AUDIO_FORMATS,
-  BROWSERS,
-  type Format,
-  type Language,
-  pickLanguage,
-  QUALITIES,
-  type Quality,
-  RUN_MODES,
-  type RunMode,
-  type ThemeMode,
-  VIDEO_FORMATS,
-} from '../shared/contract'
+import {type AppSettings, AUDIO_FORMATS, BROWSERS, type Format, pickLanguage, QUALITIES, type Quality, RUN_MODES, type RunMode, type ThemeMode, VIDEO_FORMATS, isLanguage} from '../shared/contract'
 
 /** First-run settings; `languages` are the system's preferred languages, in order. */
 export function defaultSettings(
@@ -62,7 +49,7 @@ export function mergeSettings(current: AppSettings, patch: unknown, limits: Conc
   // the boost first: it decides how many downloads at once are allowed
   if (typeof p['cpuBoost'] === 'boolean') next.cpuBoost = p['cpuBoost']
   const maxConcurrency = next.cpuBoost ? limits.boosted : limits.half
-  if (p['language'] === 'en' || p['language'] === 'es') next.language = p['language'] as Language
+  if (isLanguage(p['language'])) next.language = p['language']
   if (p['theme'] === 'system' || p['theme'] === 'light' || p['theme'] === 'dark') next.theme = p['theme'] as ThemeMode
   if (typeof p['downloadDir'] === 'string' && path.isAbsolute(p['downloadDir'])) next.downloadDir = p['downloadDir']
   if (typeof p['format'] === 'string' && FORMATS.includes(p['format'])) next.format = p['format'] as Format

@@ -11,12 +11,16 @@ describe('default language', () => {
   it('the first language the app speaks wins, in the user’s order', () => {
     expect(pickLanguage(['en-US', 'es-MX'])).toBe('en')
     expect(pickLanguage(['es-419', 'en-US'])).toBe('es')
-    expect(pickLanguage(['fr-FR', 'es-ES'])).toBe('es')
-    expect(pickLanguage(['de-DE', 'en-GB'])).toBe('en')
+    expect(pickLanguage(['ja-JP', 'es-ES'])).toBe('es')
+    expect(pickLanguage(['ko-KR', 'en-GB'])).toBe('en')
+    expect(pickLanguage(['fr-FR', 'es-ES'])).toBe('fr')
+    expect(pickLanguage(['pt-BR'])).toBe('pt')
+    expect(pickLanguage(['ar-EG'])).toBe('ar')
+    expect(pickLanguage(['zh-TW'])).toBe('zh')
   })
 
-  it('English when neither Spanish nor English is preferred', () => {
-    expect(pickLanguage(['fr-FR', 'ja-JP'])).toBe('en')
+  it('English when the app speaks none of the preferred languages', () => {
+    expect(pickLanguage(['ja-JP', 'ko-KR'])).toBe('en')
     expect(pickLanguage([])).toBe('en')
   })
 })

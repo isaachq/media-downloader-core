@@ -15,6 +15,7 @@ import {useT} from '../i18n'
 import {modeName} from '../mode'
 import {useStoreValue} from '../store'
 import {Banner} from './Banner'
+import {LanguageSelect} from './LanguageSelect'
 
 type Props = {
   readonly onLogs: () => void
@@ -60,16 +61,7 @@ export function Header({onLogs, onSettings, onAbout, onReport, onGuide}: Props) 
               <Badge status="processing" data-testid="header-speed" style={{marginRight: 8, cursor: 'default'}} />
             </Tooltip>
           ) : null}
-          <Segmented
-            aria-label={t('header.language')}
-            size="small"
-            value={settings.language}
-            options={[
-              {label: 'EN', value: 'en'},
-              {label: 'ES', value: 'es'},
-            ]}
-            onChange={value => void updateSettings({language: value as 'en' | 'es'})}
-          />
+          <LanguageSelect compact />
           <Segmented
             aria-label={t('header.theme')}
             size="small"

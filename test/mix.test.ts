@@ -415,6 +415,39 @@ describe('BatchScheduler.scheduleMix: one batch', () => {
     assert.equal(scheduler.batches().length, 1)
   })
 
+  it('a link can have a format of its own: one song as audio among videos, same batch, same folder, no second check', async () => {
+    const {engine, scheduler, out} = setup('mix-formats')
+    const video = {kind: 'video', container: 'mp4'} as const
+    const mix = await engine.analyzeMix('https://fake.test/f1\nhttps://fake.test/f2\nhttps://fake.test/f3', {
+      profile: video,
+    })
+    const counted = countPreflight(engine)
+    const batch = scheduler.scheduleMix(mix, {
+      profile: video,
+      outDir: out,
+      // f3 as the batch's own format: no target for it
+      formats: {'https://fake.test/f2': audio, 'https://fake.test/f3': video},
+    })
+    await scheduler.whenIdle()
+    const done = scheduler.batch(batch.id)!
+    assert.equal(done.status, 'completed', JSON.stringify(done.error))
+    assert.equal(done.jobs.succeeded, 3)
+    assert.equal(scheduler.batches().length, 1)
+    assert.deepEqual(counted(), {calls: 0, items: 0})
+    const files = (await fs.readdir(out)).sort()
+    assert.deepEqual(
+      files.map(name => path.extname(name)),
+      ['.mp4', '.m4a', '.mp4'],
+      `${files}`,
+    )
+    const jobs = engine.jobs().filter(job => job.batchId === batch.id)
+    assert.deepEqual(jobs.map(job => [job.url, job.profile.kind]).sort(), [
+      ['https://fake.test/f1', 'video'],
+      ['https://fake.test/f2', 'audio'],
+      ['https://fake.test/f3', 'video'],
+    ])
+  })
+
   it('refuses a mix list with nothing to download', async () => {
     const {engine, scheduler, out} = setup('nothing')
     const mix = await engine.analyzeMix('https://fake.test/unavailable-n1\nnothing here')

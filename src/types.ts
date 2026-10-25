@@ -765,6 +765,12 @@ export type MixRequest = {
   readonly title?: string | undefined
   readonly slideshow?: SlideshowOptions | undefined
   readonly retries?: 'fast' | 'thorough' | undefined
+  /**
+   * A format of its own for some links, by their url (`MixItem.url`): one song in
+   * MP3 among videos, one video capped at 720p. The rest download in `profile`.
+   * Same batch, same folder (each such link is a `BatchTarget`).
+   */
+  readonly formats?: Readonly<Record<string, FormatProfile>> | undefined
 }
 
 // ─── Options ────────────────────────────────────────────────────────────────

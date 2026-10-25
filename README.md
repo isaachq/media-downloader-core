@@ -458,6 +458,7 @@ const mix = await engine.analyzeMix(pastedText, {profile, onProgress: p => bar(p
 // mix.valid: the links that download, in the order pasted, with what their check found
 // mix.skipped: what was left out, each with its line and reason; mix.summary: counts by site and reason
 scheduler.scheduleMix(mix, {profile, outDir, title: 'Mix list'})   // one batch, not one per link
+// a link in a format of its own (the rest in `profile`): formats: {[url]: {kind: 'audio', container: 'mp3'}}
 ```
 
 A **mix list** is a pasted list of independent links of any sites, downloaded as

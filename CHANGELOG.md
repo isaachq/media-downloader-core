@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## Library 1.20.0
+
+- **A format per link in a mix list**: `MixRequest.formats` (by `MixItem.url`) gives some
+  links a format of their own (one song in MP3 among videos, one video capped at 720p);
+  the rest download in `profile`. Still one batch and one folder: each such link is a
+  `BatchTarget` of it, so its check is still taken as it was (nothing checked twice),
+  and cancel, retry and `restore()` keep each link's format.
+
 ## App 0.2.0-beta.19 · library 1.19.0
 
 Beta 19: the mix list (links of any sites pasted together, one batch) and a new brand.

@@ -659,7 +659,8 @@ async function setup(
     facebook: false,
     instagram: options,
   })
-  const scheduler = new BatchScheduler(engine, {progressIntervalMs: 0})
+  // the fake's videos say how long they last: their size forecast is no test of the runner's free disk
+  const scheduler = new BatchScheduler(engine, {progressIntervalMs: 0, diskCheck: 'off'})
   cleanups.push(async () => {
     await scheduler.dispose()
     await engine.dispose()

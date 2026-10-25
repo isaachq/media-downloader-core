@@ -9,6 +9,7 @@ import {
   type BatchTarget,
   type BinaryPaths,
   type Diagnosis,
+  type FormatProfile,
   folderFormat,
   isTikTokProfile,
   isYouTubeMix,
@@ -621,7 +622,15 @@ function registerIpc(): void {
     const mix = checked ? {...checked, valid: checked.valid.filter(item => kept.has(item.url))} : [...kept]
     if (checked) forgetMix(checked.valid.filter(item => !kept.has(item.url)))
     const language = settings.current.language
+    // a format of its own for some links (one song as MP3 among videos): the core makes each a target of the same batch
+    const formats: Record<string, FormatProfile> = {}
+    for (const [url, own] of Object.entries(input.formats ?? {})) {
+      if (kept.has(url) && isFormat(own?.format)) {
+        formats[url] = toProfile({format: own.format, quality: isQuality(own.quality) ? own.quality : 'best'})
+      }
+    }
     return scheduler.scheduleMix(mix, {
+      formats,
       profile: toProfile({format: input.format, quality: isQuality(input.quality) ? input.quality : 'best'}),
       outDir: input.outDir,
       title: `${hostTitle('mix', language)} · ${stamp(language)}`,

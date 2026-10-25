@@ -50,6 +50,11 @@ the ⌊CPUs/2⌋ pool and verified file by file.
 
 ![Paste a link, download it as MP4, check its integrity report, find it in Finished, open the run report](docs/demo.gif)
 
+### What's new in beta 20 (library 1.20.0)
+
+- **Mix list, as on the phone**: add links one by one or paste a whole list, each a numbered card with its site; choose the format for all of them, and after the check change any single link's format (one song as MP3 among videos), still one batch. The preview groups the links by site.
+- **YouTube's "confirm you're not a bot" notice only when YouTube really pauses**: it showed for a second after any YouTube request (two YouTube links in a mix list were enough), and a YouTube link pasted then was turned away.
+
 ### What's new in beta 19 (library 1.19.0)
 
 - **Mix list**: paste links of any sites at once (YouTube, TikTok, Instagram, Facebook, VK, X, a file…), one or more per line. They are checked together, and before anything downloads you see what will download, what was left out and why (not a link, repeated, a list or profile, private, unavailable…). One click downloads them all as **one batch**, which runs, reports, retries and resumes like any other.
@@ -163,7 +168,7 @@ Hardening after beta 13 — nothing you asked for changes; the edges do:
 
 | Settings: the site of this run, processors, checks | How to sign in, step by step |
 | --- | --- |
-| ![Settings with the site of this run, simultaneous downloads and the 60% option](docs/screenshots/settings.png) | ![How to sign in: the browser's session, step by step, with this system's permission](docs/screenshots/signin.png) |
+| ![Settings with YouTube's account, simultaneous downloads and the 60% option](docs/screenshots/settings.png) | ![How to sign in: the browser's session, step by step, with this system's permission](docs/screenshots/signin.png) |
 
 ### What's new in beta 9
 
@@ -227,6 +232,10 @@ The full list is in the [changelog](CHANGELOG.md).
 | Preview of a YouTube Mix | Downloading, with the estimated time left |
 | --- | --- |
 | ![Pick what to download from a Mix](docs/screenshots/preview.png) | ![A running batch with its forecast and estimated time left](docs/screenshots/batch.png) |
+
+| A mix list: links of five sites, added one by one | Checked: grouped by site, one link as MP3, one batch |
+| --- | --- |
+| ![A mix list with YouTube, TikTok, Instagram, VK and X links, each with its site](docs/screenshots/mix-list.png) | ![The mix list checked: grouped by site, the X post as MP3, the repeat left out](docs/screenshots/mix-preview.png) |
 
 ![Dark theme in Spanish](docs/screenshots/home-dark-es.png)
 
@@ -339,6 +348,7 @@ must also be this app, at the offered version, with a valid signature.
 ### Features
 
 - **Preview**: a playlist, YouTube Mix or channel opens a list of everything it holds first — filter, select all / some, or just the linked video — and only the picked items are downloaded. A Mix (an endless, auto-generated radio) loads its first 50 by default; load more from the preview.
+- **Mix list**: links of any sites gathered into one batch — add them one by one or paste a whole list, each a numbered card with its site; choose the format for all of them, and after the check give any single link a format of its own (one song as MP3 among videos). Repeats, lists and links that can't be downloaded are left out with their reason before anything downloads.
 - **Sync Up** (turn it on in Settings): TikTok accounts kept in step with folders — check what is new without downloading, sync now or on a schedule, a history of every run; each sync is a batch in Batches / Downloads / Finished.
 - **Batches**: preflight (available / unavailable with the reason), disk forecast from real bitrates, progress weighted by size and the **estimated time left** — measured from this computer's real throughput, so you can start a big batch and walk away — plus paged item list, cancel, clear finished. New links queue behind the running batch.
 - **Downloads**: one row per job with progress, speed, ETA, the D·C·V·F sub-tasks (failed / in-progress / success), retries and their reason.
@@ -347,7 +357,7 @@ must also be this app, at the offered version, with a valid signature.
 - **Logs**: live, every line with its batch / job / attempt / step ids (click one to trace it), plus tracing of any session / batch / job / attempt / step id.
 - **Car & USB friendly names** (default): only letters, numbers and hyphens — `001-Cancion-Nandu-k1gsZ.mp3` — and MP3 tags in ID3v2.3, the version car stereos read. Switch it off in Settings to keep titles as they are.
 - **Setup**: first launch installs yt-dlp and FFmpeg from their official sources, checksum-verified; the tools are shared with `mdc`.
-- English and Spanish, light / dark / system theme, window size and position — all remembered.
+- Fourteen languages (Arabic right to left), light / dark / system theme, window size and position — all remembered.
 - A start-up screen shows each phase; a failing phase is retried and, if it still fails, says why and resumes from there.
 
 ### Building from source

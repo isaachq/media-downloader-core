@@ -155,6 +155,16 @@ section .intro { color: var(--muted); margin: 0 0 32px; max-width: 46em; font-si
 .command .copy { border: 0; border-left: 1px solid var(--line); background: var(--surface); color: var(--accent-ink); font: inherit; font-size: 13px; font-weight: 600; padding: 0 14px; cursor: pointer; }
 .command .copy:hover { background: color-mix(in srgb, var(--accent) 12%, var(--surface)); }
 .release-line { color: var(--muted); margin: -18px 0 24px; font-size: 15px; }
+.os-version { margin-left: auto; font-size: 13px; font-weight: 600; color: var(--accent-ink); background: color-mix(in srgb, var(--accent) 14%, transparent); border-radius: 999px; padding: 2px 10px; }
+.os-version:empty, .primary-version:empty { display: none; }
+.primary-version { font-weight: 600; opacity: 0.85; margin-left: 6px; }
+.versions { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.versions li { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 18px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.versions .version { font-weight: 700; color: var(--ink); }
+.versions .date { color: var(--muted); font-size: 14px; }
+.versions .tag { font-size: 12px; font-weight: 700; border-radius: 999px; padding: 1px 8px; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent-ink); }
+.versions .links { margin-left: auto; display: flex; gap: 14px; font-size: 14px; }
+.versions-empty { justify-content: center; }
 
 .note { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: var(--radius); padding: 18px 22px; color: var(--muted); font-size: 15px; }
 footer { margin-top: 72px; border-top: 1px solid var(--line); padding: 28px 0 40px; color: var(--muted); font-size: 14px; }
@@ -182,6 +192,7 @@ footer a { color: var(--muted); }
       <a href="#features" data-i18n="nav.features">Features</a>
       <a href="#how" data-i18n="nav.how">How it works</a>
       <a href="#signin" data-i18n="nav.signin">Sign in</a>
+      <a href="#versions" data-i18n="nav.versions">Versions</a>
       <a href="#download" class="keep" data-i18n="nav.download">Download</a>
       <a href="https://github.com/isaachq/media-downloader-core">GitHub</a>
       <span class="lang" role="group" aria-label="Language">
@@ -202,6 +213,7 @@ footer a { color: var(--muted); }
         <a class="btn btn-primary" id="primary-download" href="https://github.com/isaachq/media-downloader-core/releases">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M5 21h14"/></svg>
           <span id="primary-label" data-i18n="hero.download">Download</span>
+          <small class="primary-version" data-version></small>
         </a>
         <a class="btn btn-ghost" href="#download" data-i18n="hero.others">Other systems</a>
         <div class="cta-note" id="release-note" data-i18n="hero.note">No account, no ads, no tracking. It runs on your computer.</div>
@@ -226,39 +238,39 @@ footer a { color: var(--muted); }
 
 <section id="new">
   <div class="wrap">
-    <span class="new-badge" data-i18n="new.badge">Beta 14</span>
-    <h2 data-i18n="new.title">New in beta 14</h2>
-    <p class="intro" data-i18n="new.intro">Four betas of polish since beta 10: Instagram without a session, every process cleaned up, every format promise kept, and the edges hardened — the whole test suite and the app passing on macOS, Windows and Linux.</p>
+    <span class="new-badge" data-i18n="new.badge">Beta 20</span>
+    <h2 data-i18n="new.title">New in beta 20</h2>
+    <p class="intro" data-i18n="new.intro">Six betas since the last update of this page: links of any sites gathered into one batch, VK and X read natively, one box for every site, the app in fourteen languages and a new look.</p>
     <div class="features">
       <article class="feature">
-        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><path d="M17.5 6.5h.01"/></svg></div>
-        <h3 data-i18n="b1.title">Instagram without a session</h3>
-        <p data-i18n="b1.text">Public posts and reels are read the way the apps that just work read them; when a site limits your network the app says so — and when a video is for signed-in visitors it says that, not “the site changed”.</p>
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h6"/><path d="M17 15v6m-3-3h6"/></svg></div>
+        <h3 data-i18n="b1.title">Mix list: any sites, one batch</h3>
+        <p data-i18n="b1.text">Add links one by one or paste a whole list — YouTube, TikTok, Instagram, Facebook, VK, X, a file. They are checked together, and before anything downloads you see what will and what was left out, and why. One click downloads them all as one batch.</p>
       </article>
       <article class="feature">
-        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M3 12h18"/></svg></div>
-        <h3 data-i18n="b2.title">Every format promise kept</h3>
-        <p data-i18n="b2.text">MKV is a real Matroska file, a quality is a hard cap (downscaled locally when the site has nothing under it, never upscaled), and a wrong result fails at once instead of downloading the same file again.</p>
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>
+        <h3 data-i18n="b2.title">The format, for all or link by link</h3>
+        <p data-i18n="b2.text">Choose MP4 at the best quality or audio for the whole list — or give any single link a format of its own, like one song as MP3 among videos. Still one batch, one folder.</p>
       </article>
       <article class="feature">
-        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></div>
-        <h3 data-i18n="b3.title">No process left behind</h3>
-        <p data-i18n="b3.text">A cancel or a quit ends the whole tree — the ffmpeg under yt-dlp included, on Windows too — and nothing keeps the app alive in the background.</p>
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg></div>
+        <h3 data-i18n="b3.title">VK and X, natively</h3>
+        <p data-i18n="b3.text">VK videos, clips and playlists up to 1080p, and X posts with one or several videos, GIFs and quoted videos — without signing in.</p>
       </article>
       <article class="feature">
-        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4m0 4h.01"/><path d="M10.3 3.9 2 18a2 2 0 0 0 1.7 3h16.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg></div>
-        <h3 data-i18n="b4.title">Nothing lost at the edges</h3>
-        <p data-i18n="b4.text">A long playlist read under load, a batch saved while its journal compacts, a check of thousands of files: each had an edge where something could be cut or left behind. Not any more — each has a test.</p>
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="10" rx="3"/><path d="M7 12h6"/></svg></div>
+        <h3 data-i18n="b4.title">One box for every site</h3>
+        <p data-i18n="b4.text">Paste any link and the app tells which site it is. No more choosing a site per run, no restart to switch.</p>
       </article>
       <article class="feature">
-        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h6"/><path d="m15 17 2 2 4-4"/></svg></div>
-        <h3 data-i18n="b5.title">Live feedback</h3>
-        <p data-i18n="b5.text">A progress card while your files are checked, a jump to Finished when a batch completes, presets for the usual choices, a filter on the Downloads table — all in English and Spanish.</p>
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h8M8 3v2m-2 0c0 5 3 8 6 9M12 5c0 4-3 8-7 10"/><path d="m13 21 4-9 4 9m-7-3h6"/></svg></div>
+        <h3 data-i18n="b5.title">Fourteen languages</h3>
+        <p data-i18n="b5.text">Spanish, English, Portuguese, Indonesian, Hindi, Vietnamese, Thai, Turkish, Arabic (right to left), French, German, Russian, Chinese and Italian.</p>
       </article>
       <article class="feature">
-        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/></svg></div>
-        <h3 data-i18n="b6.title">Proven on 26 profiles and more</h3>
-        <p data-i18n="b6.text">Real ffmpeg on synthetic clips: every MP4, WebM, MKV and audio profile, and every shape a site serves — H.265, 10-bit, VP9, AV1, portrait, rotated, silent — checked for container, codecs, cap and a full decode.</p>
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4l3 4h8l3-4v9a7 7 0 0 1-14 0z"/><path d="M12 10v5m0 0-2-2m2 2 2-2"/></svg></div>
+        <h3 data-i18n="b6.title">A new look</h3>
+        <p data-i18n="b6.text">The wildcat emblem with the download arrow on its forehead, on the app, the installers and this page. As above, so below.</p>
       </article>
     </div>
   </div>
@@ -272,12 +284,12 @@ footer a { color: var(--muted); }
       <article class="feature">
         <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div>
         <h3 data-i18n="f1.title">Whole playlists and profiles</h3>
-        <p data-i18n="f1.text">YouTube playlists, channels and Mixes; TikTok, Instagram and Facebook videos, slideshows and carousels (as a video, or as images with their sound) and entire profiles — with “Load all” for the thousands of posts of a veteran account.</p>
+        <p data-i18n="f1.text">YouTube playlists, channels and Mixes; TikTok, Instagram and Facebook videos, slideshows and carousels (as a video, or as images with their sound) and entire profiles; VK videos and playlists; X posts — with “Load all” for the thousands of posts of a veteran account.</p>
       </article>
       <article class="feature">
         <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 12 5 5L20 6"/></svg></div>
         <h3 data-i18n="f2.title">Pick before you download</h3>
-        <p data-i18n="f2.text">A preview lists everything a link holds, with length and publication date. Filter, select all or just a few — only what you pick is downloaded. Paste a whole list of links at once, too.</p>
+        <p data-i18n="f2.text">A preview lists everything a link holds, with length and publication date. Filter, select all or just a few — only what you pick is downloaded. Or gather links of any sites in a mix list: one batch, with the format you choose for each.</p>
       </article>
       <article class="feature">
         <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6l-8-3Z"/><path d="m9 12 2 2 4-4"/></svg></div>
@@ -336,9 +348,9 @@ footer a { color: var(--muted); }
 <section id="how">
   <div class="wrap">
     <h2 data-i18n="how.title">Three steps</h2>
-    <p class="intro" data-i18n="how.intro">No command line, no settings to learn first — the first time, a short guide shows you around. English or Spanish, light or dark.</p>
+    <p class="intro" data-i18n="how.intro">No command line, no settings to learn first — the first time, a short guide shows you around. In fourteen languages, light or dark.</p>
     <div class="steps">
-      <div class="step"><h3 data-i18n="s1.title">Paste a link</h3><p data-i18n="s1.text">A video, a playlist, a channel, or a TikTok, Instagram or Facebook profile.</p></div>
+      <div class="step"><h3 data-i18n="s1.title">Paste a link</h3><p data-i18n="s1.text">A video, a playlist, a channel, a TikTok, Instagram or Facebook profile, a VK or X post — or a whole list of links of any sites.</p></div>
       <div class="step"><h3 data-i18n="s2.title">Pick what you want</h3><p data-i18n="s2.text">Everything it holds is listed first. Choose MP4 or MP3, the quality and the folder.</p></div>
       <div class="step"><h3 data-i18n="s3.title">Let it work</h3><p data-i18n="s3.text">Several downloads at once, each one verified. Watch the report, or come back later.</p></div>
     </div>
@@ -349,12 +361,14 @@ footer a { color: var(--muted); }
   <div class="wrap">
     <h2 data-i18n="screens.title">See it</h2>
     <div class="gallery">
-      <figure><img loading="lazy" src="screenshots/preview.png" alt="" width="2560" height="1600"><figcaption data-i18n="screens.preview">Preview: choose exactly what to download.</figcaption></figure>
-      <figure><img loading="lazy" src="screenshots/batch.png" alt="" width="2560" height="1600"><figcaption data-i18n="screens.batch">A batch with its disk forecast and time left.</figcaption></figure>
-      <figure><img loading="lazy" src="screenshots/finished.png" alt="" width="2560" height="1600"><figcaption data-i18n="screens.finished">Finished: play, show in folder, search every file.</figcaption></figure>
-      <figure><img loading="lazy" src="screenshots/report.png" alt="" width="2560" height="1600"><figcaption data-i18n="screens.report">The run report, refreshed every 15 seconds.</figcaption></figure>
-      <figure><img loading="lazy" src="screenshots/settings.png" alt="" width="2560" height="1600"><figcaption data-i18n="screens.settings">Settings: one site per run, processors, integrity.</figcaption></figure>
-      <figure><img loading="lazy" src="screenshots/signin.png" alt="" width="2560" height="1600"><figcaption data-i18n="screens.signin">How to sign in: your browser's session, step by step.</figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/preview.png" alt="" width="1280" height="800"><figcaption data-i18n="screens.preview">Preview: choose exactly what to download.</figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/batch.png" alt="" width="1280" height="800"><figcaption data-i18n="screens.batch">A batch with its disk forecast and time left.</figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/mix-list.png" alt="" width="1280" height="800"><figcaption data-i18n="screens.mix">A mix list: links of five sites, each with its site.</figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/mix-preview.png" alt="" width="1280" height="800"><figcaption data-i18n="screens.mixPreview">Checked: grouped by site, one link as MP3, one batch.</figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/finished.png" alt="" width="1280" height="800"><figcaption data-i18n="screens.finished">Finished: play, show in folder, search every file.</figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/report.png" alt="" width="1280" height="800"><figcaption data-i18n="screens.report">The run report, refreshed every 15 seconds.</figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/settings.png" alt="" width="1280" height="800"><figcaption data-i18n="screens.settings">Settings: your YouTube account, processors, integrity.</figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/signin.png" alt="" width="1280" height="800"><figcaption data-i18n="screens.signin">How to sign in: your browser's session, step by step.</figcaption></figure>
     </div>
   </div>
 </section>
@@ -384,7 +398,7 @@ footer a { color: var(--muted); }
     <p class="release-line" id="release-line" data-i18n="dl.line">The newest version is always on GitHub Releases.</p>
     <div class="downloads">
       <div class="os" data-os="mac">
-        <h3>macOS</h3>
+        <h3>macOS <span class="os-version" data-version></span></h3>
         <ul>
           <li><a data-asset="mac-arm64.dmg" href="https://github.com/isaachq/media-downloader-core/releases"><span data-i18n="dl.macArm">Apple Silicon (M1–M4)</span><small>.dmg</small></a></li>
           <li><a data-asset="mac-x64.dmg" href="https://github.com/isaachq/media-downloader-core/releases"><span data-i18n="dl.macIntel">Intel</span><small>.dmg</small></a></li>
@@ -397,7 +411,7 @@ footer a { color: var(--muted); }
         </div>
       </div>
       <div class="os" data-os="windows">
-        <h3>Windows</h3>
+        <h3>Windows <span class="os-version" data-version></span></h3>
         <ul>
           <li><a data-asset="win-x64.exe" href="https://github.com/isaachq/media-downloader-core/releases"><span data-i18n="dl.win64">64-bit (most PCs)</span><small>.exe</small></a></li>
           <li><a data-asset="win-arm64.exe" href="https://github.com/isaachq/media-downloader-core/releases"><span>ARM64</span><small>.exe</small></a></li>
@@ -409,7 +423,7 @@ footer a { color: var(--muted); }
         <p class="hint" data-i18n="dl.winWhy">Why the warning? This is a free project made at home, and it isn't signed with a paid Microsoft certificate yet. The warning is about that missing signature, not about the file — its code is public on GitHub, and Windows stops asking as more people install it.</p>
       </div>
       <div class="os" data-os="linux">
-        <h3>Linux</h3>
+        <h3>Linux <span class="os-version" data-version></span></h3>
         <ul>
           <li><a data-asset="linux-x86_64.AppImage" href="https://github.com/isaachq/media-downloader-core/releases"><span>AppImage · x64</span><small>.AppImage</small></a></li>
           <li><a data-asset="linux-amd64.deb" href="https://github.com/isaachq/media-downloader-core/releases"><span>Debian / Ubuntu · x64</span><small>.deb</small></a></li>
@@ -419,6 +433,16 @@ footer a { color: var(--muted); }
         <p class="hint" data-i18n="dl.linuxHint">.deb and .rpm also for ARM64 on the releases page.</p>
       </div>
     </div>
+  </div>
+</section>
+
+<section id="versions">
+  <div class="wrap">
+    <h2 data-i18n="versions.title">Versions</h2>
+    <p class="intro" data-i18n="versions.intro">Every version of the app, newest first: what changed in each, and its installers.</p>
+    <ol class="versions" id="versions-list">
+      <li class="versions-empty"><a href="https://github.com/isaachq/media-downloader-core/releases" data-i18n="versions.all">All versions on GitHub Releases</a></li>
+    </ol>
   </div>
 </section>
 
@@ -444,21 +468,21 @@ footer a { color: var(--muted); }
   const RELEASES = `https://github.com/${REPO}/releases`
   const es = {
     'nav.features': 'Funciones', 'nav.how': 'Cómo funciona', 'nav.download': 'Descargar',
-    'nav.new': 'Novedades', 'nav.signin': 'Iniciar sesión',
-    'new.badge': 'Beta 14', 'new.title': 'Novedades de la beta 14',
-    'new.intro': 'Cuatro betas de pulido desde la beta 10: Instagram sin sesión, ningún proceso suelto, cada promesa de formato cumplida y los bordes endurecidos — toda la suite de pruebas y la app pasando en macOS, Windows y Linux.',
-    'b1.title': 'Instagram sin sesión',
-    'b1.text': 'Las publicaciones y reels públicos se leen como lo hacen las apps que simplemente funcionan; cuando un sitio limita tu red, la app lo dice — y cuando un video es solo para sesiones iniciadas, lo dice también, no “el sitio cambió”.',
-    'b2.title': 'Cada promesa de formato, cumplida',
-    'b2.text': 'MKV es un Matroska de verdad, una calidad es un tope estricto (se reduce localmente cuando el sitio no tiene nada por debajo, nunca se amplía) y un resultado incorrecto falla de inmediato en vez de volver a descargar el mismo archivo.',
-    'b3.title': 'Ningún proceso suelto',
-    'b3.text': 'Cancelar o salir termina todo el árbol — incluido el ffmpeg bajo yt-dlp, también en Windows — y nada deja la app viva en segundo plano.',
-    'b4.title': 'Nada se pierde en los bordes',
-    'b4.text': 'Una lista larga leída con la máquina cargada, un lote guardado mientras su diario se compacta, una revisión de miles de archivos: cada uno tenía un borde donde algo podía cortarse o quedar atrás. Ya no — y cada uno tiene su prueba.',
-    'b5.title': 'Respuesta en vivo',
-    'b5.text': 'Una tarjeta de progreso mientras se revisan tus archivos, un salto a Terminados cuando acaba un lote, preajustes para lo de siempre, un filtro en la tabla de Descargas — todo en español e inglés.',
-    'b6.title': 'Probada en 26 perfiles y más',
-    'b6.text': 'ffmpeg real sobre clips sintéticos: cada perfil MP4, WebM, MKV y de audio, y cada forma que entrega un sitio — H.265, 10 bits, VP9, AV1, vertical, rotado, sin sonido — revisada en contenedor, códecs, tope y decodificación completa.',
+    'nav.new': 'Novedades', 'nav.signin': 'Iniciar sesión', 'nav.versions': 'Versiones',
+    'new.badge': 'Beta 20', 'new.title': 'Novedades de la beta 20',
+    'new.intro': 'Seis betas desde la última actualización de esta página: enlaces de cualquier sitio en un solo lote, VK y X leídos de forma nativa, una sola caja para todos los sitios, la app en catorce idiomas y una imagen nueva.',
+    'b1.title': 'Lista mixta: cualquier sitio, un solo lote',
+    'b1.text': 'Agrega enlaces uno por uno o pega una lista completa — YouTube, TikTok, Instagram, Facebook, VK, X, un archivo. Se revisan juntos y, antes de descargar nada, ves qué se descargará y qué se omitió, y por qué. Un clic los descarga todos en un solo lote.',
+    'b2.title': 'El formato, para todos o enlace por enlace',
+    'b2.text': 'Elige MP4 en la mejor calidad o audio para toda la lista — o dale a cualquier enlace su propio formato, como una canción en MP3 entre videos. Sigue siendo un solo lote y una sola carpeta.',
+    'b3.title': 'VK y X, de forma nativa',
+    'b3.text': 'Videos, clips y playlists de VK hasta 1080p, y publicaciones de X con uno o varios videos, GIF y videos citados — sin iniciar sesión.',
+    'b4.title': 'Una sola caja para todos los sitios',
+    'b4.text': 'Pega cualquier enlace y la app dice de qué sitio es. Ya no eliges un sitio por ejecución ni reinicias para cambiar.',
+    'b5.title': 'Catorce idiomas',
+    'b5.text': 'Español, inglés, portugués, indonesio, hindi, vietnamita, tailandés, turco, árabe (de derecha a izquierda), francés, alemán, ruso, chino e italiano.',
+    'b6.title': 'Una imagen nueva',
+    'b6.text': 'El emblema del gato salvaje con la flecha de descarga en la frente, en la app, los instaladores y esta página. Como es arriba, es abajo.',
     'signin.title': 'Contenido privado: inicia sesión en tu navegador',
     'signin.intro': 'Los videos privados o de miembros, los de restricción de edad, los perfiles e historias de Instagram, los videos de una página de Facebook — y YouTube cuando pide confirmar que no eres un bot — necesitan tu propia cuenta. La app nunca pide contraseñas: usa la sesión del navegador donde ya inicias sesión.',
     'g1.title': 'Inicia sesión en tu navegador', 'g1.text': 'Chrome, Edge, Firefox, Safari o Brave — en Google / YouTube, Instagram o Facebook, como siempre.',
@@ -482,9 +506,9 @@ footer a { color: var(--muted); }
     'features.title': 'Hecho para los trabajos grandes',
     'features.intro': 'La mayoría de los descargadores van video por video. Este está hecho para una playlist entera, un perfil entero, una búsqueda entera — y para dejarlo trabajando mientras haces otra cosa.',
     'f1.title': 'Playlists y perfiles completos',
-    'f1.text': 'Playlists, canales y Mixes de YouTube; videos, carruseles (como video, o como imágenes con su música) y perfiles completos de TikTok, Instagram y Facebook — con “Cargar todo” para las miles de publicaciones de una cuenta veterana.',
+    'f1.text': 'Playlists, canales y Mixes de YouTube; videos, carruseles (como video, o como imágenes con su música) y perfiles completos de TikTok, Instagram y Facebook; videos y playlists de VK; publicaciones de X — con “Cargar todo” para las miles de publicaciones de una cuenta veterana.',
     'f2.title': 'Elige antes de descargar',
-    'f2.text': 'Una vista previa lista todo lo que contiene un enlace, con duración y fecha de publicación. Filtra, selecciona todo o solo algunos — se descarga solo lo que eliges. También puedes pegar una lista entera de enlaces.',
+    'f2.text': 'Una vista previa lista todo lo que contiene un enlace, con duración y fecha de publicación. Filtra, selecciona todo o solo algunos — se descarga solo lo que eliges. O junta enlaces de cualquier sitio en una lista mixta: un solo lote, con el formato que elijas para cada uno.',
     'f3.title': 'Cada archivo verificado',
     'f3.text': 'Cada descarga se revisa — códecs, duración, cada cuadro decodificado — y se guarda su SHA-256. Un archivo dañado se descarga otra vez; uno dañado desde el origen se marca y nunca se descarga dos veces.',
     'f4.title': 'Todo lo terminado, en un lugar',
@@ -505,8 +529,8 @@ footer a { color: var(--muted); }
     'f11.text': 'Déjala trabajando en segundo plano: llega una notificación del sistema cuando termina un lote, y el ícono del Dock o de la barra de tareas muestra cuánto lleva.',
     'f12.title': 'También línea de comandos y librería',
     'f12.text': 'El mismo motor corre desde una terminal (<code>mdc</code>) y desde tu propio código — programa la sincronización de cuentas con cron, launchd o el Programador de tareas, sin la app abierta.',
-    'how.title': 'Tres pasos', 'how.intro': 'Sin línea de comandos ni ajustes que aprender — la primera vez, una guía corta te muestra cómo. En español o inglés, claro u oscuro.',
-    's1.title': 'Pega un enlace', 's1.text': 'Un video, una playlist, un canal, o un perfil de TikTok, Instagram o Facebook.',
+    'how.title': 'Tres pasos', 'how.intro': 'Sin línea de comandos ni ajustes que aprender — la primera vez, una guía corta te muestra cómo. En catorce idiomas, claro u oscuro.',
+    's1.title': 'Pega un enlace', 's1.text': 'Un video, una playlist, un canal, un perfil de TikTok, Instagram o Facebook, una publicación de VK o X — o una lista completa de enlaces de cualquier sitio.',
     's2.title': 'Elige lo que quieres', 's2.text': 'Primero se lista todo lo que contiene. Elige MP4 o MP3, la calidad y la carpeta.',
     's3.title': 'Déjalo trabajar', 's3.text': 'Varias descargas a la vez, cada una verificada. Mira el reporte, o regresa más tarde.',
     'screens.title': 'Míralo',
@@ -514,7 +538,11 @@ footer a { color: var(--muted); }
     'screens.batch': 'Un lote con su pronóstico de disco y tiempo restante.',
     'screens.finished': 'Terminados: reproduce, abre en carpeta, busca cada archivo.',
     'screens.report': 'El reporte de la ejecución, actualizado cada 15 segundos.',
-    'screens.settings': 'Configuración: un sitio por ejecución, procesadores, integridad.',
+    'screens.settings': 'Configuración: tu cuenta de YouTube, procesadores, integridad.',
+    'screens.mix': 'Una lista mixta: enlaces de cinco sitios, cada uno con su sitio.',
+    'screens.mixPreview': 'Revisada: agrupada por sitio, un enlace en MP3, un solo lote.',
+    'versions.title': 'Versiones', 'versions.intro': 'Cada versión de la app, de la más nueva a la más antigua: qué cambió en cada una y sus instaladores.',
+    'versions.all': 'Todas las versiones en GitHub Releases', 'versions.notes': 'Novedades e instaladores', 'versions.latest': 'Más reciente', 'versions.beta': 'Beta',
     'screens.signin': 'Cómo iniciar sesión: la sesión de tu navegador, paso a paso.',
     'dl.title': 'Descargar', 'dl.line': 'La versión más nueva siempre está en GitHub Releases.',
     'dl.macArm': 'Apple Silicon (M1–M4)', 'dl.macIntel': 'Intel',
@@ -531,7 +559,7 @@ footer a { color: var(--muted); }
     'primary.mac': 'Descargar para Mac', 'primary.macIntel': 'Descargar para Mac (Intel)', 'primary.windows': 'Descargar para Windows',
     'primary.linux': 'Descargar para Linux', 'release': 'Versión {version} · publicada el {date}',
   }
-  const en = {'copied': 'Copied', 'primary.mac': 'Download for Mac', 'primary.macIntel': 'Download for Mac (Intel)', 'primary.windows': 'Download for Windows', 'primary.linux': 'Download for Linux', 'release': 'Version {version} · released {date}'}
+  const en = {'versions.notes': "What's new and installers", 'versions.latest': 'Newest', 'versions.beta': 'Beta', 'copied': 'Copied', 'primary.mac': 'Download for Mac', 'primary.macIntel': 'Download for Mac (Intel)', 'primary.windows': 'Download for Windows', 'primary.linux': 'Download for Linux', 'release': 'Version {version} · released {date}'}
   // the page's own English text is the default dictionary
   for (const el of document.querySelectorAll('[data-i18n]')) en[el.dataset.i18n] ??= el.innerHTML
   for (const el of document.querySelectorAll('[data-i18n-alt]')) en[el.dataset.i18nAlt] ??= el.alt
@@ -554,6 +582,8 @@ footer a { color: var(--muted); }
   const os = /mac/.test(platform) ? 'mac' : /win/.test(platform) ? 'windows' : /linux|x11/.test(platform) ? 'linux' : undefined
   let arch = /arm|aarch64/.test(navigator.userAgent.toLowerCase()) ? 'arm64' : undefined
   let release
+  /** The app's versions (app-v… tags), newest first, from GitHub. */
+  let versions = []
 
   const render = () => {
     document.documentElement.lang = lang
@@ -570,9 +600,45 @@ footer a { color: var(--muted); }
       primary.href = release?.assets.find(asset => asset.name.endsWith(wanted))?.browser_download_url ?? RELEASES
     }
     if (release) {
-      const date = new Date(release.published_at).toLocaleDateString(lang === 'es' ? 'es' : 'en', {year: 'numeric', month: 'long', day: 'numeric'})
-      document.getElementById('release-line').textContent = text('release', {version: release.tag_name.replace(/^app-v/, ''), date})
+      const version = release.tag_name.replace(/^app-v/, '')
+      document.getElementById('release-line').textContent = text('release', {version, date: day(release.published_at)})
+      // every installer says which version it is
+      for (const el of document.querySelectorAll('[data-version]')) el.textContent = version
     }
+    renderVersions()
+  }
+
+  const day = when => new Date(when).toLocaleDateString(lang === 'es' ? 'es' : 'en', {year: 'numeric', month: 'long', day: 'numeric'})
+  /** The versions of the app, newest first: each with its date, a tag, and its release page. */
+  const renderVersions = () => {
+    const list = document.getElementById('versions-list')
+    if (!versions.length || !list) return
+    list.replaceChildren(
+      ...versions.map((item, index) => {
+        const li = document.createElement('li')
+        const name = document.createElement('span')
+        name.className = 'version'
+        name.textContent = item.tag_name.replace(/^app-v/, '')
+        const date = document.createElement('span')
+        date.className = 'date'
+        date.textContent = day(item.published_at)
+        li.append(name, date)
+        if (index === 0 || item.prerelease) {
+          const tag = document.createElement('span')
+          tag.className = 'tag'
+          tag.textContent = index === 0 ? text('versions.latest') : text('versions.beta')
+          li.append(tag)
+        }
+        const links = document.createElement('span')
+        links.className = 'links'
+        const notes = document.createElement('a')
+        notes.href = item.html_url
+        notes.textContent = text('versions.notes')
+        links.append(notes)
+        li.append(links)
+        return li
+      }),
+    )
   }
 
   for (const button of document.querySelectorAll('[data-copy]')) {
@@ -607,10 +673,12 @@ footer a { color: var(--muted); }
   }).catch(() => {})
 
   // the newest release, pre-releases included (GitHub's "latest" skips betas)
-  fetch(`https://api.github.com/repos/${REPO}/releases?per_page=5`, {headers: {Accept: 'application/vnd.github+json'}})
+  // one request for both: the newest installers and the list of versions
+  fetch(`https://api.github.com/repos/${REPO}/releases?per_page=50`, {headers: {Accept: 'application/vnd.github+json'}})
     .then(response => (response.ok ? response.json() : []))
     .then(list => {
-      release = list.find(item => !item.draft && item.tag_name.startsWith('app-v'))
+      versions = list.filter(item => !item.draft && item.tag_name.startsWith('app-v'))
+      release = versions[0]
       if (!release) return
       for (const link of document.querySelectorAll('[data-asset]')) {
         const asset = release.assets.find(item => item.name.endsWith(link.dataset.asset))

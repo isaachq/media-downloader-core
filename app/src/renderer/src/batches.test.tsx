@@ -281,29 +281,81 @@ describe('a mix list: several links at once, one batch', () => {
     expect(await screen.findByTestId('batch-mix')).toHaveTextContent('Mix list')
   })
 
-  it('the Mix list button opens an empty list: sites show as links are typed, checked on demand', async () => {
+  it('the Mix list button opens an empty form: links go in one by one or as a list, each a numbered card with its site', async () => {
     const {api, user} = await mount(checked(new FakeApi()))
     await user.click(screen.getByTestId('open-mix'))
     const dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByTestId('mix-check')).toBeDisabled()
-    const typed = 'https://youtu.be/a\nhttps://vk.com/video-1_2 https://youtu.be/a\nnot a link'
-    await user.click(within(dialog).getByTestId('mix-text'))
-    await user.paste(typed)
+    expect(within(dialog).getByText(/Add a link, or paste a whole list/)).toBeInTheDocument()
+    const field = within(dialog).getByLabelText('Paste or type a link')
+    // one by one: type, Enter
+    await user.click(field)
+    await user.type(field, 'https://youtu.be/a{Enter}')
+    expect(within(dialog).getByTestId('mix-note')).toHaveTextContent('Added: 1')
+    expect(field).toHaveValue('')
+    // the same link again; then text that is not a link
+    await user.type(field, 'https://www.youtube.com/watch?v=a&si=x{Enter}')
+    await user.type(field, 'https://youtu.be/a/{Enter}')
+    expect(within(dialog).getByTestId('mix-note')).toHaveTextContent('Already in the list')
+    await user.type(field, 'hello{Enter}')
+    expect(within(dialog).getByTestId('mix-note')).toHaveTextContent('That is not a link')
+    // a list pasted at once: every new link of it
+    await user.clear(field)
+    await user.paste('https://vk.com/video-1_2\nhttps://youtu.be/a\nhttps://x.com/a/status/3')
+    expect(within(dialog).getByTestId('mix-note')).toHaveTextContent('Added: 2')
     const sites = within(dialog).getByTestId('mix-sites')
-    expect(sites).toHaveTextContent('2 links')
-    expect(sites).toHaveTextContent('2 left out')
+    expect(sites).toHaveTextContent('4 links')
     expect(
       within(sites)
         .getAllByTestId('site-tag')
         .map(tag => tag.getAttribute('data-site')),
-    ).toEqual(['youtube', 'vk'])
+    ).toEqual(['youtube', 'vk', 'x'])
     expect(api.analyzeMix).not.toHaveBeenCalled()
     await user.click(within(dialog).getByTestId('mix-check'))
     await waitFor(() => expect(api.analyzeMix).toHaveBeenCalledTimes(1))
+    expect(api.analyzeMix.mock.calls[0]![0]).toBe(
+      'https://youtu.be/a\nhttps://www.youtube.com/watch?v=a&si=x\nhttps://vk.com/video-1_2\nhttps://x.com/a/status/3',
+    )
     expect(await within(dialog).findByTestId('mix-summary')).toBeInTheDocument()
-    // back to the text, as it was
+    // back to the cards, as they were
     await user.click(within(dialog).getByTestId('mix-edit'))
-    expect(within(dialog).getByTestId('mix-text')).toHaveValue(typed)
+    expect(within(dialog).getByTestId('mix-sites')).toHaveTextContent('4 links')
+  })
+
+  it('says little on the form: what a mix list is opens behind the info button, Close shuts it', async () => {
+    const {user} = await mount()
+    await user.click(screen.getByTestId('open-mix'))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).queryByText(/They are checked together/)).not.toBeInTheDocument()
+    await user.click(within(dialog).getByTestId('mix-info'))
+    expect(await screen.findByText(/They are checked together and download as one batch/)).toBeInTheDocument()
+    // the dialog's own Close (its corner cross is called Close too)
+    const close = screen.getAllByRole('button', {name: 'Close'}).find(button => button.textContent === 'Close')!
+    await user.click(close)
+    await waitFor(() => expect(screen.queryByText(/They are checked together/)).not.toBeInTheDocument())
+  })
+
+  it('the format is said and chosen here: for all links, and a link of the preview in a format of its own', async () => {
+    const {api, user} = await mount(checked(new FakeApi()))
+    await user.click(screen.getByLabelText('Video, playlist or profile URL'))
+    await user.paste('https://youtu.be/one\nhttps://www.tiktok.com/@a/video/2\nhttps://x.com/a/status/3')
+    const dialog = await screen.findByRole('dialog')
+    await within(dialog).findByTestId('mix-summary')
+    expect(within(dialog).getByTestId('mix-format')).toHaveTextContent('Format for all links')
+    // grouped by site
+    expect(within(dialog).getByTestId('mix-group-youtube')).toBeInTheDocument()
+    expect(within(dialog).getByTestId('mix-group-tiktok')).toBeInTheDocument()
+    // the first link as MP3: its own select
+    const own = within(within(dialog).getByTestId('mix-group-youtube')).getByRole('combobox', {name: 'Format'})
+    await user.click(own)
+    await user.click(await screen.findByText('Audio · MP3 · Best audio', {selector: '.ant-select-item-option-content'}))
+    await user.click(within(dialog).getByTestId('mix-schedule'))
+    await waitFor(() => expect(api.scheduleMix).toHaveBeenCalledTimes(1))
+    expect(api.scheduleMix.mock.calls[0]![0]).toMatchObject({
+      format: 'mp4',
+      quality: 'best',
+      formats: {'https://youtu.be/one': {format: 'mp3', quality: 'best'}},
+    })
   })
 
   it('shows the check going, and stops it on Cancel', async () => {

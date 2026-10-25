@@ -55,8 +55,13 @@ export class Pacer {
   // FIFO of callers waiting for a slot (singly linked: O(1) push and shift)
   #head: Waiter | undefined
   #tail: Waiter | undefined
-  /** Earliest time the next request may start. */
+  /** Earliest time the next request may start: the normal spacing between starts. */
   #nextStart = 0
+  /**
+   * End of the cool-down (a refusal's back-off, a pause): kept apart from the spacing,
+   * so "cooling down" means the site pushed back — never just the gap between two requests.
+   */
+  #coolUntil = 0
   #refusals = 0
   /** Aborted by resume(): wakes the callers sleeping through a cool-down. */
   #wake = new AbortController()
@@ -75,9 +80,9 @@ export class Pacer {
     this.#random = options.random ?? Math.random
   }
 
-  /** Milliseconds until requests may resume (0 when not cooling down). */
+  /** Milliseconds until requests may resume after a refusal or a pause (0 when not cooling down). */
   get coolingDownMs(): number {
-    return Math.max(0, this.#nextStart - this.#now())
+    return Math.max(0, this.#coolUntil - this.#now())
   }
 
   /** Run `task` when a slot is free and its turn has come. */
@@ -97,13 +102,13 @@ export class Pacer {
   refused(): number {
     const wait = Math.min(this.#maxBackoffMs, this.#backoffMs * 2 ** this.#refusals)
     this.#refusals++
-    this.#nextStart = Math.max(this.#nextStart, this.#now() + wait)
+    this.#coolUntil = Math.max(this.#coolUntil, this.#now() + wait)
     return wait
   }
 
   /** Hold every start for `ms` (at least), outside the doubling of `refused()`. */
   pause(ms: number): void {
-    this.#nextStart = Math.max(this.#nextStart, this.#now() + Math.max(0, ms))
+    this.#coolUntil = Math.max(this.#coolUntil, this.#now() + Math.max(0, ms))
   }
 
   /** A request went through: the next refusal starts the back-off from the bottom again. */
@@ -117,6 +122,7 @@ export class Pacer {
    */
   resume(): void {
     this.#refusals = 0
+    this.#coolUntil = 0
     this.#nextStart = Math.min(this.#nextStart, this.#now())
     // callers already sleeping through the cool-down take their turns now, spaced as usual
     this.#wake.abort()
@@ -182,7 +188,7 @@ export class Pacer {
       // also between retries: a refusal while queued may have started a cool-down
       this.#checkPatience()
       const now = this.#now()
-      const start = Math.max(now, this.#nextStart)
+      const start = Math.max(now, this.#nextStart, this.#coolUntil)
       // reserve this start before awaiting, so concurrent callers queue up behind it
       this.#nextStart = start + this.#spacingMs + this.#random() * this.#jitterMs
       const wait = start - now

@@ -64,12 +64,13 @@ async function main() {
     await app.evaluate(({BrowserWindow}, size) => BrowserWindow.getAllWindows()[0]?.setContentSize(size.width, size.height), SIZE)
     const cdp = await page.context().newCDPSession(page)
     cdp.on('Page.screencastFrame', ({data, metadata, sessionId}) => {
-      const file = path.join(framesDir, `${String(frames.length).padStart(5, '0')}.jpg`)
+      const file = path.join(framesDir, `${String(frames.length).padStart(5, '0')}.png`)
       fs.writeFileSync(file, Buffer.from(data, 'base64'))
       frames.push({file, time: metadata.timestamp})
       void cdp.send('Page.screencastFrameAck', {sessionId}).catch(() => {})
     })
-    await cdp.send('Page.startScreencast', {format: 'jpeg', quality: 90, maxWidth: SIZE.width, maxHeight: SIZE.height})
+    // lossless frames: a JPEG's noise differs on every frame, so the GIF could reuse nothing (a 45 MB file)
+    await cdp.send('Page.startScreencast', {format: 'png', maxWidth: SIZE.width, maxHeight: SIZE.height})
     await page.waitForTimeout(1200)
 
     const input = page.getByLabel('Video, playlist or profile URL')
@@ -126,10 +127,20 @@ async function main() {
   fs.writeFileSync(concat, `${list.join('\n')}\nfile '${frames.at(-1).file}'\n`)
   const files = fs.readdirSync(outDir, {recursive: true})
   console.log('downloaded:', files)
-  // two-pass palette: small file, clean colors
+  // the screencast's frame size can change while the window settles (1280×714 among 1280×800):
+  // every frame goes onto one canvas, or the picture would shift and nothing could be reused
+  const sizes = new Map()
+  for (const {file} of frames) {
+    const head = fs.readFileSync(file).subarray(16, 24)
+    const size = `${head.readUInt32BE(0)}×${head.readUInt32BE(4)}`
+    sizes.set(size, (sizes.get(size) ?? 0) + 1)
+  }
+  console.log('frame sizes:', Object.fromEntries(sizes))
+  // two-pass palette: small file, clean colors. The colors are rounded first (the sky's gradient
+  // jitters by a step between frames) and repeated frames dropped: what stays still costs nothing
   execFileSync(binaries?.ffmpeg ?? ffmpegPath(dataDir), [
     '-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', concat,
-    '-vf', 'fps=12,scale=960:-2:flags=lanczos,split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle',
+    '-vf', `fps=12,scale=${SIZE.width}:${SIZE.height}:force_original_aspect_ratio=decrease:flags=lanczos,pad=${SIZE.width}:${SIZE.height}:0:0:color=white,scale=960:-2:flags=lanczos,format=rgb24,lutrgb=r='bitand(val,248)':g='bitand(val,248)':b='bitand(val,248)',mpdecimate,split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle`,
     '-loop', '0', OUTPUT,
   ])
   console.log(`${path.relative(process.cwd(), OUTPUT)}: ${(fs.statSync(OUTPUT).size / 1048576).toFixed(1)} MB`)

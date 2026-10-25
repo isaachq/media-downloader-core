@@ -276,6 +276,8 @@ export type MixScheduleInput = {
   readonly format: Format
   readonly quality: Quality
   readonly outDir: string
+  /** Links in a format of their own (the rest in `format` / `quality`), by url. */
+  readonly formats?: Readonly<Record<string, {readonly format: Format; readonly quality: Quality}>> | undefined
 }
 
 /** The updater, as the UI shows it. */

@@ -6,7 +6,7 @@ import {estimateBytes, jobTier, matchingChoice, peakBytes} from './core/cost.js'
 import {cancelledError, DownloadError, toJobError} from './core/errors.js'
 import {WorkMeter} from './core/eta.js'
 import {freeSpace} from './core/files.js'
-import {profileProblem} from './core/formats.js'
+import {profileKey, profileProblem} from './core/formats.js'
 import {newId} from './core/ids.js'
 import {isTerminal} from './core/job.js'
 import {isListingLink} from './core/mix.js'
@@ -226,12 +226,21 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
       if (link.analysis) known.set(link.url, link.analysis)
     }
     if (entries.length === 0) throw new DownloadError('invalid-request', 'No link of this mix list can be downloaded.')
+    // a link with a format of its own (one song in MP3 among videos): a target of the same batch, same folder. O(n)
+    const targets: BatchTarget[] = []
+    for (const entry of entries) {
+      const profile = request.formats?.[entry.url]
+      if (profile && profileKey(profile) !== profileKey(request.profile)) {
+        targets.push({index: entry.index, outDir: request.outDir, profile})
+      }
+    }
     return this.#add(
       {
         url: entries[0]!.url,
         profile: request.profile,
         outDir: request.outDir,
         selection: {title: request.title ?? 'Mix list', entries},
+        ...(targets.length > 0 && {targets}),
         flat: true,
         mix: true,
         ...(request.slideshow !== undefined && {slideshow: request.slideshow}),

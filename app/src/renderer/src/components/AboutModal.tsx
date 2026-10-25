@@ -1,6 +1,7 @@
 import {GithubOutlined, HeartFilled, StarFilled} from '@ant-design/icons'
 import {Button, Descriptions, Modal, Space, Typography} from 'antd'
 import {api} from '../api'
+import mark from '../assets/mdc-mark.png'
 import {useApp} from '../context'
 import {useT} from '../i18n'
 import {Rows} from './Rows'
@@ -28,9 +29,18 @@ export function AboutModal({open, onClose}: {readonly open: boolean; readonly on
       onCancel={onClose}
       footer={<Button onClick={onClose}>{t('common.close')}</Button>}
     >
-      <Typography.Title level={4} style={{marginTop: 0, marginBottom: 4}}>
-        Media Download Core
-      </Typography.Title>
+      <div className="about-brand">
+        {/* the mark at its minimum size, 96 px, with an ear's height of clear space around it */}
+        <img src={mark} width={96} height={96} alt="" />
+        <div>
+          <Typography.Title level={4} style={{marginTop: 0, marginBottom: 4}}>
+            Media Download Core
+          </Typography.Title>
+          <Typography.Text type="secondary" italic>
+            As above, so below.
+          </Typography.Text>
+        </div>
+      </div>
       <Typography.Paragraph type="secondary" style={{marginBottom: 16}}>
         {t('about.description')}
       </Typography.Paragraph>

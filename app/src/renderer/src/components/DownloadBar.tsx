@@ -1,4 +1,10 @@
-import {CloudDownloadOutlined, FolderOpenOutlined, ScheduleOutlined, SnippetsOutlined} from '@ant-design/icons'
+import {
+  CloudDownloadOutlined,
+  FolderOpenOutlined,
+  OrderedListOutlined,
+  ScheduleOutlined,
+  SnippetsOutlined,
+} from '@ant-design/icons'
 import {App as AntApp, Button, Card, Col, Form, Input, Row, Select, Space, Tag, Typography} from 'antd'
 import {type DragEvent, useMemo, useRef, useState} from 'react'
 import {
@@ -7,6 +13,7 @@ import {
   detectLink,
   type Format,
   isAudioFormat,
+  planMix,
   QUALITIES,
   type Quality,
   type ScheduleInput,
@@ -14,11 +21,11 @@ import {
 } from '../../../shared/contract'
 import {api} from '../api'
 import {useApp} from '../context'
-import {errorText, extractUrls} from '../format'
+import {errorText} from '../format'
 import {type MessageKey, useT} from '../i18n'
 import {type AppStore, useAppStore, useStoreValue} from '../store'
 import {AnalyzeLoader} from './AnalyzeLoader'
-import {ManyLinksModal} from './ManyLinksModal'
+import {MixListModal} from './MixListModal'
 import {type PlaylistPreview, type PreviewChoice, PreviewModal} from './PreviewModal'
 import {SiteTag} from './SiteTag'
 import {SlideshowModal} from './SlideshowChoice'
@@ -54,8 +61,8 @@ export function DownloadBar() {
   const [busy, setBusy] = useState(false)
   const [preview, setPreview] = useState<{url: string; data: PlaylistPreview} | undefined>()
   const [reloading, setReloading] = useState(false)
-  /** Several links pasted or dropped at once, under review. */
-  const [many, setMany] = useState<{urls: string[]; repeated: number} | undefined>()
+  /** A mix list being put together: several links pasted or dropped at once (checked at once), or the button. */
+  const [mix, setMix] = useState<{readonly text: string; readonly check: boolean} | undefined>()
   const [dropping, setDropping] = useState(false)
   // set when the user stops the reading: its rejection is not an error to show
   const cancelled = useRef(false)
@@ -142,13 +149,12 @@ export function DownloadBar() {
   }
 
   /**
-   * One link fills the field; several open the review of many links, of
-   * whatever sites they are. True when it took the text.
+   * One link fills the field; several, of whatever sites, become a mix list —
+   * checked at once, then downloaded as one batch. True when it took the text.
    */
   const take = (text: string): boolean => {
-    const found = extractUrls(text)
-    if (found.urls.length < 2) return false
-    setMany({urls: found.urls, repeated: found.repeated})
+    if (planMix(text, {aliases: info.siteAliases, maxLinks: 2}).links.length < 2) return false
+    setMix({text, check: true})
     return true
   }
 
@@ -157,33 +163,13 @@ export function DownloadBar() {
     if (text && !take(text)) setUrl(text.trim())
   }
 
-  const scheduleMany = async (urls: readonly string[]) => {
-    let scheduled = 0
-    for (const target of urls) {
-      try {
-        const batch = await api().schedule({
-          url: target,
-          format: settings.format,
-          quality: settings.quality,
-          outDir: settings.downloadDir,
-        })
-        store.apply({batches: [batch], jobs: [], items: [], logs: []})
-        scheduled++
-      } catch (error) {
-        fail(error)
-      }
-    }
-    setMany(undefined)
-    void message.success(t('many.scheduled', {count: scheduled}))
-  }
-
   const drop = (event: DragEvent<HTMLElement>) => {
     event.preventDefault()
     setDropping(false)
     const text = event.dataTransfer.getData('text/uri-list') || event.dataTransfer.getData('text/plain')
     if (!text || take(text)) return
-    const [single] = extractUrls(text).urls
-    if (single) setUrl(single)
+    const [single] = planMix(text, {aliases: info.siteAliases, maxLinks: 1}).links
+    if (single) setUrl(single.url)
   }
 
   const sections = {
@@ -250,6 +236,14 @@ export function DownloadBar() {
             />
             <Button size="large" icon={<SnippetsOutlined />} onClick={() => void paste()}>
               {t('download.paste')}
+            </Button>
+            <Button
+              size="large"
+              icon={<OrderedListOutlined />}
+              onClick={() => setMix({text: url, check: false})}
+              data-testid="open-mix"
+            >
+              {t('mix.open')}
             </Button>
           </Space.Compact>
         </Form.Item>
@@ -371,12 +365,16 @@ export function DownloadBar() {
           onCancel={() => setSlide(undefined)}
         />
       ) : null}
-      {many ? (
-        <ManyLinksModal
-          urls={many.urls}
-          repeated={many.repeated}
-          onSchedule={scheduleMany}
-          onCancel={() => setMany(undefined)}
+      {mix ? (
+        <MixListModal
+          text={mix.text}
+          check={mix.check}
+          onScheduled={batch => {
+            store.apply({batches: [batch], jobs: [], items: [], logs: []})
+            setUrl('')
+            setTouched(false)
+          }}
+          onClose={() => setMix(undefined)}
         />
       ) : null}
       {preview ? (

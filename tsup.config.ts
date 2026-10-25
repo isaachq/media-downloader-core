@@ -7,7 +7,7 @@ export default [
   // and `detect`: which site a link is, pure (no Node built-ins), for the apps' renderers (Electron, Hermes)
   {
     ...shared,
-    entry: {index: 'src/index.ts', detect: 'src/sources/detect.ts'},
+    entry: {index: 'src/index.ts', detect: 'src/detect.ts'},
     format: ['esm', 'cjs'],
     dts: true,
     clean: true,

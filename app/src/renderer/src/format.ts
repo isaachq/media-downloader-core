@@ -63,34 +63,6 @@ export function clock(seconds: number | undefined): string {
   return parts.map((part, i) => (i === 0 ? String(part) : String(part).padStart(2, '0'))).join(':')
 }
 
-/** Most links taken from one paste or drop. */
-export const MAX_LINKS = 200
-
-/**
- * The http(s) links in a pasted or dropped text — one per line, separated by
- * spaces or commas, or inside other text — each once, in order. O(text).
- */
-export function extractUrls(text: string): {readonly urls: string[]; readonly repeated: number} {
-  const seen = new Set<string>()
-  let repeated = 0
-  for (const match of text.matchAll(/https?:\/\/[^\s"'<>,]+/gi)) {
-    const url = match[0].replace(/[).;\]]+$/, '')
-    if (!isHttpUrl(url)) continue
-    if (seen.has(url)) repeated++
-    else if (seen.size < MAX_LINKS) seen.add(url)
-  }
-  return {urls: [...seen], repeated}
-}
-
-export const isHttpUrl = (value: string): boolean => {
-  try {
-    const url = new URL(value.trim())
-    return url.protocol === 'http:' || url.protocol === 'https:'
-  } catch {
-    return false
-  }
-}
-
 /** Seconds left → "< 1 min", "12 min", "1 h 05 min" (same units in English and Spanish). */
 export function timeLeft(seconds: number): string {
   if (seconds < 60) return '< 1 min'

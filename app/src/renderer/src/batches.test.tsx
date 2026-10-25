@@ -5,7 +5,6 @@ import {afterEach, describe, expect, it, vi} from 'vitest'
 import type {FinishedEntry} from '../../shared/contract'
 import {App} from './App'
 import {setApi} from './api'
-import {extractUrls} from './format'
 import {AppStore} from './store'
 import {batch, FakeApi, job} from './test/fake-api'
 
@@ -218,33 +217,115 @@ describe('notifications outside the app', () => {
   })
 })
 
-describe('several links at once', () => {
-  it('finds each link once in any pasted text', () => {
-    expect(
-      extractUrls(
-        'https://youtu.be/a\nhttps://youtu.be/b, see https://www.tiktok.com/@x (and https://youtu.be/a again).\nnot a link',
-      ),
-    ).toEqual({urls: ['https://youtu.be/a', 'https://youtu.be/b', 'https://www.tiktok.com/@x'], repeated: 1})
-    expect(extractUrls('just one https://youtu.be/a').urls).toEqual(['https://youtu.be/a'])
-  })
+describe('a mix list: several links at once, one batch', () => {
+  const checked = (api: FakeApi) => {
+    api.mixPreview = {
+      id: 'mix-7',
+      valid: [
+        {line: 1, url: 'https://youtu.be/one', site: 'youtube', title: 'One', duration: 65},
+        {line: 2, url: 'https://www.tiktok.com/@a/video/2', site: 'tiktok', title: 'Two', archived: true},
+        {line: 3, url: 'https://x.com/a/status/3', site: 'x', title: 'Three', unchecked: true},
+      ],
+      skipped: [
+        {line: 4, input: 'https://youtu.be/one', site: 'youtube', reason: 'duplicate', duplicateOf: 1},
+        {line: 5, input: 'https://www.youtube.com/@nasa', site: 'youtube', reason: 'listing'},
+        {
+          line: 6,
+          input: 'https://vk.com/video-1_9',
+          site: 'vk',
+          reason: 'private',
+          error: {code: 'unavailable', hint: 'private', message: 'Private'},
+        },
+      ],
+      summary: {
+        total: 6,
+        valid: 3,
+        skipped: 3,
+        bySite: {youtube: 1, tiktok: 1, x: 1},
+        byReason: {duplicate: 1, listing: 1, private: 1},
+      },
+    }
+    return api
+  }
 
-  it('pasting several links opens their review: drop one, schedule the rest as batches', async () => {
-    const {api, user} = await mount()
+  it('pasting several links checks them at once; what downloads and what was left out, then one batch', async () => {
+    const {api, user} = await mount(checked(new FakeApi()))
     const field = screen.getByLabelText('Video, playlist or profile URL')
     await user.click(field)
-    await user.paste('https://youtu.be/one\nhttps://youtu.be/two\nhttps://youtu.be/three\nhttps://youtu.be/two')
-    const review = (await screen.findByText('3 links')).closest('.ant-modal') as HTMLElement
+    const text = 'https://youtu.be/one\nhttps://www.tiktok.com/@a/video/2\nhttps://x.com/a/status/3'
+    await user.paste(text)
     expect(field).toHaveValue('')
-    expect(within(review).getByText('1 repeated links were left out.')).toBeInTheDocument()
-    await user.click(within(review).getAllByRole('button', {name: 'Remove this link'})[1]!)
-    await user.click(within(review).getByTestId('many-schedule'))
-    await waitFor(() => expect(api.schedule).toHaveBeenCalledTimes(2))
-    expect(api.schedule.mock.calls.map(([input]) => input.url)).toEqual([
-      'https://youtu.be/one',
-      'https://youtu.be/three',
-    ])
-    expect(api.schedule.mock.calls[0]![0]).toMatchObject({format: 'mp4', quality: 'best'})
-    expect(await screen.findByText('2 batches scheduled')).toBeInTheDocument()
+    const dialog = await screen.findByRole('dialog')
+    expect(api.analyzeMix).toHaveBeenCalledWith(text, 'mp4', 'best')
+    const summary = await within(dialog).findByTestId('mix-summary')
+    expect(summary).toHaveTextContent('3 ready')
+    expect(summary).toHaveTextContent('3 left out')
+    expect(within(dialog).getByText('Already downloaded')).toBeInTheDocument()
+    expect(within(dialog).getByText('Checked when it downloads')).toBeInTheDocument()
+    await user.click(within(dialog).getByText('Left out (3)'))
+    expect(await within(dialog).findByText('Same as line 1')).toBeInTheDocument()
+    expect(within(dialog).getByText('A list or profile: download it on its own')).toBeInTheDocument()
+    expect(within(dialog).getByText('Private')).toBeInTheDocument()
+    // one removed: the batch takes the other two
+    await user.click(within(dialog).getAllByRole('button', {name: 'Remove this link'})[1]!)
+    await user.click(within(dialog).getByTestId('mix-schedule'))
+    await waitFor(() => expect(api.scheduleMix).toHaveBeenCalledTimes(1))
+    expect(api.scheduleMix.mock.calls[0]![0]).toMatchObject({
+      id: 'mix-7',
+      urls: ['https://youtu.be/one', 'https://x.com/a/status/3'],
+      format: 'mp4',
+      quality: 'best',
+    })
+    expect(api.schedule).not.toHaveBeenCalled()
+    expect(await screen.findByText('Mix list scheduled: 2 links in one batch')).toBeInTheDocument()
+    expect(await screen.findByTestId('batch-mix')).toHaveTextContent('Mix list')
+  })
+
+  it('the Mix list button opens an empty list: sites show as links are typed, checked on demand', async () => {
+    const {api, user} = await mount(checked(new FakeApi()))
+    await user.click(screen.getByTestId('open-mix'))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByTestId('mix-check')).toBeDisabled()
+    const typed = 'https://youtu.be/a\nhttps://vk.com/video-1_2 https://youtu.be/a\nnot a link'
+    await user.click(within(dialog).getByTestId('mix-text'))
+    await user.paste(typed)
+    const sites = within(dialog).getByTestId('mix-sites')
+    expect(sites).toHaveTextContent('2 links')
+    expect(sites).toHaveTextContent('2 left out')
+    expect(
+      within(sites)
+        .getAllByTestId('site-tag')
+        .map(tag => tag.getAttribute('data-site')),
+    ).toEqual(['youtube', 'vk'])
+    expect(api.analyzeMix).not.toHaveBeenCalled()
+    await user.click(within(dialog).getByTestId('mix-check'))
+    await waitFor(() => expect(api.analyzeMix).toHaveBeenCalledTimes(1))
+    expect(await within(dialog).findByTestId('mix-summary')).toBeInTheDocument()
+    // back to the text, as it was
+    await user.click(within(dialog).getByTestId('mix-edit'))
+    expect(within(dialog).getByTestId('mix-text')).toHaveValue(typed)
+  })
+
+  it('shows the check going, and stops it on Cancel', async () => {
+    const api = new FakeApi()
+    let finish: (() => void) | undefined
+    api.analyzeMix.mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          finish = () => reject(new Error('Cancelled.'))
+        }),
+    )
+    const {user} = await mount(api)
+    await user.click(screen.getByLabelText('Video, playlist or profile URL'))
+    await user.paste('https://youtu.be/a\nhttps://youtu.be/b')
+    const dialog = await screen.findByRole('dialog')
+    act(() => api.pushMixProgress({total: 2, checked: 1}))
+    expect(await within(dialog).findByText('Checked 1 of 2')).toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', {name: 'Cancel'}))
+    expect(api.cancelMix).toHaveBeenCalled()
+    act(() => finish?.())
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(screen.queryByText('Cancelled.')).not.toBeInTheDocument()
   })
 
   it('one pasted link just fills the field', async () => {
@@ -253,7 +334,7 @@ describe('several links at once', () => {
     await user.click(field)
     await user.paste('https://youtu.be/only')
     expect(field).toHaveValue('https://youtu.be/only')
-    expect(screen.queryByText(/links$/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 })
 

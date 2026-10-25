@@ -9,7 +9,7 @@
 <meta property="og:description" content="Back up whole playlists and profiles. Every file verified. Free for macOS, Windows and Linux.">
 <meta property="og:type" content="website">
 <meta property="og:image" content="screenshots/finished.png">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2313a8e0'/%3E%3Cpath d='M32 14v26m0 0-10-10m10 10 10-10M18 48h28' stroke='white' stroke-width='6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="icon" type="image/png" href="icon-64.png">
 <style>
 :root {
   --accent: #13a8e0;
@@ -63,7 +63,7 @@ nav {
 }
 nav .wrap { display: flex; align-items: center; gap: 20px; height: 60px; }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; color: var(--ink); text-decoration: none; }
-.brand-mark { width: 28px; height: 28px; border-radius: 8px; background: var(--accent); display: grid; place-items: center; }
+.brand-mark { width: 28px; height: 28px; }
 nav .links { display: flex; gap: 18px; margin-left: auto; align-items: center; }
 nav .links a { color: var(--muted); text-decoration: none; font-size: 15px; }
 nav .links a:hover { color: var(--ink); }
@@ -174,7 +174,7 @@ footer a { color: var(--muted); }
 <nav>
   <div class="wrap">
     <a class="brand" href="#top" aria-label="Media Download Core">
-      <span class="brand-mark" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0-5-5m5 5 5-5M5 21h14"/></svg></span>
+      <img class="brand-mark" src="icon-64.png" width="28" height="28" alt="">
       Media Download Core
     </a>
     <div class="links">

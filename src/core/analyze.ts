@@ -129,6 +129,25 @@ export function isYouTubeMix(url: string): boolean {
   }
 }
 
+/**
+ * A YouTube link to a list rather than a video: a playlist, a channel (any
+ * tab). A video link inside a list (watch?v=…&list=…) is a video; youtu.be
+ * always is. O(length).
+ */
+export function isYouTubeListing(url: string): boolean {
+  try {
+    const u = new URL(url)
+    if (!/(^|\.)(youtube\.com|youtube-nocookie\.com)$/.test(u.hostname) || u.searchParams.has('v')) return false
+    return (
+      u.pathname === '/playlist' ||
+      (u.pathname === '/watch' && u.searchParams.has('list')) ||
+      /^\/(@[^/]+|channel\/|c\/|user\/)/.test(u.pathname)
+    )
+  } catch {
+    return false
+  }
+}
+
 /** Channel urls list their tabs (Videos, Shorts, Live) as nested playlists. */
 const isNestedPlaylist = (entry: RawInfo) =>
   entry._type === 'playlist' || (entry._type === 'url' && /Tab$/.test(entry.ie_key ?? ''))

@@ -108,22 +108,23 @@ describe('one link box for every site', () => {
     expect(screen.queryByText(/Error invoking remote method/)).not.toBeInTheDocument()
   })
 
-  it('several links pasted at once, of any sites: all go to the review, each with its site', async () => {
-    const {api, user} = await mount(new FakeApi())
+  it('several links pasted at once, of any sites: one mix list, each with its site', async () => {
+    const api = new FakeApi()
+    // still checking: the list shows each link's site meanwhile
+    api.analyzeMix.mockImplementation(() => new Promise(() => {}))
+    const {user} = await mount(api)
     await user.click(screen.getByLabelText(FIELD))
     await user.paste(
-      'https://www.instagram.com/reel/a/\nhttps://www.facebook.com/reel/b\nhttps://www.tiktok.com/@c\nhttps://youtu.be/d\nhttps://vk.com/video-1_2',
+      'https://www.instagram.com/reel/a/\nhttps://www.facebook.com/reel/b\nhttps://www.tiktok.com/@c/video/1\nhttps://youtu.be/d\nhttps://vk.com/video-1_2',
     )
     const dialog = await screen.findByRole('dialog')
-    expect(within(dialog).getByText('Schedule 5')).toBeInTheDocument()
-    expect(within(dialog).queryByTestId('many-other-mode')).not.toBeInTheDocument()
     expect(
-      within(dialog)
+      within(within(dialog).getByTestId('mix-sites'))
         .getAllByTestId('site-tag')
         .map(tag => tag.getAttribute('data-site')),
     ).toEqual(['instagram', 'facebook', 'tiktok', 'youtube', 'vk'])
-    await user.click(within(dialog).getByTestId('many-schedule'))
-    await waitFor(() => expect(api.schedule).toHaveBeenCalledTimes(5))
+    await waitFor(() => expect(api.analyzeMix).toHaveBeenCalledTimes(1))
+    expect(api.schedule).not.toHaveBeenCalled()
   })
 
   it('Settings has no Site section; YouTube’s account and the Sync Up schedule are always there', async () => {

@@ -468,3 +468,41 @@ describe('X, end to end (local fake)', () => {
     assert.equal(site.hits.refused, 2)
   })
 })
+
+describe('X in a mix list', () => {
+  it('a post is one link; a post with several videos and a profile are lists; one of its videos is one link again', async () => {
+    const {site, engine, scheduler, out} = await setup('x-mix')
+    const mix = await engine.analyzeMix(
+      [
+        postUrl(site.ids.single),
+        postUrl(site.ids.multi),
+        `${postUrl(site.ids.multi)}/video/2`,
+        'https://x.com/fakeaccount',
+        postUrl(site.ids.photos),
+      ].join('\n'),
+      {profile: mp4},
+    )
+    assert.deepEqual(
+      mix.valid.map(item => [item.line, item.site]),
+      [
+        [1, 'x'],
+        [3, 'x'],
+      ],
+    )
+    assert.deepEqual(
+      mix.skipped.map(skip => [skip.line, skip.reason]),
+      [
+        [2, 'listing'],
+        [4, 'listing'],
+        [5, 'unavailable'],
+      ],
+    )
+    assert.equal(mix.skipped[2]!.error?.hint, 'no-video')
+    const batch = scheduler.scheduleMix(mix, {profile: mp4, outDir: out})
+    await scheduler.whenIdle()
+    const done = scheduler.batch(batch.id)!
+    assert.equal(done.status, 'completed', JSON.stringify(done.error))
+    assert.equal(done.jobs.succeeded, 2)
+    assert.equal(scheduler.batches().length, 1)
+  })
+})

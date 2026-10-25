@@ -1,4 +1,9 @@
-# media-downloader-core
+<p align="center">
+  <img src="assets/brand/readme-hero@2x.png" alt="Media Download Core" width="100%">
+</p>
+
+<h1 align="center">Media Download Core</h1>
+<p align="center"><em>As above, so below.</em></p>
 
 **A download engine built for heavy workloads — not one video, many:**
 playlists with thousands of items, batches queued back to back, hours of
@@ -44,6 +49,11 @@ the ⌊CPUs/2⌋ pool and verified file by file.
 **Website: [isaachq.github.io/media-downloader-core](https://isaachq.github.io/media-downloader-core/)** — every feature, how it works, and the right installer for your computer.
 
 ![Paste a link, download it as MP4, check its integrity report, find it in Finished, open the run report](docs/demo.gif)
+
+### What's new in beta 19 (library 1.19.0)
+
+- **Mix list**: paste links of any sites at once (YouTube, TikTok, Instagram, Facebook, VK, X, a file…), one or more per line. They are checked together, and before anything downloads you see what will download, what was left out and why (not a link, repeated, a list or profile, private, unavailable…). One click downloads them all as **one batch**, which runs, reports, retries and resumes like any other.
+- **A new look**: the wildcat emblem with the download arrow on its forehead. *As above, so below.*
 
 ### What's new in beta 18 (library 1.18.0)
 
@@ -440,6 +450,43 @@ if (list.kind === 'playlist') {
 `maxItems` caps a list (listed by yt-dlp itself, so the rest is never fetched).
 A **YouTube Mix** (`list=RD…`, see `isYouTubeMix()`) is an endless radio that
 yt-dlp would paginate into the thousands, so it defaults to 50.
+
+## Mix lists: links of any sites, one batch
+
+```ts
+const mix = await engine.analyzeMix(pastedText, {profile, onProgress: p => bar(p.checked / p.total)})
+// mix.valid: the links that download, in the order pasted, with what their check found
+// mix.skipped: what was left out, each with its line and reason; mix.summary: counts by site and reason
+scheduler.scheduleMix(mix, {profile, outDir, title: 'Mix list'})   // one batch, not one per link
+```
+
+A **mix list** is a pasted list of independent links of any sites, downloaded as
+**one batch**. Nothing new downloads it: `scheduleMix` hands the scheduler a normal
+batch (a `selection` of single items with `flat: true` and `mix: true`), so the
+pool, retries, integrity checks, archive, report, cancel and `restore()` all work
+as for any batch. Its files go straight into `outDir`, named as single downloads.
+
+- **Local first, O(n).** `planMix(text)` (also in `media-downloader-core/detect`,
+  pure, for the apps' renderers) finds every link of the text (several per line,
+  inside sentences, unwrapped from trackers), drops repeats by `linkKey` (scheme,
+  `www.`, mobile hosts, trailing slash, fragment and tracking parameters don't
+  count) and reports lines with no link. One pass and a Set: 50,000 lines plan in
+  well under a second. Lists (playlists, channels, profiles, stories) are left out
+  as `listing` before any request: they have a preview of their own.
+- **One network pass.** What is left is checked by the batches' own `preflight`:
+  natively read sites paced by their source, the rest through yt-dlp in chunks,
+  ⌊CPUs/2⌋ processes at a time. Links that turn out to name the same media
+  (`youtu.be/x` and `youtube.com/watch?v=x`, a short link and its post) are found
+  by the media's identity and kept once; links damaged at the source are left
+  out; those already downloaded with `profile` are marked `archived`.
+- **Partial failures never fail the list.** Each refusal lands in `skipped` with
+  a reason (`unsupported`, `unavailable`, `private`, `needs-sign-in`, `damaged`,
+  `error`) and the engine's `JobError`, for the apps to word like any failure.
+  A site's bot check isn't final: such a link stays in, checked when it downloads.
+- **Nothing is checked twice.** `scheduleMix(mix, …)` hands the checks to the
+  batch, which skips its own preflight for them (their metadata is reused by the
+  downloads). `scheduleMix(text, …)` also works: the batch checks the links itself
+  and shows the ones it can't download as unavailable.
 
 ## YouTube: when it asks to confirm you're not a bot
 
@@ -993,6 +1040,18 @@ checks before it publishes.
 ## Changes
 
 See [CHANGELOG.md](CHANGELOG.md).
+
+## Brand
+
+The emblem — a snarling wildcat with the download arrow on its forehead — and its
+renders live in [`assets/brand/`](assets/brand) (vectors in `svg/`), the tray
+icons in [`assets/tray/`](assets/tray), the desktop installers' icons in
+[`app/build/`](app/build). Palette: night `#0c1030`, fur `#1b2458` / `#383878`,
+gold `#c9a04c`, amber `#f2b632`, cream `#f3e6c4`, mouth `#b6453a`. Never remove or
+rotate the forehead arrow, recolor, mirror or stretch the artwork, or set the
+emblem on gradients or busy photos; keep one ear's height of clear space around
+it; below 96 px (mark) or 64 px (emblem) use the one-ink mono or the pre-rendered
+PNGs.
 
 ## Privacy & Data Safety
 

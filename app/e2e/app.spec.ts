@@ -649,3 +649,37 @@ test('Finished: a deleted file is not checked again, and downloads again into it
   await expect(list.getByText('File not found')).toHaveCount(0, {timeout: 10_000})
   await close(app)
 })
+
+test('a mix list: links pasted together are checked at once and download as one batch', async () => {
+  const {app, page} = await launch('mix-list')
+  await page.getByTestId('open-mix').click()
+  const dialog = page.getByRole('dialog')
+  await dialog
+    .getByTestId('mix-text')
+    .fill(
+      [
+        'https://fake.test/mx1',
+        'https://fake.test/mx2',
+        'https://fake.test/mx1/',
+        'https://fake.test/unavailable-mx3',
+        'https://www.youtube.com/playlist?list=PL1',
+        'not a link',
+      ].join('\n'),
+    )
+  await expect(dialog.getByTestId('mix-sites')).toContainText('4 links')
+  await dialog.getByTestId('mix-check').click()
+  const summary = dialog.getByTestId('mix-summary')
+  await expect(summary).toContainText('2 ready', {timeout: 60_000})
+  await expect(summary).toContainText('4 left out')
+  await dialog.getByText('Left out (4)').click()
+  await expect(dialog).toContainText('Same as line 1')
+  await expect(dialog).toContainText('A list or profile: download it on its own')
+  await page.screenshot({path: path.join(APP_DIR, 'test-results', 'mix-list.png')})
+  await dialog.getByTestId('mix-schedule').click()
+  const cards = page.getByTestId('batch-card')
+  await expect(cards).toHaveCount(1)
+  await expect(cards.first().getByTestId('batch-mix')).toHaveText('Mix list')
+  await expect(cards.first()).toHaveAttribute('data-status', 'completed', {timeout: 60_000})
+  await expect(cards.first()).toContainText('2/2 done')
+  await close(app)
+})

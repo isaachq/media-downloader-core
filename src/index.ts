@@ -28,6 +28,7 @@ export {
 export {BinaryError, ffmpegRelease, type Release, ytDlpBuildFor, ytDlpRelease} from './binaries/sources.js'
 export {
   assertHttpUrl,
+  isYouTubeListing,
   isYouTubeMix,
   isYouTubeUrl,
   MAX_LISTED_ITEMS,
@@ -101,6 +102,7 @@ export {
   VIDEO_RULES,
 } from './core/formats.js'
 export {HashPool} from './core/hash-pool.js'
+export {isListingLink, skipReasonOf} from './core/mix.js'
 export {
   clampConcurrency,
   cpuCount,
@@ -149,6 +151,16 @@ export {type FetchedMedia, fetchMedia, type MediaFetch} from './sources/media-fe
 export {MetaClient, type MetaClientOptions} from './sources/meta/client.js'
 export {MetaError, type MetaProblem} from './sources/meta/errors.js'
 export type {MetaMedia, MetaPost} from './sources/meta/post.js'
+export {
+  linkKey,
+  MIX_MAX_LINKS,
+  type MixLink,
+  type MixPlan,
+  type MixPlanOptions,
+  type MixPlanSkip,
+  type MixPlanSkipped,
+  planMix,
+} from './sources/mix-plan.js'
 export {COOLING_DOWN, Pacer, type PacerOptions, withPatience} from './sources/pacer.js'
 export {parsePlayerPageSites} from './sources/player-page/config.js'
 export {
@@ -168,7 +180,7 @@ export {VkError, type VkProblem} from './sources/vk/data.js'
 export {isVkListing, parseVkLink, type VkLink} from './sources/vk/links.js'
 export {VK_LIST_DEFAULT_ITEMS, type VkOptions, VkSource} from './sources/vk/source.js'
 export {readTweetResult, syndicationToken, type XPost, type XVideo} from './sources/x/data.js'
-export {parseXLink, type XLink} from './sources/x/links.js'
+export {isXProfile, parseXLink, type XLink} from './sources/x/links.js'
 export {type XOptions, XSource} from './sources/x/source.js'
 export {type FolderFormat, type FolderScan, folderFormat, scanFolder, syncProfile} from './sync/folder.js'
 export {

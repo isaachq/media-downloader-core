@@ -184,7 +184,13 @@ const BatchCard = memo(function BatchCard({batch}: {readonly batch: BatchSnapsho
             <Tag color={STATUS_COLOR[batch.status]} data-testid="batch-status">
               {t(`batch.status.${batch.status}` as MessageKey)}
             </Tag>
-            {batch.kind ? <Tag>{t(batch.kind === 'playlist' ? 'batch.playlist' : 'batch.video')}</Tag> : null}
+            {batch.mix ? (
+              <Tag color="purple" data-testid="batch-mix">
+                {t('batch.mix')}
+              </Tag>
+            ) : batch.kind ? (
+              <Tag>{t(batch.kind === 'playlist' ? 'batch.playlist' : 'batch.video')}</Tag>
+            ) : null}
             {batch.position ? <Tag>{t('batch.position', {position: batch.position})}</Tag> : null}
             {/* CSS ellipsis: Ant Design's measured ellipsis reads layout on every render */}
             <Typography.Text strong className="batch-title one-line" title={batch.title ?? batch.url}>

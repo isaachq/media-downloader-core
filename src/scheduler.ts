@@ -9,8 +9,10 @@ import {freeSpace} from './core/files.js'
 import {profileProblem} from './core/formats.js'
 import {newId} from './core/ids.js'
 import {isTerminal} from './core/job.js'
+import {isListingLink} from './core/mix.js'
 import {QueueStore} from './core/queue-store.js'
 import {ANALYZE_ATTEMPTS, type MediaDownloader} from './downloader.js'
+import {planMix} from './sources/mix-plan.js'
 import {isTikTokProfile} from './sources/tiktok/links.js'
 import {slideshowOptions} from './sources/tiktok/slideshow.js'
 import {TIKTOK_PROFILE_DEFAULT_ITEMS} from './sources/tiktok/source.js'
@@ -30,7 +32,10 @@ import type {
   JobRequest,
   JobSnapshot,
   MediaSummary,
+  MixAnalysis,
+  MixRequest,
   PlaylistAnalysis,
+  PlaylistEntry,
   PreflightItem,
   SchedulerEvents,
   SchedulerOptions,
@@ -122,6 +127,8 @@ type Batch = {
   readonly targets: ReadonlyMap<number, BatchTarget>
   /** Brought back by restore(): its items were checked before the app closed, so they are not checked again. */
   readonly restored: boolean
+  /** A mix list's checks, by url, until its items take them (scheduleMix): not checked twice. */
+  known: Map<string, VideoAnalysis> | undefined
   lastEmit: number
   emitTimer: NodeJS.Timeout | undefined
 }
@@ -187,7 +194,55 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
     return this.#add(request, false)
   }
 
-  #add(request: BatchRequest, restored: boolean): BatchSnapshot {
+  /**
+   * Queue a mix list — links of any sites pasted together — as one batch, which
+   * runs, reports, retries and resumes like any other. From `analyzeMix()`: its
+   * valid links, whose checks the batch takes as they are (nothing is checked
+   * twice; a link the site would not check then is checked as it downloads).
+   * From a text or a list of links: each link once, lists left out, and the
+   * batch checks them itself — those that can't be downloaded show in it as
+   * unavailable, with their reason. Every file goes straight into `outDir`,
+   * named as a single download is. Returns at once; throws when no link is
+   * left. O(n): one pass, a Set and a Map.
+   */
+  scheduleMix(mix: MixAnalysis | string | readonly string[], request: MixRequest): BatchSnapshot {
+    const links: ReadonlyArray<{readonly url: string; readonly analysis?: VideoAnalysis | undefined}> =
+      typeof mix === 'string' || Array.isArray(mix)
+        ? planMix(mix).links.filter(link => !isListingLink(link.url, this.#engine))
+        : (mix as MixAnalysis).valid
+    const entries: PlaylistEntry[] = []
+    const known = new Map<string, VideoAnalysis>()
+    const urls = new Set<string>()
+    for (const link of links) {
+      // two links the check found to be one media url: the batch keeps its items by url
+      if (urls.has(link.url)) continue
+      urls.add(link.url)
+      const media = link.analysis?.media
+      entries.push({
+        ...(media ?? {id: '', title: link.url, extractor: 'Generic', isLive: false}),
+        url: link.url,
+        index: entries.length + 1,
+      })
+      if (link.analysis) known.set(link.url, link.analysis)
+    }
+    if (entries.length === 0) throw new DownloadError('invalid-request', 'No link of this mix list can be downloaded.')
+    return this.#add(
+      {
+        url: entries[0]!.url,
+        profile: request.profile,
+        outDir: request.outDir,
+        selection: {title: request.title ?? 'Mix list', entries},
+        flat: true,
+        mix: true,
+        ...(request.slideshow !== undefined && {slideshow: request.slideshow}),
+        ...(request.retries !== undefined && {retries: request.retries}),
+      },
+      false,
+      known.size > 0 ? known : undefined,
+    )
+  }
+
+  #add(request: BatchRequest, restored: boolean, known?: Map<string, VideoAnalysis>): BatchSnapshot {
     if (this.#disposed) throw new Error('BatchScheduler has been disposed.')
     const url = assertHttpUrl(request.url)
     const problem = profileProblem(request.profile)
@@ -253,6 +308,7 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
       checking: undefined,
       targets,
       restored,
+      known,
       error: undefined,
       createdAt: Date.now(),
       startedAt: undefined,
@@ -539,6 +595,16 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
       }
     })
 
+    // a mix list checked before it was scheduled: its checks are taken as they are
+    const known = batch.known
+    batch.known = undefined
+    if (known) {
+      batch.items.forEach((item, position) => {
+        const analysis = known.get(item.url)
+        if (analysis && item.state === 'pending') this.#resolveItem(batch, position, analysis)
+      })
+    }
+
     const pending = batch.items.filter(item => item.state === 'pending')
     if (!this.#preflight || batch.restored) {
       for (const item of pending) this.#settleItem(batch, batch.positions.get(item.url)!, 'ok', {})
@@ -551,6 +617,8 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
     }
     // an item already downloaded needs no network check (the forecast then counts it as archived)
     const unknown = await this.#notArchived(batch, pending, signal)
+    // nothing left to ask (all archived, or all checked by a mix list's analysis): no network at all
+    if (unknown.length === 0) return
     let deferred = 0
     await this.#engine.preflight(
       unknown.map(item => ({url: item.url, id: item.mediaId})),
@@ -939,8 +1007,11 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
     batch.error = error
     batch.finishedAt = Date.now()
     batch.controller = undefined
-    // metadata never handed to a job (cancelled / unavailable items): delete it
+    // metadata never handed to a job (cancelled / unavailable items, a mix list cancelled before it started): delete it
     for (const item of batch.items) if (item.infoJsonPath) void fs.rm(item.infoJsonPath, {force: true})
+    for (const analysis of batch.known?.values() ?? [])
+      if (analysis.infoJsonPath) void fs.rm(analysis.infoJsonPath, {force: true})
+    batch.known = undefined
     this.#engine.log(
       status === 'failed' ? 'error' : status === 'completed-with-errors' ? 'warn' : 'info',
       `batch closed: ${status} — ${batch.succeeded}/${batch.items.length || batch.jobs.size} succeeded${error ? ` [${error.code}] ${error.message}` : ''}`,
@@ -1019,6 +1090,7 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
       maxItems: batch.request.maxItems,
       status: batch.status,
       kind: batch.kind,
+      mix: batch.request.mix,
       title: batch.title,
       position,
       preflight: {total: batch.items.length, checked: batch.checked, ok: batch.ok, unavailable: batch.unavailable},

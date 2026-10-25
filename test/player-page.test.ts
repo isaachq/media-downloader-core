@@ -171,7 +171,8 @@ async function setup(name: string, config: Parameters<typeof startFakePlayerSite
     tiktok: false,
     sources: [source],
   })
-  const scheduler = new BatchScheduler(engine, {progressIntervalMs: 0})
+  // the fake's videos say how long they last: their size forecast is no test of the runner's free disk
+  const scheduler = new BatchScheduler(engine, {progressIntervalMs: 0, diskCheck: 'off'})
   cleanups.push(async () => {
     await scheduler.dispose()
     await engine.dispose()
@@ -352,7 +353,8 @@ describe('player pages on any host yt-dlp doesn’t support (local fake)', () =>
         },
       }),
     })
-    const scheduler = new BatchScheduler(engine, {progressIntervalMs: 0})
+    // the fake's videos say how long they last: their size forecast is no test of the runner's free disk
+    const scheduler = new BatchScheduler(engine, {progressIntervalMs: 0, diskCheck: 'off'})
     cleanups.push(async () => {
       await scheduler.dispose()
       await engine.dispose()

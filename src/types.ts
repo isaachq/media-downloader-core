@@ -1,8 +1,10 @@
 import type {YtDlpPolicy} from './binaries/manager.js'
 import type {FileNameStyle} from './core/files.js'
+import type {LinkSite} from './sources/detect.js'
 import type {DirectOptions} from './sources/direct/source.js'
 import type {FacebookOptions} from './sources/facebook/source.js'
 import type {InstagramOptions} from './sources/instagram/source.js'
+import type {MixPlanSkip} from './sources/mix-plan.js'
 import type {MediaSource} from './sources/source.js'
 import type {TikTokOptions} from './sources/tiktok/source.js'
 import type {VkOptions} from './sources/vk/source.js'
@@ -495,6 +497,8 @@ export type BatchSnapshot = {
   /** The entry cap in effect (see `BatchRequest.maxItems`); undefined = the 5000 default. */
   readonly maxItems?: number | undefined
   readonly kind?: 'video' | 'playlist' | undefined
+  /** A mix list: independent links of any sites in one batch (see `BatchRequest.mix`). */
+  readonly mix?: boolean | undefined
   readonly title?: string | undefined
   /** Position among scheduled batches (1 = next), while scheduled. */
   readonly position?: number | undefined
@@ -604,6 +608,12 @@ export type BatchRequest = {
    * list gets downloaded.
    */
   readonly retries?: 'fast' | 'thorough' | undefined
+  /**
+   * A mix list (`BatchScheduler.scheduleMix`): independent links of any sites
+   * gathered in one batch. Its files go straight into `outDir`, named as single
+   * downloads are; the flag travels to the snapshot for the apps to say so.
+   */
+  readonly mix?: boolean | undefined
 }
 
 export type BatchTarget = {
@@ -655,6 +665,106 @@ export type SchedulerEvents = {
   item: [batchId: BatchId, item: PreflightItem]
   /** Nothing scheduled, checking or running. */
   idle: []
+}
+
+// ─── Mix lists ──────────────────────────────────────────────────────────────
+// Links of any sites pasted together → checked together (analyzeMix) → one
+// batch (scheduleMix). Nothing new downloads them: the batch is a normal one.
+
+/**
+ * Why a link of a mix list is left out. Before any check: 'not-a-link',
+ * 'duplicate' (the same link, or — once checked — the same media), 'too-many',
+ * 'listing' (a playlist, channel or profile: it has a preview of its own).
+ * From the check: 'unsupported' (no extractor reads the site here),
+ * 'unavailable' (removed, geo-blocked, not started, no such format…),
+ * 'private', 'needs-sign-in', 'damaged' (damaged at the source, see
+ * `MediaDownloader.damaged`), 'error' (anything else; it may pass later).
+ */
+export type MixSkipReason =
+  | MixPlanSkip
+  | 'listing'
+  | 'unsupported'
+  | 'unavailable'
+  | 'private'
+  | 'needs-sign-in'
+  | 'damaged'
+  | 'error'
+
+export type MixItem = {
+  /** 1-based line of the pasted text the link was on. */
+  readonly line: number
+  /** The link to download: the media's own url when the check gave one, else the link as pasted. */
+  readonly url: string
+  readonly site: LinkSite
+  /**
+   * What the check found (title, duration, formats; its metadata is reused by
+   * the download). Absent when the site asked to confirm this is not a bot:
+   * the link is checked when it downloads, as in any batch.
+   */
+  readonly analysis?: VideoAnalysis | undefined
+  /** Already downloaded with `MixAnalyzeOptions.profile` and still there: the batch skips it at no cost. */
+  readonly archived?: boolean | undefined
+}
+
+export type MixSkipped = {
+  readonly line: number
+  /** The link, or the line's text (its first 200 characters) when it holds none. */
+  readonly input: string
+  readonly site?: LinkSite | undefined
+  readonly reason: MixSkipReason
+  /** 'duplicate': the line of the link (or media) it repeats. */
+  readonly duplicateOf?: number | undefined
+  /** What the check answered, for the apps to word by code and hint like any failure. */
+  readonly error?: JobError | undefined
+}
+
+export type MixSummary = {
+  /** Valid plus skipped. */
+  readonly total: number
+  readonly valid: number
+  readonly skipped: number
+  /** Valid links by site. */
+  readonly bySite: Readonly<Partial<Record<LinkSite, number>>>
+  /** Skipped links by reason. */
+  readonly byReason: Readonly<Partial<Record<MixSkipReason, number>>>
+}
+
+export type MixAnalysis = {
+  /** In the order pasted. */
+  readonly valid: readonly MixItem[]
+  /** In the order pasted. */
+  readonly skipped: readonly MixSkipped[]
+  readonly summary: MixSummary
+}
+
+export type MixProgress = {
+  /** Links being checked on the network (after the local filtering). */
+  readonly total: number
+  readonly checked: number
+}
+
+export type MixAnalyzeOptions = {
+  readonly signal?: AbortSignal | undefined
+  /** The profile it will download in: marks the links already downloaded that way, and leaves out those with no stream of its kind. */
+  readonly profile?: FormatProfile | undefined
+  /** What photo posts become, for the "already downloaded" mark (their record carries it). Default an MP4. */
+  readonly slideshow?: SlideshowOptions | undefined
+  /** 'thorough': a check that fails in a way that may pass is tried up to 3 times (see `BatchRequest.retries`). */
+  readonly retries?: 'fast' | 'thorough' | undefined
+  /** Links taken at most (1–5000). Default 5000. */
+  readonly maxLinks?: number | undefined
+  /** After each link is checked: O(1), never more often than once per link. */
+  readonly onProgress?: ((progress: MixProgress) => void) | undefined
+}
+
+/** How a mix list downloads: one batch, every file straight into `outDir`. */
+export type MixRequest = {
+  readonly profile: FormatProfile
+  readonly outDir: string
+  /** The batch's name (the apps put the date in it). Default "Mix list". */
+  readonly title?: string | undefined
+  readonly slideshow?: SlideshowOptions | undefined
+  readonly retries?: 'fast' | 'thorough' | undefined
 }
 
 // ─── Options ────────────────────────────────────────────────────────────────

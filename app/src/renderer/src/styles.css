@@ -310,9 +310,6 @@ h5.ant-typography.preview-heading {
   outline: 2px dashed #13a8e0;
   outline-offset: 4px;
 }
-.many-hint {
-  margin-bottom: 12px;
-}
 .many-list {
   max-height: 360px;
   overflow: auto;
@@ -410,4 +407,52 @@ h5.ant-typography.preview-heading {
 }
 .signin-steps li + li {
   margin-top: 6px;
+}
+
+/* About: the brand mark beside the name and the tagline */
+.about-brand {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 8px;
+}
+.about-brand img {
+  flex: none;
+  margin: 8px;
+}
+
+/* Mix list: links of any sites, one batch */
+.mix-sites,
+.mix-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0;
+}
+.mix-site-count {
+  white-space: nowrap;
+}
+.mix-progress {
+  margin-top: 12px;
+}
+.mix-list {
+  max-height: 46vh;
+  overflow-y: auto;
+}
+.mix-row-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.mix-url {
+  font-size: 12px;
+}
+.mix-line {
+  min-width: 2.5em;
+  text-align: end;
+}
+.mix-skipped {
+  margin-top: 12px;
 }

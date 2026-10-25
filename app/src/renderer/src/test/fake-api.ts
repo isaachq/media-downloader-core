@@ -7,6 +7,7 @@ import type {
   JobId,
   JobSnapshot,
   LogEntry,
+  MixProgress,
   PreflightItem,
   SubscriptionView,
   SyncRun,
@@ -25,6 +26,8 @@ import {
   type FinishedQuery,
   type FinishedTarget,
   type MdcApi,
+  type MixPreview,
+  type MixScheduleInput,
   type OpenTarget,
   type Preview,
   type ScheduleInput,
@@ -189,6 +192,35 @@ export class FakeApi implements MdcApi {
   pushAnalyzeProgress(progress: AnalyzeProgress): void {
     for (const listener of this.#analyzeListeners) listener(progress)
   }
+  /** What `analyzeMix` answers: nothing to download by default. */
+  mixPreview: MixPreview = {
+    id: 'mix-1',
+    valid: [],
+    skipped: [],
+    summary: {total: 0, valid: 0, skipped: 0, bySite: {}, byReason: {}},
+  }
+  analyzeMix = vi.fn(async (_text: string, _format: string, _quality: string): Promise<MixPreview> => this.mixPreview)
+  cancelMix = vi.fn(async () => {})
+  #mixListeners = new Set<(progress: MixProgress) => void>()
+
+  onMixProgress(listener: (progress: MixProgress) => void): () => void {
+    this.#mixListeners.add(listener)
+    return () => this.#mixListeners.delete(listener)
+  }
+
+  pushMixProgress(progress: MixProgress): void {
+    for (const listener of this.#mixListeners) listener(progress)
+  }
+  scheduleMix = vi.fn(async (input: MixScheduleInput) =>
+    batch({
+      url: input.urls[0] ?? '',
+      status: 'scheduled',
+      profile: toProfile(input),
+      kind: 'playlist',
+      mix: true,
+      title: 'Mix list',
+    }),
+  )
   schedule = vi.fn(async (input: ScheduleInput) =>
     batch({url: input.url, status: 'scheduled', profile: toProfile(input), kind: undefined, title: undefined}),
   )

@@ -108,3 +108,8 @@ export function postUrl(id: string, user?: string, origin = X_ORIGIN): string {
 export function videoUrl(id: string, user: string | undefined, index: number, origin = X_ORIGIN): string {
   return `${postUrl(id, user, origin)}/video/${index}`
 }
+
+/** A profile link (x.com/user): not a post. X's profiles are not read here; a mix list leaves them out as lists. */
+export function isXProfile(url: string): boolean {
+  return parseXLink(url)?.kind === 'profile'
+}

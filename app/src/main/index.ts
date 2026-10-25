@@ -1,3 +1,4 @@
+import {randomUUID} from 'node:crypto'
 import {appendFileSync, readFileSync} from 'node:fs'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
@@ -17,6 +18,8 @@ import {
   MAX_REQUESTED_ITEMS,
   MediaDownloader,
   MIX_DEFAULT_ITEMS,
+  type MixAnalysis,
+  type MixItem,
   PlayerPageSource,
   parsePlayerPageSites,
   SyncManager,
@@ -27,6 +30,7 @@ import {
   TIKTOK_PROFILE_DEFAULT_ITEMS,
   type VideoAnalysis,
 } from 'media-downloader-core'
+import windowIcon from '../../build/icons/512x512.png?asset'
 import type {Language} from '../shared/contract'
 import {
   type AppInfo,
@@ -41,7 +45,11 @@ import {
   type FinishedPage,
   type FinishedQuery,
   type FinishedSort,
+  isFormat,
+  isQuality,
   type LinkSite,
+  type MixPreview,
+  type MixScheduleInput,
   type Preview,
   RESTART_SETTINGS,
   type ScheduleInput,
@@ -103,6 +111,22 @@ const HOST_TITLES = {
     fr: 'Échecs relancés',
     de: 'Fehlgeschlagene, erneut versucht',
   },
+  mix: {
+    en: 'Mix list',
+    es: 'Lista mixta',
+    pt: 'Lista mista',
+    it: 'Lista mista',
+    ru: 'Смешанный список',
+    zh: '混合列表',
+    id: 'Daftar campuran',
+    hi: 'मिश्रित सूची',
+    vi: 'Danh sách hỗn hợp',
+    th: 'รายการรวม',
+    tr: 'Karma liste',
+    ar: 'قائمة مختلطة',
+    fr: 'Liste mixte',
+    de: 'Gemischte Liste',
+  },
 } as const satisfies Record<string, Record<Language, string>>
 const hostTitle = (which: keyof typeof HOST_TITLES, language: Language): string => HOST_TITLES[which][language]
 /** Now, in the language’s date and time (Electron ships a full ICU). */
@@ -148,6 +172,10 @@ const hostSources = new Map<string, PlayerPageSource>()
 let updater: Updater | undefined
 /** The link being read for a preview, if any. */
 let reading: AbortController | undefined
+/** The mix list being checked: a new one (or Cancel) stops it. */
+let mixing: AbortController | undefined
+/** The last mix list checked, until it is scheduled or another replaces it: its checks are reused. */
+let checkedMix: {readonly id: string; readonly analysis: MixAnalysis} | undefined
 /** Background update checks: shortly after start-up, then every few hours (when enabled). */
 const FIRST_CHECK_MS = 8000
 const CHECK_EVERY_MS = 6 * 60 * 60_000
@@ -207,6 +235,37 @@ function rememberPreview(url: string, analysis: VideoAnalysis): void {
   previews.set(url, {analysis, at: Date.now()})
   // Map iterates in insertion order: the first key is the oldest — O(1) eviction
   if (previews.size > PREVIEW_SLOTS) previews.delete(previews.keys().next().value!)
+}
+
+/** A checked mix list as the renderer sees it: what each link is, not its formats or metadata files. O(n). */
+function mixPreview(id: string, analysis: MixAnalysis): MixPreview {
+  return {
+    id,
+    valid: analysis.valid.map(item => {
+      const media = item.analysis?.media
+      return {
+        line: item.line,
+        url: item.url,
+        site: item.site,
+        title: media?.title,
+        uploader: media?.uploader,
+        duration: media?.duration,
+        photoPost: media?.slideshow !== undefined && media.slideshow.videos !== true,
+        archived: item.archived,
+        unchecked: item.analysis === undefined,
+      }
+    }),
+    skipped: analysis.skipped,
+    summary: analysis.summary,
+  }
+}
+
+/** Delete the metadata kept for checked links that won't download (a mix list replaced, or links removed). */
+function forgetMix(items: readonly MixItem[]): void {
+  for (const item of items) {
+    const file = item.analysis?.infoJsonPath
+    if (file) void fs.rm(file, {force: true})
+  }
 }
 
 function takePreview(url: string): VideoAnalysis | undefined {
@@ -361,6 +420,8 @@ function createWindow(): void {
     minHeight: MIN_SIZE.height,
     show: false,
     title: 'Media Download Core',
+    // macOS and Windows take the icon from the app bundle; a Linux window needs its own
+    ...(process.platform === 'linux' && {icon: windowIcon}),
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#0b1420' : '#eef6fb',
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
@@ -519,6 +580,57 @@ function registerIpc(): void {
     }
   })
   ipcMain.handle(CHANNEL.analyzeCancel, () => reading?.abort())
+  ipcMain.handle(
+    CHANNEL.mixAnalyze,
+    async (_event, text: unknown, format: unknown, quality: unknown): Promise<MixPreview> => {
+      if (typeof text !== 'string' || !isFormat(format)) throw new Error('Invalid request.')
+      mixing?.abort()
+      const current = new AbortController()
+      mixing = current
+      let lastSent = 0
+      const analysis = await engine
+        .analyzeMix(text, {
+          signal: current.signal,
+          profile: toProfile({format, quality: isQuality(quality) ? quality : 'best'}),
+          slideshow: {mode: settings.current.slideshowMode, secondsPerImage: settings.current.slideshowSeconds},
+          onProgress: progress => {
+            // ~8 updates a second are plenty for a progress bar
+            const now = Date.now()
+            if (now - lastSent < 125 && progress.checked !== progress.total) return
+            lastSent = now
+            send(CHANNEL.mixProgress, progress)
+          },
+        })
+        .finally(() => {
+          if (mixing === current) mixing = undefined
+        })
+      if (checkedMix) forgetMix(checkedMix.analysis.valid)
+      checkedMix = {id: randomUUID(), analysis}
+      return mixPreview(checkedMix.id, analysis)
+    },
+  )
+  ipcMain.handle(CHANNEL.mixCancel, () => mixing?.abort())
+  ipcMain.handle(CHANNEL.mixSchedule, (_event, input: MixScheduleInput) => {
+    if (!Array.isArray(input?.urls) || typeof input.outDir !== 'string' || !isFormat(input.format)) {
+      throw new Error('Invalid request.')
+    }
+    const kept = new Set(input.urls.filter((url): url is string => typeof url === 'string'))
+    const checked = checkedMix?.id === input.id ? checkedMix.analysis : undefined
+    checkedMix = undefined
+    // the preview's links as checked, less those removed; a check gone (replaced) → the links, checked by the batch
+    const mix = checked ? {...checked, valid: checked.valid.filter(item => kept.has(item.url))} : [...kept]
+    if (checked) forgetMix(checked.valid.filter(item => !kept.has(item.url)))
+    const language = settings.current.language
+    return scheduler.scheduleMix(mix, {
+      profile: toProfile({format: input.format, quality: isQuality(input.quality) ? input.quality : 'best'}),
+      outDir: input.outDir,
+      title: `${hostTitle('mix', language)} · ${stamp(language)}`,
+      slideshow: slideshowOptions({
+        mode: settings.current.slideshowMode,
+        secondsPerImage: settings.current.slideshowSeconds,
+      }),
+    })
+  })
   ipcMain.handle(CHANNEL.schedule, (_event, input: ScheduleInput) => {
     if (typeof input?.url !== 'string' || typeof input.outDir !== 'string') throw new Error('Invalid request.')
     return scheduler.schedule({

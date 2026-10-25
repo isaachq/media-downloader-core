@@ -1,7 +1,7 @@
 {
   "name": "media-download-core-app",
   "productName": "Media Download Core",
-  "version": "0.2.0-beta.18",
+  "version": "0.2.0-beta.19",
   "description": "Desktop app for media-downloader-core: heavy batch downloads with integrity validation.",
   "private": true,
   "main": "./out/main/index.js",
@@ -14,7 +14,6 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:e2e": "electron-vite build && playwright test",
-    "icon": "electron scripts/render-icon.cjs",
     "dist:mac": "electron-vite build && electron-builder --mac --publish never",
     "dist:win": "electron-vite build && electron-builder --win --x64 --publish never && electron-builder --win --arm64 --publish never",
     "dist:linux": "electron-vite build && electron-builder --linux --publish never"
@@ -80,7 +79,8 @@
         }
       ],
       "identity": "-",
-      "hardenedRuntime": false
+      "hardenedRuntime": false,
+      "icon": "build/icon.icns"
     },
     "dmg": {
       "title": "Media Download Core ${version}"
@@ -88,7 +88,8 @@
     "win": {
       "target": [
         "nsis"
-      ]
+      ],
+      "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": false,

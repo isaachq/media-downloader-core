@@ -13,6 +13,9 @@ import type {
   JobId,
   JobSnapshot,
   LogEntry,
+  MixProgress,
+  MixSkipped,
+  MixSummary,
   PlaylistEntry,
   PreflightItem,
   SlideshowOptions,
@@ -75,13 +78,16 @@ export type ThemeMode = 'system' | 'light' | 'dark'
  * apps. Every site is read in every run; the link box tags what it found.
  * Pure and browser-safe (regular expressions, no URL class), O(n) in the text.
  */
-export {detectLink, LINK_SITES, type LinkSite} from 'media-downloader-core/detect'
+export {detectLink, LINK_SITES, type LinkSite, planMix} from 'media-downloader-core/detect'
 export type Format = VideoContainer | AudioContainer
 export type Quality = 'best' | '2160' | '1440' | '1080' | '720' | '480' | '360'
 
 export const VIDEO_FORMATS: readonly VideoContainer[] = ['mp4', 'webm', 'mkv']
 export const AUDIO_FORMATS: readonly AudioContainer[] = ['m4a', 'mp3', 'opus', 'flac', 'wav']
 export const QUALITIES: readonly Quality[] = ['best', '2160', '1440', '1080', '720', '480', '360']
+export const isFormat = (value: unknown): value is Format =>
+  (VIDEO_FORMATS as readonly unknown[]).includes(value) || (AUDIO_FORMATS as readonly unknown[]).includes(value)
+export const isQuality = (value: unknown): value is Quality => (QUALITIES as readonly unknown[]).includes(value)
 
 export const isAudioFormat = (format: Format): format is AudioContainer =>
   (AUDIO_FORMATS as readonly string[]).includes(format)
@@ -235,6 +241,42 @@ export type ScheduleInput = {
 }
 
 export type AnalyzeProgress = {readonly listed: number; readonly expected?: number | undefined}
+
+/** One link of a mix list as its preview shows it (what its check found stays in the main process). */
+export type MixPreviewItem = {
+  /** 1-based line of the pasted text. */
+  readonly line: number
+  readonly url: string
+  readonly site: LinkSite
+  readonly title?: string | undefined
+  readonly uploader?: string | undefined
+  readonly duration?: number | undefined
+  /** A photo post: what it becomes follows the slideshow setting. */
+  readonly photoPost?: boolean | undefined
+  /** Already downloaded in this format: the batch skips it. */
+  readonly archived?: boolean | undefined
+  /** Not checked yet (the site asked to confirm this is not a bot): checked as it downloads. */
+  readonly unchecked?: boolean | undefined
+}
+
+/** Links of any sites pasted together, checked: what downloads and what was left out (and why). */
+export type MixPreview = {
+  /** Names this check for `scheduleMix` (its results are reused, not checked again). */
+  readonly id: string
+  readonly valid: readonly MixPreviewItem[]
+  readonly skipped: readonly MixSkipped[]
+  readonly summary: MixSummary
+}
+
+export type MixScheduleInput = {
+  /** The preview's id. */
+  readonly id: string
+  /** The links kept from the preview (any may have been removed), in order. */
+  readonly urls: readonly string[]
+  readonly format: Format
+  readonly quality: Quality
+  readonly outDir: string
+}
 
 /** The updater, as the UI shows it. */
 export type UpdateState =
@@ -416,6 +458,17 @@ export type MdcApi = {
   /** Progress of a long listing (TikTok profiles): posts read so far, of how many. */
   onAnalyzeProgress(listener: (progress: AnalyzeProgress) => void): () => void
   schedule(input: ScheduleInput): Promise<BatchSnapshot>
+  /**
+   * Check links of any sites pasted together (a mix list): in the format given,
+   * so the preview marks what is already downloaded. A new check (or `cancelMix`)
+   * stops the previous one, which then rejects.
+   */
+  analyzeMix(text: string, format: Format, quality: Quality): Promise<MixPreview>
+  cancelMix(): Promise<void>
+  /** Links checked so far of a mix list, of how many. */
+  onMixProgress(listener: (progress: MixProgress) => void): () => void
+  /** The kept links of a checked mix list as one batch. */
+  scheduleMix(input: MixScheduleInput): Promise<BatchSnapshot>
   state(): Promise<{
     readonly batches: readonly BatchSnapshot[]
     readonly jobs: readonly JobSnapshot[]
@@ -508,6 +561,10 @@ export const CHANNEL = {
   analyzeCancel: 'mdc:analyze:cancel',
   analyzeProgress: 'mdc:analyze:progress',
   schedule: 'mdc:schedule',
+  mixAnalyze: 'mdc:mix:analyze',
+  mixCancel: 'mdc:mix:cancel',
+  mixProgress: 'mdc:mix:progress',
+  mixSchedule: 'mdc:mix:schedule',
   state: 'mdc:state',
   items: 'mdc:items',
   cancelBatch: 'mdc:cancel-batch',

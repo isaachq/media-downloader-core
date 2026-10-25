@@ -2,6 +2,47 @@
 
 ## Unreleased
 
+## App 0.2.0-beta.19 · library 1.19.0
+
+Beta 19: the mix list (links of any sites pasted together, one batch) and a new brand.
+
+**Library**
+
+- **`MediaDownloader.analyzeMix(input, options)`**: a pasted text (or a list of texts) of
+  links of any sites, checked as one. Planned locally first (`planMix`, O(n)): every link
+  once in the order pasted, lines with no link reported, repeats dropped by `linkKey`,
+  lists (playlists, channels, profiles, stories: `isListingLink`) left out before any
+  request, at most 5000 links. The rest is checked in one pass of the batches' own
+  `preflight` (native sources paced, yt-dlp in chunks on the ⌊CPUs/2⌋ pool); links that
+  name the same media are kept once, those damaged at the source left out, those already
+  downloaded with `options.profile` marked `archived`. Returns `{valid, skipped, summary}`;
+  each skip has its line, its reason (`MixSkipReason`) and the engine's `JobError`. A
+  bot check keeps the link (checked when it downloads); only a cancel rejects, and leaves
+  no metadata behind. `onProgress({total, checked})` per link.
+- **`BatchScheduler.scheduleMix(mix | text, request)`**: one normal batch for a mix list
+  (`selection` + `flat` + `mix: true`), never one per link; its files go straight into
+  `outDir`, named as single downloads. From `analyzeMix`, the batch takes the checks as
+  they are (no second check; their metadata reused by the downloads); from a text, it
+  checks the links itself. Cancel, retry and `restore()` as for any batch.
+  `BatchSnapshot.mix` says so.
+- **`planMix`, `linkKey`, `MIX_MAX_LINKS`** in `media-downloader-core/detect` too (pure:
+  no Node built-ins, no URL class), so the apps show the list as it is typed.
+- **`isYouTubeListing(url)`**: a playlist or channel link (a video inside a list is not one).
+- **A batch whose items are all known (archived, or checked by a mix list) asks the network
+  nothing** instead of calling the preflight with an empty list.
+
+**Desktop app**
+
+- **Mix list** replaces "one batch per link": several links pasted or dropped at once (or the
+  new Mix list button) open a list that shows each link's site as it is typed, checks them
+  all at once with a progress bar, then shows what downloads (title, length, already
+  downloaded, checked on download) and what was left out and why. Any link can be removed;
+  one click schedules the rest as one batch, tagged "Mix list" in Batches. Fourteen languages.
+- **New brand**: the wildcat emblem. New installer icons for macOS (`.icns`), Windows (`.ico`)
+  and Linux (16 to 512 px), the Linux window icon, the mark in About with the tagline, the
+  README hero, the website's favicon and mark. Brand assets in `assets/brand/`, tray icons
+  ready in `assets/tray/`.
+
 ## App 0.2.0-beta.18 · library 1.18.0
 
 Beta 18: VK and X videos natively; one box for every site, which the core names; Facebook

@@ -7,6 +7,7 @@ import type {
   JobId,
   JobSnapshot,
   LogEntry,
+  MixProgress,
   PreflightItem,
   SubscriptionView,
   SyncRun,
@@ -27,8 +28,11 @@ import {
   type FinishedTarget,
   type Format,
   type MdcApi,
+  type MixPreview,
+  type MixScheduleInput,
   type OpenTarget,
   type Preview,
+  planMix,
   type ScheduleInput,
   type SetupOutcome,
   SIZE_LIMITS,
@@ -192,6 +196,7 @@ export function createWebBridge(): MdcApi {
 
   const eventListeners = new Set<(bundle: EventBundle) => void>()
   const analyzeListeners = new Set<(progress: AnalyzeProgress) => void>()
+  const mixListeners = new Set<(progress: MixProgress) => void>()
   const syncListeners = new Set<(event: {readonly view?: SubscriptionView; readonly removed?: string}) => void>()
   const verifyListeners = new Set<(progress: {readonly done: number; readonly total: number}) => void>()
   const updateListeners = new Set<(state: UpdateState) => void>()
@@ -466,6 +471,58 @@ export function createWebBridge(): MdcApi {
 
     async cancelAnalyze(): Promise<void> {
       log('info', 'Analysis cancelled')
+    },
+
+    // the demo checks nothing on the network: the links of the text, as the core plans them
+    async analyzeMix(text: string): Promise<MixPreview> {
+      const plan = planMix(text)
+      const total = plan.links.length
+      for (const listener of mixListeners) listener({total, checked: total})
+      const bySite: Record<string, number> = {}
+      for (const link of plan.links) bySite[link.site] = (bySite[link.site] ?? 0) + 1
+      const byReason: Record<string, number> = {}
+      for (const skip of plan.skipped) byReason[skip.reason] = (byReason[skip.reason] ?? 0) + 1
+      log('info', `Mix list checked: ${total} link(s)`)
+      return {
+        id: nextId('M'),
+        valid: plan.links.map(link => ({
+          line: link.line,
+          url: link.url,
+          site: link.site,
+          title: link.url.split('/').filter(Boolean).pop(),
+          duration: 180,
+        })),
+        skipped: plan.skipped,
+        summary: {
+          total: total + plan.skipped.length,
+          valid: total,
+          skipped: plan.skipped.length,
+          bySite,
+          byReason,
+        },
+      }
+    },
+
+    async cancelMix(): Promise<void> {
+      log('info', 'Mix list check cancelled')
+    },
+
+    onMixProgress(listener: (progress: MixProgress) => void): () => void {
+      mixListeners.add(listener)
+      return () => mixListeners.delete(listener)
+    },
+
+    async scheduleMix(input: MixScheduleInput): Promise<BatchSnapshot> {
+      const batch = await this.schedule({
+        url: input.urls[0] ?? '',
+        format: input.format,
+        quality: input.quality,
+        outDir: input.outDir,
+      })
+      const mixed: BatchSnapshot = {...batch, kind: 'playlist', mix: true, title: 'Mix list'}
+      batches.set(mixed.id, mixed)
+      emitEvents({batches: [mixed]})
+      return mixed
     },
 
     onAnalyzeProgress(listener: (progress: AnalyzeProgress) => void): () => void {

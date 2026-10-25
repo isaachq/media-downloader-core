@@ -41,6 +41,7 @@ import {profileKey, profileProblem, rulesFor} from './core/formats.js'
 import {HashPool} from './core/hash-pool.js'
 import {newId} from './core/ids.js'
 import {Job, type JobPatch} from './core/job.js'
+import {analyzeMix} from './core/mix.js'
 import {clampConcurrency, cpuCount, cpuShare, maxConcurrency, TaskPool} from './core/pool.js'
 import {utf8Env} from './core/process.js'
 import {PendingJournal} from './core/queue-store.js'
@@ -67,6 +68,8 @@ import type {
   JobSnapshot,
   LogEntry,
   LogLevel,
+  MixAnalysis,
+  MixAnalyzeOptions,
   PlaylistAnalysis,
   SlideshowOptions,
   StepName,
@@ -622,6 +625,23 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
   }
 
   // ─── Analysis ─────────────────────────────────────────────────────────────
+
+  /**
+   * A mix list: links of any sites pasted together (a text, one or more links
+   * per line, or a list of them), checked together. Lines without a link,
+   * repeats (the same link, or links that turn out to name the same media),
+   * lists (they have a preview of their own) and links that can't be
+   * downloaded are left out with their reason; the rest come back in the order
+   * pasted with what their check found, ready for `BatchScheduler.scheduleMix`
+   * — which then downloads them as one batch without checking them again.
+   * The check is the batches' own (`preflight`): sites read natively are paced
+   * by their source, the rest go through yt-dlp ⌊CPUs/2⌋ processes at a time.
+   * O(n) local work besides; only a cancel (`signal`) rejects.
+   */
+  analyzeMix(input: string | readonly string[], options: MixAnalyzeOptions = {}): Promise<MixAnalysis> {
+    this.#assertOpen()
+    return analyzeMix(this, input, options, ANALYZE_ATTEMPTS)
+  }
 
   /** A single video → concrete format choices. A playlist → entries + generic profiles. */
   async analyze(

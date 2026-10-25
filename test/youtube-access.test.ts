@@ -204,6 +204,18 @@ describe('YouTubeGate: the ladder', () => {
     return {g, changes}
   }
 
+  it('two requests in a row are not a pause: nothing says "paused", nothing is refused at once', async () => {
+    // a mix list with two YouTube links: the second waits its 1–1.5 s turn, that's all
+    const {g, changes} = gate({pacing: {spacingMs: 1000, jitterMs: 500, backoffMs: 1000, maxBackoffMs: 4000}})
+    await g.turn()
+    assert.equal(g.access.pausedUntil, undefined)
+    assert.equal(g.blocked, false)
+    assert.deepEqual(changes, [])
+    // and a refusal right after one climbs the ladder (it isn't taken for a pause already running)
+    assert.deepEqual(g.refused(), {waitMs: 10, free: true})
+    assert.equal(g.access.level, 'attested')
+  })
+
   it('without tokens: pauses that double, counted against the job', () => {
     const {g} = gate({attestation: false, canHold: false})
     assert.deepEqual(g.refused(), {waitMs: 1000, free: false})

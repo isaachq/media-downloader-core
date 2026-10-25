@@ -456,3 +456,64 @@ h5.ant-typography.preview-heading {
 .mix-skipped {
   margin-top: 12px;
 }
+
+/* Mix list, as on the phone: a form for the links, the format for all, numbered cards, the preview by site */
+.mix-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.mix-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--ant-color-primary, #13a8e0) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ant-color-primary, #13a8e0) 22%, transparent);
+}
+/* what the last add did, wrapped inside the form (never past its edge, in any language) */
+.mix-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  color: var(--ant-color-success, #2f9e44);
+  overflow-wrap: anywhere;
+}
+.mix-note-error {
+  color: var(--ant-color-error, #e5484d);
+  background: var(--ant-color-error-bg, #fff1f0);
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+.mix-format {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+.mix-format-label {
+  margin-inline-end: 4px;
+}
+.mix-format-select {
+  min-width: 220px;
+}
+.mix-quality-select {
+  min-width: 160px;
+}
+.mix-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.mix-group-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+.mix-item-format {
+  flex: none;
+  min-width: 190px;
+}

@@ -650,30 +650,37 @@ test('Finished: a deleted file is not checked again, and downloads again into it
   await close(app)
 })
 
-test('a mix list: links pasted together are checked at once and download as one batch', async () => {
-  const {app, page} = await launch('mix-list')
+test('a mix list: links added one by one, checked at once, one in a format of its own, one batch', async () => {
+  // the form is set to M4A: every link becomes M4A unless it has its own format
+  const {app, page, outDir} = await launch('mix-list')
   await page.getByTestId('open-mix').click()
   const dialog = page.getByRole('dialog')
-  await dialog
-    .getByTestId('mix-text')
-    .fill(
-      [
-        'https://fake.test/mx1',
-        'https://fake.test/mx2',
-        'https://fake.test/mx1/',
-        'https://fake.test/unavailable-mx3',
-        'https://www.youtube.com/playlist?list=PL1',
-        'not a link',
-      ].join('\n'),
-    )
+  const field = dialog.getByLabel('Paste or type a link')
+  for (const link of [
+    'https://fake.test/mx1',
+    'https://fake.test/mx2',
+    'https://fake.test/unavailable-mx3',
+    'https://www.youtube.com/playlist?list=PL1',
+  ]) {
+    await field.fill(link)
+    await field.press('Enter')
+  }
+  await field.fill('https://fake.test/mx1/')
+  await field.press('Enter')
+  await expect(dialog.getByTestId('mix-note')).toHaveText('Already in the list')
   await expect(dialog.getByTestId('mix-sites')).toContainText('4 links')
+  await expect(dialog.getByTestId('mix-format')).toContainText('Format for all links')
+  await page.screenshot({path: path.join(APP_DIR, 'test-results', 'mix-list-form.png')})
   await dialog.getByTestId('mix-check').click()
   const summary = dialog.getByTestId('mix-summary')
   await expect(summary).toContainText('2 ready', {timeout: 60_000})
-  await expect(summary).toContainText('4 left out')
-  await dialog.getByText('Left out (4)').click()
-  await expect(dialog).toContainText('Same as line 1')
+  await expect(summary).toContainText('2 left out')
+  await dialog.getByText('Left out (2)').click()
   await expect(dialog).toContainText('A list or profile: download it on its own')
+  // mx2 as an MP4 video, by itself
+  const second = dialog.locator('.rows-item', {hasText: 'fake.test/mx2'})
+  await second.getByRole('combobox', {name: 'Format'}).click()
+  await page.locator('.ant-select-item-option-content', {hasText: 'Video · MP4 · Best available'}).first().click()
   await page.screenshot({path: path.join(APP_DIR, 'test-results', 'mix-list.png')})
   await dialog.getByTestId('mix-schedule').click()
   const cards = page.getByTestId('batch-card')
@@ -681,5 +688,8 @@ test('a mix list: links pasted together are checked at once and download as one 
   await expect(cards.first().getByTestId('batch-mix')).toHaveText('Mix list')
   await expect(cards.first()).toHaveAttribute('data-status', 'completed', {timeout: 60_000})
   await expect(cards.first()).toContainText('2/2 done')
+  // one batch, one folder: mx1 as M4A (the list's format), mx2 as MP4 (its own)
+  const files = (await fs.readdir(outDir)).sort()
+  expect(files.map(name => path.extname(name))).toEqual(['.m4a', '.mp4'])
   await close(app)
 })

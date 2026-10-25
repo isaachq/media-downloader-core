@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+## App 0.2.0-beta.20 · library 1.20.1
+
+The desktop's mix list, as the Android app's; YouTube's pause notice only when YouTube pauses.
+
+**Library 1.20.1**
+
+- **The gap between two requests is no longer taken for a cool-down.** `Pacer` kept a site's
+  back-off (a refusal, a pause) and the normal spacing between starts in one field, so for a
+  second or so after any YouTube request `youtubePausedUntil` said YouTube had paused the
+  connection: the desktop showed "YouTube is asking to confirm you're not a bot" when it had
+  refused nothing (two YouTube links in a mix list were enough), a YouTube link pasted in that
+  second was turned away as "waiting", and a real refusal right after a request was taken for
+  a pause already running instead of climbing the ladder. The cool-down is its own field now;
+  the spacing is unchanged.
+
+**Desktop app**
+
+- **Links go in one by one or as a whole list**: a field (Enter or Add) and Paste list; a
+  paste of several links goes in at once. Each link is a numbered card with its site; a
+  repeat ("Already in the list") or text that isn't a link says so inside the form. Clear
+  all. Every site is accepted, YouTube included (the desktop reads it through yt-dlp).
+- **The format is said and chosen in the mix list**: "Format for all links" (the form's
+  selects, starting from its choice), and after the check any link can take a format of
+  its own (one song as MP3 among videos): one batch, one folder (`MixRequest.formats`).
+- **The preview groups what downloads by site**; "Already downloaded" only for links in the
+  list's format. What a mix list is moved behind an info button, in a small dialog.
+
 ## Library 1.20.0
 
 - **A format per link in a mix list**: `MixRequest.formats` (by `MixItem.url`) gives some

@@ -247,6 +247,29 @@ describe('Pacer', () => {
     assert.ok(Date.now() - resumed < 100, 'resume() drops the cool-down')
   })
 
+  it('the gap between two requests is no cool-down: only a refusal or a pause is', async () => {
+    let now = 1_000_000
+    const pacer = new Pacer({
+      concurrency: 4,
+      spacingMs: 1000,
+      jitterMs: 500,
+      backoffMs: 60_000,
+      now: () => now,
+      random: () => 1,
+    })
+    await pacer.run(async () => {})
+    // the next start waits 1.5 s, but nothing pushed back: not cooling down
+    assert.equal(pacer.coolingDownMs, 0)
+    pacer.pause(5000)
+    assert.equal(pacer.coolingDownMs, 5000)
+    now += 5000
+    assert.equal(pacer.coolingDownMs, 0)
+    assert.equal(pacer.refused(), 60_000)
+    assert.equal(pacer.coolingDownMs, 60_000)
+    pacer.resume()
+    assert.equal(pacer.coolingDownMs, 0)
+  })
+
   it('resume() wakes the callers already waiting out a cool-down', async () => {
     const pacer = new Pacer({concurrency: 4, spacingMs: 10, jitterMs: 0, backoffMs: 60_000})
     pacer.refused()

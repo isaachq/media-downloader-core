@@ -23,6 +23,8 @@ export type FakeFacebookConfig = {
   readonly videosSignedInOnly?: boolean
   /** The pagination query answers 400 (the site stopped accepting the request as built). */
   readonly badRequest?: boolean
+  /** Every page answers 400 to a request carrying the session cookie; a visitor is served (an account the site objects to). */
+  readonly sessionRefused?: boolean
   /** The first N page answers are refused (429). */
   readonly refusals?: number
   /** Videos (by index) that only have a DASH manifest, no progressive url. */
@@ -45,7 +47,7 @@ export type FakeFacebook = {
   readonly ids: readonly string[]
   readonly storyIds: readonly string[]
   readonly hits: Record<
-    'video' | 'listing' | 'graphql' | 'stories' | 'media' | 'refusedMedia' | 'login' | 'refused' | 'short',
+    'video' | 'listing' | 'graphql' | 'stories' | 'media' | 'refusedMedia' | 'login' | 'refused' | 'short' | 'rejected',
     number
   >
   /** Every media path asked for, in order. */
@@ -65,7 +67,18 @@ export async function startFakeFacebook(config: FakeFacebookConfig = {}): Promis
   const ids = Array.from({length: count}, (_, i) => String(1_000_000_000_000_000n + BigInt(count - i)))
   const storyIds = (config.stories ?? []).map((_, i) => String(2_000_000_000_000_000n + BigInt(i + 1)))
   const served: string[] = []
-  const hits = {video: 0, listing: 0, graphql: 0, stories: 0, media: 0, refusedMedia: 0, login: 0, refused: 0, short: 0}
+  const hits = {
+    video: 0,
+    listing: 0,
+    graphql: 0,
+    stories: 0,
+    media: 0,
+    refusedMedia: 0,
+    login: 0,
+    refused: 0,
+    short: 0,
+    rejected: 0,
+  }
   let refusalsLeft = config.refusals ?? 0
   let origin = ''
 
@@ -203,6 +216,10 @@ export async function startFakeFacebook(config: FakeFacebookConfig = {}): Promis
     const signedIn = cookie.includes(FB_SESSION_COOKIE)
     const isMedia = parts[0] === 'media' || parts[0] === 'image' || parts[0] === 'thumb'
     const isApi = parts[0] === 'api'
+    if (config.sessionRefused && signedIn && !isMedia) {
+      hits.rejected++
+      return send(400, 'bad request')
+    }
 
     if (parts[0] === 'login' || parts[0] === 'login.php') {
       return html('<html><body><form id="login_form">Log in</form></body></html>')

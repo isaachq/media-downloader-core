@@ -17,6 +17,9 @@ export const vi: Readonly<Record<MessageKey, string>> = {
   'tour.3.title': '3 · Tải xuống',
   'tour.3.text':
     'Với một danh sách, bản xem trước sẽ mở ra trước để bạn chọn thứ mình muốn. Mọi tệp đều được kiểm tra trước khi đến tay bạn. Tất cả nằm trong thẻ Đã xong, sẵn sàng để phát.',
+  'tour.4.title': '4 · Danh sách và danh sách hỗn hợp',
+  'tour.4.text':
+    'Playlist, kênh hoặc trang cá nhân là một danh sách: nó mở bản xem trước để bạn chọn thứ mình muốn. Danh sách hỗn hợp gom liên kết từ nhiều trang, kể cả YouTube, thành một lô, và mỗi liên kết có thể có định dạng riêng.',
   'header.language': 'Ngôn ngữ',
   'header.theme': 'Giao diện',
   'theme.system': 'Theo hệ thống',
@@ -477,6 +480,9 @@ export const vi: Readonly<Record<MessageKey, string>> = {
   'about.star':
     'Nếu Media Download Core có ích cho bạn, hãy tặng một sao trên GitHub: miễn phí, chỉ mất một giây và giúp nhiều người khác tìm thấy ứng dụng.',
   'about.starButton': 'Tặng sao trên GitHub',
+  'about.coffee':
+    'Ứng dụng miễn phí, không quảng cáo và mọi thứ chạy trên máy tính của bạn. Nếu nó giúp ích, bạn có thể mời tôi một ly cà phê. Hoàn toàn tự nguyện: ứng dụng vẫn như vậy dù bạn mời hay không.',
+  'about.coffeeButton': 'Mời tôi một ly cà phê',
   'common.close': 'Đóng',
   'common.copy': 'Sao chép',
   'common.copied': 'Đã sao chép',

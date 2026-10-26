@@ -460,7 +460,7 @@ describe('TikTok slideshows', () => {
 })
 
 describe('first steps', () => {
-  it('the first launch walks three steps; closing marks the guide seen; Guide replays it', async () => {
+  it('the first launch walks four steps; closing marks the guide seen; Guide replays it', async () => {
     const api = new FakeApi({settings: {tourDone: false}})
     const {user} = await mount(api)
     expect(await screen.findByText('1 · Paste a link')).toBeInTheDocument()
@@ -468,6 +468,8 @@ describe('first steps', () => {
     expect(await screen.findByText('2 · Choose what you get')).toBeInTheDocument()
     await user.click(screen.getByRole('button', {name: 'Next'}))
     expect(await screen.findByText('3 · Download')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', {name: 'Next'}))
+    expect(await screen.findByText('4 · Lists and the mix list')).toBeInTheDocument()
     await user.click(screen.getByRole('button', {name: 'Finish'}))
     await waitFor(() => expect(api.setSettings).toHaveBeenCalledWith({tourDone: true}))
     await user.click(screen.getByTestId('open-guide'))

@@ -43,6 +43,12 @@ export type MetaClientOptions = {
 export const READ_ATTEMPTS = 3
 /** After a verification page, the site's urls go to yt-dlp for this long (a circuit breaker). */
 export const BLOCKED_MS = 10 * 60_000
+/**
+ * After the site refuses the signed-in session (a 4xx it does not give a
+ * visitor), requests go as a visitor for this long before the host's cookies
+ * are asked for again: a session must never leave a public post worse off.
+ */
+export const SESSION_REFUSED_MS = 30 * 60_000
 
 /** What a login wall or a checkpoint page carries, on either site. */
 const WALL = /\/accounts\/login|\/login\.php|\/checkpoint\/|\/challenge\/|checkpoint_required|login_form/
@@ -63,11 +69,16 @@ const unexpected = (status: number): boolean => status >= 400 && status < 500 &&
 /**
  * The site no longer accepts the request this module builds (400, 405…): no
  * wait makes it accept it. As a changed page is: yt-dlp reads the link now.
+ * To a signed-in session it may be the session the site objects to: the
+ * client tries the same request as a visitor before giving up.
  */
-const rejected = (site: string, status: number): MetaError =>
+const rejected = (site: string, status: number, signedIn: boolean): MetaError =>
   new MetaError(
     'format-changed',
-    `${site} no longer accepts this request (HTTP ${status}) — without a signed-in session it may not show this list.`,
+    signedIn
+      ? `${site} did not accept this request from the signed-in session (HTTP ${status}).`
+      : `${site} no longer accepts this request (HTTP ${status}) — without a signed-in session it may not show this list.`,
+    status,
   )
 
 function assertNotWalled(html: string, site: string): void {
@@ -88,6 +99,7 @@ export class MetaClient {
   readonly session: HttpSession
   readonly pacer: Pacer
   readonly #sessionCookie: string
+  readonly #fetch: Fetch | undefined
   readonly #browser: BrowserAssist | undefined
   /** One browser page at a time: each is a full page load. */
   readonly #browserTurns = new Pacer({concurrency: 1, spacingMs: 0, jitterMs: 0})
@@ -95,6 +107,8 @@ export class MetaClient {
   readonly #log: (level: 'info' | 'warn', message: string) => void
   readonly #now: () => number
   #blockedUntil = 0
+  /** While set, the host's session is not used: the site refused it (see SESSION_REFUSED_MS). */
+  #sessionRefusedUntil = 0
   /**
    * Share-link hops as a page load (Sec-Fetch-* navigate, sent as given):
    * Facebook answers /share/r/… with a 400 to a Chrome that says `cors`, the
@@ -110,6 +124,7 @@ export class MetaClient {
     this.#hops = new HttpSession({fetch: options.fetch ?? navigationFetch})
     this.pacer = new Pacer(options.pacing, options.site)
     this.#sessionCookie = options.sessionCookie
+    this.#fetch = options.fetch
     this.#browser = options.browser
     this.#log = options.log ?? (() => {})
     this.#now = options.now ?? Date.now
@@ -136,6 +151,11 @@ export class MetaClient {
     return this.session.cookie(this.host, this.#sessionCookie) !== undefined
   }
 
+  /** The site refused the host's session lately: requests go as a visitor until SESSION_REFUSED_MS is up. */
+  get sessionRefused(): boolean {
+    return this.#now() < this.#sessionRefusedUntil
+  }
+
   /** A cookie of the site as the session has it now (a CSRF token to echo in a header). */
   cookie(name: string): string | undefined {
     return this.session.cookie(this.host, name)
@@ -153,6 +173,12 @@ export class MetaClient {
    */
   async requireSession(what: string): Promise<void> {
     await this.loadCookies()
+    if (this.sessionRefused) {
+      throw new MetaError(
+        'login-required',
+        `${this.site} did not accept the signed-in session: sign out and sign in again, then try ${what} once more.`,
+      )
+    }
     if (!this.signedIn) {
       throw new MetaError(
         'login-required',
@@ -163,6 +189,7 @@ export class MetaClient {
 
   /** Load the host's cookies if they were never loaded or are old (see HostSession). */
   async loadCookies(): Promise<void> {
+    if (this.sessionRefused) return
     await this.#host.load()
   }
 
@@ -186,6 +213,12 @@ export class MetaClient {
     try {
       return await this.retrying(() => this.#pageOnce(url, read, opts), opts.signal)
     } catch (error) {
+      if (this.#refusedSession(error)) {
+        const visitor = this.#visitor()
+        return this.#asVisitor(error, visitor, () =>
+          this.retrying(() => this.#pageOnce(url, read, {...opts, session: visitor}), opts.signal),
+        )
+      }
       if (!(error instanceof MetaError) || error.problem !== 'challenge' || !this.#browser) throw error
       return this.inBrowser(url, page => read({html: page.html, url, status: 200}), opts.signal)
     }
@@ -213,6 +246,12 @@ export class MetaClient {
     try {
       return await this.retrying(() => this.#jsonOnce(url, read, opts), opts.signal)
     } catch (error) {
+      if (this.#refusedSession(error)) {
+        const visitor = this.#visitor()
+        return this.#asVisitor(error, visitor, () =>
+          this.retrying(() => this.#jsonOnce(url, read, {...opts, session: visitor}), opts.signal),
+        )
+      }
       if (!(error instanceof MetaError) || error.problem !== 'challenge' || !this.#browser || !opts.recoverAt)
         throw error
       // the browser's page must be a real one: a captcha or login wall there too means stepping aside
@@ -297,13 +336,67 @@ export class MetaClient {
     return result
   }
 
+  /** A 4xx the site gave the request as built, while the request carried the host's session. */
+  #refusedSession(error: unknown): error is MetaError {
+    return (
+      error instanceof MetaError &&
+      error.problem === 'format-changed' &&
+      error.status !== undefined &&
+      this.signedIn &&
+      !this.sessionRefused
+    )
+  }
+
+  /**
+   * A fresh session, the visitor the site may still serve: no cookies and the
+   * engine's own user agent, as a signed-out host reads. The agent the host's
+   * cookies came with (an in-app browser's) is part of the identity the site
+   * refused, so it goes with them.
+   */
+  #visitor(): HttpSession {
+    return new HttpSession({fetch: this.#fetch})
+  }
+
+  /**
+   * The same read as a visitor, after the site refused it to the signed-in
+   * session. When the visitor gets through, the session is the problem: its
+   * cookies are dropped and not asked for again for SESSION_REFUSED_MS, and
+   * the user is told (the log; stories and listings say so when asked). When
+   * the visitor is refused too, the site is: the refusal stands as it was.
+   */
+  async #asVisitor<T>(refusal: MetaError, visitor: HttpSession, read: () => Promise<T>): Promise<T> {
+    let result: T
+    try {
+      result = await read()
+    } catch {
+      throw refusal
+    }
+    this.#sessionRefusedUntil = this.#now() + SESSION_REFUSED_MS
+    // from now on the client is the visitor that got through: its agent, no cookies
+    this.session.reset()
+    this.session.adopt({userAgent: visitor.userAgent, cookies: []})
+    this.#host.forget()
+    this.#log(
+      'warn',
+      `${this.site}: the signed-in session was not accepted (${refusal.message}) but a visitor is — reading as a visitor for ${SESSION_REFUSED_MS / 60_000} min; sign out and in again if it goes on`,
+    )
+    return result
+  }
+
   async #pageOnce<T>(
     url: string,
     read: (page: PageRead) => T,
-    opts: {readonly signal?: AbortSignal | undefined; readonly headers?: Readonly<Record<string, string>>},
+    opts: {
+      readonly signal?: AbortSignal | undefined
+      readonly headers?: Readonly<Record<string, string>>
+      /** The session to read with (the client's own unless a visitor's). */
+      readonly session?: HttpSession | undefined
+    },
   ): Promise<T> {
+    const session = opts.session ?? this.session
+    const signedIn = session === this.session && this.signedIn
     return this.pacer.run(async () => {
-      const response = await this.session.get(url, {
+      const response = await session.get(url, {
         headers: {Accept: 'text/html,application/xhtml+xml', ...opts.headers},
         signal: opts.signal,
       })
@@ -311,7 +404,7 @@ export class MetaClient {
         throw new MetaError('removed', `${this.site} answered ${response.status}.`)
       }
       if (response.status === 403) throw forbidden(this.site)
-      if (unexpected(response.status)) throw rejected(this.site, response.status)
+      if (unexpected(response.status)) throw rejected(this.site, response.status, signedIn)
       if (!response.ok) {
         this.pacer.refused()
         throw new MetaError('refused', `${this.site} answered HTTP ${response.status}.`)
@@ -335,10 +428,14 @@ export class MetaClient {
       readonly method?: 'GET' | 'POST' | undefined
       readonly headers?: Readonly<Record<string, string>> | undefined
       readonly body?: string | undefined
+      /** The session to read with (the client's own unless a visitor's). */
+      readonly session?: HttpSession | undefined
     },
   ): Promise<T> {
+    const session = opts.session ?? this.session
+    const signedIn = session === this.session && this.signedIn
     return this.pacer.run(async () => {
-      const response = await this.session.request(url, {
+      const response = await session.request(url, {
         method: opts.method ?? 'GET',
         body: opts.body,
         headers: {Accept: 'application/json', Referer: `${this.origin}/`, ...opts.headers},
@@ -352,7 +449,7 @@ export class MetaClient {
         throw new MetaError('login-required', `${this.site} asks to sign in for this.`)
       }
       if (response.status === 403) throw forbidden(this.site)
-      if (unexpected(response.status)) throw rejected(this.site, response.status)
+      if (unexpected(response.status)) throw rejected(this.site, response.status, signedIn)
       if (!response.ok || !body) {
         this.pacer.refused()
         throw new MetaError('refused', `${this.site} answered HTTP ${response.status}${body ? '' : ' with no data'}.`)

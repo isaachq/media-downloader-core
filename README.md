@@ -105,6 +105,7 @@ Zero runtime dependencies: the engine orchestrates `yt-dlp`, `ffmpeg` and `ffpro
 | [Library](documentation/library.md) | API, scheduling, mix lists, format profiles, Electron |
 | [Sites](documentation/sites.md) | YouTube, <a id="youtube-attestation"></a>[YouTube attestation](documentation/sites.md#youtube-attestation), TikTok, Instagram, Facebook, Sync Up, player-page sites |
 | [Architecture](documentation/architecture.md) | Retries, concurrency, heavy loads, integrity validation, errors, security |
+| [The local path](documentation/local-path.md) | Why a public post is read on your machine, with no server of ours, and how each retry is chosen |
 | [Contributing](CONTRIBUTING.md) | Building from source, development and testing |
 | [Changelog](CHANGELOG.md) | Every change, version by version |
 

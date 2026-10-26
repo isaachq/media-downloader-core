@@ -235,7 +235,7 @@ test('finished files of every session, their folders, and the run report', async
   await close(app)
 })
 
-test('the first launch shows the three first steps once; Guide replays them', async () => {
+test('the first launch shows the four first steps once; Guide replays them', async () => {
   const {app, page, dataDir} = await launch('guide', {tourDone: false})
   const tour = page.locator('.ant-tour')
   await expect(tour).toContainText('1 · Paste a link')
@@ -244,6 +244,8 @@ test('the first launch shows the three first steps once; Guide replays them', as
   await expect(tour).toContainText('2 · Choose what you get')
   await tour.getByRole('button', {name: 'Next'}).click()
   await expect(tour).toContainText('3 · Download')
+  await tour.getByRole('button', {name: 'Next'}).click()
+  await expect(tour).toContainText('4 · Lists and the mix list')
   await tour.getByRole('button', {name: 'Finish'}).click()
   await expect(tour).toBeHidden()
   await expect

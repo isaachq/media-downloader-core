@@ -16,6 +16,9 @@ export const id: Readonly<Record<MessageKey, string>> = {
   'tour.3.title': '3 · Unduh',
   'tour.3.text':
     'Daftar akan membuka pratinjau dulu agar Anda bisa memilih yang diinginkan. Setiap file diperiksa sebelum diserahkan ke Anda. Temukan semuanya di tab Selesai, siap diputar.',
+  'tour.4.title': '4 · Daftar dan daftar campuran',
+  'tour.4.text':
+    'Playlist, kanal, atau profil adalah daftar: dibuka sebagai pratinjau agar Anda memilih yang diinginkan. Daftar campuran menggabungkan tautan dari beberapa situs, termasuk YouTube, dalam satu batch, dan tiap tautan bisa punya formatnya sendiri.',
   'header.language': 'Bahasa',
   'header.theme': 'Tema',
   'theme.system': 'Sistem',
@@ -476,6 +479,9 @@ export const id: Readonly<Record<MessageKey, string>> = {
   'about.star':
     'Jika Media Download Core bermanfaat, beri bintang di GitHub: gratis, hanya sedetik, dan membantu orang lain menemukannya.',
   'about.starButton': 'Beri bintang di GitHub',
+  'about.coffee':
+    'Aplikasi ini gratis dan tanpa iklan, dan semuanya berjalan di komputer Anda. Jika membantu, Anda bisa mentraktir saya kopi. Sukarela: aplikasi tetap sama apa pun pilihan Anda.',
+  'about.coffeeButton': 'Traktir saya kopi',
   'common.close': 'Tutup',
   'common.copy': 'Salin',
   'common.copied': 'Disalin',

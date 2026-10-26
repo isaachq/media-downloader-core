@@ -43,6 +43,8 @@ export class MetaError extends Error {
   constructor(
     readonly problem: MetaProblem,
     message: string,
+    /** The HTTP status that said so, when one did. */
+    readonly status?: number,
   ) {
     super(message)
   }

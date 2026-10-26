@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+## App 0.2.0-beta.21 · library 1.20.2
+
+A session the site refuses no longer stops a public post; the guide's fourth step; buy me a coffee.
+
+**Library 1.20.2**
+
+- **A session the site refuses no longer stops a public post.** Facebook and Instagram read a
+  post with the user's session when the host gives one. When the site answers that request
+  with a 4xx it does not give a visitor (measured on 2026-10-26: a Facebook account made that
+  day got HTTP 400 for public reels that read fine signed out), the client reads the same page
+  as a visitor at once, drops those cookies and does not ask the host for them again for
+  30 minutes (`SESSION_REFUSED_MS`); the log says the session was not accepted. Stories and
+  listings asked meanwhile say to sign out and in again, not "sign in" to someone who did.
+  When the visitor is refused too, the error stands as before (the site, not the session).
+  Cost: O(1) per request (one status check); the extra read happens once per site per
+  30-minute window, never per link.
+
+**Desktop app**
+
+- **The guide has a fourth step, lists and the mix list**: a playlist, a channel or a profile
+  opens a preview; the mix list takes links of several sites, YouTube included, as one batch,
+  each link with its own format. It points at the Mix list button.
+- **Buy me a coffee** in About, under the GitHub star: the app is free and has no ads, runs on
+  your computer, and support is voluntary (https://buymeacoffee.com/mediadownloadcore). 14 languages.
+
 ## App 0.2.0-beta.20 · library 1.20.1
 
 The desktop's mix list, as the Android app's; YouTube's pause notice only when YouTube pauses.

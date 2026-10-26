@@ -27,6 +27,9 @@ const en = {
   'tour.3.title': '3 · Download',
   'tour.3.text':
     "A list opens a preview first, so you pick what you want. Every file is checked before it's yours. You'll find them all in the Finished tab, ready to play.",
+  'tour.4.title': '4 · Lists and the mix list',
+  'tour.4.text':
+    'A playlist, a channel or a profile is a list: it opens a preview so you pick what you want. The mix list takes links from several sites, YouTube included, as one batch, each link with its own format if you like.',
   'header.language': 'Language',
   'header.theme': 'Theme',
   'theme.system': 'System',
@@ -502,6 +505,9 @@ const en = {
   'about.star':
     "If Media Download Core helped you, give it a star on GitHub: it's free, takes a second and helps other people find it.",
   'about.starButton': 'Star it on GitHub',
+  'about.coffee':
+    'The app is free and has no ads, and everything runs on your computer. If it helped you, you can buy me a coffee. It’s voluntary: the app stays the same either way.',
+  'about.coffeeButton': 'Buy me a coffee',
   'common.close': 'Close',
   'common.copy': 'Copy',
   'common.copied': 'Copied',
@@ -711,6 +717,9 @@ const es: Record<MessageKey, string> = {
   'tour.3.title': '3 · Descarga',
   'tour.3.text':
     'Una lista abre primero una vista previa para que elijas. Cada archivo se revisa antes de entregártelo. Los encuentras todos en la pestaña Terminados, listos para reproducir.',
+  'tour.4.title': '4 · Listas y lista mixta',
+  'tour.4.text':
+    'Una playlist, un canal o un perfil es una lista: abre una vista previa para que elijas lo que quieres. La lista mixta junta enlaces de varios sitios, YouTube incluido, en un solo lote, y cada enlace puede llevar su propio formato.',
   'header.language': 'Idioma',
   'header.theme': 'Tema',
   'theme.system': 'Sistema',
@@ -1187,6 +1196,9 @@ const es: Record<MessageKey, string> = {
   'about.star':
     'Si Media Download Core te sirvió, regálanos una estrella en GitHub: es gratis, toma un segundo y ayuda a que más gente lo encuentre.',
   'about.starButton': 'Dar una estrella en GitHub',
+  'about.coffee':
+    'La app es gratis y no tiene anuncios, y todo corre en tu computadora. Si te sirvió, puedes invitarme un café. Es voluntario: la app sigue igual lo hagas o no.',
+  'about.coffeeButton': 'Invítame un café',
   'common.close': 'Cerrar',
   'common.copy': 'Copiar',
   'common.copied': 'Copiado',

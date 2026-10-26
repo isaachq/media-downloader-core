@@ -1,4 +1,4 @@
-import {GithubOutlined, HeartFilled, StarFilled} from '@ant-design/icons'
+import {CoffeeOutlined, GithubOutlined, HeartFilled, StarFilled} from '@ant-design/icons'
 import {Button, Descriptions, Modal, Space, Typography} from 'antd'
 import {api} from '../api'
 import mark from '../assets/mdc-mark.png'
@@ -9,6 +9,8 @@ import {useUpdateState} from './UpdateBanner'
 
 /** Where the project lives: source, issues, releases — and its stars. */
 const REPO = 'https://github.com/isaachq/media-downloader-core'
+/** The one way to support the project, the same on every host: voluntary, and the app stays the same either way. */
+const COFFEE = 'https://buymeacoffee.com/mediadownloadcore'
 
 const CREDITS: ReadonlyArray<readonly [name: string, license: string, url: string]> = [
   ['Ant Design', 'MIT', 'https://ant.design'],
@@ -91,6 +93,14 @@ export function AboutModal({open, onClose}: {readonly open: boolean; readonly on
                 {REPO.replace('https://', '')}
               </Typography.Link>
             </Typography.Paragraph>
+          </div>
+          <div className="about-coffee" data-testid="about-coffee" style={{margin: 0}}>
+            <Typography.Paragraph style={{marginBottom: 8}}>
+              <CoffeeOutlined /> {t('about.coffee')}
+            </Typography.Paragraph>
+            <Button icon={<CoffeeOutlined />} href={COFFEE} target="_blank" block>
+              {t('about.coffeeButton')}
+            </Button>
           </div>
         </div>
 

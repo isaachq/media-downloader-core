@@ -18,6 +18,9 @@ export const tr: Readonly<Record<MessageKey, string>> = {
   'tour.3.title': '3 · İndir',
   'tour.3.text':
     'Bir liste önce önizlemeyle açılır, böylece istediklerini seçebilirsin. Her dosya sana ulaşmadan önce kontrol edilir. Hepsini oynatmaya hazır şekilde Bitenler sekmesinde bulursun.',
+  'tour.4.title': '4 · Listeler ve karma liste',
+  'tour.4.text':
+    'Bir oynatma listesi, kanal veya profil bir listedir: istediğini seçmen için önce bir önizleme açar. Karma liste, YouTube dahil birkaç sitenin bağlantılarını tek bir toplu işte birleştirir; her bağlantı kendi biçimini alabilir.',
   'header.language': 'Dil',
   'header.theme': 'Tema',
   'theme.system': 'Sistem',
@@ -480,6 +483,9 @@ export const tr: Readonly<Record<MessageKey, string>> = {
   'about.star':
     "Media Download Core işine yaradıysa GitHub'da ona bir yıldız ver: ücretsizdir, bir saniye sürer ve başkalarının da onu bulmasına yardımcı olur.",
   'about.starButton': "GitHub'da yıldız ver",
+  'about.coffee':
+    'Uygulama ücretsiz ve reklamsız, her şey bilgisayarında çalışır. İşine yaradıysa bana bir kahve ısmarlayabilirsin. Gönüllü: uygulama her durumda aynı kalır.',
+  'about.coffeeButton': 'Bana bir kahve ısmarla',
   'common.close': 'Kapat',
   'common.copy': 'Kopyala',
   'common.copied': 'Kopyalandı',

@@ -18,6 +18,9 @@ export const pt: Readonly<Record<MessageKey, string>> = {
   'tour.3.title': '3 · Baixe',
   'tour.3.text':
     'Uma lista abre primeiro uma prévia para você escolher o que quer. Cada arquivo é verificado antes de ser seu. Encontre todos na aba Concluídos, prontos para reproduzir.',
+  'tour.4.title': '4 · Listas e lista mista',
+  'tour.4.text':
+    'Uma playlist, um canal ou um perfil é uma lista: abre uma prévia para você escolher o que quer. A lista mista junta links de vários sites, YouTube incluído, em um só lote, e cada link pode ter seu próprio formato.',
   'header.language': 'Idioma',
   'header.theme': 'Tema',
   'theme.system': 'Sistema',
@@ -478,6 +481,9 @@ export const pt: Readonly<Record<MessageKey, string>> = {
   'about.star':
     'Se o Media Download Core ajudou você, dê uma estrela no GitHub: é grátis, leva um segundo e ajuda outras pessoas a encontrá-lo.',
   'about.starButton': 'Dar uma estrela no GitHub',
+  'about.coffee':
+    'O app é gratuito e não tem anúncios, e tudo roda no seu computador. Se ajudou você, pode me pagar um café. É voluntário: o app continua igual de qualquer jeito.',
+  'about.coffeeButton': 'Me pague um café',
   'common.close': 'Fechar',
   'common.copy': 'Copiar',
   'common.copied': 'Copiado',

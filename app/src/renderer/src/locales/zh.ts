@@ -16,6 +16,9 @@ export const zh: Readonly<Record<MessageKey, string>> = {
   'tour.3.title': '3 · 下载',
   'tour.3.text':
     '列表会先打开预览，方便你挑选想要的内容。每个文件交给你之前都会经过检查。在“已完成”标签页可以找到所有文件，随时播放。',
+  'tour.4.title': '4 · 列表和混合列表',
+  'tour.4.text':
+    '播放列表、频道或主页都是列表：会先打开预览，让你挑选想要的内容。混合列表把多个网站（包括 YouTube）的链接放进同一批，每个链接还可以选自己的格式。',
   'header.language': '语言',
   'header.theme': '主题',
   'theme.system': '跟随系统',
@@ -467,6 +470,9 @@ export const zh: Readonly<Record<MessageKey, string>> = {
     '你的登录会话，用于私密、仅限会员或有年龄限制的视频，以及 YouTube 要求确认你不是机器人时。立即生效。',
   'about.star': '如果 Media Download Core 帮到了你，请在 GitHub 上给它点个星：免费，只需一秒，还能帮助更多人发现它。',
   'about.starButton': '在 GitHub 上点星',
+  'about.coffee':
+    '这个应用免费、无广告，一切都在你的电脑上运行。如果它帮到了你，可以请我喝杯咖啡。完全自愿：无论如何应用都保持不变。',
+  'about.coffeeButton': '请我喝杯咖啡',
   'common.close': '关闭',
   'common.copy': '复制',
   'common.copied': '已复制',

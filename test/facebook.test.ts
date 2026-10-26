@@ -543,6 +543,32 @@ describe('Facebook, end to end (local fake)', () => {
   })
 })
 
+describe('Facebook that refuses the signed-in session', () => {
+  it('a 400 to the session and a page to a visitor: the video downloads as a visitor, and the session is not tried again', async () => {
+    const {site, engine, scheduler, out} = await setup(
+      'session-refused',
+      {videos: 2, sessionRefused: true},
+      {signedIn: true},
+    )
+    const batch = scheduler.schedule({url: watchUrl(site), profile: mp4, outDir: out})
+    await scheduler.whenIdle()
+    const done = scheduler.batch(batch.id)!
+    assert.equal(done.status, 'completed', JSON.stringify(done.error))
+    assert.equal((await fs.readdir(out)).length, 1)
+    assert.equal(site.hits.rejected, 1, 'the session was tried once')
+    assert.equal(site.hits.video, 1, 'then the same page as a visitor (the fake counts the pages it served)')
+    // the refused session is remembered: the next read goes as a visitor at once
+    const result = await engine.analyze(watchUrl(site, 1))
+    assert.equal(result.kind, 'video')
+    assert.equal(site.hits.rejected, 1, 'no second try with the session')
+    // what needs a session says what to do, not "sign in" to someone who did
+    await assert.rejects(
+      () => engine.analyze(`${site.origin}/stories/${site.bucket}/`),
+      (e: Error) => /did not accept the signed-in session/.test(e.message),
+    )
+  })
+})
+
 describe('Facebook that stops accepting the listing query', () => {
   it('a 400 is not waited out: yt-dlp reads the link at once', async () => {
     const {site, engine} = await setup('bad-request', {videos: 30, badRequest: true})

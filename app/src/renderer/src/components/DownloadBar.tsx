@@ -242,6 +242,7 @@ export function DownloadBar() {
               icon={<OrderedListOutlined />}
               onClick={() => setMix({text: url, check: false})}
               data-testid="open-mix"
+              data-tour="mix"
             >
               {t('mix.open')}
             </Button>

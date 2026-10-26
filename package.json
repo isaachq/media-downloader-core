@@ -60,6 +60,8 @@
     "bench:archive": "node --expose-gc --import tsx scripts/archive-bench.ts",
     "perf": "tsx scripts/perf.ts",
     "pack:check": "node scripts/pack-check.mjs",
+    "site:build": "node scripts/build-site.mjs",
+    "site:check": "node scripts/build-site.mjs --check",
     "live:matrix": "tsx scripts/live-matrix/run.ts"
   },
   "license": "PolyForm-Noncommercial-1.0.0",

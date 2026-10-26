@@ -1,0 +1,775 @@
+<!doctype html>
+<html lang="th" data-lang="th" data-root="../">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title data-i18n="meta.title">Media Download Core — สำรองเพลย์ลิสต์และโปรไฟล์ทั้งหมด ทุกไฟล์ผ่านการตรวจสอบ</title>
+<meta name="description" data-i18n-content="meta.description" content="แอปเดสก์ท็อปฟรีสำหรับ macOS, Windows และ Linux: วางเพลย์ลิสต์หรือโปรไฟล์ เลือกสิ่งที่ต้องการ แล้วแอปจะดาวน์โหลดวิดีโอหรือเพลงหลายร้อยรายการพร้อมตรวจสอบทุกไฟล์">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#13a8e0" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b1420" media="(prefers-color-scheme: dark)">
+<!-- seo:start -->
+<link rel="canonical" href="https://isaachq.github.io/media-downloader-core/th/">
+<link rel="alternate" hreflang="en" href="https://isaachq.github.io/media-downloader-core/">
+<link rel="alternate" hreflang="es" href="https://isaachq.github.io/media-downloader-core/es/">
+<link rel="alternate" hreflang="pt" href="https://isaachq.github.io/media-downloader-core/pt/">
+<link rel="alternate" hreflang="id" href="https://isaachq.github.io/media-downloader-core/id/">
+<link rel="alternate" hreflang="hi" href="https://isaachq.github.io/media-downloader-core/hi/">
+<link rel="alternate" hreflang="vi" href="https://isaachq.github.io/media-downloader-core/vi/">
+<link rel="alternate" hreflang="th" href="https://isaachq.github.io/media-downloader-core/th/">
+<link rel="alternate" hreflang="tr" href="https://isaachq.github.io/media-downloader-core/tr/">
+<link rel="alternate" hreflang="ar" href="https://isaachq.github.io/media-downloader-core/ar/">
+<link rel="alternate" hreflang="fr" href="https://isaachq.github.io/media-downloader-core/fr/">
+<link rel="alternate" hreflang="de" href="https://isaachq.github.io/media-downloader-core/de/">
+<link rel="alternate" hreflang="ru" href="https://isaachq.github.io/media-downloader-core/ru/">
+<link rel="alternate" hreflang="zh-Hans" href="https://isaachq.github.io/media-downloader-core/zh/">
+<link rel="alternate" hreflang="it" href="https://isaachq.github.io/media-downloader-core/it/">
+<link rel="alternate" hreflang="x-default" href="https://isaachq.github.io/media-downloader-core/">
+<meta property="og:url" content="https://isaachq.github.io/media-downloader-core/th/">
+<meta property="og:locale" content="th_TH">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:locale:alternate" content="es_LA">
+<meta property="og:locale:alternate" content="pt_BR">
+<meta property="og:locale:alternate" content="id_ID">
+<meta property="og:locale:alternate" content="hi_IN">
+<meta property="og:locale:alternate" content="vi_VN">
+<meta property="og:locale:alternate" content="tr_TR">
+<meta property="og:locale:alternate" content="ar_AR">
+<meta property="og:locale:alternate" content="fr_FR">
+<meta property="og:locale:alternate" content="de_DE">
+<meta property="og:locale:alternate" content="ru_RU">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:locale:alternate" content="it_IT">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Media Download Core","description":"แอปเดสก์ท็อปฟรีสำหรับ macOS, Windows และ Linux: วางเพลย์ลิสต์หรือโปรไฟล์ เลือกสิ่งที่ต้องการ แล้วแอปจะดาวน์โหลดวิดีโอหรือเพลงหลายร้อยรายการพร้อมตรวจสอบทุกไฟล์","url":"https://isaachq.github.io/media-downloader-core/th/","inLanguage":"th","applicationCategory":"MultimediaApplication","operatingSystem":"macOS, Windows, Linux","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"downloadUrl":"https://github.com/isaachq/media-downloader-core/releases","image":"https://isaachq.github.io/media-downloader-core/og-image.jpg","screenshot":"https://isaachq.github.io/media-downloader-core/screenshots/preview.png","license":"https://polyformproject.org/licenses/noncommercial/1.0.0/","author":{"@type":"Person","name":"isaachq","url":"https://github.com/isaachq"},"sameAs":"https://github.com/isaachq/media-downloader-core"}</script>
+<!-- seo:end -->
+<meta property="og:site_name" content="Media Download Core">
+<meta property="og:type" content="website">
+<meta property="og:title" data-i18n-content="meta.title" content="Media Download Core — สำรองเพลย์ลิสต์และโปรไฟล์ทั้งหมด ทุกไฟล์ผ่านการตรวจสอบ">
+<meta property="og:description" data-i18n-content="og.description" content="สำรองเพลย์ลิสต์และโปรไฟล์ทั้งหมด ทุกไฟล์ผ่านการตรวจสอบ ฟรีสำหรับ macOS, Windows และ Linux">
+<meta property="og:image" content="https://isaachq.github.io/media-downloader-core/og-image.jpg">
+<meta property="og:image:type" content="image/jpeg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" data-i18n-content="og.imageAlt" content="Media Download Core: ตราแมวป่าที่มีลูกศรดาวน์โหลดบนหน้าผาก">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" data-i18n-content="meta.title" content="Media Download Core — สำรองเพลย์ลิสต์และโปรไฟล์ทั้งหมด ทุกไฟล์ผ่านการตรวจสอบ">
+<meta name="twitter:description" data-i18n-content="og.description" content="สำรองเพลย์ลิสต์และโปรไฟล์ทั้งหมด ทุกไฟล์ผ่านการตรวจสอบ ฟรีสำหรับ macOS, Windows และ Linux">
+<meta name="twitter:image" content="https://isaachq.github.io/media-downloader-core/og-image.jpg">
+<meta name="twitter:image:alt" data-i18n-content="og.imageAlt" content="Media Download Core: ตราแมวป่าที่มีลูกศรดาวน์โหลดบนหน้าผาก">
+<link rel="icon" type="image/png" sizes="64x64" href="../icon-64.png">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<link rel="preconnect" href="https://api.github.com" crossorigin>
+<style>
+:root {
+  --accent: #13a8e0;
+  --accent-ink: #0b7fac;
+  --ok: #2f9e44;
+  --bg: #f4f9fc;
+  --surface: #ffffff;
+  --ink: #12212e;
+  --muted: #55697a;
+  --line: #dbe7ef;
+  --sky-1: #4aa3d8;
+  --sky-2: #9fd3ef;
+  --shadow: 0 10px 30px rgba(15, 60, 100, 0.12);
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --accent: #2bb8ec;
+    --accent-ink: #7fd6f6;
+    --ok: #3fb950;
+    --bg: #0b1420;
+    --surface: #111d2b;
+    --ink: #e6eef5;
+    --muted: #93a7b8;
+    --line: #22334a;
+    --sky-1: #0f2e4a;
+    --sky-2: #1b4a6e;
+    --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.6 Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent-ink); }
+/* width/height attributes only reserve space: the image keeps its own proportions */
+img { max-width: 100%; height: auto; display: block; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+
+/* nav */
+nav {
+  position: sticky; top: 0; z-index: 10;
+  backdrop-filter: saturate(1.4) blur(10px);
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  border-bottom: 1px solid var(--line);
+}
+nav .wrap { display: flex; align-items: center; gap: 20px; height: 60px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; color: var(--ink); text-decoration: none; }
+.brand-mark { width: 28px; height: 28px; }
+nav .links { display: flex; gap: 18px; margin-inline-start: auto; align-items: center; }
+nav .links a { color: var(--muted); text-decoration: none; font-size: 15px; }
+nav .links a:hover { color: var(--ink); }
+.lang-button { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--muted); padding: 4px 10px; font: inherit; font-size: 13px; cursor: pointer; }
+.lang-button:hover { color: var(--ink); border-color: var(--accent); }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.skip { position: absolute; inset-inline-start: 12px; top: -48px; z-index: 30; background: var(--surface); color: var(--ink); padding: 8px 14px; border-radius: 8px; box-shadow: var(--shadow); }
+.skip:focus { top: 12px; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.lang-dialog { width: min(440px, calc(100vw - 32px)); max-height: min(620px, calc(100vh - 48px)); padding: 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+.lang-dialog[open] { display: flex; flex-direction: column; }
+.lang-dialog::backdrop { background: rgba(8, 20, 34, 0.55); backdrop-filter: blur(2px); }
+.lang-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 20px 10px; }
+.lang-head h2 { margin: 0; font-size: 19px; }
+.lang-close { border: 0; background: transparent; color: var(--muted); font-size: 26px; line-height: 1; width: 36px; height: 36px; border-radius: 8px; cursor: pointer; }
+.lang-close:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--ink); }
+.lang-search { margin: 0 20px 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); font: inherit; font-size: 15px; }
+.lang-search:focus-visible { outline-offset: 0; }
+.lang-list { list-style: none; margin: 0; padding: 0 10px 14px; overflow-y: auto; }
+.lang-list a { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; border-radius: 8px; color: var(--ink); text-decoration: none; }
+.lang-list a:hover, .lang-list a:focus-visible { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.lang-list a[aria-current="true"] { font-weight: 700; color: var(--accent-ink); }
+.lang-list a[aria-current="true"]::after { content: "✓"; margin-inline-start: auto; }
+.lang-list .lang-other { color: var(--muted); font-size: 14px; font-weight: 400; }
+.lang-list a[aria-current="true"] .lang-other { display: none; }
+.lang-empty { margin: 0 20px 18px; color: var(--muted); font-size: 14px; }
+.footer-langs { width: 100%; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; }
+.hero video { width: 100%; height: auto; display: block; }
+@media (max-width: 720px) { nav .links a:not(.keep) { display: none; } }
+@media (max-width: 480px) { #lang-current { display: none; } .lang-button { padding-inline: 10px; } }
+
+/* hero */
+.hero {
+  background: linear-gradient(180deg, var(--sky-1) 0%, var(--sky-2) 62%, var(--bg) 100%);
+  color: #fff;
+  padding: 72px 0 40px;
+  overflow: hidden;
+}
+.hero .wrap { display: grid; grid-template-columns: 1.05fr 1fr; gap: 48px; align-items: center; }
+@media (max-width: 900px) { .hero .wrap { grid-template-columns: 1fr; } }
+.badge { display: inline-block; padding: 4px 12px; border-radius: 999px; background: rgba(255, 255, 255, 0.22); font-size: 13px; font-weight: 600; letter-spacing: 0.02em; }
+.hero h1 { font-size: clamp(34px, 5vw, 54px); line-height: 1.08; margin: 16px 0 14px; letter-spacing: -0.02em; }
+.hero p.lead { font-size: 19px; opacity: 0.95; margin: 0 0 26px; max-width: 34em; }
+.cta { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.btn {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 13px 22px; border-radius: 12px; font-weight: 600; text-decoration: none;
+  border: 1px solid transparent; cursor: pointer; font-size: 16px;
+}
+.btn-primary { background: #fff; color: #0b5f86; box-shadow: var(--shadow); }
+.btn-primary:hover { transform: translateY(-1px); }
+.btn-ghost { color: #fff; border-color: rgba(255, 255, 255, 0.55); }
+.btn-ghost:hover { background: rgba(255, 255, 255, 0.12); }
+.cta-note { width: 100%; font-size: 14px; opacity: 0.9; margin-top: 4px; }
+.shot {
+  border-radius: var(--radius); overflow: hidden; box-shadow: 0 24px 60px rgba(8, 40, 70, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.35); background: var(--surface);
+}
+
+/* numbers */
+.numbers { margin-top: -10px; }
+.numbers .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+@media (max-width: 900px) { .numbers .grid { grid-template-columns: repeat(2, 1fr); } }
+.number { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; box-shadow: var(--shadow); }
+.number b { display: block; font-size: 26px; color: var(--accent-ink); letter-spacing: -0.01em; }
+.number span { color: var(--muted); font-size: 14px; }
+
+/* sections */
+section { padding: 72px 0 8px; }
+section h2 { font-size: clamp(26px, 3.4vw, 36px); margin: 0 0 8px; letter-spacing: -0.015em; }
+section .intro { color: var(--muted); margin: 0 0 32px; max-width: 46em; font-size: 17px; }
+.features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+@media (max-width: 900px) { .features { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 600px) { .features { grid-template-columns: 1fr; } }
+.feature { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px; }
+.feature .icon { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent-ink); margin-bottom: 12px; }
+.feature h3 { margin: 0 0 6px; font-size: 18px; }
+.feature p { margin: 0; color: var(--muted); font-size: 15px; }
+
+.steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; counter-reset: step; }
+@media (max-width: 800px) { .steps { grid-template-columns: 1fr; } }
+.step { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding-block: 22px; padding-inline: 70px 22px; }
+.step::before {
+  counter-increment: step; content: counter(step);
+  position: absolute; inset-inline-start: 20px; top: 20px; width: 34px; height: 34px; border-radius: 50%;
+  background: var(--accent); color: #fff; display: grid; place-items: center; font-weight: 700;
+}
+.step h3 { margin: 0 0 4px; font-size: 17px; }
+.step p { margin: 0; color: var(--muted); font-size: 15px; }
+
+.gallery { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+@media (max-width: 800px) { .gallery { grid-template-columns: 1fr; } }
+.gallery figure { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+/* screenshots of different sizes, one frame: 16:10, scaled (never stretched), top of the window kept */
+.gallery img { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; object-position: top center; }
+.gallery figcaption { padding: 12px 16px; color: var(--muted); font-size: 14px; }
+
+.downloads { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+@media (max-width: 800px) { .downloads { grid-template-columns: 1fr; } }
+.os { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px; }
+.os.mine { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+.os h3 { margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
+.os ul { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 8px; }
+.os li a { display: flex; justify-content: space-between; gap: 8px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); text-decoration: none; color: var(--ink); font-size: 15px; }
+.os li a:hover { border-color: var(--accent); }
+.os li a small { color: var(--muted); }
+.os .hint { color: var(--muted); font-size: 13.5px; margin: 0 0 8px; }
+.install-steps { margin: 0 0 10px; padding-inline-start: 20px; color: var(--ink); font-size: 14px; display: grid; gap: 6px; }
+.install-steps b { font-weight: 600; }
+.command { display: flex; align-items: stretch; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--bg); }
+.command code { flex: 1; min-width: 0; padding: 10px 12px; font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink); overflow-wrap: anywhere; }
+.command .copy { border: 0; border-inline-start: 1px solid var(--line); background: var(--surface); color: var(--accent-ink); font: inherit; font-size: 13px; font-weight: 600; padding: 0 14px; cursor: pointer; }
+.command .copy:hover { background: color-mix(in srgb, var(--accent) 12%, var(--surface)); }
+.release-line { color: var(--muted); margin: -18px 0 24px; font-size: 15px; }
+.os-version { margin-inline-start: auto; font-size: 13px; font-weight: 600; color: var(--accent-ink); background: color-mix(in srgb, var(--accent) 14%, transparent); border-radius: 999px; padding: 2px 10px; }
+.os-version:empty, .primary-version:empty { display: none; }
+.os-version, .primary-version, .versions .version { unicode-bidi: isolate; direction: ltr; }
+.primary-version { font-weight: 600; opacity: 0.85; margin-inline-start: 6px; }
+.versions { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.versions li { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 18px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.versions .version { font-weight: 700; color: var(--ink); }
+.versions .date { color: var(--muted); font-size: 14px; }
+.versions .tag { font-size: 12px; font-weight: 700; border-radius: 999px; padding: 1px 8px; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent-ink); }
+.versions .links { margin-inline-start: auto; display: flex; gap: 14px; font-size: 14px; }
+.versions-empty { justify-content: center; }
+
+.note { background: var(--surface); border: 1px solid var(--line); border-inline-start: 4px solid var(--accent); border-radius: var(--radius); padding: 18px 22px; color: var(--muted); font-size: 15px; }
+footer { margin-top: 72px; border-top: 1px solid var(--line); padding: 28px 0 40px; color: var(--muted); font-size: 14px; }
+footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; }
+footer a { color: var(--muted); }
+.new-badge { display: inline-block; background: var(--accent); color: #fff; font-size: 13px; font-weight: 700; border-radius: 999px; padding: 2px 10px; margin-bottom: 10px; }
+.steps.four { grid-template-columns: repeat(4, 1fr); }
+@media (max-width: 1000px) { .steps.four { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 600px) { .steps.four { grid-template-columns: 1fr; } }
+.systems { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 16px; }
+@media (max-width: 800px) { .systems { grid-template-columns: 1fr; } }
+.systems .feature h3 { margin-top: 0; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+</head>
+<body>
+<a class="skip" href="#main" data-i18n="skip">ข้ามไปยังเนื้อหา</a>
+<nav aria-label="Media Download Core">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="Media Download Core">
+      <img class="brand-mark" src="../icon-64.png" width="28" height="28" alt="">
+      Media Download Core
+    </a>
+    <div class="links">
+      <a href="#new" data-i18n="nav.new">มีอะไรใหม่</a>
+      <a href="#features" data-i18n="nav.features">ฟีเจอร์</a>
+      <a href="#how" data-i18n="nav.how">วิธีการทำงาน</a>
+      <a href="#signin" data-i18n="nav.signin">ลงชื่อเข้าใช้</a>
+      <a href="#versions" data-i18n="nav.versions">เวอร์ชัน</a>
+      <a href="#download" class="keep" data-i18n="nav.download">ดาวน์โหลด</a>
+      <a href="https://github.com/isaachq/media-downloader-core">GitHub</a>
+      <button type="button" class="lang-button" id="lang-open" aria-haspopup="dialog" aria-controls="lang-dialog">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>
+        <span class="sr-only" data-i18n="lang.label">ภาษา</span><span class="lang-current" id="lang-current">ไทย</span>
+      </button>
+    </div>
+  </div>
+</nav>
+
+<main id="main">
+<header class="hero" id="top">
+  <div class="wrap">
+    <div>
+      <span class="badge" data-i18n="hero.badge">ฟรี · macOS · Windows · Linux</span>
+      <h1 data-i18n="hero.title">สำรองเพลย์ลิสต์และโปรไฟล์ทั้งหมด ทุกไฟล์ผ่านการตรวจสอบ</h1>
+      <p class="lead" data-i18n="hero.lead">วางลิงก์ เลือกสิ่งที่ต้องการ แล้วปล่อยให้แอปดาวน์โหลดวิดีโอหรือเพลงหลายร้อยรายการพร้อมตรวจสอบทุกไฟล์ — จากนั้นพบทั้งหมดได้ในที่เดียว พร้อมเล่น</p>
+      <div class="cta">
+        <a class="btn btn-primary" id="primary-download" href="https://github.com/isaachq/media-downloader-core/releases">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M5 21h14"/></svg>
+          <span id="primary-label" data-i18n="hero.download">ดาวน์โหลด</span>
+          <small class="primary-version" data-version></small>
+        </a>
+        <a class="btn btn-ghost" href="#download" data-i18n="hero.others">ระบบอื่น</a>
+        <div class="cta-note" id="release-note" data-i18n="hero.note">ไม่ต้องมีบัญชี ไม่มีโฆษณา ไม่มีการติดตาม ทำงานบนคอมพิวเตอร์ของคุณ</div>
+      </div>
+    </div>
+    <div class="shot">
+      <video autoplay muted loop playsinline preload="auto" width="960" height="600" poster="../demo-poster.jpg" role="img" aria-label="วางลิงก์ ดาวน์โหลดเป็น MP4 และเปิดรายงานความสมบูรณ์" data-i18n-aria="hero.alt"><source src="../demo.mp4" type="video/mp4"><img src="../demo.gif" width="960" height="600" alt="วางลิงก์ ดาวน์โหลดเป็น MP4 และเปิดรายงานความสมบูรณ์" data-i18n-alt="hero.alt"></video>
+    </div>
+  </div>
+</header>
+
+<div class="numbers">
+  <div class="wrap">
+    <div class="grid">
+      <div class="number"><b data-i18n="n1.value">50,000</b><span data-i18n="n1.label">รายการในรายการเดียว — เพลย์ลิสต์ ช่อง โปรไฟล์ทั้งหมด</span></div>
+      <div class="number"><b data-i18n="n2.value">1,000+</b><span data-i18n="n2.label">โพสต์ TikTok ของโปรไฟล์ แสดงรายการในราว 2 นาทีครึ่ง</span></div>
+      <div class="number"><b data-i18n="n3.value">100%</b><span data-i18n="n3.label">ของไฟล์ถูกตรวจสอบ: โคเดก ความยาว ทุกเฟรม SHA-256</span></div>
+      <div class="number"><b data-i18n="n4.value">0</b><span data-i18n="n4.label">บัญชี โฆษณา หรือตัวติดตาม — ไฟล์ของคุณอยู่บนดิสก์ของคุณ</span></div>
+    </div>
+  </div>
+</div>
+
+<section id="new">
+  <div class="wrap">
+    <span class="new-badge" data-i18n="new.badge">เบต้า 20</span>
+    <h2 data-i18n="new.title">มีอะไรใหม่ในเบต้า 20</h2>
+    <p class="intro" data-i18n="new.intro">หกเบต้านับตั้งแต่หน้านี้อัปเดตครั้งล่าสุด: ลิงก์จากเว็บไซต์ใดก็ได้ในชุดเดียว อ่าน VK และ X ได้โดยตรง ช่องเดียวสำหรับทุกเว็บไซต์ แอปสิบสี่ภาษา และหน้าตาใหม่</p>
+    <div class="features">
+      <article class="feature">
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h6"/><path d="M17 15v6m-3-3h6"/></svg></div>
+        <h3 data-i18n="b1.title">รายการผสม: เว็บไซต์ใดก็ได้ ชุดเดียว</h3>
+        <p data-i18n="b1.text">เพิ่มลิงก์ทีละรายการหรือวางทั้งรายการ — YouTube, TikTok, Instagram, Facebook, VK, X, ไฟล์ ทั้งหมดถูกตรวจสอบพร้อมกัน และก่อนจะดาวน์โหลดอะไร คุณจะเห็นว่าจะดาวน์โหลดอะไร อะไรถูกข้าม และเพราะอะไร คลิกเดียวดาวน์โหลดทั้งหมดเป็นชุดเดียว</p>
+      </article>
+      <article class="feature">
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>
+        <h3 data-i18n="b2.title">รูปแบบ สำหรับทั้งหมดหรือแต่ละลิงก์</h3>
+        <p data-i18n="b2.text">เลือก MP4 คุณภาพดีที่สุดหรือเสียงสำหรับทั้งรายการ — หรือกำหนดรูปแบบเฉพาะให้ลิงก์เดียว เช่น เพลง MP3 ท่ามกลางวิดีโอ ยังคงเป็นชุดเดียว โฟลเดอร์เดียว</p>
+      </article>
+      <article class="feature">
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg></div>
+        <h3 data-i18n="b3.title">VK และ X โดยตรง</h3>
+        <p data-i18n="b3.text">วิดีโอ คลิป และเพลย์ลิสต์ของ VK สูงสุด 1080p และโพสต์ X ที่มีวิดีโอหนึ่งหรือหลายรายการ GIF และวิดีโอที่ถูกอ้างอิง — โดยไม่ต้องลงชื่อเข้าใช้</p>
+      </article>
+      <article class="feature">
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="10" rx="3"/><path d="M7 12h6"/></svg></div>
+        <h3 data-i18n="b4.title">ช่องเดียวสำหรับทุกเว็บไซต์</h3>
+        <p data-i18n="b4.text">วางลิงก์ใดก็ได้ แล้วแอปจะรู้จักเว็บไซต์เอง ไม่ต้องเลือกเว็บไซต์ทุกเซสชันหรือรีสตาร์ตเพื่อเปลี่ยนอีกต่อไป</p>
+      </article>
+      <article class="feature">
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h8M8 3v2m-2 0c0 5 3 8 6 9M12 5c0 4-3 8-7 10"/><path d="m13 21 4-9 4 9m-7-3h6"/></svg></div>
+        <h3 data-i18n="b5.title">สิบสี่ภาษา</h3>
+        <p data-i18n="b5.text">สเปน อังกฤษ โปรตุเกส อินโดนีเซีย ฮินดี เวียดนาม ไทย ตุรกี อาหรับ (ขวาไปซ้าย) ฝรั่งเศส เยอรมัน รัสเซีย จีน และอิตาลี</p>
+      </article>
+      <article class="feature">
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4l3 4h8l3-4v9a7 7 0 0 1-14 0z"/><path d="M12 10v5m0 0-2-2m2 2 2-2"/></svg></div>
+        <h3 data-i18n="b6.title">หน้าตาใหม่</h3>
+        <p data-i18n="b6.text">ตราแมวป่าที่มีลูกศรดาวน์โหลดบนหน้าผาก บนแอป ตัวติดตั้ง และหน้านี้ เบื้องบนเป็นเช่นไร เบื้องล่างก็เป็นเช่นนั้น</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section id="features">
+  <div class="wrap">
+    <h2 data-i18n="features.title">สร้างมาเพื่องานใหญ่</h2>
+    <p class="intro" data-i18n="features.intro">ตัวดาวน์โหลดส่วนใหญ่จัดการได้ทีละวิดีโอ ตัวนี้สร้างมาสำหรับทั้งเพลย์ลิสต์ ทั้งโปรไฟล์ ทั้งผลการค้นหา — และทำงานต่อไปขณะที่คุณทำอย่างอื่น</p>
+    <div class="features">
+      <article class="feature">
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div>
+        <h3 data-i18n="f1.title">เพลย์ลิสต์และโปรไฟล์ทั้งหมด</h3>
+        <p data-i18n="f1.text">เพลย์ลิสต์ ช่อง และมิกซ์ของ YouTube; วิดีโอ สไลด์โชว์ และภาพหมุนของ TikTok, Instagram และ Facebook (เป็นวิดีโอ หรือเป็นภาพพร้อมเสียง) และโปรไฟล์ทั้งหมด; วิดีโอและเพลย์ลิสต์ VK; โพสต์ X — พร้อม “โหลดทั้งหมด” สำหรับโพสต์นับพันของบัญชีเก่า</p>
+      </article>
+      <article class="feature">
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 12 5 5L20 6"/></svg></div>
+        <h3 data-i18n="f2.title">เลือกก่อนดาวน์โหลด</h3>
+        <p data-i18n="f2.text">หน้าตัวอย่างแสดงทุกอย่างในลิงก์ พร้อมความยาวและวันที่เผยแพร่ กรอง เลือกทั้งหมดหรือเพียงบางรายการ — ดาวน์โหลดเฉพาะที่คุณเลือก หรือรวมลิงก์จากเว็บไซต์ใดก็ได้ในรายการผสม: ชุดเดียว พร้อมรูปแบบที่คุณเลือกให้แต่ละลิงก์</p>
+      </article>
+      <article class="feature">
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6l-8-3Z"/><path d="m9 12 2 2 4-4"/></svg></div>
+        <h3 data-i18n="f3.title">ทุกไฟล์ผ่านการตรวจสอบ</h3>
+        <p data-i18n="f3.text">ทุกการดาวน์โหลดถูกตรวจสอบ — โคเดก ความยาว ถอดรหัสทุกเฟรม — และบันทึก SHA-256 ไว้ ไฟล์ที่เสียจะถูกดาวน์โหลดใหม่ ไฟล์ที่เสียตั้งแต่ต้นทางจะถูกทำเครื่องหมายและไม่ดาวน์โหลดซ้ำ</p>
+      </article>
+      <article class="feature">
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h6l2 2h10v10H3z"/><path d="m10 13 2 2 3-3"/></svg></div>
+        <h3 data-i18n="f4.title">ทุกอย่างที่เสร็จแล้ว ในที่เดียว</h3>
+        <p data-i18n="f4.text">แท็บเสร็จแล้วเก็บทุกไฟล์จากทุกเซสชัน ทีละชุด: ค้นหา เล่น แสดงในโฟลเดอร์ ตรวจสอบใหม่ ส่งออกรายการ หากมีอะไรล้มเหลว คลิกเดียวลองใหม่ — และคุณเห็นสาเหตุ</p>
+      </article>
+      <article class="feature">
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5m0 14h16M8 15v-4m4 4V8m4 7v-6"/></svg></div>
+        <h3 data-i18n="f5.title">รายงานสดของทั้งการทำงาน</h3>
+        <p data-i18n="f5.text">สิ่งที่รอ กำลังดาวน์โหลด กำลังตรวจสอบ และเสร็จแล้ว — แยกตามชุด พร้อมเวลาที่เหลือ รีเฟรชทุก 15 วินาที คัดลอกเป็นข้อความได้ในคลิกเดียว</p>
+      </article>
+      <article class="feature">
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></div>
+        <h3 data-i18n="f6.title">รู้จักดิสก์และเวลาของคุณ</h3>
+        <p data-i18n="f6.text">ก่อนเริ่ม ชุดจะบอกว่าต้องใช้พื้นที่เท่าไร ขณะทำงาน เวลาที่เหลือวัดจากความเร็วจริงของคอมพิวเตอร์คุณ — เริ่มชุดใหญ่แล้วไปทำอย่างอื่นได้เลย</p>
+      </article>
+      <article class="feature">
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/><path d="M5 17H3v-5l2-5h11l3 5h2v5h-2M9 17h6"/></svg></div>
+        <h3 data-i18n="f7.title">เล่นได้ในรถและบนทีวี</h3>
+        <p data-i18n="f7.text">MP4 แบบ H.264/AAC, MP3 พร้อมแท็กที่เครื่องเสียงรถยนต์อ่านได้ และชื่อไฟล์ที่ใช้ตัวอักษรและตัวเลขธรรมดาซึ่งแฟลชไดรฟ์ทุกตัวรองรับ หรือ M4A, Opus, FLAC, WAV, WebM, MKV</p>
+      </article>
+      <article class="feature">
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4m8-4v4"/></svg></div>
+        <h3 data-i18n="f8.title">เรียงตามวันที่เผยแพร่</h3>
+        <p data-i18n="f8.text">ทุกไฟล์มีวันที่เผยแพร่ติดอยู่ การเรียงโฟลเดอร์ตามวันที่จึงเรียงข้อมูลสำรองตามการเผยแพร่ — ไม่ใช่ตามนาทีที่ดาวน์โหลด</p>
+      </article>
+      <article class="feature">
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></div>
+        <h3 data-i18n="f9.title">อัปเดตตัวเอง</h3>
+        <p data-i18n="f9.text">เวอร์ชันใหม่มาถึงในแอป: ปุ่มเดียวดาวน์โหลด ตรวจสอบด้วย SHA-256 ของ GitHub ติดตั้ง และรีสตาร์ต เครื่องมือของแอป (yt-dlp, FFmpeg) ก็ติดตั้งแบบเดียวกัน</p>
+      </article>
+      <article class="feature">
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5M3 21v-5h5"/></svg></div>
+        <h3 data-i18n="f10.title">Sync Up: บัญชีที่อัปเดตอยู่เสมอ</h3>
+        <p data-i18n="f10.text">เชื่อมบัญชี TikTok กับโฟลเดอร์ของมัน — แม้โฟลเดอร์ที่มีวิดีโออยู่แล้ว — แล้วการซิงก์แต่ละครั้งจะนำมาเฉพาะสิ่งที่ยังขาด ในรูปแบบของโฟลเดอร์ ทุกวันตามเวลาที่ตั้งไว้ ทุกไม่กี่ชั่วโมง หรือเมื่อใดก็ได้ที่คุณต้องการ</p>
+      </article>
+      <article class="feature">
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></div>
+        <h3 data-i18n="f11.title">แจ้งเมื่อเสร็จ</h3>
+        <p data-i18n="f11.text">ปล่อยให้ทำงานเบื้องหลัง: การแจ้งเตือนของระบบจะมาเมื่อชุดเสร็จ และไอคอนใน Dock หรือแถบงานจะแสดงความคืบหน้า</p>
+      </article>
+      <article class="feature">
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 17 6-6-6-6M12 19h8"/></svg></div>
+        <h3 data-i18n="f12.title">มีทั้งบรรทัดคำสั่งและไลบรารี</h3>
+        <p data-i18n="f12.text">เอนจินเดียวกันทำงานจากเทอร์มินัล (<code>mdc</code>) และจากโค้ดของคุณเอง — ตั้งเวลาซิงก์บัญชีด้วย cron, launchd หรือ Task Scheduler โดยไม่ต้องเปิดแอป</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <h2 data-i18n="how.title">สามขั้นตอน</h2>
+    <p class="intro" data-i18n="how.intro">ไม่ต้องใช้บรรทัดคำสั่ง ไม่ต้องเรียนรู้การตั้งค่าก่อน — ครั้งแรกจะมีคู่มือสั้น ๆ พาชม สิบสี่ภาษา โหมดสว่างหรือมืด</p>
+    <div class="steps">
+      <div class="step"><h3 data-i18n="s1.title">วางลิงก์</h3><p data-i18n="s1.text">วิดีโอ เพลย์ลิสต์ ช่อง โปรไฟล์ TikTok, Instagram หรือ Facebook โพสต์ VK หรือ X — หรือรายการลิงก์ทั้งชุดจากเว็บไซต์ใดก็ได้</p></div>
+      <div class="step"><h3 data-i18n="s2.title">เลือกสิ่งที่ต้องการ</h3><p data-i18n="s2.text">ทุกอย่างในลิงก์จะแสดงรายการก่อน เลือก MP4 หรือ MP3 คุณภาพ และโฟลเดอร์</p></div>
+      <div class="step"><h3 data-i18n="s3.title">ปล่อยให้ทำงาน</h3><p data-i18n="s3.text">ดาวน์โหลดหลายรายการพร้อมกัน ทุกรายการผ่านการตรวจสอบ ติดตามรายงาน หรือกลับมาทีหลัง</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="screens">
+  <div class="wrap">
+    <h2 data-i18n="screens.title">ดูตัวอย่าง</h2>
+    <div class="gallery">
+      <figure><img loading="lazy" decoding="async" src="../screenshots/preview.png" alt="ตัวอย่าง: เลือกให้ตรงว่าจะดาวน์โหลดอะไร" data-i18n-alt="screens.preview" width="1280" height="800"><figcaption data-i18n="screens.preview">ตัวอย่าง: เลือกให้ตรงว่าจะดาวน์โหลดอะไร</figcaption></figure>
+      <figure><img loading="lazy" decoding="async" src="../screenshots/batch.png" alt="ชุดดาวน์โหลดพร้อมการประมาณพื้นที่ดิสก์และเวลาที่เหลือ" data-i18n-alt="screens.batch" width="1280" height="800"><figcaption data-i18n="screens.batch">ชุดดาวน์โหลดพร้อมการประมาณพื้นที่ดิสก์และเวลาที่เหลือ</figcaption></figure>
+      <figure><img loading="lazy" decoding="async" src="../screenshots/mix-list.png" alt="รายการผสม: ลิงก์จากห้าเว็บไซต์ แต่ละลิงก์ระบุเว็บไซต์" data-i18n-alt="screens.mix" width="1280" height="800"><figcaption data-i18n="screens.mix">รายการผสม: ลิงก์จากห้าเว็บไซต์ แต่ละลิงก์ระบุเว็บไซต์</figcaption></figure>
+      <figure><img loading="lazy" decoding="async" src="../screenshots/mix-preview.png" alt="ตรวจแล้ว: จัดกลุ่มตามเว็บไซต์ หนึ่งลิงก์เป็น MP3 ชุดเดียว" data-i18n-alt="screens.mixPreview" width="1280" height="800"><figcaption data-i18n="screens.mixPreview">ตรวจแล้ว: จัดกลุ่มตามเว็บไซต์ หนึ่งลิงก์เป็น MP3 ชุดเดียว</figcaption></figure>
+      <figure><img loading="lazy" decoding="async" src="../screenshots/finished.png" alt="เสร็จแล้ว: เล่น แสดงในโฟลเดอร์ ค้นหาทุกไฟล์" data-i18n-alt="screens.finished" width="1280" height="800"><figcaption data-i18n="screens.finished">เสร็จแล้ว: เล่น แสดงในโฟลเดอร์ ค้นหาทุกไฟล์</figcaption></figure>
+      <figure><img loading="lazy" decoding="async" src="../screenshots/report.png" alt="รายงานการทำงาน รีเฟรชทุก 15 วินาที" data-i18n-alt="screens.report" width="1280" height="800"><figcaption data-i18n="screens.report">รายงานการทำงาน รีเฟรชทุก 15 วินาที</figcaption></figure>
+      <figure><img loading="lazy" decoding="async" src="../screenshots/settings.png" alt="การตั้งค่า: บัญชี YouTube ของคุณ โปรเซสเซอร์ ความสมบูรณ์" data-i18n-alt="screens.settings" width="1280" height="800"><figcaption data-i18n="screens.settings">การตั้งค่า: บัญชี YouTube ของคุณ โปรเซสเซอร์ ความสมบูรณ์</figcaption></figure>
+      <figure><img loading="lazy" decoding="async" src="../screenshots/signin.png" alt="วิธีลงชื่อเข้าใช้: เซสชันของเบราว์เซอร์คุณ ทีละขั้นตอน" data-i18n-alt="screens.signin" width="1280" height="800"><figcaption data-i18n="screens.signin">วิธีลงชื่อเข้าใช้: เซสชันของเบราว์เซอร์คุณ ทีละขั้นตอน</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section id="signin">
+  <div class="wrap">
+    <h2 data-i18n="signin.title">เนื้อหาส่วนตัว: ลงชื่อเข้าใช้ในเบราว์เซอร์</h2>
+    <p class="intro" data-i18n="signin.intro">วิดีโอส่วนตัวหรือสำหรับสมาชิกเท่านั้น วิดีโอจำกัดอายุ โปรไฟล์และสตอรี่ Instagram วิดีโอของเพจ Facebook — และ YouTube เมื่อขอให้ยืนยันว่าคุณไม่ใช่บอท — ต้องใช้บัญชีของคุณเอง แอปไม่เคยขอรหัสผ่าน: ใช้เซสชันของเบราว์เซอร์ที่คุณลงชื่อเข้าใช้อยู่แล้ว</p>
+    <div class="steps four">
+      <div class="step"><h3 data-i18n="g1.title">ลงชื่อเข้าใช้ในเบราว์เซอร์</h3><p data-i18n="g1.text">Chrome, Edge, Firefox, Safari หรือ Brave — เข้า Google / YouTube, Instagram หรือ Facebook ตามปกติ</p></div>
+      <div class="step"><h3 data-i18n="g2.title">เลือกในแอป</h3><p data-i18n="g2.text">การตั้งค่า → คุกกี้จากเบราว์เซอร์ → เบราว์เซอร์เดียวกัน “วิธีลงชื่อเข้าใช้” แสดงขั้นตอนเหล่านี้</p></div>
+      <div class="step"><h3 data-i18n="g3.title">อนุญาตครั้งเดียว</h3><p data-i18n="g3.text">ระบบจะขออนุญาตในครั้งแรก (ดูของคุณด้านล่าง)</p></div>
+      <div class="step"><h3 data-i18n="g4.title">วางลิงก์อีกครั้ง</h3><p data-i18n="g4.text">จะดาวน์โหลดด้วยเซสชันของคุณ ออกจากระบบแล้ว? ลงชื่อเข้าใช้อีกครั้งในเบราว์เซอร์</p></div>
+    </div>
+    <div class="systems">
+      <article class="feature"><h3>macOS</h3><p data-i18n="g.mac">หน้าต่างพวงกุญแจจะขอให้อนุญาตให้แอปอ่าน “Chrome Safe Storage” (หรือของเบราว์เซอร์คุณ): พิมพ์รหัสผ่าน Mac แล้วคลิก <b>อนุญาตเสมอ</b> Safari: การตั้งค่าระบบ → ความเป็นส่วนตัวและความปลอดภัย → <b>การเข้าถึงดิสก์เต็มรูปแบบ</b> → เปิด Media Download Core</p></article>
+      <article class="feature"><h3>Windows</h3><p data-i18n="g.win">ปิดเบราว์เซอร์ก่อนดาวน์โหลด — Chrome และ Edge ล็อกคุกกี้ขณะเปิดอยู่ หาก Chrome ยังอ่านไม่ได้ (บน Windows จะปกป้องคุกกี้) ให้ลงชื่อเข้าใช้ด้วย <b>Firefox</b> แล้วเลือก Firefox</p></article>
+      <article class="feature"><h3>Linux</h3><p data-i18n="g.linux">บน Fedora, Ubuntu และอื่น ๆ พวงกุญแจของคุณ (GNOME Keyring / KWallet) อาจขออนุญาตเข้าถึงข้อมูลที่เบราว์เซอร์บันทึกไว้: ให้อนุญาต Firefox ไม่ถามอะไร</p></article>
+    </div>
+    <p class="intro" style="margin-top: 20px" data-i18n="g.privacy">คุกกี้ของคุณอยู่บนคอมพิวเตอร์ของคุณ: ถูกอ่านครั้งเดียวไปยังสำเนาส่วนตัวที่ใช้เพื่อดาวน์โหลดเท่านั้น และไม่เคยถูกส่งไปที่อื่น</p>
+  </div>
+</section>
+
+<section id="download">
+  <div class="wrap">
+    <h2 data-i18n="dl.title">ดาวน์โหลด</h2>
+    <p class="release-line" id="release-line" data-i18n="dl.line">เวอร์ชันล่าสุดอยู่บน GitHub Releases เสมอ</p>
+    <div class="downloads">
+      <div class="os" data-os="mac">
+        <h3>macOS <span class="os-version" data-version></span></h3>
+        <ul>
+          <li><a data-asset="mac-arm64.dmg" href="https://github.com/isaachq/media-downloader-core/releases"><span data-i18n="dl.macArm">Apple Silicon (M1–M4)</span><small>.dmg</small></a></li>
+          <li><a data-asset="mac-x64.dmg" href="https://github.com/isaachq/media-downloader-core/releases"><span data-i18n="dl.macIntel">Intel</span><small>.dmg</small></a></li>
+        </ul>
+        <p class="hint" data-i18n="dl.macHint">เปิดครั้งแรก: การตั้งค่าระบบ → ความเป็นส่วนตัวและความปลอดภัย → “เปิดต่อไป” (ครั้งเดียว) แอปยังไม่ได้ลงนามด้วยใบรับรอง Apple แบบเสียเงิน</p>
+        <p class="hint" data-i18n="dl.macTerminal">ไม่มีปุ่ม “เปิดต่อไป”? ลากแอปไปที่แอปพลิเคชัน แล้วรันคำสั่งนี้ครั้งเดียวใน Terminal:</p>
+        <div class="command">
+          <code id="mac-command">xattr -dr com.apple.quarantine "/Applications/Media Download Core.app"</code>
+          <button type="button" class="copy" data-copy="mac-command" data-i18n="dl.copy">คัดลอก</button>
+        </div>
+      </div>
+      <div class="os" data-os="windows">
+        <h3>Windows <span class="os-version" data-version></span></h3>
+        <ul>
+          <li><a data-asset="win-x64.exe" href="https://github.com/isaachq/media-downloader-core/releases"><span data-i18n="dl.win64">64 บิต (พีซีส่วนใหญ่)</span><small>.exe</small></a></li>
+          <li><a data-asset="win-arm64.exe" href="https://github.com/isaachq/media-downloader-core/releases"><span>ARM64</span><small>.exe</small></a></li>
+        </ul>
+        <ol class="install-steps">
+          <li data-i18n="dl.win1">เปิดไฟล์ <b>.exe</b> หากหน้าต่างสีน้ำเงินแจ้งว่า <b>“Windows ได้ปกป้องพีซีของคุณ”</b> ให้คลิก <b>ข้อมูลเพิ่มเติม</b></li>
+          <li data-i18n="dl.win2">คลิก <b>เรียกใช้ต่อไป</b> ตัวติดตั้งจะเปิดขึ้น ทำงานจนเสร็จเอง และเปิดแอป</li>
+        </ol>
+        <p class="hint" data-i18n="dl.winWhy">ทำไมมีคำเตือน? นี่คือโปรเจกต์ฟรีที่ทำเองที่บ้าน และยังไม่ได้ลงนามด้วยใบรับรอง Microsoft แบบเสียเงิน คำเตือนเกี่ยวกับลายเซ็นที่ยังไม่มี ไม่ใช่ตัวไฟล์ — โค้ดเปิดเผยบน GitHub และ Windows จะเลิกถามเมื่อมีคนติดตั้งมากขึ้น</p>
+      </div>
+      <div class="os" data-os="linux">
+        <h3>Linux <span class="os-version" data-version></span></h3>
+        <ul>
+          <li><a data-asset="linux-x86_64.AppImage" href="https://github.com/isaachq/media-downloader-core/releases"><span>AppImage · x64</span><small>.AppImage</small></a></li>
+          <li><a data-asset="linux-amd64.deb" href="https://github.com/isaachq/media-downloader-core/releases"><span>Debian / Ubuntu · x64</span><small>.deb</small></a></li>
+          <li><a data-asset="linux-x86_64.rpm" href="https://github.com/isaachq/media-downloader-core/releases"><span>Fedora / RHEL · x64</span><small>.rpm</small></a></li>
+          <li><a data-asset="linux-arm64.AppImage" href="https://github.com/isaachq/media-downloader-core/releases"><span>AppImage · ARM64</span><small>.AppImage</small></a></li>
+        </ul>
+        <p class="hint" data-i18n="dl.linuxHint">.deb และ .rpm สำหรับ ARM64 ก็มีในหน้ารีลีส</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="versions">
+  <div class="wrap">
+    <h2 data-i18n="versions.title">เวอร์ชัน</h2>
+    <p class="intro" data-i18n="versions.intro">ทุกเวอร์ชันของแอป เริ่มจากล่าสุด: สิ่งที่เปลี่ยนในแต่ละเวอร์ชัน และตัวติดตั้ง</p>
+    <ol class="versions" id="versions-list">
+      <li class="versions-empty"><a href="https://github.com/isaachq/media-downloader-core/releases" data-i18n="versions.all">ทุกเวอร์ชันบน GitHub Releases</a></li>
+    </ol>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="note" data-i18n="note">สร้างมาเพื่อสำรองเนื้อหาที่เป็นของคุณหรือที่คุณได้รับอนุญาตให้เก็บ โปรดเคารพข้อกำหนดของแต่ละเว็บไซต์และกฎหมายลิขสิทธิ์ ใช้ฟรีสำหรับการใช้งานส่วนตัวที่ไม่ใช่เชิงพาณิชย์ (PolyForm Noncommercial 1.0.0)</div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>© 2026 isaachq · <a href="https://github.com/isaachq/media-downloader-core/blob/main/LICENSE">PolyForm Noncommercial 1.0.0</a></span>
+    <span><a href="https://github.com/isaachq/media-downloader-core">GitHub</a> · <a href="https://github.com/isaachq/media-downloader-core/blob/main/CHANGELOG.md" data-i18n="footer.changes">มีอะไรใหม่</a> · <a href="https://github.com/isaachq/media-downloader-core/issues" data-i18n="footer.issues">รายงานปัญหา</a></span>
+    <nav class="footer-langs" id="languages" aria-label="ภาษา" data-i18n-aria="lang.label"><!-- langs:footer:start --><a href="../" hreflang="en" lang="en" data-lang-code="en">English</a> <a href="../es/" hreflang="es" lang="es" data-lang-code="es">Español</a> <a href="../pt/" hreflang="pt" lang="pt-BR" data-lang-code="pt">Português (Brasil)</a> <a href="../id/" hreflang="id" lang="id" data-lang-code="id">Bahasa Indonesia</a> <a href="../hi/" hreflang="hi" lang="hi" data-lang-code="hi">हिन्दी</a> <a href="../vi/" hreflang="vi" lang="vi" data-lang-code="vi">Tiếng Việt</a> <a href="./" hreflang="th" lang="th" data-lang-code="th" aria-current="page">ไทย</a> <a href="../tr/" hreflang="tr" lang="tr" data-lang-code="tr">Türkçe</a> <a href="../ar/" hreflang="ar" lang="ar" data-lang-code="ar">العربية</a> <a href="../fr/" hreflang="fr" lang="fr" data-lang-code="fr">Français</a> <a href="../de/" hreflang="de" lang="de" data-lang-code="de">Deutsch</a> <a href="../ru/" hreflang="ru" lang="ru" data-lang-code="ru">Русский</a> <a href="../zh/" hreflang="zh-Hans" lang="zh-Hans" data-lang-code="zh">中文（简体）</a> <a href="../it/" hreflang="it" lang="it" data-lang-code="it">Italiano</a><!-- langs:footer:end --></nav>
+  </div>
+</footer>
+
+<dialog id="lang-dialog" class="lang-dialog" aria-labelledby="lang-title">
+  <div class="lang-head">
+    <h2 id="lang-title" data-i18n="lang.title">เลือกภาษา</h2>
+    <button type="button" class="lang-close" id="lang-close" aria-label="ปิด" data-i18n-aria="lang.close"><span aria-hidden="true">×</span></button>
+  </div>
+  <label class="sr-only" for="lang-search" data-i18n="lang.search">ค้นหาภาษา</label>
+  <input class="lang-search" id="lang-search" type="search" autocomplete="off" spellcheck="false" placeholder="ค้นหาภาษา" data-i18n-placeholder="lang.search" aria-controls="lang-list" aria-describedby="lang-status">
+  <ul class="lang-list" id="lang-list"><!-- langs:dialog:start -->
+    <li data-search="English อังกฤษ English en en"><a href="../" hreflang="en" data-lang-code="en"><span lang="en" dir="auto">English</span><span class="lang-other">อังกฤษ</span></a></li>
+    <li data-search="Español สเปน Spanish es es"><a href="../es/" hreflang="es" data-lang-code="es"><span lang="es" dir="auto">Español</span><span class="lang-other">สเปน</span></a></li>
+    <li data-search="Português (Brasil) โปรตุเกส - บราซิล Brazilian Portuguese pt pt-BR"><a href="../pt/" hreflang="pt" data-lang-code="pt"><span lang="pt-BR" dir="auto">Português (Brasil)</span><span class="lang-other">โปรตุเกส - บราซิล</span></a></li>
+    <li data-search="Bahasa Indonesia อินโดนีเซีย Indonesian id id"><a href="../id/" hreflang="id" data-lang-code="id"><span lang="id" dir="auto">Bahasa Indonesia</span><span class="lang-other">อินโดนีเซีย</span></a></li>
+    <li data-search="हिन्दी ฮินดี Hindi hi hi"><a href="../hi/" hreflang="hi" data-lang-code="hi"><span lang="hi" dir="auto">हिन्दी</span><span class="lang-other">ฮินดี</span></a></li>
+    <li data-search="Tiếng Việt เวียดนาม Vietnamese vi vi"><a href="../vi/" hreflang="vi" data-lang-code="vi"><span lang="vi" dir="auto">Tiếng Việt</span><span class="lang-other">เวียดนาม</span></a></li>
+    <li data-search="ไทย ไทย Thai th th"><a href="./" hreflang="th" data-lang-code="th" aria-current="true"><span lang="th" dir="auto">ไทย</span><span class="lang-other">ไทย</span></a></li>
+    <li data-search="Türkçe ตุรกี Turkish tr tr"><a href="../tr/" hreflang="tr" data-lang-code="tr"><span lang="tr" dir="auto">Türkçe</span><span class="lang-other">ตุรกี</span></a></li>
+    <li data-search="العربية อาหรับ Arabic ar ar"><a href="../ar/" hreflang="ar" data-lang-code="ar"><span lang="ar" dir="auto">العربية</span><span class="lang-other">อาหรับ</span></a></li>
+    <li data-search="Français ฝรั่งเศส French fr fr"><a href="../fr/" hreflang="fr" data-lang-code="fr"><span lang="fr" dir="auto">Français</span><span class="lang-other">ฝรั่งเศส</span></a></li>
+    <li data-search="Deutsch เยอรมัน German de de"><a href="../de/" hreflang="de" data-lang-code="de"><span lang="de" dir="auto">Deutsch</span><span class="lang-other">เยอรมัน</span></a></li>
+    <li data-search="Русский รัสเซีย Russian ru ru"><a href="../ru/" hreflang="ru" data-lang-code="ru"><span lang="ru" dir="auto">Русский</span><span class="lang-other">รัสเซีย</span></a></li>
+    <li data-search="中文（简体） จีนตัวย่อ Simplified Chinese zh zh-Hans"><a href="../zh/" hreflang="zh-Hans" data-lang-code="zh"><span lang="zh-Hans" dir="auto">中文（简体）</span><span class="lang-other">จีนตัวย่อ</span></a></li>
+    <li data-search="Italiano อิตาลี Italian it it"><a href="../it/" hreflang="it" data-lang-code="it"><span lang="it" dir="auto">Italiano</span><span class="lang-other">อิตาลี</span></a></li>
+  <!-- langs:dialog:end --></ul>
+  <p class="lang-empty" id="lang-empty" hidden data-i18n="lang.empty">ไม่มีภาษาที่ตรงกับการค้นหา</p>
+  <p class="sr-only" id="lang-status" role="status" aria-live="polite"></p>
+</dialog>
+
+<script>
+// Each language is its own page (docs/<code>/, built by scripts/build-site.mjs), already
+// written in that language: this script only adds what changes at run time (the newest
+// release, the installer for this computer) and the language dialog. A first visit to
+// the English page follows the browser's languages; a language chosen in the dialog is
+// remembered. Without JavaScript every link still leads to the releases page.
+(() => {
+  const REPO = 'isaachq/media-downloader-core'
+  const RELEASES = `https://github.com/${REPO}/releases`
+  const root = document.documentElement
+  /** This page's language (its code in LANGUAGES), its BCP 47 tag and the site's root. */
+  const lang = root.dataset.lang || 'en'
+  const locale = root.lang || 'en'
+  const base = root.dataset.root || './'
+  const LANGUAGES = /*languages:start*/['en','es','pt','id','hi','vi','th','tr','ar','fr','de','ru','zh','it']/*languages:end*/
+  const pageOf = code => (code === 'en' ? base : `${base}${code}/`)
+
+  // the language: a choice made in the dialog wins; a first visit follows the browser
+  let saved
+  try { saved = localStorage.getItem('lang') } catch {}
+  if (lang === 'en' && !/[?&]nolang\b/.test(location.search)) {
+    let wanted = LANGUAGES.includes(saved) ? saved : undefined
+    if (!wanted) {
+      for (const tag of navigator.languages ?? [navigator.language]) {
+        const code = String(tag).toLowerCase().split('-')[0]
+        if (LANGUAGES.includes(code)) { wanted = code; break }
+      }
+    }
+    if (wanted && wanted !== 'en') {
+      location.replace(pageOf(wanted) + location.hash)
+      return
+    }
+  }
+
+  // the words that change at run time, in English; the page's language replaces them
+  const en = {'versions.notes': "What's new and installers", 'versions.latest': 'Newest', 'versions.beta': 'Beta', 'copied': 'Copied', 'primary.mac': 'Download for Mac', 'primary.macIntel': 'Download for Mac (Intel)', 'primary.windows': 'Download for Windows', 'primary.linux': 'Download for Linux', 'release': 'Version {version} · released {date}', 'lang.count': 'Matching languages: {count}'}
+  const dict = Object.assign(en, /*i18n:start*/{"versions.notes":"มีอะไรใหม่และตัวติดตั้ง","versions.latest":"ล่าสุด","versions.beta":"เบต้า","copied":"คัดลอกแล้ว","primary.mac":"ดาวน์โหลดสำหรับ Mac","primary.macIntel":"ดาวน์โหลดสำหรับ Mac (Intel)","primary.windows":"ดาวน์โหลดสำหรับ Windows","primary.linux":"ดาวน์โหลดสำหรับ Linux","release":"เวอร์ชัน {version} · เผยแพร่ {date}","lang.count":"ภาษาที่ตรงกัน: {count}"}/*i18n:end*/)
+  for (const el of document.querySelectorAll('[data-i18n]')) dict[el.dataset.i18n] ??= el.innerHTML
+  const text = (key, params) => {
+    const raw = dict[key] ?? key
+    return params ? raw.replace(/\{(\w+)\}/g, (_, name) => params[name] ?? '') : raw
+  }
+
+  // which installer suits this computer (Apple Silicon unless the browser says Intel)
+  const platform = (navigator.userAgentData?.platform || navigator.platform || navigator.userAgent).toLowerCase()
+  const os = /mac/.test(platform) ? 'mac' : /win/.test(platform) ? 'windows' : /linux|x11/.test(platform) ? 'linux' : undefined
+  let arch = /arm|aarch64/.test(navigator.userAgent.toLowerCase()) ? 'arm64' : undefined
+  let release
+  /** The app's versions (app-v… tags), newest first, from GitHub. */
+  let versions = []
+
+  const render = () => {
+    const label = document.getElementById('primary-label')
+    const primary = document.getElementById('primary-download')
+    if (os) {
+      document.querySelector(`.os[data-os="${os}"]`)?.classList.add('mine')
+      const intelMac = os === 'mac' && arch === 'x64'
+      label.textContent = text(intelMac ? 'primary.macIntel' : `primary.${os}`)
+      const wanted = os === 'mac' ? (intelMac ? 'mac-x64.dmg' : 'mac-arm64.dmg') : os === 'windows' ? (arch === 'arm64' ? 'win-arm64.exe' : 'win-x64.exe') : arch === 'arm64' ? 'linux-arm64.AppImage' : 'linux-x86_64.AppImage'
+      primary.href = release?.assets.find(asset => asset.name.endsWith(wanted))?.browser_download_url ?? RELEASES
+    }
+    if (release) {
+      const version = release.tag_name.replace(/^app-v/, '')
+      document.getElementById('release-line').textContent = text('release', {version, date: day(release.published_at)})
+      // every installer says which version it is
+      for (const el of document.querySelectorAll('[data-version]')) el.textContent = version
+    }
+    renderVersions()
+  }
+
+  const day = when => new Date(when).toLocaleDateString(locale, {year: 'numeric', month: 'long', day: 'numeric'})
+  /** The versions of the app, newest first: each with its date, a tag, and its release page. */
+  const renderVersions = () => {
+    const list = document.getElementById('versions-list')
+    if (!versions.length || !list) return
+    list.replaceChildren(
+      ...versions.map((item, index) => {
+        const li = document.createElement('li')
+        const name = document.createElement('span')
+        name.className = 'version'
+        name.textContent = item.tag_name.replace(/^app-v/, '')
+        const date = document.createElement('span')
+        date.className = 'date'
+        date.textContent = day(item.published_at)
+        li.append(name, date)
+        if (index === 0 || item.prerelease) {
+          const tag = document.createElement('span')
+          tag.className = 'tag'
+          tag.textContent = index === 0 ? text('versions.latest') : text('versions.beta')
+          li.append(tag)
+        }
+        const links = document.createElement('span')
+        links.className = 'links'
+        const notes = document.createElement('a')
+        notes.href = item.html_url
+        notes.textContent = text('versions.notes')
+        links.append(notes)
+        li.append(links)
+        return li
+      }),
+    )
+  }
+
+  for (const button of document.querySelectorAll('[data-copy]')) {
+    button.addEventListener('click', async () => {
+      const command = document.getElementById(button.dataset.copy).textContent
+      try {
+        await navigator.clipboard.writeText(command)
+      } catch {
+        // no clipboard access (file://, old browser): select it for a manual copy
+        getSelection().selectAllChildren(document.getElementById(button.dataset.copy))
+        return
+      }
+      button.textContent = text('copied')
+      setTimeout(() => (button.textContent = text('dl.copy')), 1500)
+    })
+  }
+
+  // the language dialog: a search over every language's own name, its name in this
+  // page's language, its English name and its code
+  const dialog = document.getElementById('lang-dialog')
+  const opener = document.getElementById('lang-open')
+  const search = document.getElementById('lang-search')
+  const items = [...document.querySelectorAll('#lang-list li')]
+  const empty = document.getElementById('lang-empty')
+  const status = document.getElementById('lang-status')
+  const fold = value => value.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim()
+  const visibleLinks = () => items.filter(item => !item.hidden).map(item => item.querySelector('a'))
+  const filter = () => {
+    const query = fold(search.value)
+    let count = 0
+    for (const item of items) {
+      item.hidden = Boolean(query) && !fold(item.dataset.search).includes(query)
+      if (!item.hidden) count++
+    }
+    empty.hidden = count > 0
+    status.textContent = text('lang.count', {count})
+  }
+  const open = () => {
+    if (typeof dialog.showModal !== 'function') {
+      document.getElementById('languages').scrollIntoView()
+      return
+    }
+    search.value = ''
+    filter()
+    dialog.showModal()
+    search.focus()
+  }
+  const close = () => dialog.open && dialog.close()
+  opener.addEventListener('click', open)
+  document.getElementById('lang-close').addEventListener('click', close)
+  // Esc closes it (the browser's own cancel); focus goes back to the button
+  dialog.addEventListener('close', () => opener.focus())
+  // a click on the backdrop, outside the box, closes it too
+  dialog.addEventListener('click', event => { if (event.target === dialog) close() })
+  search.addEventListener('input', filter)
+  dialog.addEventListener('keydown', event => {
+    const links = visibleLinks()
+    if (!links.length) return
+    const at = links.indexOf(document.activeElement)
+    const move = index => { event.preventDefault(); links[(index + links.length) % links.length].focus() }
+    if (event.key === 'ArrowDown') move(at + 1)
+    else if (event.key === 'ArrowUp') move(at < 0 ? links.length - 1 : at - 1)
+    else if ((event.key === 'Home' || event.key === 'End') && at >= 0) move(event.key === 'Home' ? 0 : links.length - 1)
+    else if (event.key === 'Enter' && document.activeElement === search) { event.preventDefault(); links[0].click() }
+  })
+  // a language chosen here or in the footer is remembered for the next visit
+  for (const link of document.querySelectorAll('a[data-lang-code]')) {
+    link.addEventListener('click', () => {
+      try { localStorage.setItem('lang', link.dataset.langCode) } catch {}
+    })
+  }
+
+  // the hero's recording stays still for those who ask for less motion
+  const video = document.querySelector('.hero video')
+  if (video && matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    video.removeAttribute('autoplay')
+    video.pause()
+    video.controls = true
+  }
+
+  render()
+
+  // Chromium tells the CPU architecture; Safari doesn't (then Apple Silicon is the likely Mac)
+  navigator.userAgentData?.getHighEntropyValues?.(['architecture']).then(values => {
+    if (values.architecture === 'arm') arch = 'arm64'
+    else if (values.architecture === 'x86') arch = 'x64'
+    render()
+  }).catch(() => {})
+
+  // the newest release, pre-releases included (GitHub's "latest" skips betas)
+  // one request for both: the newest installers and the list of versions
+  fetch(`https://api.github.com/repos/${REPO}/releases?per_page=50`, {headers: {Accept: 'application/vnd.github+json'}})
+    .then(response => (response.ok ? response.json() : []))
+    .then(list => {
+      versions = list.filter(item => !item.draft && item.tag_name.startsWith('app-v'))
+      release = versions[0]
+      if (!release) return
+      for (const link of document.querySelectorAll('[data-asset]')) {
+        const asset = release.assets.find(item => item.name.endsWith(link.dataset.asset))
+        if (asset) link.href = asset.browser_download_url
+      }
+      render()
+    })
+    .catch(() => {})
+})()
+</script>
+</body>
+</html>

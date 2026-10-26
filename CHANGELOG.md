@@ -73,7 +73,7 @@ Beta 19: the mix list (links of any sites pasted together, one batch) and a new 
   all at once with a progress bar, then shows what downloads (title, length, already
   downloaded, checked on download) and what was left out and why. Any link can be removed;
   one click schedules the rest as one batch, tagged "Mix list" in Batches. Fourteen languages.
-- **New brand**: the wildcat emblem. New installer icons for macOS (`.icns`), Windows (`.ico`)
+- **New brand**: the wildcat emblem, with the download arrow on its forehead (motto: *As above, so below*). New installer icons for macOS (`.icns`), Windows (`.ico`)
   and Linux (16 to 512 px), the Linux window icon, the mark in About with the tagline, the
   README hero, the website's favicon and mark. Brand assets in `assets/brand/`, tray icons
   ready in `assets/tray/`.
@@ -1255,6 +1255,8 @@ our code; a captcha still hands TikTok to yt-dlp. Listing a profile shows its
 progress and can be cancelled; listings are kept for 15 minutes (reopening is
 instant, asking for more continues where it stopped) and a listing more than
 5% short gets a second pass.
+While a link is read the app shows how far it got ("150 of 500 items"), with
+Cancel.
 
 ## App 0.2.0-beta.3 · library 1.2.0
 
@@ -1282,6 +1284,9 @@ and FAT32 USB sticks often skip anything else:
 `001-Coldplay-Paradise-Official-Video-1G4isv-Fylg.mp3`. Titles with no Latin
 form fall back to the media id. Settings → "Car & USB friendly names" switches
 back to the original titles; the library option is `fileNames`.
+
+**Windows setup.** The installer survives files locked by an antivirus while it
+installs.
 
 **MP3 tags car stereos can read.** MP3s now carry ID3v2.3 tags plus an ID3v1
 fallback instead of ID3v2.4, which many car stereos and older players ignore.

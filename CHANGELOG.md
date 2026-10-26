@@ -12,7 +12,8 @@ A session the site refuses no longer stops a public post; the guide's fourth ste
   post with the user's session when the host gives one. When the site answers that request
   with a 4xx it does not give a visitor (measured on 2026-10-26: a Facebook account made that
   day got HTTP 400 for public reels that read fine signed out), the client reads the same page
-  as a visitor at once, drops those cookies and does not ask the host for them again for
+  as a visitor at once (a fresh session: no cookies, the engine's own user agent, since the
+  agent the cookies came with is part of what the site refused), drops those cookies and does not ask the host for them again for
   30 minutes (`SESSION_REFUSED_MS`); the log says the session was not accepted. Stories and
   listings asked meanwhile say to sign out and in again, not "sign in" to someone who did.
   When the visitor is refused too, the error stands as before (the site, not the session).

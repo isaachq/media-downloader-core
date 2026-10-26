@@ -215,7 +215,7 @@ export class MetaClient {
     } catch (error) {
       if (this.#refusedSession(error)) {
         const visitor = this.#visitor()
-        return this.#asVisitor(error, () =>
+        return this.#asVisitor(error, visitor, () =>
           this.retrying(() => this.#pageOnce(url, read, {...opts, session: visitor}), opts.signal),
         )
       }
@@ -248,7 +248,7 @@ export class MetaClient {
     } catch (error) {
       if (this.#refusedSession(error)) {
         const visitor = this.#visitor()
-        return this.#asVisitor(error, () =>
+        return this.#asVisitor(error, visitor, () =>
           this.retrying(() => this.#jsonOnce(url, read, {...opts, session: visitor}), opts.signal),
         )
       }
@@ -347,9 +347,14 @@ export class MetaClient {
     )
   }
 
-  /** A cookieless session, the visitor the site may still serve (the agent stays: the site knows it). */
+  /**
+   * A fresh session, the visitor the site may still serve: no cookies and the
+   * engine's own user agent, as a signed-out host reads. The agent the host's
+   * cookies came with (an in-app browser's) is part of the identity the site
+   * refused, so it goes with them.
+   */
   #visitor(): HttpSession {
-    return new HttpSession({fetch: this.#fetch, userAgent: this.session.userAgent})
+    return new HttpSession({fetch: this.#fetch})
   }
 
   /**
@@ -359,7 +364,7 @@ export class MetaClient {
    * the user is told (the log; stories and listings say so when asked). When
    * the visitor is refused too, the site is: the refusal stands as it was.
    */
-  async #asVisitor<T>(refusal: MetaError, read: () => Promise<T>): Promise<T> {
+  async #asVisitor<T>(refusal: MetaError, visitor: HttpSession, read: () => Promise<T>): Promise<T> {
     let result: T
     try {
       result = await read()
@@ -367,7 +372,9 @@ export class MetaClient {
       throw refusal
     }
     this.#sessionRefusedUntil = this.#now() + SESSION_REFUSED_MS
+    // from now on the client is the visitor that got through: its agent, no cookies
     this.session.reset()
+    this.session.adopt({userAgent: visitor.userAgent, cookies: []})
     this.#host.forget()
     this.#log(
       'warn',

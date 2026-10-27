@@ -522,3 +522,29 @@ h5.ant-typography.preview-heading {
   flex: none;
   min-width: 190px;
 }
+
+/* live recordings: one row per channel, its REC tag, clock and buttons */
+.recordings {
+  margin: 16px 0;
+}
+.recording-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.recording-row + .recording-row {
+  margin-top: 8px;
+}
+.rec-tag {
+  font-weight: 600;
+}
+/* the live player fills its modal, 16:9 */
+.live-video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border-radius: 6px;
+}

@@ -96,6 +96,27 @@ sent anywhere else. Without a session, single public posts and videos still
 download; what a site keeps for signed-in accounts says so ("Sign-in
 required") instead of failing silently.
 
+## Live Twitch channels: record and watch
+
+Paste a channel that is on the air (`twitch.tv/name`): instead of a download, the app offers
+**Record** and **Watch** — both at once if you like.
+
+- **Record** starts from the last half minute Twitch still holds and goes on until you press
+  **Stop and save**, the stream ends, or 12 hours pass. Ads are left out. It shows in the
+  **Recordings** card above the batches (REC, how long it has recorded, its size); after Stop it is
+  checked and finalized like any download and lands in Finished, tagged *Live recording*.
+  **Discard** asks first, then deletes what was recorded. One recording per channel; several
+  channels at once are fine.
+- **Watch** opens a player (hls.js) on the stream; closing it never stops a recording. The app's
+  own process fetches Twitch's playlists and segments for it (Twitch refuses a local page), from
+  Twitch's media hosts only, streamed through, never stored.
+- **Quitting** with a recording running asks: **Stop, save and quit**, **Discard and quit**, or
+  **Keep recording**. Closing the window counts as quitting.
+- *Download again* never applies to a live recording: its link is the channel, which records
+  whatever is on the air now.
+
+Only Twitch is recorded live; a direct `.m3u8` link is not.
+
 ## Updates
 
 The app checks this project's releases at start-up and every 6 hours (Settings →

@@ -98,6 +98,11 @@ export class AppStore {
   #counts: JobCounts | undefined
   /** Bytes per second of every working job, summed as each job reports — O(1) per change. */
   #speed = 0
+  /** Live recordings not over yet, by id: started here, or a standalone job reporting live progress. */
+  readonly #recordingIds = new Set<JobId>()
+  #recordings: readonly JobSnapshot[] = []
+  /** Recordings that ended since the app last asked (a notice says how each one ended). */
+  #ended: JobSnapshot[] = []
 
   get version(): number {
     return this.#version
@@ -118,6 +123,25 @@ export class AppStore {
   /** The downloads' combined speed (B/s): a sum kept per change, never a scan of the jobs. */
   get speed(): number {
     return this.#speed
+  }
+
+  /** The live recordings running (or saving): a new array only when one of them changes. O(1) to read. */
+  get recordings(): readonly JobSnapshot[] {
+    return this.#recordings
+  }
+
+  /** A recording this window started (it may report live progress only once it runs). */
+  addRecording(job: JobSnapshot): void {
+    this.#recordingIds.add(job.id)
+    this.#setJob(job)
+    this.#notify()
+  }
+
+  /** Recordings that ended since the last call, oldest first; the list empties. */
+  takeEndedRecordings(): JobSnapshot[] {
+    const ended = this.#ended
+    this.#ended = []
+    return ended
   }
 
   get counts(): JobCounts {
@@ -230,6 +254,18 @@ export class AppStore {
     }
     // Map keeps insertion order: re-inserting keeps a job in its original row
     this.jobs.set(job.id, job)
+    this.#followRecording(job, before)
+  }
+
+  /** O(1) for any other job; O(r) to rebuild the list when a recording changes (r: single digits). */
+  #followRecording(job: JobSnapshot, before: JobSnapshot | undefined): void {
+    const recording = this.#recordingIds.has(job.id) || (job.progress.live === true && !job.batchId)
+    if (!recording) return
+    if (TERMINAL.has(job.status)) {
+      if (!this.#recordingIds.delete(job.id)) return
+      if (before && !TERMINAL.has(before.status)) this.#ended.push(job)
+    } else this.#recordingIds.add(job.id)
+    this.#recordings = [...this.#recordingIds].flatMap(id => this.jobs.get(id) ?? [])
   }
 
   /** Drop the oldest finished jobs beyond the cap (running ones are never dropped); they stay counted. */

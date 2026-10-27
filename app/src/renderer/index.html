@@ -3,10 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- the renderer loads only its own bundle; no remote code, no inline scripts -->
+    <!-- the renderer loads only its own bundle; no remote code, no inline scripts. The live player
+         (hls.js) reads mdc-live: (the main process proxies Twitch) into a blob: MediaSource -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' mdc-live:; media-src 'self' blob:; worker-src 'self' blob:"
     />
     <title>Media Download Core</title>
     <meta name="description" content="Desktop & web media downloader and playlist archiver with verified downloads, format profiles, and integrity validation." />

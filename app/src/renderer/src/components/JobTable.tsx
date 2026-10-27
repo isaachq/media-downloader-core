@@ -118,6 +118,16 @@ export function JobTable({
       key: 'progress',
       width: 230,
       render: (_, job) => {
+        // a live recording has no end to measure: REC and how long it has recorded, no bar
+        if (job.progress.live && job.status === 'downloading')
+          return (
+            <Space size={4} className="job-progress" data-testid="job-live">
+              <Tag color="red">● {t('live.rec')}</Tag>
+              <Typography.Text className="mono">
+                {clock(job.progress.elapsedSec) || '0:00'} · {rate(job.progress.speed, settings.language)}
+              </Typography.Text>
+            </Space>
+          )
         const fraction = job.progress.fraction
         const percent = job.outcome === 'success' ? 100 : fraction === undefined ? 0 : Math.round(fraction * 100)
         const status = job.outcome === 'failed' ? 'exception' : job.outcome === 'success' ? 'success' : 'active'

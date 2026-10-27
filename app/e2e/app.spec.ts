@@ -4,9 +4,9 @@ import * as http from 'node:http'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import {type ElectronApplication, _electron as electron, expect, type Page, test} from '@playwright/test'
-import {startFakeHls} from '../../test/helpers/fake-hls'
+import {startFakeHls, startFakeLive} from '../../test/helpers/fake-hls'
 import {startFakeTikTok} from '../../test/helpers/fake-tiktok'
-import {startFakeTwitch, VOD_TRACKS, VODS, WEB_ID} from '../../test/helpers/fake-twitch'
+import {LIVE, LIVE_TRACKS, startFakeTwitch, VOD_TRACKS, VODS, WEB_ID} from '../../test/helpers/fake-twitch'
 import {writeFakes} from '../../test/helpers/fakes'
 import {listenLocal} from '../../test/helpers/listen'
 
@@ -782,5 +782,71 @@ test('a subscriber-only Twitch VOD downloads once a browser session is chosen', 
   } finally {
     await site.close()
     await hls.close()
+  }
+})
+
+test('records a live Twitch channel, stops and keeps the file; a discarded one leaves nothing', {
+  tag: '@full',
+}, async () => {
+  const live = await startFakeLive({tracks: LIVE_TRACKS})
+  const site = await startFakeTwitch({live})
+  // the fake channel's clock: 2 s of stream every 200 ms (the recorder's own waits are real)
+  const tick = setInterval(() => live.clock.advance(2000), 200)
+  try {
+    const {app, page, outDir, dataDir} = await launch('twitch-live', {format: 'mp4'}, {MDC_TWITCH_ORIGIN: site.origin})
+    const link = `https://www.twitch.tv/${LIVE.onAir}`
+    const record = async () => {
+      await page.getByLabel('Video, playlist or profile URL').fill(link)
+      await page
+        .getByRole('button', {name: /download|schedule/i})
+        .first()
+        .click()
+      // a channel on the air is recorded or watched, never scheduled as a download
+      const modal = page.getByTestId('live-modal')
+      await expect(modal).toContainText('Recording starts from the last half minute')
+      await modal.getByRole('button', {name: /record/i}).click()
+      await expect(modal).toHaveCount(0)
+      await expect(page.getByTestId('recording')).toHaveAttribute('data-status', 'downloading')
+      // it records: a clock, REC, and no batch
+      await expect(page.getByTestId('recording-elapsed')).toBeVisible({timeout: 30_000})
+      await expect(page.getByTestId('recording-elapsed')).not.toHaveText('0:00 recorded', {timeout: 30_000})
+      await expect(page.getByTestId('batch-card')).toHaveCount(0)
+    }
+
+    await record()
+    await page.waitForTimeout(400)
+    await page.screenshot({path: path.join(APP_DIR, 'test-results', 'live-recording.png')})
+    await page.getByTestId('recording-stop').click()
+    // saved like any download (converted, finalized), then it leaves the card
+    await expect(page.getByTestId('recordings')).toHaveCount(0, {timeout: 60_000})
+    const saved = (await fs.readdir(outDir)).filter(name => name.endsWith('.mp4'))
+    expect(saved).toHaveLength(1)
+    expect((await fs.stat(path.join(outDir, saved[0]!))).size).toBeGreaterThan(0)
+    await page.getByRole('tab', {name: /^Finished/}).click()
+    await expect(page.getByTestId('finished-live')).toBeVisible()
+    await page.getByRole('tab', {name: /^Batches/}).click()
+
+    // the same channel again, discarded: nothing new on disk, no work folder left
+    await record()
+    await page.getByTestId('recording-discard').click()
+    await page.locator('.ant-popconfirm').getByRole('button', {name: 'Discard'}).click()
+    await expect(page.getByTestId('recordings')).toHaveCount(0, {timeout: 30_000})
+    expect((await fs.readdir(outDir)).filter(name => name.endsWith('.mp4'))).toEqual(saved)
+    const work = await fs.readdir(path.join(dataDir, 'work')).catch(() => [])
+    expect(work).toEqual([])
+
+    // quitting while it records: the window asks; Stop, save and quit keeps the file, then quits
+    await record()
+    const exited = new Promise<void>(resolve => app.process().once('exit', () => resolve()))
+    await app.evaluate(({app: electronApp}) => electronApp.quit())
+    const ask = page.getByTestId('quit-recording')
+    await expect(ask).toContainText('1 recording(s) still running')
+    await ask.getByRole('button', {name: 'Stop, save and quit'}).click()
+    await exited
+    expect((await fs.readdir(outDir)).filter(name => name.endsWith('.mp4'))).toHaveLength(2)
+  } finally {
+    clearInterval(tick)
+    await site.close()
+    await live.close()
   }
 })

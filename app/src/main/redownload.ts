@@ -82,10 +82,19 @@ export function retryTarget(
  * (a photo post kept as a folder, as that folder again). Records whose format
  * can't be read back are left out; undefined when none is left. O(n).
  */
+/**
+ * A live recording's record: its id is `live-<stream>-<start>` (the Twitch source's). Its link is
+ * the channel's, which records whatever is on the air now: it is never downloaded again. O(1).
+ */
+export function isLiveRecord(record: Pick<HistoryRecord, 'mediaId' | 'extractor'>): boolean {
+  return record.mediaId.startsWith('live-') && record.extractor.toLowerCase() === 'twitch'
+}
+
 export function redownloadRequest(records: readonly HistoryRecord[], title: string) {
   const entries = []
   const targets: BatchTarget[] = []
   for (const record of records) {
+    if (isLiveRecord(record)) continue
     const profile = profileFromKey(record.profile)
     if (!profile || !record.url) continue
     const index: number = entries.length + 1

@@ -14,7 +14,7 @@ import thTH from 'antd/locale/th_TH'
 import trTR from 'antd/locale/tr_TR'
 import viVN from 'antd/locale/vi_VN'
 import zhCN from 'antd/locale/zh_CN'
-import type {BatchSnapshot, Diagnosis} from 'media-downloader-core'
+import type {BatchSnapshot, Diagnosis, JobSnapshot} from 'media-downloader-core'
 import {type ReactNode, useCallback, useEffect, useMemo, useRef, useState} from 'react'
 import {type AppInfo, type AppSettings, isRtl, type Language, pickLanguage} from '../../shared/contract'
 import {api} from './api'
@@ -29,6 +29,7 @@ import {FinishedList} from './components/FinishedList'
 import {FirstSteps} from './components/FirstSteps'
 import {Header} from './components/Header'
 import {JobTable} from './components/JobTable'
+import {LivePlayerHost, QuitRecordingModal, RecordingsCard, recordingText} from './components/Live'
 import {LogsDrawer} from './components/LogsDrawer'
 import {ReportModal} from './components/ReportModal'
 import {SettingsDrawer} from './components/SettingsDrawer'
@@ -134,6 +135,21 @@ function useBatchNotifications(t: Translate, settings: AppSettings, onShowFinish
   )
 }
 
+/** A recording that ended: saved (how it ended, its gaps, the ads left out) or failed; a discard says nothing. */
+function useRecordingNotifications(t: Translate, settings: AppSettings) {
+  const notify = useNotify()
+  return useCallback(
+    (job: JobSnapshot) => {
+      if (!settings.notifications || job.status === 'cancelled') return
+      const title = job.title ?? job.url
+      if (job.status === 'completed')
+        notify('success', t('live.notify.saved', {title}), job.recording ? recordingText(t, job.recording) : '')
+      else if (job.status === 'failed') notify('error', title, job.error?.message ?? '')
+    },
+    [settings.notifications, notify, t],
+  )
+}
+
 /** A tab label with its live count; the count only re-renders this label, and only when it changes. */
 function CountLabel({label, count}: {readonly label: string; readonly count: (store: AppStore) => number}) {
   const value = useStoreValue(count)
@@ -193,6 +209,7 @@ function Shell({
   }, [])
   const onShowFinished = useCallback((batchId: string) => showBatch('finished', batchId), [showBatch])
   const notify = useBatchNotifications(t, settings, onShowFinished)
+  const notifyRecording = useRecordingNotifications(t, settings)
   const [diagnosis, setDiagnosis] = useState(initialDiagnosis)
   const [setup, setSetup] = useState<{open: boolean; force: boolean}>({open: !initialDiagnosis.ready, force: false})
 
@@ -201,8 +218,9 @@ function Shell({
       api().onEvents(bundle => {
         target.apply(bundle)
         if (bundle.batches.length) notify(bundle.batches)
+        for (const job of target.takeEndedRecordings()) notifyRecording(job)
       }),
-    [notify, target],
+    [notify, notifyRecording, target],
   )
   useEffect(() => api().onYouTube(state => target.setYouTube(state)), [target])
 
@@ -223,11 +241,14 @@ function Shell({
         />
         <Layout.Content className="app-content">
           <UpdateBanner />
+          <LivePlayerHost />
+          <QuitRecordingModal />
           {/* YouTube's access (a bot check, signing in): always there, it shows only when it has something to say */}
           <YouTubeAccess />
           {/* Sync Up (in the top card) opens its batches in the tabs below too */}
           <ShowBatchContext.Provider value={showBatch}>
             <DownloadBar />
+            <RecordingsCard />
             <Stats onOpen={setTab} onFailed={() => setPanel('failed')} />
             <Tabs
               className="main-tabs"

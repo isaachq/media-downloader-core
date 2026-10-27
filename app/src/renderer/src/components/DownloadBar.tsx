@@ -26,6 +26,7 @@ import {errorText} from '../format'
 import {type MessageKey, useT} from '../i18n'
 import {type AppStore, useAppStore, useStoreValue} from '../store'
 import {AnalyzeLoader} from './AnalyzeLoader'
+import {isLivePreview, LiveModal} from './Live'
 import {MixListModal} from './MixListModal'
 import {type PlaylistPreview, type PreviewChoice, PreviewModal} from './PreviewModal'
 import {SiteTag} from './SiteTag'
@@ -92,6 +93,8 @@ export function DownloadBar() {
   const slideshow = {mode: settings.slideshowMode, secondsPerImage: settings.slideshowSeconds}
   /** A single slideshow link waiting for its choice. */
   const [slide, setSlide] = useState<{url: string; title: string} | undefined>()
+  /** A Twitch channel on the air: recorded or watched, never scheduled as a download. */
+  const [live, setLive] = useState<{url: string; preview: Parameters<typeof LiveModal>[0]['preview']} | undefined>()
 
   const schedule = async (target: string, extra: Pick<ScheduleInput, 'selection'> = {}) => {
     const batch = await api().schedule({
@@ -118,6 +121,7 @@ export function DownloadBar() {
     try {
       const result = await api().analyze(target)
       if (result.kind === 'playlist') setPreview({url: target, data: result})
+      else if (isLivePreview(result)) setLive({url: target, preview: result})
       // a slideshow with a video format: first, what it should become
       else if (result.slideshow && !audio) setSlide({url: target, title: result.title})
       else await schedule(target)
@@ -376,6 +380,18 @@ export function DownloadBar() {
           ? t('download.scheduledHint', {position: waiting})
           : t('download.capacity', {normal: cap, cpus: info.cpus, long: longAtOnce})}
       </Typography.Text>
+      {live ? (
+        <LiveModal
+          url={live.url}
+          preview={live.preview}
+          onRecording={() => {
+            setLive(undefined)
+            setUrl('')
+            setTouched(false)
+          }}
+          onClose={() => setLive(undefined)}
+        />
+      ) : null}
       {slide ? (
         <SlideshowModal
           title={slide.title}

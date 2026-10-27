@@ -469,6 +469,11 @@ export function FinishedList({
                 </Typography.Text>
                 <Typography.Text type="secondary" className="one-line mono" title={entry.filepath}>
                   <SiteTag site={entry.site} className="finished-site" />
+                  {entry.live ? (
+                    <Tag color="red" className="finished-site" data-testid="finished-live">
+                      {t('live.finishedTag')}
+                    </Tag>
+                  ) : null}
                   {/* a named site says it all; another website's extractor names it (Vimeo…) */}
                   {[
                     entry.site === 'web' ? entry.extractor : undefined,

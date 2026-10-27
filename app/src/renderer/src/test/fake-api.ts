@@ -228,6 +228,25 @@ export class FakeApi implements MdcApi {
   items = vi.fn(async () => this.itemsPage)
   cancelBatch = vi.fn(async () => {})
   cancelJob = vi.fn(async () => {})
+  /** What record() answers: a running live job by default. */
+  recorded: JobSnapshot | undefined
+  record = vi.fn(async (input: ScheduleInput): Promise<JobSnapshot> => {
+    const snapshot =
+      this.recorded ?? job({url: input.url, status: 'downloading', progress: {live: true, elapsedSec: 0, bytes: 0}})
+    return snapshot
+  })
+  stopJob = vi.fn(async () => true)
+  liveOpen = vi.fn(async (_url: string) => ({sid: 'sid1', src: 'mdc-live://sid1/master.m3u8'}))
+  liveClose = vi.fn(async () => {})
+  #quitRequests = new Set<(recordings: number) => void>()
+  onQuitRequested(listener: (recordings: number) => void): () => void {
+    this.#quitRequests.add(listener)
+    return () => this.#quitRequests.delete(listener)
+  }
+  requestQuit(recordings: number): void {
+    for (const listener of this.#quitRequests) listener(recordings)
+  }
+  quitWith = vi.fn(async () => {})
   retryJob = vi.fn(async () => {})
   retryBatch = vi.fn(async (_batchId: BatchId) => 1)
   pause = vi.fn(async () => {})

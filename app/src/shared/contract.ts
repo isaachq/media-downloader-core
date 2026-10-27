@@ -306,6 +306,10 @@ export type UpdateState =
   | {readonly status: 'installing'; readonly version: string; readonly page: string}
   | {readonly status: 'error'; readonly message: string; readonly page: string; readonly version?: string}
 
+/** Quitting with recordings running: stop and save them, discard them, or don't quit. */
+export type QuitChoice = 'save' | 'discard' | 'keep'
+export const QUIT_CHOICES: readonly QuitChoice[] = ['save', 'discard', 'keep']
+
 /** What a link holds, for the preview — without local paths or format lists. */
 export type Preview =
   | {
@@ -314,6 +318,8 @@ export type Preview =
       readonly duration?: number | undefined
       /** A TikTok photo post: its images and whether it has sound. */
       readonly slideshow?: {readonly images: number; readonly audio: boolean} | undefined
+      /** A Twitch channel on the air: it is recorded (or watched), not downloaded. */
+      readonly live?: {readonly channel: string; readonly startedAt?: number | undefined} | undefined
     }
   | {
       readonly kind: 'playlist'
@@ -356,6 +362,8 @@ export type FinishedEntry = {
   readonly batchTitle?: string | undefined
   /** Broken at the source (what the check found): kept, never downloaded again. */
   readonly damaged?: string | undefined
+  /** A live recording (Twitch): its link records whatever is on the air now, so it is never downloaded again. */
+  readonly live?: boolean | undefined
 }
 
 /** Integrity states the history can be filtered by (the Integrity column). */
@@ -480,6 +488,16 @@ export type MdcApi = {
   items(batchId: BatchId, offset: number, limit: number): Promise<PreflightItem[]>
   cancelBatch(batchId: BatchId): Promise<void>
   cancelJob(jobId: JobId): Promise<void>
+  /** Record a live channel (a preview with `live`): a job of its own, not a batch. */
+  record(input: ScheduleInput): Promise<JobSnapshot>
+  /** Stop a recording and keep what it recorded (Cancel discards it). False when nothing was recording. */
+  stopJob(jobId: JobId): Promise<boolean>
+  /** A player for a live channel: hls.js's `src` (an `mdc-live:` url). Undefined off the air. */
+  liveOpen(url: string): Promise<{readonly sid: string; readonly src: string} | undefined>
+  liveClose(sid: string): Promise<void>
+  /** Quitting with recordings running: the window asks what to do with them. */
+  onQuitRequested(listener: (recordings: number) => void): () => void
+  quitWith(choice: QuitChoice): Promise<void>
   retryJob(jobId: JobId): Promise<void>
   /** Download a batch's failed items again (the batch reopens); how many were retried. */
   retryBatch(batchId: BatchId): Promise<number>
@@ -571,6 +589,12 @@ export const CHANNEL = {
   items: 'mdc:items',
   cancelBatch: 'mdc:cancel-batch',
   cancelJob: 'mdc:cancel-job',
+  record: 'mdc:record',
+  stopJob: 'mdc:stop-job',
+  liveOpen: 'mdc:live:open',
+  liveClose: 'mdc:live:close',
+  quitRequested: 'mdc:quit-requested',
+  quitWith: 'mdc:quit-with',
   retryJob: 'mdc:retry-job',
   retryBatch: 'mdc:retry-batch',
   pause: 'mdc:pause',

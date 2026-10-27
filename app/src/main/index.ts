@@ -2,7 +2,7 @@ import {randomUUID} from 'node:crypto'
 import {appendFileSync, readFileSync} from 'node:fs'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
-import {app, BrowserWindow, dialog, ipcMain, nativeTheme, screen, shell} from 'electron'
+import {app, BrowserWindow, dialog, ipcMain, nativeTheme, net, protocol, screen, shell} from 'electron'
 import {
   type BatchId,
   BatchScheduler,
@@ -14,6 +14,7 @@ import {
   isTikTokProfile,
   isYouTubeMix,
   type JobId,
+  type JobSnapshot,
   MAX_CPU_SHARE,
   MAX_LISTED_ITEMS,
   MAX_REQUESTED_ITEMS,
@@ -52,6 +53,8 @@ import {
   type MixPreview,
   type MixScheduleInput,
   type Preview,
+  QUIT_CHOICES,
+  type QuitChoice,
   RESTART_SETTINGS,
   type ScheduleInput,
   type SetupOutcome,
@@ -65,9 +68,10 @@ import {
   type VerifySummary,
 } from '../shared/contract'
 import {EventCoalescer} from './events'
+import {SCHEME as LIVE_SCHEME, LiveProxy} from './live-proxy'
 import {createMetaBrowser} from './meta-browser'
 import {createPlayerBrowser} from './player-browser'
-import {redownloadRequest, retryTarget} from './redownload'
+import {isLiveRecord, redownloadRequest, retryTarget} from './redownload'
 import {defaultSettings, SettingsStore} from './settings'
 import {taskbarState} from './taskbar'
 import {createTikTokBrowser} from './tiktok-browser'
@@ -230,6 +234,60 @@ let warmDiagnosis: Promise<Diagnosis> | undefined
 const PREVIEW_TTL_MS = 10 * 60_000
 const PREVIEW_SLOTS = 16
 const previews = new Map<string, {readonly analysis: VideoAnalysis; readonly at: number}>()
+
+/** Recordings started from the window: a quit asks what to do with the ones still running. */
+const recordings = new Set<JobId>()
+const TERMINAL: ReadonlySet<JobSnapshot['status']> = new Set(['completed', 'skipped', 'failed', 'cancelled'])
+/** The live player's proxy (mdc-live:), made with the engine. */
+let liveProxy: LiveProxy | undefined
+/** The user answered what to do with running recordings (or there was no window to ask). */
+let recordingsDecided = false
+
+/** Live recordings not over yet: started here, or a restored job recording. O(jobs), only at quit. */
+function runningRecordings(): JobSnapshot[] {
+  return engine
+    .jobs()
+    .filter(job => !TERMINAL.has(job.status) && (recordings.has(job.id) || job.progress.live === true))
+}
+
+/** Resolves once every one of these jobs has ended (completed, failed or cancelled). */
+function whenEnded(ids: readonly JobId[]): Promise<void> {
+  return new Promise(resolve => {
+    const pending = new Set<JobId>()
+    const onJob = (job: JobSnapshot) => {
+      if (TERMINAL.has(job.status)) pending.delete(job.id)
+      if (pending.size === 0) {
+        engine.off('job', onJob)
+        resolve()
+      }
+    }
+    // listening first: a job that ends while this looks is not missed
+    engine.on('job', onJob)
+    for (const id of ids) {
+      const job = engine.job(id)
+      if (job && !TERMINAL.has(job.status)) pending.add(id)
+    }
+    if (pending.size === 0) {
+      engine.off('job', onJob)
+      resolve()
+    }
+  })
+}
+
+/**
+ * Ends the running recordings before a quit: 'save' stops each (it is kept, validated and
+ * archived like any download; one still queued has nothing to keep and is cancelled),
+ * 'discard' cancels each. O(r).
+ */
+async function endRecordings(choice: 'save' | 'discard'): Promise<void> {
+  const live = runningRecordings()
+  for (const job of live) {
+    if (choice === 'discard' || !engine.stop(job.id)) engine.cancel(job.id)
+  }
+  phase(`quit: ${live.length} recording(s) ${choice === 'save' ? 'stopped' : 'discarded'}`)
+  await whenEnded(live.map(job => job.id))
+  phase('quit: recordings ended')
+}
 
 function rememberPreview(url: string, analysis: VideoAnalysis): void {
   previews.delete(url)
@@ -462,8 +520,14 @@ function createWindow(): void {
     tiktokBrowser.close()
     for (const browser of [...playerBrowsers, ...metaBrowsers]) browser.close()
   })
-  window.on('close', () => {
+  window.on('close', event => {
     if (!window) return
+    // closing the window quits the app: a recording running is asked about first
+    if (!recordingsDecided && engine && runningRecordings().length > 0) {
+      event.preventDefault()
+      send(CHANNEL.quitRequested, runningRecordings().length)
+      return
+    }
     writeWindowState(stateFile, {...window.getNormalBounds(), maximized: window.isMaximized()})
   })
   // the app never navigates; links (About, docs) open in the system browser, https only
@@ -574,6 +638,13 @@ function registerIpc(): void {
         title: analysis.media.title,
         duration: analysis.media.duration,
         slideshow: analysis.media.slideshow,
+        ...(analysis.media.isLive && {
+          live: {
+            channel: analysis.media.uploader ?? analysis.media.title,
+            // unix seconds → ms, as the renderer's dates are
+            startedAt: analysis.media.publishedAt === undefined ? undefined : analysis.media.publishedAt * 1000,
+          },
+        }),
       }
     }
     return {
@@ -682,6 +753,32 @@ function registerIpc(): void {
   )
   ipcMain.handle(CHANNEL.cancelBatch, (_event, id: BatchId) => scheduler.cancel(id))
   ipcMain.handle(CHANNEL.cancelJob, (_event, id: JobId) => engine.cancel(id))
+  ipcMain.handle(CHANNEL.record, async (_event, input: ScheduleInput): Promise<JobSnapshot> => {
+    if (typeof input?.url !== 'string' || typeof input.outDir !== 'string') throw new Error('Invalid request.')
+    // one recording per channel: Record again finds the one already running
+    const running = runningRecordings().find(job => job.url === input.url)
+    if (running) return running
+    const analysis = takePreview(input.url) ?? (await engine.analyze(input.url))
+    if (analysis.kind !== 'video' || !analysis.media.isLive) throw new Error('This channel is not live right now.')
+    const job = engine.addVideo(analysis, toProfile(input), input.outDir)
+    recordings.add(job.id)
+    return job
+  })
+  ipcMain.handle(CHANNEL.stopJob, (_event, id: JobId) => engine.stop(id))
+  ipcMain.handle(CHANNEL.liveOpen, async (_event, url: unknown) => {
+    if (typeof url !== 'string' || !liveProxy) throw new Error('Invalid request.')
+    return liveProxy.open(url)
+  })
+  ipcMain.handle(CHANNEL.liveClose, (_event, sid: unknown) => {
+    if (typeof sid === 'string') liveProxy?.close(sid)
+  })
+  ipcMain.handle(CHANNEL.quitWith, async (_event, choice: QuitChoice) => {
+    if (!QUIT_CHOICES.includes(choice)) throw new Error('Invalid request.')
+    if (choice === 'keep') return
+    recordingsDecided = true
+    await endRecordings(choice)
+    app.quit()
+  })
   // through the scheduler: a job of a batch is retried with its batch, which reopens and follows it
   ipcMain.handle(CHANNEL.retryJob, (_event, id: JobId) => void scheduler.retryJob(id))
   ipcMain.handle(CHANNEL.retryBatch, (_event, id: BatchId) => scheduler.retryFailed(id))
@@ -734,6 +831,7 @@ function registerIpc(): void {
           batchId: entry.batchId,
           batchTitle: entry.batchTitle,
           damaged: entry.damaged,
+          ...(isLiveRecord(entry) && {live: true}),
           file,
         }
       }),
@@ -1257,6 +1355,14 @@ async function folderOf(target: unknown): Promise<string | undefined> {
   return exists ? batch.outDir : undefined
 }
 
+// the live player's playlists and segments (live-proxy.ts): fetch-able, streamed, CORS for the page
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: LIVE_SCHEME,
+    privileges: {standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true},
+  },
+])
+
 if (!app.requestSingleInstanceLock()) app.quit()
 else {
   // opened again while this one is still quitting: its window may be gone already
@@ -1287,6 +1393,16 @@ else {
     nativeTheme.themeSource = current.theme
     createEngine(current)
     phase('start: engine created')
+    const twitchFake = process.env['MDC_TWITCH_LIVE_ORIGIN']
+    liveProxy = new LiveProxy({
+      playback: (url, opts) => engine.livePlayback(url, opts),
+      fetch: (url, init) => net.fetch(url, init),
+      // e2e runs serve "Twitch's CDN" from a local fake live origin
+      ...(twitchFake && {
+        allowSegment: url => url.origin === new URL(twitchFake).origin || url.hostname.endsWith('.ttvnw.net'),
+      }),
+    })
+    protocol.handle(LIVE_SCHEME, request => liveProxy!.handle(request))
     const firstDiagnosis = engine.diagnose()
     warmDiagnosis = firstDiagnosis
     registerIpc()
@@ -1325,6 +1441,23 @@ else {
   app.on('before-quit', event => {
     phase(`quit: before-quit (quitting=${quitting}, engine=${Boolean(engine)})`)
     if (quitting || !engine) return
+    // recordings running: the window asks (save / discard / keep), then quits through quitWith;
+    // the forced-exit timer below is armed only once they have ended
+    if (!recordingsDecided) {
+      const live = runningRecordings()
+      if (live.length > 0) {
+        event.preventDefault()
+        if (window && !window.isDestroyed()) {
+          window.show()
+          send(CHANNEL.quitRequested, live.length)
+        } else {
+          // no window to ask in (macOS: quit from the Dock after closing it): keep what was recorded
+          recordingsDecided = true
+          void endRecordings('save').finally(() => app.quit())
+        }
+        return
+      }
+    }
     event.preventDefault()
     quitting = true
     sync.dispose()

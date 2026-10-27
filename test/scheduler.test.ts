@@ -394,8 +394,12 @@ describe('BatchScheduler', () => {
   it('a song kept as M4A is still a song after a restore', async () => {
     const first = setup('song-restore')
     first.engine.pause() // checked, nothing downloaded before the "crash"
-    first.scheduler.schedule({url: 'https://fake.test/list-songs', profile: video, outDir: first.out})
-    await new Promise(resolve => setTimeout(resolve, 300))
+    const scheduled = first.scheduler.schedule({url: 'https://fake.test/list-songs', profile: video, outDir: first.out})
+    // checked (the song is a target now) before the "crash", however slow the machine
+    for (let waited = 0; first.scheduler.batch(scheduled.id)?.status !== 'running' && waited < 10_000; waited += 50) {
+      await new Promise(resolve => setTimeout(resolve, 50))
+    }
+    assert.equal(first.scheduler.batch(scheduled.id)?.status, 'running')
     await first.scheduler.dispose()
     await first.engine.dispose()
 

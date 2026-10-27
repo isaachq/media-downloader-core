@@ -428,8 +428,42 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
     return this.#retry(batch!, [jobId])[0]
   }
 
-  /** The new jobs, one per job that could be retried. */
-  #retry(batch: Batch, jobIds: readonly JobId[]): JobSnapshot[] {
+  /**
+   * A job the source refused as sound only (`audioOnly`) with a video profile:
+   * its item becomes a song target and the job is queued again as M4A, after this
+   * event (the engine is emitting it). False when it is not such a job. O(items), once per song.
+   */
+  #asSong(batch: Batch, job: JobSnapshot): boolean {
+    if (job.profile.kind !== 'video' || job.error?.hint !== 'format-unavailable' || !job.error.params?.['audioOnly']) {
+      return false
+    }
+    const item = batch.items.find(entry => entry.jobId === job.id)
+    if (!item) return false
+    const place = this.#songPlace(batch, item.index)
+    batch.targets.set(item.index, {...batch.targets.get(item.index), ...place, index: item.index, profile: SONG})
+    this.#store.touch()
+    this.#engine.log('info', `${job.url}: no picture, downloaded as M4A`, {batchId: batch.id, jobId: job.id})
+    queueMicrotask(() => {
+      const changes = {
+        profile: SONG,
+        ...(place.outDir !== undefined && {outDir: place.outDir}),
+        ...(place.playlist !== undefined && {playlist: place.playlist}),
+      }
+      this.#retry(batch, [job.id], changes, false)
+    })
+    return true
+  }
+
+  /**
+   * The new jobs, one per job that could be retried. `changes`: another format or
+   * folder for them; `counted` false for a job never counted as failed (#asSong).
+   */
+  #retry(
+    batch: Batch,
+    jobIds: readonly JobId[],
+    changes: Partial<Pick<JobRequest, 'profile' | 'outDir' | 'playlist'>> = {},
+    counted = true,
+  ): JobSnapshot[] {
     // while its files are being checked a batch takes nothing new: try again once it has closed
     if (batch.status === 'validating') return []
     const reopen = TERMINAL.has(batch.status)
@@ -440,13 +474,13 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
       if (item.jobId) itemOf.set(item.jobId, position)
     })
     for (const oldId of jobIds) {
-      const job = this.#engine.retry(oldId)
+      const job = this.#engine.retry(oldId, changes)
       if (!job) continue
       retried.push(job)
       batch.jobs.delete(oldId)
       this.#byJob.delete(oldId)
       // a cancelled item comes back into the batch; a failed one is no longer a failure
-      if (!batch.cancelledJobs.delete(oldId)) {
+      if (!batch.cancelledJobs.delete(oldId) && counted) {
         batch.failed--
         const cause = batch.failedCause.get(oldId)
         batch.failedCause.delete(oldId)
@@ -980,6 +1014,8 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
     if (!batch || TERMINAL.has(batch.status)) return
     const before = batch.jobs.get(job.id)
     if (before === undefined) return
+    // a song refused as a video (an item not checked before a restore): it comes back as M4A, never a failure
+    if (job.outcome === 'failed' && before !== 'failed' && this.#asSong(batch, job)) return
     const isRunning = !isTerminal(job.status) && job.status !== 'queued'
     const wasRunning = batch.running.has(job.id)
     if (isRunning !== wasRunning) {

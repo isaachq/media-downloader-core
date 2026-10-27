@@ -228,7 +228,8 @@ export class SoundcloudSource implements MediaSource {
         'invalid-request',
         'SoundCloud tracks are audio only: choose an audio format (M4A keeps SoundCloud’s AAC as it is).',
         undefined,
-        undefined,
+        // a batch of videos takes it as a song (BatchScheduler): M4A
+        {audioOnly: 1},
         'format-unavailable',
       )
     }

@@ -3,8 +3,11 @@ import {
   FileOutlined,
   GlobalOutlined,
   InstagramOutlined,
+  SnapchatFilled,
   TeamOutlined,
+  ThreadsFilled,
   TikTokOutlined,
+  TwitchFilled,
   XOutlined,
   YoutubeFilled,
 } from '@ant-design/icons'
@@ -12,6 +15,7 @@ import {Tag} from 'antd'
 import type {ReactNode} from 'react'
 import {useT} from '../i18n'
 import {type SiteLabel, siteName} from '../site'
+import {BlueskyFilled, SoundcloudFilled} from './siteIcons'
 
 /** Each site's icon and tag colour (antd presets, so both themes read them). */
 const LOOK: Readonly<Record<SiteLabel, {readonly icon: ReactNode; readonly color: string}>> = {
@@ -21,6 +25,11 @@ const LOOK: Readonly<Record<SiteLabel, {readonly icon: ReactNode; readonly color
   facebook: {icon: <FacebookFilled />, color: 'blue'},
   vk: {icon: <TeamOutlined />, color: 'geekblue'},
   x: {icon: <XOutlined />, color: 'default'},
+  threads: {icon: <ThreadsFilled />, color: 'default'},
+  bluesky: {icon: <BlueskyFilled />, color: 'blue'},
+  twitch: {icon: <TwitchFilled />, color: 'purple'},
+  soundcloud: {icon: <SoundcloudFilled />, color: 'orange'},
+  snapchat: {icon: <SnapchatFilled />, color: 'gold'},
   web: {icon: <GlobalOutlined />, color: 'green'},
   file: {icon: <FileOutlined />, color: 'orange'},
 }

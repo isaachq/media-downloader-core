@@ -509,6 +509,22 @@ test('one link box for every site: an old settings.json with a mode loads, Sync 
     await expect(page.getByTestId('site-tag')).toHaveAttribute('data-site', 'youtube')
     await field.fill('https://vk.com/video-1_2')
     await expect(page.getByTestId('site-tag')).toHaveText('VK')
+    // the beta 11 sites: each tagged with its name and an icon that draws
+    for (const [link, site, name] of [
+      ['https://www.threads.com/@zuck/post/C1', 'threads', 'Threads'],
+      ['https://bsky.app/profile/bsky.app', 'bluesky', 'Bluesky'],
+      ['https://www.twitch.tv/videos/1', 'twitch', 'Twitch'],
+      ['https://soundcloud.com/a/b', 'soundcloud', 'SoundCloud'],
+      ['https://www.snapchat.com/spotlight/W7_1', 'snapchat', 'Snapchat'],
+    ] as const) {
+      await field.fill(link)
+      const tag = page.getByTestId('site-tag')
+      await expect(tag).toHaveAttribute('data-site', site)
+      await expect(tag).toHaveText(name)
+      await expect(tag.locator('svg')).toBeVisible()
+    }
+    // the tag eases from one site's colour to the next: the picture waits for it
+    await page.waitForTimeout(400)
     await page.screenshot({path: path.join(APP_DIR, 'test-results', 'every-site.png')})
     await page.getByRole('button', {name: /settings/i}).click()
     await expect(page.getByRole('switch', {name: 'Run scheduled syncs (Sync Up)'})).toBeChecked()

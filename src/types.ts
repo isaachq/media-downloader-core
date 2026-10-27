@@ -10,6 +10,7 @@ import type {SnapchatOptions} from './sources/snapchat/source.js'
 import type {MediaSource} from './sources/source.js'
 import type {ThreadsOptions} from './sources/threads/source.js'
 import type {TikTokOptions} from './sources/tiktok/source.js'
+import type {TwitchOptions} from './sources/twitch/source.js'
 import type {VkOptions} from './sources/vk/source.js'
 import type {XOptions} from './sources/x/source.js'
 import type {AttestationOptions, AttestationStrategy} from './youtube/attestation.js'
@@ -897,6 +898,16 @@ export type DownloaderOptions = {
    * which reads posts only (no galleries, no profiles).
    */
   readonly bluesky?: false | BlueskyOptions | undefined
+  /**
+   * Twitch clips through the built-in extractor (plain GraphQL queries on
+   * gql.twitch.tv, anonymous; each clip a signed progressive MP4): clips and a
+   * channel's clips (`/<channel>/clips?range=…`). VODs, video listings and live
+   * channels are HLS: a finished VOD goes to yt-dlp's Twitch extractor until
+   * the core reads HLS; a channel on the air or a VOD still recording fails as
+   * `live-now` and is never handed to yt-dlp (live streams are not
+   * downloaded). `false` hands every Twitch url to yt-dlp, live ones included.
+   */
+  readonly twitch?: false | TwitchOptions | undefined
   /**
    * Links straight to a media file (`…/clip.mp4`, `…/song.mp3`) on any other
    * site, read natively (one ranged request, then the file): extractor "Web".

@@ -57,6 +57,7 @@ import {type ListingProgress, type MediaSource, needsFallback} from './sources/s
 import {ThreadsSource} from './sources/threads/source.js'
 import {DEFAULT_SLIDESHOW, slideshowOptions} from './sources/tiktok/slideshow.js'
 import {TikTokSource} from './sources/tiktok/source.js'
+import {TwitchSource} from './sources/twitch/source.js'
 import {VkSource} from './sources/vk/source.js'
 import {XSource} from './sources/x/source.js'
 import type {
@@ -303,6 +304,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
         ? []
         : [new ThreadsSource({log, cookies: () => this.#siteCookies(['threads.com']), ...options.threads})]),
       ...(options.bluesky === false ? [] : [new BlueskySource({log, ...options.bluesky})]),
+      ...(options.twitch === false ? [] : [new TwitchSource({log, ...options.twitch})]),
       ...(options.sources ?? []),
       // a link straight to a media file, on any other site: last, after every site's own source
       ...(options.direct === false ? [] : [new DirectFileSource(options.direct)]),

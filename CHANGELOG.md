@@ -11,7 +11,7 @@ away when the beta closes.
 - [x] 0 `ci: 5-minute budget` · done · verified locally: `test:fast` 483 pass in 58 s, `test:integrity-smoke` 2 pass in 2 s, `test:heavy` 75 pass in 28 s, app unit 204 pass, `test:e2e:smoke` 3 pass in 27 s. Pending: the Actions before/after table on Isaac's first push (before: CI check jobs 15.7 to 16 min, one mix test waited a real 15-minute YouTube pause; app jobs 3.2 to 4.3 min)
 - [x] 1 `source(threads)` · done · verified locally: `typecheck` and `lint` clean, `test:fast` 519 pass / 0 fail (16 Threads tests against the fake, Threads detection), `test:heavy` 75 pass, `perf --quick` within 10% of the baseline (no regression); live `live:matrix --platform threads` 17 of 17 links pass, `--native` 17 of 17, `--native --download` 13 of 13 single posts (H.264 720x1280 + AAC, JPEG / WebP pictures, carousel folders); CDN Range answers 206, no rate limit seen. Not verified: a private profile and a signed-in session (no account), GIFs, reposts and quotes as links, the razr 50
 - [ ] 2 `core(hls)` · not done (Isaac reviews the API before code)
-- [ ] 3 `source(twitch)` · not done
+- [ ] 3 `source(twitch)` · clips done, VODs wait for `core(hls)` · clips verified locally: `typecheck` and `lint` clean on this commit's files (the in-progress `src/core/hls/` excluded), `test:fast` 562 / 560 pass / 0 fail (19 Twitch tests against the fake, Twitch detection), `test:heavy` 75 pass, `perf --quick` no regression in code this commit touches (archive.loadMs and stress swing with machine load; archive imports nothing changed here); live `live:matrix --platform twitch` 14 of 14, `--native` 14 of 14, `--native --download` 10 of 10 single clips (H.264 1920x1080 or 1280x720 + AAC per ffprobe). Client ids re-checked live: the web player's gets `IntegrityCheckFailed` on listing page 2, yt-dlp's (the default) reads pages 1 to 3; both read single clips and batches of 15. Live channel and VOD in progress fail natively as `live-now` (checked live), a finished VOD goes to yt-dlp. Not verified: a subscriber-only clip, a CDN token running out mid-download, a 429 from gql.twitch.tv, the razr 50. Pending: VODs and video listings natively (`core(hls)`), the sign-in (app commit 10)
 - [x] 4 `source(bluesky)` · done · verified locally: `typecheck` and `lint` clean, `test:fast` 540 pass / 0 fail (20 Bluesky tests against the fake, Bluesky detection), `test:heavy` 75 pass, `perf --quick` within 10% of the baseline (no regression); live `live:matrix --platform bluesky` 19 of 19 links pass, `--native` 19 of 19, `--native --download` 15 of 15 single posts (original JPEG / PNG blobs byte for byte, no WebP; H.264 1080x1920 and 720x1280 + AAC); getBlob ignores Range, no rate limit hit. yt-dlp 2026.10.21 has a Bluesky extractor (posts only, the same API and blobs): nothing handed to it. Not verified: a `!no-unauthenticated` account, did:web and third-party PDS live, a PDS 429, the HLS fallback (waits for `core(hls)`), the razr 50
 - [ ] 5 `source(soundcloud)` · not done
 - [x] 6 `source(snapchat)` · done · verified locally: `typecheck` and `lint` clean, `test:fast` 502 pass / 0 fail (18 Snapchat tests against the fake, Snapchat detection), `test:heavy` 75 pass, `perf --quick` within 10% of the baseline; live `live:matrix --platform snapchat` 15 of 15 links pass, `--native` 15 of 15, `--native --download` 8 of 8 single items (spotlights H.264 540x960 + AAC, a story snap 480x846, highlight JPEGs). Not verified: short links (no live code), a private profile page, a picture in a live story, the razr 50
@@ -24,6 +24,35 @@ away when the beta closes.
 - [ ] Android `feature/beta-11` (phone repo) · not done
 
 **Library**
+
+- **Twitch clips, natively.** Clips (`clips.twitch.tv/<slug>`, `clips.twitch.tv/embed?clip=`,
+  `twitch.tv/<channel>/clip/<slug>`, on www., m. and go.) and a channel's clips
+  (`twitch.tv/<channel>/clips`, its `?range=24hr|7d|30d|all` honoured, a week without one, as
+  the site), anonymous, from plain GraphQL queries on `gql.twitch.tv` (never the persisted
+  hashes, which rotated four times in 13 months). A clip is one query: its H.264 encodings
+  (1080p60 down to 360p) and the HEVC 1440p its playback token names, each a signed progressive
+  MP4 (`?sig=&token=`), ranked by `rankRenditions` (MP4 takes H.264, MKV / WebM the HEVC) and
+  streamed with Range; checks of clips not read yet go 15 a query (aliases). A listing is
+  `clips(first: 100)` pages, top by views, every clip signed in its page, so listed clips are
+  never read again; Twitch ends every listing at 1,000. The `Client-ID` is an option
+  (`twitch.clientId`): the default is yt-dlp's (`ue6666qo983tsx6so1t0vnawi233wa`), which read
+  every listing page live; the web player's (`kimne78kx3ncx6brgo4mv6wki5h1ko`) gets
+  `IntegrityCheckFailed` past page 1. A deleted clip or channel is `removed`; a token that says
+  forbidden (subscriber-only) is `needs-sign-in`; an integrity check is `source:blocked` (yt-dlp
+  for 10 minutes) and a renamed field or a clip without encodings `source:format-changed`
+  (yt-dlp for that url). **Live streams are never downloaded**: a channel on the air and a VOD
+  whose broadcast is still going (`status: RECORDING`) fail natively as `live-now`, never
+  handed to yt-dlp (which would record them); the live check is its own function for the
+  recorder to come (`TwitchSource.liveStream`, `readLiveStream`: stream id, login, title,
+  start). Finished VODs (`/videos/<id>`, `/<channel>/v/<id>`, the player) and video listings
+  are recognized by the link parser and handed to yt-dlp's Twitch extractor: they are HLS,
+  left for `core(hls)`. New `LinkSite` `'twitch'`, option `twitch`
+  (`clientId`, `endpoints`, `pacing`, `maxListItems`), fake and tests, live matrix scenarios
+  TW-01..03. Cost: one GraphQL request per clip, per VOD and per channel checked (⌈n / 15⌉ for n checks), O(q) to read its q
+  encodings; a listing costs ⌈n / 100⌉ requests for n clips (at most 10), O(1) per clip (Map by
+  id, cursor Set), memory O(n) clips of ~2 KB; 0 requests to download a listed clip, one media
+  GET per file, streamed, constant memory; clips kept in a 2,000-entry LRU until their token
+  runs out, listings 100, concurrent reads of one clip shared.
 
 - **Bluesky, natively.** Posts (`bsky.app/profile/<handle|did>/post/<rkey>`, its `/quotes`,
   `/likes` and `/reposted-by` pages, `at://` uris) with pictures (`images`, up to 4, and the new

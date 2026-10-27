@@ -17,6 +17,7 @@ export type LinkSite =
   | 'snapchat'
   | 'threads'
   | 'bluesky'
+  | 'twitch'
   | 'web'
 export const LINK_SITES: readonly LinkSite[] = [
   'youtube',
@@ -28,6 +29,7 @@ export const LINK_SITES: readonly LinkSite[] = [
   'snapchat',
   'threads',
   'bluesky',
+  'twitch',
   'web',
 ]
 
@@ -56,6 +58,8 @@ const DOMAINS: ReadonlyArray<readonly [Exclude<LinkSite, 'web'>, readonly string
   ['threads', ['threads.com', 'threads.net']],
   // the web app (bsky.app); the AT Protocol API hosts are never pasted
   ['bluesky', ['bsky.app']],
+  // clips.twitch.tv, m.twitch.tv and player.twitch.tv are subdomains
+  ['twitch', ['twitch.tv']],
 ]
 
 /** The first http(s) link in a text; its end is the first space or quote. */

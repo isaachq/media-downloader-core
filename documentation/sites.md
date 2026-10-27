@@ -273,6 +273,52 @@ account and a third-party PDS (the fake serves both), a PDS that answers
 razr 50. `bluesky: false` hands Bluesky urls to yt-dlp's Bluesky extractor
 (posts only).
 
+## Twitch (built-in extractor for clips)
+
+Clips and a channel's clips are read by the library itself: plain GraphQL
+queries on `gql.twitch.tv`, anonymous, and each clip a signed progressive
+MP4 on Twitch's CDN, streamed to disk with resume (Range). Finished VODs
+and video listings are HLS: they are recognized but handed to yt-dlp's
+Twitch extractor until the core reads HLS (`TODO(core-hls)`). **Live
+streams are never downloaded**, only what is already available: a channel
+on the air and a VOD whose broadcast is still going fail natively as
+`live-now` and are never handed to yt-dlp (which would record them).
+
+```ts
+scheduler.schedule({url: 'https://clips.twitch.tv/FaintLightGullWholeWheat', profile: {kind: 'video', container: 'mp4'}, outDir})
+scheduler.schedule({url: 'https://www.twitch.tv/shroud/clips?range=30d', profile: {kind: 'video', container: 'mp4'}, outDir})
+```
+
+| | How |
+| --- | --- |
+| Links | `clips.twitch.tv/<slug>`, `clips.twitch.tv/embed?clip=<slug>`, `(www./m./go.)twitch.tv/<channel>/clip/<slug>`, `twitch.tv/clip/<slug>`: one clip (old CamelCase slugs and the new ones with a `-suffix`). `twitch.tv/<channel>/clips` with `?range=24hr`, `7d`, `30d` or `all` (also after `?filter=clips&`): a channel's clips in that period, the site's default (7 days) without one. Checked here, then sent to yt-dlp when finished: `twitch.tv/videos/<id>`, `/<channel>/v/<id>`, `/<channel>/video/<id>`, `player.twitch.tv/?video=v<id>`, `/<channel>/schedule?vodID=<id>` (`?t=1h2m3s` kept as a start). Checked here only: `/<channel>` and `player.twitch.tv/?channel=` (the live stream). Sent to yt-dlp as they are: `/<channel>/videos` (`?filter=…&sort=…` kept by the parser); each VOD of such a listing comes back here when it is downloaded. The share sheet's `?tt_medium=&tt_content=` is tracking (mix lists drop it). |
+| How it is read | A clip is **one request**: `POST https://gql.twitch.tv/gql` with a plain (raw) query, `clip(slug)` with its `videoQualities`, its assets and its `playbackAccessToken(params: {platform: "web", playerBackend: "mediaplayer", playerType: "site"})`. Raw queries on purpose: the persisted-query hashes yt-dlp sends rotated four times in 13 months; cobalt's raw clip query has not changed in two years. Checks of clips not read yet go **15 a request** (aliases `c0`…`c14` of `clip`: 15 root fields is Twitch's limit). |
+| Media | The H.264 `videoQualities` (1080p60 down to 360p; one `/avc/1080` file on 2016 clips) and the landscape asset's, plus the HEVC file the token's `clip_uri` names (1440p on new clips), each signed `?sig=<signature>&token=<value>` with the clip's one token (unsigned: 401). Ranked by `rankRenditions`: MP4 takes H.264 (1080p), MKV / WebM the HEVC 1440p. The portrait asset is another framing of the clip, not another size: left out. |
+| Listing | `user(login).clips(first: 100, after, criteria: {filter})` (`LAST_DAY`, `LAST_WEEK`, `LAST_MONTH`, `ALL_TIME` from the link's `range`), top by views, the site's order. Every node carries its signed encodings, so **a listed clip is never read again** (its check and its download ask for nothing). The cursor is the last edge's (a base64 offset, `MTAw` = 100); `hasNextPage` turns false at offset 1,000 whatever the period, so a listing holds 1,000 clips at most. Map by id, a cursor seen twice or 3 pages with nothing new end the walk (`walkCursor`), `maxEntries` (default 500, `twitch.maxListItems`). Not newest first: `known` can't stop an incremental walk early. A refusal half-way keeps the pages read (`complete: false`). |
+| Live | A channel link is one `user(login) { stream { id type title createdAt } }` query: on the air (`stream` set, `type` `live` or `rerun`) it is `unavailable` / `live-now`, with no `source:*` details, so the engine never hands it to yt-dlp; offline it is `unavailable` ("not live: nothing else to download", its `/videos` and `/clips` named). A VOD link is one `video(id) { status }` query: `RECORDING` (its broadcast still on the air) is `live-now` the same way; `RECORDED` goes to yt-dlp (`source:format-changed`, hint `unsupported-url`: on a host without yt-dlp, "not supported"); `null` is `removed`. The live check is its own function for the live recorder that will come with the core's HLS module: `TwitchSource.liveStream(login)` (one request) and the pure reader `readLiveStream`, giving the stream id, login, title, start time and type. During an integrity block the source stays `available` (live checks still run here); only clip reads go to yt-dlp meanwhile. |
+| Client id | `twitch.clientId`, default **`ue6666qo983tsx6so1t0vnawi233wa`** (yt-dlp's since 2023-06). The web player's own **`kimne78kx3ncx6brgo4mv6wki5h1ko`** (cobalt's and streamlink's) reads single clips and the first listing page, but every page after the first answers `IntegrityCheckFailed` (a Client-Integrity token the site's JavaScript makes in a browser, which this library does not run). The default is the one that read every page live; if Twitch gates it too, a host passes the other, or a newer one, without a release. |
+| Cache | Clips by slug until their token's `expires` less 10 minutes (~20 h), 6 h at most, 2,000 kept; listings by channel and period 15 min (100). Reads of one clip at the same time share one request (`Coalescer`). `fresh` (a retry) reads again; a download that fails is read again once (a token that ran out). |
+| Errors | `clip: null` (deleted, or never there) → `unavailable` / `removed`; `user: null` → `removed` ("no Twitch channel by that name"). A token whose `authorization.forbidden` is true (subscriber-only, restricted) → `unavailable` / `needs-sign-in`. `IntegrityCheckFailed` → `source:blocked`: clips and clip listings go to yt-dlp for 10 minutes (VODs and channels are still checked here). A GraphQL error naming a field, an argument or a type (Twitch renamed something), a 400 (a missing or refused Client-ID), a clip without its token or without encodings → `source:format-changed`: the engine hands the url to yt-dlp, whose Twitch extractor reads clips too. 429 / 5xx back every request off together (Pacer) and are retried. |
+| Session | None: everything above is public. Signing in (the browser's `auth-token` as `Authorization: OAuth`) is left for the app's sign-in commit, with the subscriber-only VODs it is for. |
+| Pace | One Pacer for gql.twitch.tv: 2 in flight, 0.5 to 1 s apart (`twitch.pacing`). The CDN is not paced. |
+| Endpoints | The GraphQL url and the clip fields read live in `src/sources/twitch/endpoints.ts`, with both client ids; `twitch.endpoints` overrides them without a release. |
+
+**What was verified, and what wasn't.** Verified live on 2026-10-26
+(anonymous, from Mexico): raw `clip` queries on both client ids; the token
+signing every H.264 quality and the HEVC 1440p (`Range` answered 206,
+`Content-Length` 50,485,614 for a 51 s 1080p60 clip, H.264 + AAC per
+ffprobe); a 2016 clip's single AVC file; batches of 3 clips with a deleted
+one (`null`); listings on the default client id, pages 1 to 3 of shroud's
+all-time clips, and the web player's id answering `IntegrityCheckFailed` on
+page 2; a missing channel (`user: null`); a channel on the air and its VOD
+in progress (`status: RECORDING`) failing as `live-now`, a finished VOD
+handed to yt-dlp, an offline channel. See the live matrix results in the
+CHANGELOG. **Not verified**: a subscriber-only or restricted clip (none
+found: `authorization.forbidden` is what the token carries for one, the fake
+serves a guess of it), a token that runs out mid-download, a 429 from
+gql.twitch.tv (none seen), the razr 50. `twitch: false` hands every Twitch
+url to yt-dlp.
+
 ## TikTok sync (Sync Up)
 
 A **subscription** keeps a TikTok account in step with a folder. A sync

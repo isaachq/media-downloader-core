@@ -65,6 +65,17 @@ describe('detectLink: the site of a pasted or shared link', () => {
     assert.equal(site('https://notbsky.app/profile/bsky.app'), 'web')
   })
 
+  it('names Twitch on twitch.tv and clips.twitch.tv', () => {
+    assert.equal(site('https://clips.twitch.tv/FaintLightGullWholeWheat'), 'twitch')
+    assert.equal(site('https://www.twitch.tv/shroud/clip/PreciousRelievedCodCorgiDerp-IqjaHMAL8JQQH78F'), 'twitch')
+    assert.equal(site('Watch: https://m.twitch.tv/shroud/clips?range=7d.'), 'twitch')
+    assert.equal(site('https://www.twitch.tv/videos/2602093345'), 'twitch')
+    assert.equal(site('https://player.twitch.tv/?video=v2602093345&parent=example.com'), 'twitch')
+    assert.equal(detectLink('https://www.twitch.tv/shroud')?.host, 'twitch.tv')
+    assert.equal(site('https://twitch.tv.evil.example/shroud'), 'web')
+    assert.equal(site('https://nottwitch.tv/shroud'), 'web')
+  })
+
   it('any other site is "web", and a link straight to a file says so', () => {
     const page = detectLink('https://www.trannyvideosx.com/video/81455/ts-havenna-sofia-solo-1')
     assert.deepEqual(page, {

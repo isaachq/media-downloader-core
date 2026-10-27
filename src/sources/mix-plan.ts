@@ -76,6 +76,9 @@ const TRACKING: ReadonlySet<string> = new Set([
   'ref_url',
   'rdid',
   'share_url',
+  // Twitch's share sheet
+  'tt_medium',
+  'tt_content',
 ])
 
 /** Sites whose links carry the post in the path: their query is only tracking (?s=20, ?igsh=, ?_r=1&_t=…, ?share_id=, ?xmt=). */

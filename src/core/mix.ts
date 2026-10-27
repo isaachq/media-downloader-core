@@ -7,6 +7,7 @@ import {isSnapchatListing} from '../sources/snapchat/links.js'
 import {isThreadsListing} from '../sources/threads/links.js'
 import {isTikTokProfile} from '../sources/tiktok/links.js'
 import {DEFAULT_SLIDESHOW} from '../sources/tiktok/slideshow.js'
+import {isTwitchListing} from '../sources/twitch/links.js'
 import {isVkListing} from '../sources/vk/links.js'
 import {isXProfile} from '../sources/x/links.js'
 import type {
@@ -62,7 +63,8 @@ export function isListingLink(url: string, engine: Pick<MixEngine, 'defaultListS
     isXProfile(url) ||
     isSnapchatListing(url) ||
     isThreadsListing(url) ||
-    isBlueskyListing(url)
+    isBlueskyListing(url) ||
+    isTwitchListing(url)
   )
 }
 

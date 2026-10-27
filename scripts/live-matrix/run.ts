@@ -1,4 +1,4 @@
-// The live URL matrix: real public links on Facebook, Instagram, TikTok, Snapchat, Threads and Bluesky, read
+// The live URL matrix: real public links on Facebook, Instagram, TikTok, Snapchat, Threads, Bluesky and Twitch, read
 // (and optionally downloaded) by the whole engine against the real sites. Local
 // only — it is never part of `npm test` or CI: it talks to the live sites, takes
 // minutes to hours, and its links rot.
@@ -96,7 +96,7 @@ const merged = compendium.scenarios.map(s => ({...s, urls: [...s.urls, ...(extra
 const wanted = merged.filter(
   s =>
     (!only || only.has(s.id)) &&
-    // the diagnostic's platforms, else the site detection names (snapchat, threads, bluesky…)
+    // the diagnostic's platforms, else the site detection names (snapchat, threads, bluesky, twitch…)
     (!args.platform || s.urls.some(u => platformOf(u) === args.platform || detectLink(u)?.site === args.platform)),
 )
 /** Scenarios without a single link yet: reported, never counted as passed. */

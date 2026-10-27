@@ -468,6 +468,41 @@
         "https://bsky.app/profile/theverge.com/media",
         "https://bsky.app/profile/did:plc:z72i7hdynmk6r22z27h6tvur"
       ]
+    },
+    {
+      "id": "TW-01",
+      "category": "Twitch clip on clips.twitch.tv (old and new slugs, the embed link)",
+      "expect": "video",
+      "urls": [
+        "https://clips.twitch.tv/FaintLightGullWholeWheat",
+        "https://clips.twitch.tv/DeliciousDelightfulPicklesWOOP",
+        "https://clips.twitch.tv/PreciousRelievedCodCorgiDerp-IqjaHMAL8JQQH78F",
+        "https://clips.twitch.tv/LittleEvilPheasantMikeHogu-mHLOSU8F6SKzB3qk",
+        "https://clips.twitch.tv/embed?clip=PoliteBrightMouseOSkomodo-JROWcZVK4SouyFS4&parent=example.com"
+      ]
+    },
+    {
+      "id": "TW-02",
+      "category": "Twitch clip on a channel (twitch.tv/<channel>/clip/<slug>)",
+      "expect": "video",
+      "urls": [
+        "https://www.twitch.tv/shroud/clip/TangentialBillowingJalapenoYee-ccA2oB1pEYh4CHWJ",
+        "https://www.twitch.tv/summit1g/clip/PolishedVictoriousToadDerp-9mT4lzGsLDsc3Njw",
+        "https://www.twitch.tv/pokimane/clip/TriangularVastNewtWutFace-OfdOWNc7jG9VnTY8",
+        "https://www.twitch.tv/lirik/clip/AffluentWittyPlumSpicyBoy-EDD2TVe-4vqsvR3s",
+        "https://m.twitch.tv/xqc/clip/NimbleProductiveAsparagusHeyGuys-s77ZvN10Yr-O2sfo"
+      ]
+    },
+    {
+      "id": "TW-03",
+      "category": "Twitch channel clips listing (twitch.tv/<channel>/clips, with and without a period)",
+      "expect": "playlist",
+      "urls": [
+        "https://www.twitch.tv/shroud/clips?filter=clips&range=all",
+        "https://www.twitch.tv/pokimane/clips?range=30d",
+        "https://www.twitch.tv/xqc/clips?range=7d",
+        "https://www.twitch.tv/summit1g/clips"
+      ]
     }
   ]
 }

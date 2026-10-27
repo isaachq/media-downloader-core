@@ -4,15 +4,12 @@ name: Windows update
 # NSIS installer, offer version B from a local feed, press "Update now" and
 # check what follows the app closing — for a user's install, for everyone's,
 # and with an installer that fails (the old version must come back, saying why).
+#
+# Not on pull requests: it builds two installers and runs three updates (5 to 6 minutes
+# on every push). Run it by hand from the Actions tab before an app-v* tag whenever the
+# update code changed (app/src/main/updates, app/src/main/index.ts, app/package.json).
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - 'app/src/main/updates/**'
-      - 'app/src/main/index.ts'
-      - 'app/package.json'
-      - 'app/e2e/windows-update.ts'
-      - '.github/workflows/update-windows.yml'
 
 permissions:
   contents: read
@@ -20,6 +17,7 @@ permissions:
 jobs:
   installers:
     runs-on: windows-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -51,6 +49,7 @@ jobs:
   update:
     needs: installers
     runs-on: windows-latest
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:

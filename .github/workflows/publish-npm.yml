@@ -16,6 +16,7 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       # no registry-url: Trusted Publishing needs no .npmrc (setup-node's would add a
@@ -24,14 +25,13 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      # the integrity suite runs with a real ffmpeg
-      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: npm ci
       - name: The tag matches package.json
         run: test "lib-v$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
-      # typecheck, lint, the tests, then the build — here rather than in prepublishOnly,
+      # no tests here: the pull request ran them, and `npm run test:full` ran the whole
+      # regression locally before the tag. The tag only checks the version, builds and
+      # publishes (well under 3 minutes). The build is here rather than in prepublishOnly,
       # so npm publish finds dist/ (and the CLI it names) already in place
-      - run: npm run check
       - run: npm run build
       - run: npm install -g npm@11
       - run: npm publish --provenance --access public --ignore-scripts

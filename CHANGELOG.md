@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+### Status
+
+Beta 11 on `feature/beta-11` (plan: Threads, HLS, Twitch, Bluesky, SoundCloud, Snapchat, CI,
+supported sites). One line per planned commit: done, then verified with what. This block goes
+away when the beta closes.
+
+- [x] 0 `ci: 5-minute budget` · done · verified locally: `test:fast` 483 pass in 58 s, `test:integrity-smoke` 2 pass in 2 s, `test:heavy` 75 pass in 28 s, app unit 204 pass, `test:e2e:smoke` 3 pass in 27 s. Pending: the Actions before/after table on Isaac's first push (before: CI check jobs 15.7 to 16 min, one mix test waited a real 15-minute YouTube pause; app jobs 3.2 to 4.3 min)
+- [ ] 1 `source(threads)` · not done
+- [ ] 2 `core(hls)` · not done (Isaac reviews the API before code)
+- [ ] 3 `source(twitch)` · not done
+- [ ] 4 `source(bluesky)` · not done
+- [ ] 5 `source(soundcloud)` · not done
+- [ ] 6 `source(snapchat)` · not done
+- [ ] 7 `release: library x.y.z` · not done
+- [ ] 8 `app: site tags and icons` · not done (Isaac reviews the icons before code)
+- [ ] 9 `app: supported sites` · not done
+- [ ] 10 `app: sign-in for threads and twitch` · not done
+- [ ] 11 `app: beta 11 e2e` · not done
+- [ ] 12 `release: app 0.2.0-beta.22` · not done
+- [ ] Android `feature/beta-11` (phone repo) · not done
+
 ## App 0.2.0-beta.21 · library 1.20.2
 
 A session the site refuses no longer stops a public post; the guide's fourth step; buy me a coffee.

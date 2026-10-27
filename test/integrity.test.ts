@@ -80,7 +80,7 @@ describe('integrity validation', {skip: !available && 'ffmpeg not installed'}, (
     if (dir) await fs.rm(dir, {recursive: true, force: true})
   })
 
-  it('accepts an intact H.264/AAC mp4 (full decode)', async () => {
+  it('smoke: accepts an intact H.264/AAC mp4 (full decode)', async () => {
     const report = await validateFile({...base, file: mp4, rules: VIDEO_RULES.mp4, level: 'full', expectedDuration: 10})
     assert.equal(report.ok, true, explain(report))
     assert.equal(report.video?.codec, 'h264')
@@ -166,7 +166,7 @@ describe('integrity validation', {skip: !available && 'ffmpeg not installed'}, (
     assert.equal(report.ok, true, explain(report))
   })
 
-  it('accepts an intact m4a and rejects it as mp3', async () => {
+  it('smoke: accepts an intact m4a and rejects it as mp3', async () => {
     const ok = await validateFile({...base, file: m4a, rules: AUDIO_RULES.m4a, level: 'full', expectedDuration: 8})
     assert.equal(ok.ok, true, explain(ok))
     const wrong = await validateFile({...base, file: m4a, rules: AUDIO_RULES.mp3, level: 'quick'})

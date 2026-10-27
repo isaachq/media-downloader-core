@@ -19,6 +19,7 @@ jobs:
   manifests:
     if: startsWith(github.event.release.tag_name || inputs.tag, 'app-v')
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

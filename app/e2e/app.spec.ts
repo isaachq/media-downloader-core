@@ -134,7 +134,7 @@ async function download(page: Page, url: string) {
   }
 }
 
-test('downloads a playlist batch end to end: preflight, jobs, files on disk', async () => {
+test('downloads a playlist batch end to end: preflight, jobs, files on disk', {tag: '@smoke'}, async () => {
   const {app, page, outDir} = await launch('batch')
   await expect(page.getByText('One-time setup')).toHaveCount(0) // tools are ready
   await page.screenshot({path: path.join(APP_DIR, 'test-results', 'home-light.png')})
@@ -181,7 +181,7 @@ test('downloads a playlist batch end to end: preflight, jobs, files on disk', as
   await close(app)
 })
 
-test('finished files of every session, their folders, and the run report', async () => {
+test('finished files of every session, their folders, and the run report', {tag: '@full'}, async () => {
   const openLog = path.join(root, 'finished-open.log')
   const {app, page, outDir} = await launch('finished', {}, {MDC_OPEN_LOG: openLog})
   await page.getByLabel('Video, playlist or profile URL').fill('https://fake.test/list?n=3')
@@ -235,7 +235,7 @@ test('finished files of every session, their folders, and the run report', async
   await close(app)
 })
 
-test('the first launch shows the four first steps once; Guide replays them', async () => {
+test('the first launch shows the four first steps once; Guide replays them', {tag: '@smoke'}, async () => {
   const {app, page, dataDir} = await launch('guide', {tourDone: false})
   const tour = page.locator('.ant-tour')
   await expect(tour).toContainText('1 · Paste a link')
@@ -264,7 +264,7 @@ test('the first launch shows the four first steps once; Guide replays them', asy
   await close(again)
 })
 
-test('previews a list and downloads only the picked items', async () => {
+test('previews a list and downloads only the picked items', {tag: '@full'}, async () => {
   const {app, page, outDir} = await launch('pick')
   await page.getByLabel('Video, playlist or profile URL').fill('https://fake.test/list?n=5')
   await page
@@ -288,7 +288,7 @@ test('previews a list and downloads only the picked items', async () => {
   await close(app)
 })
 
-test('backs up picked posts of a TikTok profile as MP3 (built-in extractor)', async () => {
+test('backs up picked posts of a TikTok profile as MP3 (built-in extractor)', {tag: '@full'}, async () => {
   const site = await startFakeTikTok({posts: 6, pinned: true})
   try {
     const {app, page, outDir} = await launch('tiktok', {format: 'mp3'}, {MDC_TIKTOK_ORIGIN: site.origin})
@@ -317,7 +317,9 @@ test('backs up picked posts of a TikTok profile as MP3 (built-in extractor)', as
   }
 })
 
-test('Sync Up keeps a TikTok account in step with its folder, in the format of the folder', async () => {
+test('Sync Up keeps a TikTok account in step with its folder, in the format of the folder', {
+  tag: '@full',
+}, async () => {
   const site = await startFakeTikTok({posts: 5})
   try {
     // downloaded earlier as MP3 (the app's format is M4A now): recognized by the post number in the name
@@ -369,7 +371,7 @@ test('Sync Up keeps a TikTok account in step with its folder, in the format of t
   }
 })
 
-test('a TikTok profile behind a verification page opens through the built-in browser', async () => {
+test('a TikTok profile behind a verification page opens through the built-in browser', {tag: '@full'}, async () => {
   // plain requests get a "please wait" page whose script sets a cookie and reloads: only a browser passes
   const site = await startFakeTikTok({posts: 6, jsChallenge: true})
   try {
@@ -395,7 +397,7 @@ test('a TikTok profile behind a verification page opens through the built-in bro
   }
 })
 
-test('finds a new version, downloads it and verifies its checksum (dry run)', async () => {
+test('finds a new version, downloads it and verifies its checksum (dry run)', {tag: '@full'}, async () => {
   const payload = Buffer.from('new app '.repeat(20_000))
   const digest = createHash('sha256').update(payload).digest('hex')
   let origin = ''
@@ -456,7 +458,7 @@ test('finds a new version, downloads it and verifies its checksum (dry run)', as
   }
 })
 
-test('reports unavailable items with a reason and finishes with errors', async () => {
+test('reports unavailable items with a reason and finishes with errors', {tag: '@full'}, async () => {
   const {app, page} = await launch('mixed')
   await download(page, 'https://fake.test/list-mixed')
   const card = page.getByTestId('batch-card').first()
@@ -466,7 +468,7 @@ test('reports unavailable items with a reason and finishes with errors', async (
   await close(app)
 })
 
-test('remembers language and theme across restarts', async () => {
+test('remembers language and theme across restarts', {tag: '@full'}, async () => {
   const first = await launch('prefs')
   // the language select (fourteen languages, with search): Español by its own name
   await first.page.getByTestId('language-select').first().click()
@@ -490,7 +492,9 @@ test('remembers language and theme across restarts', async () => {
 
 // ─── beta 10 ────────────────────────────────────────────────────────────────
 
-test('one link box for every site: an old settings.json with a mode loads, Sync Up is there, links are tagged', async () => {
+test('one link box for every site: an old settings.json with a mode loads, Sync Up is there, links are tagged', {
+  tag: '@smoke',
+}, async () => {
   const site = await startFakeTikTok({posts: 2})
   try {
     // settings of a version with one site per run: its mode is ignored
@@ -518,7 +522,9 @@ test('one link box for every site: an old settings.json with a mode loads, Sync 
   }
 })
 
-test('cancelling one download leaves the rest of its batch running, and the batch completes', async () => {
+test('cancelling one download leaves the rest of its batch running, and the batch completes', {
+  tag: '@full',
+}, async () => {
   const {app, page} = await launch('cancel-one', {concurrency: 1})
   await download(page, 'https://fake.test/list?n=4&p=slowest-')
   const card = page.getByTestId('batch-card').first()
@@ -538,7 +544,7 @@ test('cancelling one download leaves the rest of its batch running, and the batc
   await close(app)
 })
 
-test('failed downloads of several batches go into one new batch from the Failed card', async () => {
+test('failed downloads of several batches go into one new batch from the Failed card', {tag: '@full'}, async () => {
   const {app, page} = await launch('failed-list')
   await download(page, 'https://fake.test/list-gone?g=a')
   await download(page, 'https://fake.test/list-gone?g=b')
@@ -563,7 +569,9 @@ test('failed downloads of several batches go into one new batch from the Failed 
   await close(app)
 })
 
-test('download first, check after: a damaged file is marked, kept, and never downloaded again', async () => {
+test('download first, check after: a damaged file is marked, kept, and never downloaded again', {
+  tag: '@full',
+}, async () => {
   const {app, page, outDir} = await launch('check-after', {validation: 'quick', validateAfter: true, format: 'mp4'})
   await download(page, 'https://fake.test/list-broken?g=x')
   const card = page.getByTestId('batch-card').first()
@@ -592,7 +600,7 @@ test('download first, check after: a damaged file is marked, kept, and never dow
   await close(app)
 })
 
-test('Finished: filters by integrity and size, and forgets the records of deleted files', async () => {
+test('Finished: filters by integrity and size, and forgets the records of deleted files', {tag: '@full'}, async () => {
   const {app, page, outDir} = await launch('prune')
   await download(page, 'https://fake.test/list?n=3')
   await expect(page.getByTestId('batch-card').first()).toHaveAttribute('data-status', 'completed', {timeout: 60_000})
@@ -621,7 +629,9 @@ test('Finished: filters by integrity and size, and forgets the records of delete
   await close(app)
 })
 
-test('Finished: a deleted file is not checked again, and downloads again into its folder from its link', async () => {
+test('Finished: a deleted file is not checked again, and downloads again into its folder from its link', {
+  tag: '@full',
+}, async () => {
   const {app, page, outDir} = await launch('redownload')
   await download(page, 'https://fake.test/list?n=3')
   await expect(page.getByTestId('batch-card').first()).toHaveAttribute('data-status', 'completed', {timeout: 60_000})
@@ -652,7 +662,9 @@ test('Finished: a deleted file is not checked again, and downloads again into it
   await close(app)
 })
 
-test('a mix list: links added one by one, checked at once, one in a format of its own, one batch', async () => {
+test('a mix list: links added one by one, checked at once, one in a format of its own, one batch', {
+  tag: '@full',
+}, async () => {
   // the form is set to M4A: every link becomes M4A unless it has its own format
   const {app, page, outDir} = await launch('mix-list')
   await page.getByTestId('open-mix').click()

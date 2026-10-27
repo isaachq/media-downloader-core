@@ -1,8 +1,10 @@
 // The desktop interface in Arabic (right to left): every key of ../i18n.ts, translated from the English
 // (and kept in line with the Android app). Placeholders ({name}) stay as they are; no long dashes.
+import {siteMessages} from '../../../shared/site-words'
 import type {MessageKey} from '../i18n'
 
 export const ar: Readonly<Record<MessageKey, string>> = {
+  ...siteMessages('ar'),
   'app.tagline': 'تنزيلات بالدفعات لأحمال كبيرة، مع التحقق من كل ملف على حدة',
   'header.logs': 'السجلات',
   'header.settings': 'الإعدادات',
@@ -33,9 +35,15 @@ export const ar: Readonly<Record<MessageKey, string>> = {
   'site.facebook': 'Facebook',
   'site.vk': 'VK',
   'site.x': 'X',
+  'site.snapchat': 'Snapchat',
+  'site.threads': 'Threads',
+  'site.bluesky': 'Bluesky',
+  'site.twitch': 'Twitch',
+  'site.soundcloud': 'SoundCloud',
   'site.web': 'موقع ويب',
   'site.file': 'ملف',
-  'download.urlLabel': 'الصق رابطًا من YouTube أو TikTok أو Instagram أو Facebook أو VK أو X أو أي موقع ويب',
+  'download.urlLabel':
+    'الصق رابطًا من YouTube أو TikTok أو Instagram أو Twitch أو من أي موقع من المواقع المدعومة الـ{count}',
   'download.invalidUrl': 'أدخل رابط http(s) صالحًا',
   'download.paste': 'لصق',
   'download.format': 'الصيغة',
@@ -310,7 +318,7 @@ export const ar: Readonly<Record<MessageKey, string>> = {
   'hint.private': 'فيديو خاص',
   'hint.removed': 'محذوف أو غير متاح',
   'hint.geo-blocked': 'محظور في بلدك',
-  'hint.members-only': 'للأعضاء فقط. يحتاج إلى ملفات تعريف الارتباط من حساب عضو',
+  'hint.members-only': 'للأعضاء أو المشتركين فقط. يحتاج إلى جلسة حساب لديه صلاحية الوصول.',
   'hint.not-started': 'البث المباشر أو العرض الأول لم يبدأ بعد',
   'hint.unsupported-url': 'الموقع أو الرابط غير مدعوم',
   'hint.format-unavailable': 'الصيغة المختارة غير متاحة',
@@ -470,7 +478,7 @@ export const ar: Readonly<Record<MessageKey, string>> = {
   'hint.cookies-unreadable':
     'تعذّرت قراءة ملفات تعريف الارتباط من المتصفح. يحتاج Safari إلى صلاحية الوصول الكامل إلى القرص، أو اختر متصفحًا آخر في الإعدادات',
   'settings.cookiesHelp':
-    'جلستك المسجّلة، لمقاطع الفيديو الخاصة أو المخصصة للأعضاء أو المقيّدة بالعمر، ولحالات طلب YouTube تأكيد أنك لست روبوتًا. يُطبَّق فورًا.',
+    'جلستك المسجّلة، للفيديوهات الخاصة أو الخاصة بالأعضاء أو المقيّدة بالعمر، وقصص Instagram، وملفات Threads الخاصة، وفيديوهات Twitch الخاصة بالمشتركين، وعندما يطلب YouTube تأكيد أنك لست روبوتًا. تُطبَّق فورًا.',
   'about.star':
     'إذا أفادك Media Download Core، فامنحه نجمة على GitHub: الأمر مجاني ويستغرق ثانية ويساعد الآخرين على العثور عليه.',
   'about.starButton': 'امنحه نجمة على GitHub',
@@ -583,7 +591,7 @@ export const ar: Readonly<Record<MessageKey, string>> = {
   'hint.damaged-source': 'تالف من المصدر، ولن يُنزَّل مجددًا',
   'cause.damaged-source': 'تالف من المصدر',
   'hint.no-video': 'يحتوي هذا المنشور على صور أو نص، لكن بلا فيديو',
-  'hint.live-now': 'بث مباشر الآن. نزّله بعد انتهائه كتسجيل.',
+  'hint.live-now': 'مباشر الآن: الصق رابط القناة (twitch.tv/الاسم) لتسجيله.',
   'hint.stream-only': 'متاح كبث فقط، ولا يستطيع التطبيق حفظه بعد',
   'cause.no-video': 'بلا فيديو',
   'cause.live-now': 'مباشر الآن',
@@ -644,9 +652,9 @@ export const ar: Readonly<Record<MessageKey, string>> = {
   'signin.open': 'كيفية تسجيل الدخول',
   'signin.title': 'استخدم جلستك المسجّلة',
   'signin.intro':
-    'تحتاج مقاطع الفيديو الخاصة أو المخصصة للأعضاء، والمقيّدة بالعمر، والملفات الشخصية والقصص على Instagram، ومقاطع فيديو صفحة على Facebook إلى جلسة حسابك أنت. وكذلك YouTube عندما يطلب التأكد من أنك لست روبوتًا. يقرأ التطبيق الجلسة من متصفحك، فلا حاجة إلى نسخ أو لصق أي شيء.',
+    'تحتاج بعض التنزيلات إلى جلسة حسابك أنت؛ القائمة أدناه تقول أيّها. يقرأ التطبيق الجلسة من متصفحك، فلا شيء لتنسخه أو تلصقه.',
   'signin.step1':
-    'افتح متصفحك المعتاد (Chrome أو Edge أو Firefox أو Safari أو Brave…) وسجّل الدخول فيه كالمعتاد: إلى Google / YouTube أو Instagram أو Facebook.',
+    'افتح متصفحك المعتاد (Chrome أو Edge أو Firefox أو Safari أو Brave…) وسجّل الدخول فيه كالمعتاد: إلى Google / YouTube أو Instagram أو Facebook أو Threads أو Twitch.',
   'signin.step2': 'هنا، في الإعدادات ← ملفات تعريف الارتباط من المتصفح، اختر المتصفح نفسه.',
   'signin.step3': 'في المرة الأولى، يطلب نظامك إذنًا (انظر أدناه). اسمح به. لن يطلبه إلا مرة واحدة.',
   'signin.step4': 'الصق الرابط مجددًا: سيُنزَّل باستخدام جلستك. هل سجّلت الخروج في المتصفح؟ سجّل الدخول مجددًا هناك.',
@@ -658,4 +666,36 @@ export const ar: Readonly<Record<MessageKey, string>> = {
     'Linux (Fedora وUbuntu…): قد تطلب سلسلة المفاتيح لديك (GNOME Keyring / KWallet) السماح بالوصول إلى البيانات المحفوظة في المتصفح: اسمح بذلك. لا يحتاج Firefox إلى أي إذن.',
   'signin.privacy':
     'تبقى ملفات تعريف الارتباط على الكمبيوتر: تُقرأ مرة واحدة إلى نسخة خاصة لا يستخدمها التطبيق إلا للتنزيل، ولا تُرسل إلى أي مكان آخر أبدًا.',
+  'signin.sites': 'ما تفتحه الجلسة',
+  'signin.twitchNote': 'تُستخدم جلسة Twitch للحصول على الفيديو فقط: لا للدردشة ولا للمتابعة ولا للاشتراك أبدًا.',
+  'live.tag': 'مباشر',
+  'live.rec': 'تسجيل',
+  'live.title': 'بث مباشر على Twitch',
+  'live.intro':
+    'يبدأ التسجيل من آخر نصف دقيقة لا يزال Twitch يحتفظ بها ويستمر حتى توقفه أو ينتهي البث أو تمر 12 ساعة. تُستبعد الإعلانات.',
+  'live.startedAt': 'على الهواء منذ {time}',
+  'live.record': 'سجّل',
+  'live.watch': 'شاهد',
+  'live.stop': 'أوقف واحفظ',
+  'live.discard': 'تجاهل',
+  'live.discardConfirm': 'تجاهل هذا التسجيل؟ سيُحذف كل ما سُجّل حتى الآن.',
+  'live.elapsed': 'سُجّل {time}',
+  'live.saving': 'جارٍ حفظ التسجيل…',
+  'live.recordings': 'التسجيلات',
+  'live.recordStarted': 'جارٍ تسجيل {channel}',
+  'live.ended.stopped': 'أوقفتَه أنت',
+  'live.ended.offline': 'انتهى البث',
+  'live.ended.max-duration': 'بلغ حدّ 12 ساعة',
+  'live.ended.refused': 'توقف Twitch عن إرسال البث',
+  'live.gaps': '{count} فجوات (مقاطع مفقودة)',
+  'live.adsLeftOut': 'استُبعد {time} من الإعلانات',
+  'live.finishedTag': 'تسجيل بث مباشر',
+  'live.playerError': 'توقف مشغّل البث المباشر. حاول مرة أخرى.',
+  'live.retry': 'حاول مرة أخرى',
+  'live.quit.title': 'هناك تسجيل قيد التشغيل',
+  'live.quit.text': 'لا يزال {count} تسجيل قيد التشغيل. هل تحفظ ما سُجّل قبل الخروج؟',
+  'live.quit.save': 'أوقف واحفظ واخرج',
+  'live.quit.discard': 'تجاهل واخرج',
+  'live.quit.keep': 'واصل التسجيل',
+  'live.notify.saved': 'حُفظ التسجيل: {title}',
 }

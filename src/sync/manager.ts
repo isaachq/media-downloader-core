@@ -81,6 +81,8 @@ export class SyncManager extends EventEmitter<SyncEvents> {
   readonly #state = new Map<string, {state: SyncState; progress?: SubscriptionView['progress']}>()
   /** Batch → the subscription and run it is downloading for, and the lock it holds until it ends. */
   readonly #batches = new Map<string, {subscriptionId: string; runId: string; release: () => Promise<void>}>()
+  /** Each subscription's run writes, one after the other: a read-modify-write never lands on another's. */
+  readonly #saving = new Map<string, Promise<void>>()
   #timer: NodeJS.Timeout | undefined
   readonly #onBatch = (batch: BatchSnapshot) => void this.#batchChanged(batch)
 
@@ -258,9 +260,11 @@ export class SyncManager extends EventEmitter<SyncEvents> {
       })
       // the lock now belongs to the batch: released when its downloads end
       this.#batches.set(batch.id, {subscriptionId: subscription.id, runId: run.id, release})
-      const scheduled: SyncRun = {...base, batchId: batch.id}
-      await this.#saveRun(subscription.id, scheduled)
+      // before any await: a batch that ends at once sets idle after this, never before
       this.#setState(subscription, 'downloading')
+      const scheduled: SyncRun = {...base, batchId: batch.id}
+      // a batch that already ended has written how the run ended: "running" must not cover it
+      await this.#saveRun(subscription.id, scheduled, () => this.#batches.has(batch.id))
       return scheduled
     } catch (error) {
       const failed: SyncRun = {
@@ -384,7 +388,12 @@ export class SyncManager extends EventEmitter<SyncEvents> {
     await link.release()
     const subscription = await this.#store.get(link.subscriptionId)
     const run = subscription?.runs.find(item => item.id === link.runId)
-    if (!subscription || !run) return
+    if (!subscription || !run) {
+      this.#state.delete(link.subscriptionId)
+      return
+    }
+    // idle before the run says it ended: whoever waits for it (whenDone) may sync again at once
+    this.#setState(subscription, 'idle')
     await this.#saveRun(subscription.id, {
       ...run,
       status:
@@ -398,7 +407,6 @@ export class SyncManager extends EventEmitter<SyncEvents> {
       failed: batch.jobs.failed + batch.preflight.unavailable,
       ...(batch.error && batch.jobs.succeeded === 0 && {error: batch.error.message}),
     })
-    this.#setState(subscription, 'idle')
   }
 
   /**
@@ -417,13 +425,25 @@ export class SyncManager extends EventEmitter<SyncEvents> {
     await this.#saveRun(subscription.id, {...run, status: 'interrupted', finishedAt: Date.now()})
   }
 
-  async #saveRun(subscriptionId: string, run: SyncRun): Promise<void> {
-    const current = await this.#store.get(subscriptionId)
-    if (!current) return
-    const runs = [run, ...current.runs.filter(item => item.id !== run.id)].slice(0, MAX_RUNS)
-    const next = {...current, runs}
-    await this.#store.put(next)
-    this.#emitView(next)
+  /** Writes a run, after the subscription's earlier writes; `still` is asked when its turn comes. O(MAX_RUNS). */
+  #saveRun(subscriptionId: string, run: SyncRun, still: () => boolean = () => true): Promise<void> {
+    const write = async () => {
+      if (!still()) return
+      const current = await this.#store.get(subscriptionId)
+      if (!current) return
+      const runs = [run, ...current.runs.filter(item => item.id !== run.id)].slice(0, MAX_RUNS)
+      const next = {...current, runs}
+      await this.#store.put(next)
+      this.#emitView(next)
+    }
+    const done = (this.#saving.get(subscriptionId) ?? Promise.resolve()).then(write)
+    // the queue goes on after a failed write; the caller still sees its own failure
+    const tail = done.catch(() => {})
+    this.#saving.set(subscriptionId, tail)
+    void tail.then(() => {
+      if (this.#saving.get(subscriptionId) === tail) this.#saving.delete(subscriptionId)
+    })
+    return done
   }
 
   #busy(id: string): boolean {

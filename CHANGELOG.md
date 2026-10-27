@@ -2,6 +2,386 @@
 
 ## Unreleased
 
+### Status
+
+Beta 11 on `feature/beta-11` (plan: Threads, HLS, Twitch, Bluesky, SoundCloud, Snapchat, CI,
+supported sites). One line per planned commit: done, then verified with what. This block goes
+away when the beta closes.
+
+- [x] 0 `ci: 5-minute budget` · done · verified locally: `test:fast` 483 pass in 58 s, `test:integrity-smoke` 2 pass in 2 s, `test:heavy` 75 pass in 28 s, app unit 204 pass, `test:e2e:smoke` 3 pass in 27 s. Pending: the Actions before/after table on Isaac's first push (before: CI check jobs 15.7 to 16 min, one mix test waited a real 15-minute YouTube pause; app jobs 3.2 to 4.3 min)
+- [x] 1 `source(threads)` · done · verified locally: `typecheck` and `lint` clean, `test:fast` 519 pass / 0 fail (16 Threads tests against the fake, Threads detection), `test:heavy` 75 pass, `perf --quick` within 10% of the baseline (no regression); live `live:matrix --platform threads` 17 of 17 links pass, `--native` 17 of 17, `--native --download` 13 of 13 single posts (H.264 720x1280 + AAC, JPEG / WebP pictures, carousel folders); CDN Range answers 206, no rate limit seen. Not verified: a private profile and a signed-in session (no account), GIFs, reposts and quotes as links, the razr 50
+- [x] 2 `core(hls)` · done (no Source wired yet: Twitch VODs and SoundCloud come in their own commits) · verified locally: `typecheck` and `lint` clean, `test:fast` 604 pass / 0 fail / 2 skipped (44 HLS tests against the fake origin), `test:heavy` 80 pass (5 HLS tests with the real ffmpeg: TS → mp4, fMP4 as is, AES-128, a discontinuity, demuxed audio, all decode clean), `perf --quick` within 10% of the baseline; `scripts/hls-bench.ts` on 18,000 segments × 16 KB: parsed list 4.1 MiB, live heap growth 1.2 MiB at k = 3 and 6, event-loop p99 6.9 / 5.5 ms, 1.000 requests per segment, a kill at 9,000 resumed with 10 segments asked twice (bound W + 1 s = 232; 10 to 236 across runs), 245 / 304 segments a second (Windows Defender costs ~7 ms on the first open of each new file); live end to end: Mux's public test VOD (64 TS segments, 480p, 634.6 s, 9 s) and Apple's advanced fMP4 example (201 segments, demuxed E-AC-3 track, 600 s) ffprobe right and decode clean. Not verified: a real Twitch VOD, SoundCloud and Bluesky playlists, a signed playlist expiring live, the razr 50 (its ffmpeg's concat demuxer and bsfs)
+- [x] 3 `source(twitch)` · done (clips; VODs and video listings on `core(hls)`) · VODs verified locally: `typecheck` clean, `lint` clean (`biome check` on src, test, scripts, documentation: `biome check .` stops on a nested biome.json in an untracked `.claude/worktrees/` checkout), `test:fast` 615 pass / 0 fail / 2 skipped (12 new VOD and video-listing tests against the fake GraphQL + usher over `fake-hls`: a finished VOD, codecs per profile, highlights and uploads, a muted VOD, a token running out mid-download, subscriber-only, deleted, a native failure to yt-dlp, a playlist still open, a 3-page listing with a recording VOD, an incremental listing, batched checks), `test:heavy` 80 pass, `perf --quick` within 10% of the baseline on every metric (archive.loadMs −1.4%, no re-run needed); live `live:matrix --platform twitch` 33 of 33 links, `--native` 33 of 33, `--native --download` 13 of 13 short VODs (past broadcasts, highlights, uploads, a past premiere: H.264 1920x1080, 1280x720 and 1080x1920 + AAC, full decode clean) and TW-08, a 1 h 1 min 50 s past broadcast (3,710 s), in 444 s end to end (download, assembly and the engine's full decode validation), 2.86 GB, ffprobe H.264 1920x1080 60 fps + AAC, 3,710.25 s against the VOD's 3,710 s, a full decode on its own (`ffmpeg -xerror` into the null muxer, 220 s) exits 0 with no decoder error (one repeated video DTS noted by the null muxer, which the engine counts benign) node working set 85 to 183 MB throughout. Four VODs first picked (highlights 5938473, 6732619, 1484137772 and the muted past broadcast 2795007999) fail the decode check natively and the same way through yt-dlp and through ffmpeg on usher's playlist alone: damaged at the source, replaced in the compendium. Checked live: usher answers H.264 only for `supported_codecs=h264`, `av1,h265,h264` and `av1` alike (32 channels' latest VODs, no HEVC or AV1 VOD found), a recording VOD's playlist is open (EVENT, no ENDLIST), muted parts are `-muted.ts` (200; `-unmuted` 403), the videos cursor and `totalCount` past page 3. Clips verified locally (a81efa5): `typecheck` and `lint` clean on this commit's files (the in-progress `src/core/hls/` excluded), `test:fast` 562 / 560 pass / 0 fail (19 Twitch tests against the fake, Twitch detection), `test:heavy` 75 pass, `perf --quick` no regression in code this commit touches (archive.loadMs and stress swing with machine load; archive imports nothing changed here); live `live:matrix --platform twitch` 14 of 14, `--native` 14 of 14, `--native --download` 10 of 10 single clips (H.264 1920x1080 or 1280x720 + AAC per ffprobe). Client ids re-checked live: the web player's gets `IntegrityCheckFailed` on listing page 2, yt-dlp's (the default) reads pages 1 to 3; both read single clips and batches of 15. Not verified: a subscriber-only clip or VOD (none found anonymously), an HEVC or AV1 VOD, a CDN token running out mid-download on the real CDN (VOD segments are unsigned), a 429 from gql.twitch.tv or usher, the razr 50. Pending: the sign-in (app commit 10)
+- [x] 3b `core(hls): live recording` · done · verified locally: `typecheck` clean, `lint` clean (`biome check` on src, test, scripts), `test:fast` 638 pass / 0 fail / 2 skipped on this commit (22 recorder tests on the fake live origin's simulated clock, each under 0.5 s: from the window and from now, half-target waits after an empty read, Stop keeps, Stop wakes a wait, a stop before anything is a cancel, Cancel, maxDuration by media and by wall clock, a gap, offline by empty reloads and by 404 and before anything, a 403 refresh, a refresh that renumbers the session, refused, a refresh that says it is over, AES-128 rotation, skip, a lost segment, a stalled segment, fMP4 periods; a CLI row for a live job), `test:heavy` 81 pass (a recording with an ad left out and a gap finalized by the real ffmpeg: H.264 + AAC, the recorded duration ± 0.5 s, full decode clean, `validateFile` full ok), `perf --quick` within 10% of the baseline on every metric (a first run beside a live recording showed batch metrics up to +75%; alone: batch.preflightSec −9.8%, validate.fullSec +6.5%, the rest under ±5%); `scripts/hls-record-bench.ts` 10,000 segments (5.6 h of stream) in 129 s: live heap 11.89 MiB at 2,000 segments and 12.01 MiB at 10,000 (largest step 0.36 MiB; the 14.3 MiB at 1,000 is start-up garbage), 1.000 segment request and 1.000 reload per segment, event-loop p99 9.4 ms; live through the engine (native, full validation): Stop on summit1g after 180 s kept 202 s (22 s of window + 180 s), validated, checksummed and archived; Cancel on cdawg after 30 s kept nothing and left no work folder (details in 3c). Not verified: an app quit during a recording (dispose cancels: the folder stays and a restored job records anew), a stopped recording whose validation fails (the engine's retry would see the stop and end cancelled), the razr 50
+- [x] 3c `source(twitch): live channels` · done · verified locally: `typecheck` and `lint` clean (src, test, scripts), `test:fast` 648 pass / 0 fail / 2 skipped (10 new Twitch live tests against the fake GraphQL + usher + live origin, about 2 s together: record → stop with the analysis's read feeding the recording, H.264 for MP4 and the audio_only variant, ads titled `Amazon|…` and ads told only by their date range left out with their seconds counted and kept with `skipAds: false`, the ad predicate, a token refresh, ENDLIST, an offline channel and one going offline, a refresh that finds it offline, never yt-dlp, Stop and Cancel through the engine with the archive entry and no work folder left), `test:heavy` 81 pass, `perf --quick` within 10% of the baseline; `live:matrix --platform twitch --native` 33 of 33. Live, through the whole engine (native, ffmpeg / ffprobe from the PATH, `validation: 'full'`): summit1g from the window, Stop after 180 s → 202 s kept (22 s of window + 180 s), 101 segments, no gap, 0 s of ads, converted, validated (decoded 202 s), SHA-256, archived as `live-322020126170-1793086943`, file `summit1g-2026-10-26-15-38-dayz-chillin-…-live-322020126170-1793086943.mp4`; ffprobe H.264 Main 1920x1080 60 fps + AAC LC 48 kHz stereo, 202.003 s, `ffmpeg -xerror` full decode exit 0; cdawg cancelled after 30 s → `cancelled`, no file, no work folder. A first run (xqc, 170 s kept, valid, decode clean) lost 17 segments to one gap: a segment request hung for the download watchdog's 60 s while the window is ~30 s; live segments now give up after 10 s (`LIVE_STALL_MS`, tested), and a 3-minute xqc rerun recorded 202 s without a gap. Checked live: the token comes with the stream in one raw query on the default client id, usher's `/api/channel/hls/` (and `/api/v2/`) master, 2 s TS segments titled `live`, target duration 6, PDT on every segment. Not verified: a real ad break (none came: 0 s skipped in every run), a refusal or the broadcast ending during a recording, HEVC / AV1 live variants, 12 h, a subscriber-only or geo-blocked stream, the razr 50
+- [x] 3d `source(twitch): sign-in and live playback` · done (the design's defaults: sign-in from the browser cookie jar; signed token reads on the web player's client id, listings anonymous on yt-dlp's; `JobSnapshot.recording` added) · verified locally: `typecheck` clean, `lint` clean (`biome check` on src, test, scripts, documentation), `test:fast` 680 pass / 0 fail / 2 skipped (9 new tests on the fake: the auth-token only on Clip / Vod / VodToken / LiveStream and on the web id, listings and batched checks anonymous on yt-dlp's id; subscribed downloads of a subscriber-only VOD and a forbidden clip; signing in after a visitor's read; `members-only` without access; a 401 → one anonymous retry, one warning, 30 minutes anonymous, the host asked again after; refusals in flight told once; `livePlayback` sharing the analysis's query with the recording; `JobSnapshot.recording` on stop, max-duration, offline and the end of a broadcast; the engine's cookies file signing the token reads), `test:heavy` 81 pass, `perf --quick` within 10% of the baseline (batch cpuMsPerItem +9.9%, nothing on that path changed); `live:matrix --platform twitch --native` 33 of 33, anonymous. Not verified (no Twitch account): a real `auth-token` minting an allowed token on the web id, yt-dlp's id with that token, the integrity check on signed token queries, Firefox / Edge exporting `.twitch.tv auth-token` on Windows, a subscriber-only stream
+- [x] 3e `core: clear stale work folders` · done (work folders are `work/<shortHash(url|profile[|photo-post mode])>`, owned by one url + profile; a restart or a retry resumes from them, so the sweep keeps every request of the pending journal, filtered-out batch jobs included, and every job already added; it runs once, in the first `restoreQueue()`, and jobs wait for it) · verified locally: `typecheck` clean, `lint` clean (`biome check` on src, test, scripts, documentation), `test:fast` 682 pass / 0 fail / 2 skipped (2 new engine tests with the fake tools: stale folders cleared, restored, filtered-out batch, already-added and foreign folders kept and the jobs complete; a first launch sweeps nothing), `test:heavy` 81 pass, `perf --quick` within 5% of the baseline; `live:matrix --platform twitch --native` 33 of 33. Not verified: a real crash on the desktop app or the razr 50 (the leftovers are simulated as folders)
+- [x] 4 `source(bluesky)` · done · verified locally: `typecheck` and `lint` clean, `test:fast` 540 pass / 0 fail (20 Bluesky tests against the fake, Bluesky detection), `test:heavy` 75 pass, `perf --quick` within 10% of the baseline (no regression); live `live:matrix --platform bluesky` 19 of 19 links pass, `--native` 19 of 19, `--native --download` 15 of 15 single posts (original JPEG / PNG blobs byte for byte, no WebP; H.264 1080x1920 and 720x1280 + AAC); getBlob ignores Range, no rate limit hit. yt-dlp 2026.10.21 has a Bluesky extractor (posts only, the same API and blobs): nothing handed to it. Not verified: a `!no-unauthenticated` account, did:web and third-party PDS live, a PDS 429, the HLS fallback (waits for `core(hls)`), the razr 50
+- [x] 5 `source(soundcloud)` · done (on `core(hls)`, after Twitch VODs) · verified locally: `typecheck` and `lint` clean, `test:fast` 627 pass / 0 fail / 2 skipped (22 SoundCloud tests against the fake on `fake-hls`, each under 0.4 s: client id rotation, a playlist link that ran out and segments re-signed, DRM from the formats and from a playlist, a Go+ snippet and a preview beside a whole format, sets 50 ids a request answered out of order, a private set's token, profile pagination through short pages, `known`, a secret-token track, legacy MP3 progressive and HLS, short links, DataDome; SoundCloud detection), `test:heavy` 80 pass, `perf --quick` back to back against `3ad64fa` on this machine: archive and validate within 4 %, stress and batch within noise (the base run swung 1.19 to 2.47 s on preflight under the machine's load; this one better on every speed metric), stress heap growth 1,963 KiB (+10 % on that run's 1,778, +0.6 % on the saved baseline's 1,950); live `live:matrix --platform soundcloud` 17 of 17 links pass, `--native` 17 of 17, `--native --download` 8 of 8 single tracks as M4A: AAC 44.1 kHz ~161 kb/s, ffprobe length equal to the track's to the millisecond on the clear HLS (213.886 s, 125.852 s, 232.250 s, 258.685 s, 97.005 s, 213.046 s), the legacy MP3s within 0.06 s, every file decoded in full with no error; a 57-minute mix (3431.334 s, ~344 segments) in 38 s, its length to the millisecond, decoded clean. Not verified: a private `s-` set, a Go+ preview and `policy: BLOCK` live (none seen from Mexico), DataDome's 403 (not reproduced), the hydration id going stale live, `encrypted-hls` (AES-128) live, a playlist link expiring mid-download live (only in the fake), the razr 50
+- [x] 6 `source(snapchat)` · done · verified locally: `typecheck` and `lint` clean, `test:fast` 502 pass / 0 fail (18 Snapchat tests against the fake, Snapchat detection), `test:heavy` 75 pass, `perf --quick` within 10% of the baseline; live `live:matrix --platform snapchat` 15 of 15 links pass, `--native` 15 of 15, `--native --download` 8 of 8 single items (spotlights H.264 540x960 + AAC, a story snap 480x846, highlight JPEGs). Not verified: short links (no live code), a private profile page, a picture in a live story, the razr 50
+- [x] 7 `release: library 1.21.0` · done (Isaac tags `lib-v1.21.0`; then `npm view` and a grep of the five new LinkSites in `dist/detect.js`) · verified locally on 41eb91e + the bump: the library half of `test:full` is green: `check` (typecheck, lint, `test:fast` 682 pass / 0 fail / 2 skipped), `test:heavy` 81 pass, `build`, `pack:check` (ESM, CJS, CLI 1.21.0); `perf --quick` on a quiet machine within 7% of the baseline everywhere (on 82f87ec; 3d within 10%, 3e within 5%) (archive loadMs +3.1%: the +22% seen earlier was another run on the machine). The app half (`npm --prefix app run typecheck`) fails until commit 8 gives the five new sites a tag and a name: expected, closed there
+- [x] 7b `fix(sync): idle before a run is announced as ended` · done · found by CI on PR #55 (windows-latest, `test:fast`: "is already syncing" right after `whenDone`) · verified locally on Windows: the new assertion fails without the fix and passes with it, `test/sync.test.ts` 10 of 10 five runs in a row, `check` (typecheck, lint), `test:fast` 684 tests / 682 pass / 0 fail / 2 skipped
+- [x] 7c `fix(bluesky): CDN first for a minute when a PDS gives no reset` · done · found by CI on PR #55 (macos-latest, `test:fast`: a second post asked the rate-limited PDS again, 4 blob requests for 3) · verified locally: the test now waits 120 ms between the two downloads (past its 50 ms cool-down, as the slow runner did) and fails without the fix, passes with it; `test/bluesky.test.ts` 20 of 20 three runs in a row; typecheck, lint, `test:fast` 684 / 682 pass / 0 fail / 2 skipped
+- [x] 8 `app: site tags and icons` · done (icons and colours approved by Isaac) · verified locally: `npm --prefix app run typecheck` clean (closes the failure noted in 7), `lint` clean (289 files), `site:check` 14 languages up to date, app unit 14 files / 204 pass (every locale has every key), `test:e2e:smoke` 3 pass in 14 s; the tag smoke test now pastes one link per new site and checks its `data-site`, its name and that its icon draws (computed classes `ant-tag-default`, `-blue`, `-purple`, `-orange`, `-gold`; the screenshot waits 400 ms for the colour to ease in)
+- [x] 9 `app: supported sites` · done · verified locally: `npm --prefix app run typecheck` clean, `lint` clean (293 files), `site:check` 14 languages and the README up to date, app unit 15 files / 207 pass (`shared/sites.test.ts`: every `LinkSite` and a file link listed once, yt-dlp sites are desktop only, every language has every site's words and a sign-in reason exactly where `signIn`; the label and the line under a pasted link in English and Spanish), `test:e2e:smoke` 3 pass (the tag test opens the list: 13 rows, Twitch's sign-in reason, YouTube desktop only; the line under a Snapchat and a YouTube link); the website's Spanish page checked at 672 px wide: 13 rows, no sideways scroll. Cost: O(sites) once per dictionary and per page, O(1) per pasted link (`SITE_BY_LABEL`)
+- [x] 10 `app: sign-in for threads and twitch` · done · verified locally: `npm --prefix app run typecheck` clean, `lint` clean, app unit 15 files / 207 pass (How to sign in lists YouTube, Instagram, Facebook, Twitch, Threads and VK with the supported-sites words and says Twitch's session never chats, follows or subscribes), `test:fast` 684 / 682 pass / 0 fail / 2 skipped (the fake yt-dlp's jar now carries a Twitch subscriber's auth-token and a Threads session; the fake ffmpeg concatenates a concat list), `test:e2e` 18 of 18 in 1.2 min including the new @full 'a subscriber-only Twitch VOD downloads once a browser session is chosen' (fake GraphQL + usher + HLS: signed out the analysis says Sign-in required with no Authorization sent; with Firefox's session the VOD completes, one file, and every signed request is OAuth fake-ok on the web player's id). Found by that test and fixed: a refusal worded 'signed-in account' (Twitch, Threads, Bluesky) or 'watched signed in' (VK) did not get the how-to-sign-in line. Not verified: a real twitch.tv auth-token (no account), a real private Threads profile
+- [x] 10b `app: twitch live` · done · verified locally: `npm --prefix app run typecheck` clean, `lint` clean (297 files), `site:check` up to date, app unit 17 files / 224 pass (`main/live-proxy.test.ts` 10: master and media rewrites (variants to mdc-live://sid/v/i, segments to /s/<b64>, PREFETCH dropped, PDT and DATERANGE kept), only https *.ttvnw.net segments (http, another host, ttvnw.net.evil.com, 127.0.0.1 refused and never fetched), 5 refused requests share one re-sign, 3 re-signs in a row then 502, Range passed on and a 10 MB body streamed with at most 2 chunks pulled ahead, 4 sessions at most; `renderer/src/live.test.tsx` 6: a live preview opens Record / Watch not a download, the card shows REC and a clock never a percent, Stop calls stop, Discard asks then cancels, saving then gone, Watch opens hls.js on mdc-live://sid1 and closing lets the session go, off the air shows Try again, the quit question; `main/redownload.test.ts`: a live record is never downloaded again), `test:e2e` 19 of 19 in 1.5 min including the new @full 'records a live Twitch channel, stops and keeps the file; a discarded one leaves nothing' (fake GraphQL + usher + live origin on a test-driven clock: Record, the clock past 0:00, Stop and save, one MP4, Finished tagged Live recording; again and Discard: no new file, no work folder; again and quit: the question, Stop, save and quit, the app exits with 2 MP4s). Found and fixed while testing: concurrent refused playlists used up the re-sign budget one request each. Not verified: Watch against real Twitch (needs the packaged app: the dev origin passes Twitch's allow-list and would hide a broken proxy; the release smoke opens one live channel), a recording of hours, the macOS Dock quit with no window
+- [x] 11 `app: beta 11 e2e` · done (the record → stop → discard → quit run landed with 10b, as its design said; this adds the cross-site check) · verified locally: `npm --prefix app run typecheck` clean, `lint` clean, app unit 224 pass, `test:e2e` 20 of 20 in 1.6 min (the 17 of beta 10 and the 3 of beta 11 before this one pass unchanged) including the new @full 'beta 11: a mix list of the five new sites is checked at once and downloads as one batch': Threads, Bluesky, Twitch, Snapchat and SoundCloud from their local fakes (test hooks MDC_BLUESKY_ORIGIN, MDC_SNAPCHAT_ORIGIN, MDC_SOUNDCLOUD_ORIGIN beside Twitch's and Threads'), each tagged with its site, 5 ready, the clip as an MP4 of its own and the rest as the list's M4A, one batch 5/5 done, 4 M4A and 1 MP4 on disk, Finished names every site. Seen, not changed: a SoundCloud track in a list set to a video format is left out as Unavailable (it has no picture); the list's format or the link's own fixes it
+- [x] 12 `release: app 0.2.0-beta.22` · done (Isaac merges PR #55 and tags `lib-v1.21.0`, then `app-v0.2.0-beta.22`) · verified locally: `npm run test:full` green in 275 s on Windows: library typecheck, lint, `test:fast` 684 / 682 pass / 0 fail / 2 skipped, `test:heavy` 81 pass, build, `pack:check` (1.21.0, 13 files), app typecheck, app unit 17 files / 224 pass, `test:e2e` 20 of 20 in 1.4 min; `site:check` 14 languages and the README up to date; the website's New in beta 22 section checked in the browser (6 cards, one icon each). CI on PR #55 green on every commit through 3fde830, longest job 4 min 25 s. Pending after the tags: `npm view media-downloader-core@1.21.0`, the dist grep of the five LinkSites, the 7 release assets, and the packaged app opening one live channel (Watch)
+- [ ] Android `feature/beta-11` (phone repo) · not done (also: the live player on Media3 ExoPlayer, a foreground service while recording)
+
+## App 0.2.0-beta.22 · library 1.21.0
+
+Five new sites — Threads, Bluesky, Twitch, SoundCloud and Snapchat — read by the library itself;
+native HLS downloads; Twitch live channels recorded and watched; one list of the supported sites.
+
+**Library 1.21.0**
+
+- **Bluesky: a PDS that limits this network without saying when it resets keeps pictures
+  on the CDN for at least a minute**, not only for the pacer's cool-down (a few
+  milliseconds in tests, seconds in use): the next post no longer asks the limited PDS
+  first. The CDN serves the same pictures; the PDS's window is 5 minutes. Cost: O(1).
+- **A sync that ends lets the next one start at once.** A finished run was announced (and
+  `whenDone` resolved) a moment before the account read as idle, so a sync started right
+  then could be refused as "already syncing" (seen on Windows CI). The account is idle
+  before its run says it ended; it reads as downloading before its batch can end; and each
+  account's run writes go one after the other, so a batch that ends at once is never
+  covered by its own "running". Cost: O(1) per write (a promise chain per account).
+- **Native HLS downloads for VODs and tracks (`core/hls`, internal: Twitch VODs are its first Source).** A master
+  playlist's variants become the shared `Rendition`, so `rankRenditions` picks as it does for every
+  native source (H.264 first for MP4 within the height cap, the audio-only variant or a demuxed audio
+  track alone for audio); a media playlist is downloaded by k segment workers (the engine's
+  `fragmentsPerDownload`, default 3, clamped to ⌊CPUs/2⌋, passed to sources as the new
+  `SourceDownload.fragments`) ahead of one in-order appender per track, a 2k reorder window. Each
+  segment goes to a Range-resumable `.part`, is checked from two small reads (the claimed media's
+  first bytes, an HTML page refused, AES block length and PKCS#7 padding), renamed `.done` and
+  streamed into one file per discontinuity period (AES-128 decrypted on the way, keys fetched once,
+  an LRU of 4); a constant-size cursor in `state.json` (tmp + rename, at most once a second) makes a
+  cancel, a crash or a kill resume where it stopped. One `ffmpeg -c copy` joins the periods with the
+  concat demuxer (timestamps stay monotonic across discontinuities) and muxes a demuxed audio track
+  in; a single fMP4 period is handed over as it is. BYTERANGE single-file playlists, EXT-X-MAP before
+  or after EXTINF and repeated after a discontinuity (yt-dlp #10878), EXT-X-GAP, EXT-X-DEFINE,
+  per-site uri rewrites (Twitch `-unmuted` → `-muted`), a wrong playlist Content-Type and redirects
+  are handled; a 401/403 re-signs the playlist through the Source (one call per refusal wave, at most
+  max(3, ⌈hours⌉ + 1)); a missing segment fails as a resumable `network` error (or is skipped when
+  asked), a full disk is `disk-full`, never a gap. **Live streams are never downloaded**: a playlist
+  without an end is refused as `live-now` before any segment is asked for; the parser still reads
+  sliding windows in full (media and discontinuity sequences, program date-time, date ranges with
+  their CLASS and attributes, segment titles) and the segment fetcher, key cache, appender, state
+  writer and assemble step are separate pieces for the recorder to come. DRM (FairPlay, Widevine,
+  PlayReady) is `format-unavailable` with a message that says DRM; SAMPLE-AES is `stream-only`.
+  `VideoCodec` gains `'av1'` (ranked after H.265 and before H.264 outside MP4). `fetchMedia` takes a
+  `range` and links the caller's signal with one listener it removes (no `AbortSignal.any` per call,
+  whose Android polyfill left a listener on the job's signal each time), and no longer arms a
+  24-hour request timer per call (`HttpSession` treats `timeoutMs: Infinity` as none): each held
+  ~2 KB for a day, 36 MB over 18,000 segments. Fake origin `test/helpers/fake-hls.ts`, 44 fast tests,
+  5 heavy ones with the real ffmpeg, `scripts/hls-bench.ts`. Cost: parsing O(L) once per playlist
+  (L characters), O(n) memory for n segments; download O(1) per segment: 1 request, ≤ 1
+  constant-size state write per second, O(1) progress; ≤ k requests in flight, ≤ W = 2k segment
+  files on disk, memory O(k × 64 KB). Requests per item: 1 master + 1 per track playlist + n
+  segments + 1 per distinct key + 1 init per period + the refresh budget (each O(n) to re-check: O(n)
+  total). One ffmpeg -c copy pass O(bytes); P periods → a P-line concat list. Disk peak 2× the media
+  (period files + output). Validation and SHA-256 stay the engine's existing steps.
+
+- **Live recording on `core/hls` (`recordHls`, internal: Twitch live channels are its one Source), and
+  a Stop action in the engine.** A live media playlist (a sliding window) is recorded into one file
+  from the oldest segment the window still holds (`from: 'window'`, the default; `'now'` starts at
+  the newest one), one segment at a time, until the playlist ends (ENDLIST), the user stops it, a cap
+  (`maxDuration`, default 12 h of media or of wall clock) or the stream goes offline (10 reloads in a
+  row with nothing new, or a re-sign that says it is over). The playlist is re-read every target
+  duration (at least 1 s), half of it after a read that brought nothing, as hls.js does; segments are
+  taken by media sequence (one subtraction finds the first new one in the window, nothing is taken
+  twice), and when the program date-times say the numbering restarted (a refresh that opened a new
+  session) the window is re-anchored by date. A jump in the numbering is a gap: counted, dated, and
+  written as a new period, so the concat demuxer keeps timestamps contiguous; an EXT-X-GAP segment or
+  one still failing after two retries is a gap too and never fails the recording; a segment that sends
+  nothing for 10 s is dropped and asked again (`LIVE_STALL_MS`: a download's minute would let a
+  30-second window move past the next segments, which is what one live run lost before it). A caller's `skip`
+  leaves segments out (Twitch's ads), their seconds counted. A 401/403/410 asks `refreshUrl` for a
+  freshly signed url (three refusals in a row end it as `refused`); a refused segment re-signs once and
+  is taken again from the fresh copy. AES-128 keys go through the same key cache (key rotation, IV from
+  the media sequence), fMP4 periods start with their own init segment, and the period files are joined
+  by the same single `ffmpeg -c copy` as a download. Once something is recorded, a playlist that fails
+  ends the recording and keeps it instead of failing the job. **Stop keeps, Cancel discards**:
+  `MediaDownloader.stop(id)` (true when a running job was told to stop) ends a recording after the
+  segment in flight and the file goes through the engine's usual convert, validate, checksum and
+  archive steps, the job `completed`; `cancel(id)` aborts it and the work folder is deleted as for any
+  cancelled job; a stop before anything was recorded is a cancel. `SourceDownload.stop` carries the
+  signal to sources (those that only download what exists ignore it); `SourceFile.recording` reports
+  how a recording ended, its gaps and the seconds left out, which the engine logs. A live job's
+  progress is `live: true`, `elapsedSec` and `bytes` (also in `downloadedBytes`, with `speed`), never a
+  `fraction`, `totalBytes` or `eta`; the CLI shows `REC` and the time recorded. Fake live origin
+  (`startFakeLive` in `test/helpers/fake-hls.ts`: a window that advances on a simulated clock, ads,
+  signed tokens, renumbering sessions, AES rotation, fMP4, a stalled edge), 22 fast tests, a heavy one with the real
+  ffmpeg (an ad left out and a gap: one mp4, H.264 + AAC, the recorded duration, a clean full decode,
+  valid by `validateFile`), and `scripts/hls-record-bench.ts`: 10,000 segments (5.6 h of stream),
+  live heap 11.9 MiB at 2,000 segments and 12.0 MiB at 10,000, 1.000 segment request and 1.000 reload
+  per segment, event-loop p99 9.4 ms. Cost: O(1) per segment (one request, one append, O(1)
+  progress); per reload one request and O(w) parsing for a window of w segments (w set by the site,
+  not by the length of the recording); memory O(w) for the current window + a 4-key cache + one
+  [period, bytes] pair per period (a period per gap, ad break or discontinuity), never the list of
+  recorded segments: flat over 12 hours. The expensive re-sign happens only on a refusal (at most
+  three in a row). One ffmpeg -c copy at the end, O(bytes); disk peak 2× the recording.
+
+- **Twitch clips and VODs, natively.** Clips (`clips.twitch.tv/<slug>`, `clips.twitch.tv/embed?clip=`,
+  `twitch.tv/<channel>/clip/<slug>`, on www., m. and go.) and a channel's clips
+  (`twitch.tv/<channel>/clips`, its `?range=24hr|7d|30d|all` honoured, a week without one, as
+  the site), anonymous, from plain GraphQL queries on `gql.twitch.tv` (never the persisted
+  hashes, which rotated four times in 13 months). A clip is one query: its H.264 encodings
+  (1080p60 down to 360p) and the HEVC 1440p its playback token names, each a signed progressive
+  MP4 (`?sig=&token=`), ranked by `rankRenditions` (MP4 takes H.264, MKV / WebM the HEVC) and
+  streamed with Range; checks of clips not read yet go 15 a query (aliases). A listing is
+  `clips(first: 100)` pages, top by views, every clip signed in its page, so listed clips are
+  never read again; Twitch ends every listing at 1,000. The `Client-ID` is an option
+  (`twitch.clientId`): the default is yt-dlp's (`ue6666qo983tsx6so1t0vnawi233wa`), which read
+  every listing page live; the web player's (`kimne78kx3ncx6brgo4mv6wki5h1ko`) gets
+  `IntegrityCheckFailed` past page 1. A deleted clip or channel is `removed`; a token that says
+  forbidden (subscriber-only) is `needs-sign-in`; an integrity check is `source:blocked` (yt-dlp
+  for 10 minutes) and a renamed field or a clip without encodings `source:format-changed`
+  (yt-dlp for that url). A VOD whose broadcast is still going (`status: RECORDING`) fails
+  natively as `live-now`, never handed to yt-dlp (which would record it); a channel on the air
+  is recorded from its link (next entry). The live check is its own function
+  (`TwitchSource.liveStream`, `readLiveStream`: stream id, login, display name, title, start). VODs (`/videos/<id>`, `/<channel>/v/<id>`, `/<channel>/video/<id>`, the player,
+  `/schedule?vodID=`): past broadcasts, highlights, uploads and past premieres, downloaded by
+  `core/hls`. One query brings the VOD and its playback token, one usher request its master
+  playlist (`supported_codecs=h264` for an MP4 profile, `av1,h265,h264` otherwise; usher
+  answered H.264 only for every VOD tried live), variants without sound left out and the rest
+  ranked by `chooseVariant`; segments (fMP4 or MPEG-TS) go k at a time with `fragments`,
+  a refused one re-signs through a fresh token and the same variant of a new master, and
+  Twitch's muted parts keep the `-unmuted` → `-muted` rewrite. Recorded as `v<id>`, the id
+  yt-dlp gives them. A channel's videos (`/<channel>/videos`, its `?filter=` and `&sort=`
+  honoured) are `videos(first: 100)` pages by the page's cursor, with `totalCount`; listed
+  VODs are kept, so their checks read nothing and their downloads only their token, and an
+  incremental walk (`known`) stops at the known ones when newest first. A VOD still
+  recording stays `live-now` (listed with `isLive`, never handed to yt-dlp), and so does one
+  whose playlist has no end yet; a subscriber-only VOD (a forbidden token, or usher's 403
+  `vod_manifest_restricted`) is `needs-sign-in`; a deleted one is `removed`; any other
+  native failure (usher answering a page, a renamed field) is `source:format-changed` and
+  goes to yt-dlp, as clips do. New `LinkSite` `'twitch'`, option `twitch`
+  (`clientId`, `endpoints` with `usher` and `videoFields`, `pacing`, `maxListItems`), fake
+  GraphQL and usher over the fake HLS origin, tests, live matrix scenarios TW-01..08. Cost: one
+  GraphQL request per clip, per VOD and per channel checked (⌈n / 15⌉ for n checks of clips or
+  VODs not read yet), O(q) to read its q encodings; a clip listing costs ⌈n / 100⌉ requests for
+  n clips (at most 10), a video listing ⌈n / 100⌉ for n VODs, O(1) per item (Map by id, cursor
+  Set), memory O(n) of ~2 KB per clip, ~0.5 KB per VOD; 0 requests to download a listed clip,
+  one media GET per file, streamed, constant memory. A VOD costs 1 GraphQL + 1 usher + 1 media
+  playlist before its segments (a listed one: 1 token query instead of the read; one just
+  analyzed: none), then 1 GET per segment (~1 per 10 s, O(1) each), memory O(segments) for the
+  parsed list and O(k) streams; the expensive read happens once per VOD per token (~20 h),
+  never per segment. Clips and VODs kept in 2,000-entry LRUs (6 h at most, never past their
+  token), VOD tokens and masters 100, listings 100 each, concurrent reads of one item shared.
+
+- **Twitch live channels, recorded.** A channel link (`twitch.tv/<channel>`, `player.twitch.tv/?channel=`)
+  on the air is no longer `live-now`: its analysis is one live item (`isLive: true`, its qualities
+  from usher's channel master, titled `<channel> <started-at> <title>`) and its download records the
+  stream through `recordHls`. One raw GraphQL query brings the stream and its playback token together
+  (`user(login).stream` and `streamPlaybackAccessToken(channelName)`), one usher request the channel's
+  master (`/api/channel/hls/<login>.m3u8`, `supported_codecs=h264` for an MP4 profile, every codec
+  otherwise; variants without sound left out), and `chooseVariant` picks the quality as for a VOD; an
+  analysis's read feeds the recording that follows within a minute. Isaac's defaults (recorder.md
+  §7), all under the new option `twitch.live`: from the oldest segment the window holds (`from:
+  'window'`, about 30 s on Twitch), **ads left out** (`skipAds: true`: a segment titled other than
+  `live` — Twitch titles them `Amazon|…` — or dated inside an `EXT-X-DATERANGE` of CLASS
+  `twitch-stitched-ad`; their seconds are counted in `SourceFile.recording.skippedSeconds` and the
+  engine's log), a 12-hour cap (`maxDuration`), offline after 10 empty reloads (`emptyReloads`). A
+  refused playlist re-signs through a fresh query and usher request, the same quality by its name; a
+  re-sign that finds the channel offline, or on a new broadcast id, ends the recording, kept. The
+  file is named `<channel> <started-at> <title>` (the broadcast's start, local time) and archived as
+  `live-<stream id>-<recording start>`, so recording the same broadcast again later is a new file.
+  Nothing live is ever handed to yt-dlp: a failure that would send a VOD there fails a recording with
+  the source's own reason. A VOD still recording stays `live-now` (its message names the channel link
+  that records it), and a channel on the air stays `live-now` in a batch's checks (a list never
+  records). Fake `LiveStream` query, stream tokens and live usher over the fake live origin, 10 new
+  tests (record → stop, codecs and audio, ads both ways and `skipAds: false`, the ad predicate, a token
+  refresh, the stream ending, an offline channel and one going offline, a refresh that finds it
+  offline, never yt-dlp, Stop and Cancel through the engine). Cost: before the first segment 1
+  GraphQL request and 1 usher request (none right after an analysis); then 1 playlist request per
+  reload (every target duration: about every 6 s on Twitch) and 1 per segment (2 s each: 1,800 an
+  hour), O(1) each, memory flat (the recorder's); the ad check O(1) by title, O(r) by the r date ranges
+  a window lists (a handful); 1 query + 1 usher request per re-sign, only on a refusal.
+
+- **Twitch sign-in, live playback for a host's player, and how a recording ended.** `twitch.cookies`
+  (a `SessionProvider`, read once and every 6 h): the engine passes the `.twitch.tv` cookies of the
+  jar it reads for yt-dlp, as it does for Instagram, Facebook and Threads (a host's own
+  `twitch.cookies` wins). Only `auth-token` is used, never as a cookie: it goes as `Authorization:
+  OAuth <auth-token>` on the single reads that mint a playback token (a clip, a VOD and its token, a
+  live stream), on the web player's client id (`twitch.authClientId`, default `kimne78…`: twitch.tv
+  mints the token for it); listings and batched checks stay anonymous on yt-dlp's id. Subscriber-only
+  VODs, clips and streams then play; a clip a listing found forbidden passes its check signed in and
+  is read once more, signed, at download, and a subscriber-only VOD read before signing in gets one
+  signed token. Still forbidden with a session is `members-only` ("the signed-in Twitch account has
+  no access"), without one `needs-sign-in` as before. A refused session (401, what Twitch answers an
+  invalid or revoked token for the whole query; or an integrity check on a signed read) retries the
+  read once anonymously, drops the cookies, warns once, and keeps every read anonymous for 30 minutes
+  (`SESSION_REFUSED_MS`, as Meta's) before asking the host again; a signed read's integrity check
+  never sends clips to yt-dlp. `MediaDownloader.livePlayback(url, {signal, fresh})` (and
+  `TwitchSource.livePlayback`, the optional `MediaSource.livePlayback`, the `LivePlayback` type): a
+  channel's signed master url (H.264, what a browser's MSE plays), its expiry and the broadcast's
+  summary, built and never fetched, sharing the one-minute read of the analysis and the recording;
+  `undefined` off the air or for another link. `JobSnapshot.recording` (`RecordingSummary`, now in
+  the shared types): how a live recording ended (`stopped`, `endlist`, `offline`, `max-duration`,
+  `refused`), its seconds, gaps and lost segments, and the seconds of ads left out, set when the
+  download step hands the recording over and cleared by a retry. Fake: `Authorization` on the web id
+  (`fake-ok` subscribed, `fake-nosub` without access, anything else a 401), tokens and usher that
+  honour it, a log of every query's client id and header; 9 new tests (the header only on token
+  reads, subscribed downloads, signing in after a visitor's read, members-only, a 401 → one
+  anonymous retry and the 30-minute window, refusals in flight told once, `livePlayback` sharing the
+  analysis's query, `JobSnapshot.recording` on stop, max-duration, offline and the end of a
+  broadcast, the engine's cookies file signing the token reads). Not checked live (no Twitch
+  account): a real `auth-token` minting an allowed token, yt-dlp's id with that token, the integrity
+  check on signed token queries, Firefox and Edge exporting `.twitch.tv` cookies on Windows. Cost: 0
+  extra requests without a session or with one that works; a refused session costs 1 request once
+  per 30-minute window, never per link; the session is loaded once per 6 h (one jar read the engine
+  shares); header building O(1); `livePlayback` 0 or 1 GraphQL request and no usher request;
+  `JobSnapshot.recording` O(1) memory per job.
+
+- **Bluesky, natively.** Posts (`bsky.app/profile/<handle|did>/post/<rkey>`, its `/quotes`,
+  `/likes` and `/reposted-by` pages, `at://` uris) with pictures (`images`, up to 4, and the new
+  `gallery` embed, up to 10), a video, or a quote with media of its own, and public profiles
+  (`/profile/<actor>`, its `/media`, `/video`, `/posts`, `/replies` tabs read as its media
+  posts), all from the public AppView without a session. A post is one `getPostThread`; checks of
+  posts not read yet go 25 at a time through `getPosts` (handles resolved once each); a profile is
+  one `getProfile` and one `getAuthorFeed` (`posts_with_media`, `includePins`) per 100 posts, every
+  post whole in the page. The pinned post comes first and once, never counted in `known`; reposts
+  and others' posts are left out. Every file is the author's **original blob** from their own PDS
+  (`com.atproto.sync.getBlob`; the PDS found once per account in its DID document, plc.directory
+  or did:web), paced per PDS host and read for its `ratelimit-*` headers; a picture falls back to the
+  CDN's WebP re-encode when the PDS refuses or limits; a video is the blob's progressive MP4 (one
+  stream, started over once if it breaks: a PDS ignores Range), never HLS. A pure quote, a link
+  card or a text post is `format-unavailable`; a deleted post or account is `removed`; an account
+  labelled `!no-unauthenticated` is `needs-sign-in`. yt-dlp's Bluesky extractor reads the same API
+  for posts only: nothing is handed to it. New `LinkSite` `'bluesky'`, option `bluesky`
+  (`endpoints`, `pacing`, `pdsPacing`), fake and tests, live matrix scenarios BS-01..04. Cost: one
+  AppView request per post (⌈n / 25⌉ for n checks, plus one resolveHandle per handle), O(media) to
+  read it; a profile costs 1 + ⌈n / 100⌉ requests for n posts, O(1) per post to list (Map by rkey,
+  cursor Set), memory O(n) summaries; one DID document per account per session; one blob GET per
+  file, streamed, constant memory; posts kept in a 5,000-entry LRU, handles and PDSs 2,000, concurrent
+  reads of one thing shared.
+
+- **SoundCloud, natively (audio only) on `core/hls`.** Tracks
+  (`soundcloud.com/<user>/<track>`, on `www.` and `m.`, the embed player's `?url=`), private tracks
+  by their secret link (`/<track>/s-<token>`), sets (`/sets/<set>[/s-<token>]`, playlists and
+  albums), public profiles (`/<user>`, `/tracks`, `/likes`, `/sets`, `/albums`) and
+  `on.soundcloud.com` short links (one 302 through `followShortLink`; the sharer's `si` and `utm_*`
+  never reach the API), from the anonymous `api-v2` with the web app's own `client_id`: the
+  `soundcloud.clientId` option, else the home page's hydration id, else the last bundle script's,
+  streamed and left at the first match (the 2.9 MB bundle never held whole); read once per session,
+  and on a 401 the refused id is set aside and another read once (a second 401 is
+  `source:format-changed`). A track, a set or a user is one `/resolve`; a set's stubs go 50 a
+  request to `/tracks?ids=`, put back in the set's order by id (the API answers unordered; a
+  missing id was removed); listings follow `next_href` to its end (pages come back short), every
+  track whole in its page, so **a listed track is never read again**. The media is the clear HLS
+  fMP4 AAC (160k, else 96k) through `downloadHls`: the 5-minute playlist link is fetched at once
+  and minted again if it already ran out, and a segment the CDN refuses re-signs the playlist
+  through a new transcoding call; a single fMP4 period is the M4A as it is (no ffmpeg), and the
+  engine's M4A step copies the AAC. Old tracks' MP3 / Opus too: progressive through `fetchMedia`
+  (re-minted once, resumed with Range), MP3 HLS joined with one `-c copy`. A video profile is
+  refused before any request (`invalid-request` / `format-unavailable`). **Refused as what they
+  are, never handed to yt-dlp**: DRM-only label releases (`cbc-` / `ctr-encrypted-hls`, about 40 %
+  of the catalog; also a DRM key in a playlist) are `format-unavailable` with a message that says
+  DRM (decision 6: no new hint), a Go+ 30-second preview is `format-unavailable` unless a whole
+  format exists (taken instead), `policy: BLOCK` is `geo-blocked`, a deleted or private-without-
+  its-token track is `removed`. A changed API (an unknown shape, no known format, every format
+  404) is `source:format-changed` and a DataDome 403 or a WAF home page `source:blocked` (the
+  source steps aside 10 minutes): yt-dlp's SoundCloud extractor takes those. New `LinkSite`
+  `'soundcloud'`, option `soundcloud` (`clientId`, `endpoints`, `pacing`, `maxListItems`), fake
+  (`test/helpers/fake-soundcloud.ts`, on `fake-hls`) and 22 tests, live matrix scenarios SO-01..05
+  (SC- is Snapchat's) and an `audio` expectation in the live matrix (M4A download, ffprobe codec
+  and length against the track's, a full decode). Cost: one api request per track (resolve), one
+  mint per download (+1 per refresh, within the core's budget), then the core's HLS cost (1
+  playlist + n segments + 1 init, about 6 segments a minute) or one progressive GET, streamed,
+  constant memory; a listing costs 1 resolve + ⌈n / 50⌉ pages for n tracks (pages come short: up
+  to ⌈n / 47⌉ seen), O(1) per track (Map by id, cursor Set), 0 requests per listed track at check
+  time; a set costs 1 + ⌈s / 50⌉ requests for s stubs within `maxEntries`, O(n) to re-order (Map
+  by id); the client id costs 1 page (+ at most k ≤ 9 streamed scripts, early stop) once per
+  session, and one more read per refused id; tracks kept in a 5,000-entry LRU (30 min), users 500,
+  listings 100; concurrent resolves of one page shared.
+
+- **Stale work folders are cleared at start.** A job works in `work/<hash of url and profile>` so a
+  retry or the next launch resumes its partial files, and nothing removed the folders nothing would
+  resume: a crash or a killed process mid-download or mid-recording, or a job that failed on the
+  network in an earlier run (its folder is kept for a retry in the same run), left them on disk for
+  good. The first `restoreQueue()` of an engine (the scheduler's `restore()` calls it) now removes
+  every `work/` entry named like a work folder (16 hex digits) that no pending request references:
+  the folder of every request in the pending journal is kept, the batch jobs the scheduler restores
+  itself included, and so is that of every job the engine already has; anything else in `work/` is
+  never touched. Jobs wait for the sweep before using their folder, so it never runs under one.
+  Logged as "cleared N stale work folder(s)". 2 new tests with the fake tools (stale ones cleared,
+  restored, filtered-out, already-added and foreign folders kept, the restored jobs complete; a first
+  launch sweeps nothing). Cost: once per engine start, one `readdir` of `work/`, O(p) to hash the p
+  pending requests, O(1) per entry to decide, one recursive remove per stale folder; nothing per job.
+
+- **A download whose connection drops while its file is being opened no longer takes the process
+  down.** `fetchMedia` opened the file after turning the response body into a stream: a socket that
+  closed in between errored a stream nothing listened to yet (an uncaught error). The file is opened
+  first now. Cost: none (the same open, earlier).
+
+- **Threads, natively.** Posts (`/@u/post/<code>`, `/@u/post/<code>/media`, `/t/<code>`, on
+  threads.com and threads.net) with a video, a photo or a carousel of both, and public profiles
+  (`/@u`, its `/media`, `/replies`, `/reposts` tabs read as its threads). A post is one page
+  load (`navigationFetch`: Threads gives a page its data only to a request that says it is a page
+  load); a profile is one page load and one `POST /api/graphql` per 10 threads, from GraphQL's own
+  cursor, every post's media in the answer, so a listed post is never asked for again. Every post
+  the owner wrote with media is an entry (self-thread photos included; reposts, quotes and text
+  posts out); a carousel is a `slideshow` exactly as Instagram's; a text post is
+  `format-unavailable`. `maxEntries` (default 500), `known`, stalls and resumable chunks through
+  `walkCursor`. A private account or a post Threads hides from visitors is `needs-sign-in`; the
+  browser's threads.com cookies are used when the host has them. yt-dlp has no Threads extractor:
+  a changed page or a wall says so itself (`retry-later`), never handed to yt-dlp. New `LinkSite`
+  `'threads'`, option `threads` (`queries` overrides the query names and the listing's `doc_id`),
+  `ThreadsSource` reuses `MetaClient` (Pacer, session, retries) and Instagram's v1 media reader.
+  Cost: one page request per post, O(size of the page) to walk its JSON once; a profile costs one
+  page plus ⌈n / 10⌉ queries for n threads, O(1) per post to list (Map by id, cursor Set), memory
+  O(n) summaries; one media GET per file (streamed, constant memory); posts kept in a 5,000-entry
+  LRU until their links expire, profile pages 30 min, concurrent reads of one page shared.
+
+- **Snapchat, natively.** Spotlights (`/spotlight/<id>`, `/@u/spotlight/<id>`), public profiles
+  (`/@u`, `/add/u`, `story.snapchat.com`): the live story, every curated highlight's snaps and
+  the spotlights, a curated highlight (`/@u/highlight/<id>`), one story snap (`/@u/<snapId>`), and
+  short links (`snapchat.com/t/`, `t.snapchat.com/`; not verified live). One anonymous page read per
+  link (the page's own `__NEXT_DATA__`), no session, no browser, no yt-dlp; the media is fetched
+  exactly as the page serves it (spotlights keep Snapchat's watermark: the clean render exists and
+  is deliberately not used). A picture snap is a one-image photo post (`slideshow`). A profile lists
+  what its page embeds (`complete: false` when the page says there is more); a private account is
+  `private`, an expired snap `removed`, a page whose data moved falls back to yt-dlp. Bytes from
+  the CDN that are not media fail cleanly. New `LinkSite` `'snapchat'`, option `snapchat`
+  (`false` hands it to yt-dlp; `endpoints` overrides the origin, the data marker and the routes).
+  Cost: one page request per link, O(size of the page) to find and parse its data once; O(1) per
+  item to list (`maxEntries`, `known`), one media GET per item, constant memory (streamed);
+  pages kept in a 200-entry LRU and items in a 5,000-entry one, reads of one page shared, so a
+  whole profile (its listing, checks and downloads) costs one page request.
+
+**Desktop app**
+
+- **Twitch live: record and watch.** A channel on the air opens Record and Watch instead of a
+  download. A recording is a job of its own in a Recordings card above the batches (REC, how
+  long, how big; Stop and save, or Discard after a confirmation); it starts from the window
+  Twitch still holds, leaves ads out, ends at 12 hours, and lands in Finished tagged Live
+  recording, never offered for Download again. Watch plays the stream with hls.js 1.7.3 through
+  the main process (`mdc-live:`: Twitch's playlists refuse a local page): signed urls never reach
+  the window, segments come only from Twitch's media hosts, streamed through; a refused
+  playlist is signed again once for every request it held, at most 3 times in a row. Quitting
+  or closing the window with a recording running asks: Stop, save and quit, Discard and quit,
+  or Keep recording. Cost: O(1) per job event (a set of recordings), O(r) to draw r rows;
+  per player segment one request and O(1) work, per playlist reload O(lines).
+- **Sign-in for Threads and Twitch**: the browser session chosen in Settings now also reads
+  private Threads profiles the user follows and Twitch's subscriber-only videos, clips and
+  streams (the engine passes threads.com and twitch.tv cookies; Twitch's only on the reads
+  that mint a playback token). How to sign in lists, site by site, what a session opens,
+  in the supported-sites list's own words, and says Twitch's session never chats, follows
+  or subscribes. An analysis refused for want of a session now says how to sign in for
+  Twitch, Threads, Bluesky and VK too, not only YouTube, Instagram and Facebook.
+- **Supported sites, in one list**: `app/src/shared/sites.ts` says for each site what it
+  downloads, whether some of it needs the user's sign-in, whether yt-dlp reads it and whether
+  the Android app has it, with its words in all 14 languages (`site-words.ts`). The label of
+  the link box counts them and opens the list; About shows it too; under a pasted link a
+  line says what it downloads, what needs a sign-in and when yt-dlp reads it. The README's
+  table and the website's (a new section, in every language) are generated from the same
+  list by `scripts/build-site.mjs`, and `site:check` fails when either drifts.
+- **Five new sites are tagged**: a link from Threads, Bluesky, Twitch, SoundCloud or Snapchat
+  shows its site with its own icon and colour (antd's Threads, Twitch and Snapchat icons; drawn
+  ones for Bluesky and SoundCloud), named the same in all 14 languages.
+
 ## App 0.2.0-beta.21 · library 1.20.2
 
 A session the site refuses no longer stops a public post; the guide's fourth step; buy me a coffee.

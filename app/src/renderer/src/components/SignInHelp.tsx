@@ -1,8 +1,14 @@
 import {Alert, Modal, Space, Typography} from 'antd'
+import {SITES, type SignInSite} from '../../../shared/sites'
 import {useApp} from '../context'
 import {type MessageKey, useT} from '../i18n'
 
 const STEPS = ['signin.step1', 'signin.step2', 'signin.step3', 'signin.step4'] as const
+
+/** The named sites where a session opens something: the supported-sites list's own words. */
+const SIGN_IN_SITES = SITES.filter(entry => entry.signIn && entry.brand) as ReadonlyArray<
+  (typeof SITES)[number] & {readonly site: Exclude<SignInSite, 'web'>; readonly brand: string}
+>
 
 /** The permission each system asks for, the first time a browser's cookies are read. */
 function systemNote(platform: string): MessageKey {
@@ -23,6 +29,19 @@ export function SignInHelp({onClose}: {readonly onClose: () => void}) {
     <Modal open title={t('signin.title')} onCancel={onClose} footer={null} width={640}>
       <Space orientation="vertical" size="middle" className="full" data-testid="signin-help">
         <Typography.Text type="secondary">{t('signin.intro')}</Typography.Text>
+        <div>
+          <Typography.Text strong>{t('signin.sites')}</Typography.Text>
+          <ul className="signin-sites" data-testid="signin-sites">
+            {SIGN_IN_SITES.map(entry => (
+              <li key={entry.site} data-site={entry.site}>
+                <Typography.Text>
+                  <Typography.Text strong>{entry.brand}</Typography.Text>: {t(`sites.${entry.site}.needs`)}
+                </Typography.Text>
+              </li>
+            ))}
+          </ul>
+          <Typography.Text type="secondary">{t('signin.twitchNote')}</Typography.Text>
+        </div>
         <ol className="signin-steps">
           {STEPS.map(step => (
             <li key={step}>

@@ -4,7 +4,17 @@ import * as http from 'node:http'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import {type ElectronApplication, _electron as electron, expect, type Page, test} from '@playwright/test'
+import {HANDLES as BLUESKY_HANDLES, RKEYS as BLUESKY_RKEYS, startFakeBluesky} from '../../test/helpers/fake-bluesky'
+import {startFakeHls, startFakeLive} from '../../test/helpers/fake-hls'
+import {startFakeSnapchat} from '../../test/helpers/fake-snapchat'
+import {
+  HYDRATION_ID as SOUNDCLOUD_HYDRATION_ID,
+  trackUrl as soundcloudTrackUrl,
+  startFakeSoundcloud,
+} from '../../test/helpers/fake-soundcloud'
+import {startFakeThreads} from '../../test/helpers/fake-threads'
 import {startFakeTikTok} from '../../test/helpers/fake-tiktok'
+import {LIVE, LIVE_TRACKS, SLUGS, startFakeTwitch, VOD_TRACKS, VODS, WEB_ID} from '../../test/helpers/fake-twitch'
 import {writeFakes} from '../../test/helpers/fakes'
 import {listenLocal} from '../../test/helpers/listen'
 
@@ -134,7 +144,7 @@ async function download(page: Page, url: string) {
   }
 }
 
-test('downloads a playlist batch end to end: preflight, jobs, files on disk', async () => {
+test('downloads a playlist batch end to end: preflight, jobs, files on disk', {tag: '@smoke'}, async () => {
   const {app, page, outDir} = await launch('batch')
   await expect(page.getByText('One-time setup')).toHaveCount(0) // tools are ready
   await page.screenshot({path: path.join(APP_DIR, 'test-results', 'home-light.png')})
@@ -181,7 +191,7 @@ test('downloads a playlist batch end to end: preflight, jobs, files on disk', as
   await close(app)
 })
 
-test('finished files of every session, their folders, and the run report', async () => {
+test('finished files of every session, their folders, and the run report', {tag: '@full'}, async () => {
   const openLog = path.join(root, 'finished-open.log')
   const {app, page, outDir} = await launch('finished', {}, {MDC_OPEN_LOG: openLog})
   await page.getByLabel('Video, playlist or profile URL').fill('https://fake.test/list?n=3')
@@ -235,7 +245,7 @@ test('finished files of every session, their folders, and the run report', async
   await close(app)
 })
 
-test('the first launch shows the four first steps once; Guide replays them', async () => {
+test('the first launch shows the four first steps once; Guide replays them', {tag: '@smoke'}, async () => {
   const {app, page, dataDir} = await launch('guide', {tourDone: false})
   const tour = page.locator('.ant-tour')
   await expect(tour).toContainText('1 · Paste a link')
@@ -264,7 +274,7 @@ test('the first launch shows the four first steps once; Guide replays them', asy
   await close(again)
 })
 
-test('previews a list and downloads only the picked items', async () => {
+test('previews a list and downloads only the picked items', {tag: '@full'}, async () => {
   const {app, page, outDir} = await launch('pick')
   await page.getByLabel('Video, playlist or profile URL').fill('https://fake.test/list?n=5')
   await page
@@ -288,7 +298,7 @@ test('previews a list and downloads only the picked items', async () => {
   await close(app)
 })
 
-test('backs up picked posts of a TikTok profile as MP3 (built-in extractor)', async () => {
+test('backs up picked posts of a TikTok profile as MP3 (built-in extractor)', {tag: '@full'}, async () => {
   const site = await startFakeTikTok({posts: 6, pinned: true})
   try {
     const {app, page, outDir} = await launch('tiktok', {format: 'mp3'}, {MDC_TIKTOK_ORIGIN: site.origin})
@@ -317,7 +327,9 @@ test('backs up picked posts of a TikTok profile as MP3 (built-in extractor)', as
   }
 })
 
-test('Sync Up keeps a TikTok account in step with its folder, in the format of the folder', async () => {
+test('Sync Up keeps a TikTok account in step with its folder, in the format of the folder', {
+  tag: '@full',
+}, async () => {
   const site = await startFakeTikTok({posts: 5})
   try {
     // downloaded earlier as MP3 (the app's format is M4A now): recognized by the post number in the name
@@ -369,7 +381,7 @@ test('Sync Up keeps a TikTok account in step with its folder, in the format of t
   }
 })
 
-test('a TikTok profile behind a verification page opens through the built-in browser', async () => {
+test('a TikTok profile behind a verification page opens through the built-in browser', {tag: '@full'}, async () => {
   // plain requests get a "please wait" page whose script sets a cookie and reloads: only a browser passes
   const site = await startFakeTikTok({posts: 6, jsChallenge: true})
   try {
@@ -395,7 +407,7 @@ test('a TikTok profile behind a verification page opens through the built-in bro
   }
 })
 
-test('finds a new version, downloads it and verifies its checksum (dry run)', async () => {
+test('finds a new version, downloads it and verifies its checksum (dry run)', {tag: '@full'}, async () => {
   const payload = Buffer.from('new app '.repeat(20_000))
   const digest = createHash('sha256').update(payload).digest('hex')
   let origin = ''
@@ -456,7 +468,7 @@ test('finds a new version, downloads it and verifies its checksum (dry run)', as
   }
 })
 
-test('reports unavailable items with a reason and finishes with errors', async () => {
+test('reports unavailable items with a reason and finishes with errors', {tag: '@full'}, async () => {
   const {app, page} = await launch('mixed')
   await download(page, 'https://fake.test/list-mixed')
   const card = page.getByTestId('batch-card').first()
@@ -466,7 +478,7 @@ test('reports unavailable items with a reason and finishes with errors', async (
   await close(app)
 })
 
-test('remembers language and theme across restarts', async () => {
+test('remembers language and theme across restarts', {tag: '@full'}, async () => {
   const first = await launch('prefs')
   // the language select (fourteen languages, with search): Español by its own name
   await first.page.getByTestId('language-select').first().click()
@@ -490,7 +502,9 @@ test('remembers language and theme across restarts', async () => {
 
 // ─── beta 10 ────────────────────────────────────────────────────────────────
 
-test('one link box for every site: an old settings.json with a mode loads, Sync Up is there, links are tagged', async () => {
+test('one link box for every site: an old settings.json with a mode loads, Sync Up is there, links are tagged', {
+  tag: '@smoke',
+}, async () => {
   const site = await startFakeTikTok({posts: 2})
   try {
     // settings of a version with one site per run: its mode is ignored
@@ -505,7 +519,43 @@ test('one link box for every site: an old settings.json with a mode loads, Sync 
     await expect(page.getByTestId('site-tag')).toHaveAttribute('data-site', 'youtube')
     await field.fill('https://vk.com/video-1_2')
     await expect(page.getByTestId('site-tag')).toHaveText('VK')
+    // the beta 11 sites: each tagged with its name and an icon that draws
+    for (const [link, site, name] of [
+      ['https://www.threads.com/@zuck/post/C1', 'threads', 'Threads'],
+      ['https://bsky.app/profile/bsky.app', 'bluesky', 'Bluesky'],
+      ['https://www.twitch.tv/videos/1', 'twitch', 'Twitch'],
+      ['https://soundcloud.com/a/b', 'soundcloud', 'SoundCloud'],
+      ['https://www.snapchat.com/spotlight/W7_1', 'snapchat', 'Snapchat'],
+    ] as const) {
+      await field.fill(link)
+      const tag = page.getByTestId('site-tag')
+      await expect(tag).toHaveAttribute('data-site', site)
+      await expect(tag).toHaveText(name)
+      await expect(tag.locator('svg')).toBeVisible()
+    }
+    // the tag eases from one site's colour to the next: the picture waits for it
+    await page.waitForTimeout(400)
     await page.screenshot({path: path.join(APP_DIR, 'test-results', 'every-site.png')})
+    // under the tag: what the link downloads, whether it asks for a sign-in, whether yt-dlp reads it
+    const line = page.getByTestId('site-line')
+    await expect(line).toHaveText('Spotlights, stories, highlights and public profiles')
+    await field.fill('https://www.youtube.com/watch?v=x')
+    await expect(line).toHaveText(
+      'Videos, Shorts, playlists, channels and Mixes · Sign-in needed for private, members-only and age-restricted videos · Read by yt-dlp',
+    )
+    // the label counts the sites and opens their list
+    await expect(page.getByText('or any of the 13 supported sites')).toBeVisible()
+    await page.getByTestId('open-sites').click()
+    const sites = page.getByTestId('supported-sites')
+    await expect(sites.locator('.ant-table-row')).toHaveCount(13)
+    await expect(sites.locator('.ant-table-row').filter({hasText: 'Twitch'})).toContainText(
+      'For subscriber-only videos and streams',
+    )
+    await expect(sites.locator('.ant-table-row').filter({hasText: 'YouTube'})).toContainText('Desktop only')
+    await page.waitForTimeout(400)
+    await page.screenshot({path: path.join(APP_DIR, 'test-results', 'supported-sites.png')})
+    await page.keyboard.press('Escape')
+    await expect(sites).toHaveCount(0)
     await page.getByRole('button', {name: /settings/i}).click()
     await expect(page.getByRole('switch', {name: 'Run scheduled syncs (Sync Up)'})).toBeChecked()
     await expect(page.getByTestId('settings-mode')).toHaveCount(0)
@@ -518,7 +568,9 @@ test('one link box for every site: an old settings.json with a mode loads, Sync 
   }
 })
 
-test('cancelling one download leaves the rest of its batch running, and the batch completes', async () => {
+test('cancelling one download leaves the rest of its batch running, and the batch completes', {
+  tag: '@full',
+}, async () => {
   const {app, page} = await launch('cancel-one', {concurrency: 1})
   await download(page, 'https://fake.test/list?n=4&p=slowest-')
   const card = page.getByTestId('batch-card').first()
@@ -538,7 +590,7 @@ test('cancelling one download leaves the rest of its batch running, and the batc
   await close(app)
 })
 
-test('failed downloads of several batches go into one new batch from the Failed card', async () => {
+test('failed downloads of several batches go into one new batch from the Failed card', {tag: '@full'}, async () => {
   const {app, page} = await launch('failed-list')
   await download(page, 'https://fake.test/list-gone?g=a')
   await download(page, 'https://fake.test/list-gone?g=b')
@@ -563,7 +615,9 @@ test('failed downloads of several batches go into one new batch from the Failed 
   await close(app)
 })
 
-test('download first, check after: a damaged file is marked, kept, and never downloaded again', async () => {
+test('download first, check after: a damaged file is marked, kept, and never downloaded again', {
+  tag: '@full',
+}, async () => {
   const {app, page, outDir} = await launch('check-after', {validation: 'quick', validateAfter: true, format: 'mp4'})
   await download(page, 'https://fake.test/list-broken?g=x')
   const card = page.getByTestId('batch-card').first()
@@ -592,7 +646,7 @@ test('download first, check after: a damaged file is marked, kept, and never dow
   await close(app)
 })
 
-test('Finished: filters by integrity and size, and forgets the records of deleted files', async () => {
+test('Finished: filters by integrity and size, and forgets the records of deleted files', {tag: '@full'}, async () => {
   const {app, page, outDir} = await launch('prune')
   await download(page, 'https://fake.test/list?n=3')
   await expect(page.getByTestId('batch-card').first()).toHaveAttribute('data-status', 'completed', {timeout: 60_000})
@@ -621,7 +675,9 @@ test('Finished: filters by integrity and size, and forgets the records of delete
   await close(app)
 })
 
-test('Finished: a deleted file is not checked again, and downloads again into its folder from its link', async () => {
+test('Finished: a deleted file is not checked again, and downloads again into its folder from its link', {
+  tag: '@full',
+}, async () => {
   const {app, page, outDir} = await launch('redownload')
   await download(page, 'https://fake.test/list?n=3')
   await expect(page.getByTestId('batch-card').first()).toHaveAttribute('data-status', 'completed', {timeout: 60_000})
@@ -652,7 +708,9 @@ test('Finished: a deleted file is not checked again, and downloads again into it
   await close(app)
 })
 
-test('a mix list: links added one by one, checked at once, one in a format of its own, one batch', async () => {
+test('a mix list: links added one by one, checked at once, one in a format of its own, one batch', {
+  tag: '@full',
+}, async () => {
   // the form is set to M4A: every link becomes M4A unless it has its own format
   const {app, page, outDir} = await launch('mix-list')
   await page.getByTestId('open-mix').click()
@@ -694,4 +752,172 @@ test('a mix list: links added one by one, checked at once, one in a format of it
   const files = (await fs.readdir(outDir)).sort()
   expect(files.map(name => path.extname(name))).toEqual(['.m4a', '.mp4'])
   await close(app)
+})
+
+test('a subscriber-only Twitch VOD downloads once a browser session is chosen', {tag: '@full'}, async () => {
+  const hls = await startFakeHls({tracks: VOD_TRACKS})
+  const site = await startFakeTwitch({hls})
+  try {
+    const {app, page, outDir} = await launch('twitch-signin', {}, {MDC_TWITCH_ORIGIN: site.origin})
+    const link = `https://www.twitch.tv/videos/${VODS.subsOnly}`
+    // signed out: the app says to sign in, and nothing is downloaded
+    await download(page, link)
+    await expect(page.getByText(/Sign-in required/).first()).toBeVisible({timeout: 30_000})
+    expect(site.requests.every(request => request.auth === undefined)).toBe(true)
+
+    // the sign-in modal names what a Twitch session opens
+    await page.getByRole('button', {name: /settings/i}).click()
+    await page.getByRole('button', {name: /how to sign in/i}).click()
+    const help = page.getByTestId('signin-sites')
+    await expect(help.locator('[data-site="twitch"]')).toContainText('Twitch: subscriber-only videos and streams')
+    await expect(help.locator('[data-site="threads"]')).toContainText('Threads: private accounts')
+    await page.keyboard.press('Escape')
+
+    // a browser's session: the fake jar carries a subscriber's .twitch.tv auth-token
+    await page.getByLabel('Cookies from browser').click()
+    await page.locator('.ant-select-item-option[title="firefox"]').click()
+    await page.locator('.ant-drawer-close').click()
+    await expect(page.locator('.ant-drawer-open')).toHaveCount(0)
+    await download(page, link)
+    const card = page.getByTestId('batch-card').first()
+    await expect(card).toHaveAttribute('data-status', 'completed', {timeout: 60_000})
+    expect((await fs.readdir(outDir)).length).toBe(1)
+    // the session went only on the reads that mint a playback token, with the web player's id
+    const signed = site.requests.filter(request => request.auth !== undefined)
+    expect(signed.length).toBeGreaterThan(0)
+    expect(signed.every(request => request.auth === 'OAuth fake-ok' && request.clientId === WEB_ID)).toBe(true)
+    await close(app)
+  } finally {
+    await site.close()
+    await hls.close()
+  }
+})
+
+test('records a live Twitch channel, stops and keeps the file; a discarded one leaves nothing', {
+  tag: '@full',
+}, async () => {
+  const live = await startFakeLive({tracks: LIVE_TRACKS})
+  const site = await startFakeTwitch({live})
+  // the fake channel's clock: 2 s of stream every 200 ms (the recorder's own waits are real)
+  const tick = setInterval(() => live.clock.advance(2000), 200)
+  try {
+    const {app, page, outDir, dataDir} = await launch('twitch-live', {format: 'mp4'}, {MDC_TWITCH_ORIGIN: site.origin})
+    const link = `https://www.twitch.tv/${LIVE.onAir}`
+    const record = async () => {
+      await page.getByLabel('Video, playlist or profile URL').fill(link)
+      await page
+        .getByRole('button', {name: /download|schedule/i})
+        .first()
+        .click()
+      // a channel on the air is recorded or watched, never scheduled as a download
+      const modal = page.getByTestId('live-modal')
+      await expect(modal).toContainText('Recording starts from the last half minute')
+      await modal.getByRole('button', {name: /record/i}).click()
+      await expect(modal).toHaveCount(0)
+      await expect(page.getByTestId('recording')).toHaveAttribute('data-status', 'downloading')
+      // it records: a clock, REC, and no batch
+      await expect(page.getByTestId('recording-elapsed')).toBeVisible({timeout: 30_000})
+      await expect(page.getByTestId('recording-elapsed')).not.toHaveText('0:00 recorded', {timeout: 30_000})
+      await expect(page.getByTestId('batch-card')).toHaveCount(0)
+    }
+
+    await record()
+    await page.waitForTimeout(400)
+    await page.screenshot({path: path.join(APP_DIR, 'test-results', 'live-recording.png')})
+    await page.getByTestId('recording-stop').click()
+    // saved like any download (converted, finalized), then it leaves the card
+    await expect(page.getByTestId('recordings')).toHaveCount(0, {timeout: 60_000})
+    const saved = (await fs.readdir(outDir)).filter(name => name.endsWith('.mp4'))
+    expect(saved).toHaveLength(1)
+    expect((await fs.stat(path.join(outDir, saved[0]!))).size).toBeGreaterThan(0)
+    await page.getByRole('tab', {name: /^Finished/}).click()
+    await expect(page.getByTestId('finished-live')).toBeVisible()
+    await page.getByRole('tab', {name: /^Batches/}).click()
+
+    // the same channel again, discarded: nothing new on disk, no work folder left
+    await record()
+    await page.getByTestId('recording-discard').click()
+    await page.locator('.ant-popconfirm').getByRole('button', {name: 'Discard'}).click()
+    await expect(page.getByTestId('recordings')).toHaveCount(0, {timeout: 30_000})
+    expect((await fs.readdir(outDir)).filter(name => name.endsWith('.mp4'))).toEqual(saved)
+    const work = await fs.readdir(path.join(dataDir, 'work')).catch(() => [])
+    expect(work).toEqual([])
+
+    // quitting while it records: the window asks; Stop, save and quit keeps the file, then quits
+    await record()
+    const exited = new Promise<void>(resolve => app.process().once('exit', () => resolve()))
+    await app.evaluate(({app: electronApp}) => electronApp.quit())
+    const ask = page.getByTestId('quit-recording')
+    await expect(ask).toContainText('1 recording(s) still running')
+    await ask.getByRole('button', {name: 'Stop, save and quit'}).click()
+    await exited
+    expect((await fs.readdir(outDir)).filter(name => name.endsWith('.mp4'))).toHaveLength(2)
+  } finally {
+    clearInterval(tick)
+    await site.close()
+    await live.close()
+  }
+})
+
+test('beta 11: a mix list of the five new sites is checked at once and downloads as one batch', {
+  tag: '@full',
+}, async () => {
+  // every site from its local fake: no network
+  const hls = await startFakeHls({tracks: VOD_TRACKS})
+  const twitch = await startFakeTwitch({hls})
+  const threads = await startFakeThreads()
+  const bluesky = await startFakeBluesky()
+  const snapchat = await startFakeSnapchat()
+  const soundcloud = await startFakeSoundcloud({hydrationId: SOUNDCLOUD_HYDRATION_ID})
+  try {
+    // the list as M4A (SoundCloud is sound only), the Twitch clip as a video of its own
+    const {app, page, outDir} = await launch(
+      'beta11-mix',
+      {},
+      {
+        MDC_TWITCH_ORIGIN: twitch.origin,
+        MDC_THREADS_ORIGIN: threads.origin,
+        MDC_BLUESKY_ORIGIN: bluesky.origin,
+        MDC_SNAPCHAT_ORIGIN: snapchat.origin,
+        MDC_SOUNDCLOUD_ORIGIN: soundcloud.origin,
+      },
+    )
+    const links = {
+      threads: `https://www.threads.com/@zuck/post/${threads.codes.video}`,
+      bluesky: `https://bsky.app/profile/${BLUESKY_HANDLES.alice}/post/${BLUESKY_RKEYS.video}`,
+      twitch: `https://clips.twitch.tv/${SLUGS.good}`,
+      snapchat: `https://www.snapchat.com/spotlight/${snapchat.ids.spotlight}`,
+      soundcloud: soundcloudTrackUrl('clear-track'),
+    }
+    await page.getByTestId('open-mix').click()
+    const dialog = page.getByRole('dialog')
+    const field = dialog.getByLabel('Paste or type a link')
+    for (const link of Object.values(links)) {
+      await field.fill(link)
+      await field.press('Enter')
+    }
+    await expect(dialog.getByTestId('mix-sites')).toContainText('5 links')
+    // each link tagged with its own site
+    for (const site of Object.keys(links)) await expect(dialog.locator(`[data-site="${site}"]`).first()).toBeVisible()
+    await dialog.getByTestId('mix-check').click()
+    await expect(dialog.getByTestId('mix-summary')).toContainText('5 ready', {timeout: 60_000})
+    const clip = dialog.locator('.rows-item', {hasText: 'twitch.tv'})
+    await clip.getByRole('combobox', {name: 'Format'}).click()
+    await page.locator('.ant-select-item-option-content', {hasText: 'Video · MP4 · Best available'}).first().click()
+    await page.screenshot({path: path.join(APP_DIR, 'test-results', 'beta11-mix.png')})
+    await dialog.getByTestId('mix-schedule').click()
+    const card = page.getByTestId('batch-card').first()
+    await expect(card).toHaveAttribute('data-status', 'completed', {timeout: 90_000})
+    await expect(card).toContainText('5/5 done')
+    const files = (await fs.readdir(outDir, {recursive: true})).map(String).filter(name => /\.(mp4|m4a)$/.test(name))
+    expect(files.filter(name => name.endsWith('.m4a'))).toHaveLength(4)
+    expect(files.filter(name => name.endsWith('.mp4'))).toHaveLength(1)
+    // the Finished tab names every site
+    await page.getByRole('tab', {name: /^Finished/}).click()
+    for (const site of Object.keys(links))
+      await expect(page.locator(`.finished-site[data-site="${site}"]`).first()).toBeVisible()
+    await close(app)
+  } finally {
+    for (const fake of [twitch, threads, bluesky, snapchat, soundcloud, hls]) await fake.close()
+  }
 })

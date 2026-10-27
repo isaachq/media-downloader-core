@@ -76,10 +76,21 @@ const TRACKING: ReadonlySet<string> = new Set([
   'ref_url',
   'rdid',
   'share_url',
+  // Twitch's share sheet
+  'tt_medium',
+  'tt_content',
 ])
 
-/** Sites whose links carry the post in the path: their query is only tracking (?s=20, ?igsh=, ?_r=1&_t=…). */
-const PATH_IDENTIFIED: ReadonlySet<LinkSite> = new Set(['tiktok', 'instagram', 'x'])
+/** Sites whose links carry the post in the path: their query is only tracking (?s=20, ?igsh=, ?_r=1&_t=…, ?share_id=, ?xmt=). */
+const PATH_IDENTIFIED: ReadonlySet<LinkSite> = new Set([
+  'tiktok',
+  'instagram',
+  'x',
+  'snapchat',
+  'threads',
+  'soundcloud',
+  'bluesky',
+])
 
 /**
  * What makes two links the same link, without asking the site: scheme, a

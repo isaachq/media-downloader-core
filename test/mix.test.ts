@@ -34,6 +34,8 @@ function setup(name: string, options: ConstructorParameters<typeof BatchSchedule
     maxRetries: 2,
     retryDelayMaxMs: 20,
     progressIntervalMs: 0,
+    // a bot check pauses YouTube for 5 minutes by default: a test waits milliseconds
+    youtube: {pacing: {spacingMs: 0, jitterMs: 0, backoffMs: 50, maxBackoffMs: 200}},
   })
   const scheduler = new BatchScheduler(engine, options)
   cleanups.push(async () => {

@@ -4,18 +4,24 @@
 //   docs/<code>/index.html  every language but English, written in that language
 //   docs/index.html         the English page itself: only its generated parts
 //   docs/sitemap.xml        every page with its alternates (hreflang)
+//   README.md               only its supported-sites table
 //
 // Generated parts sit between markers (<!-- seo:start -->, /*i18n:start*/, …) so the
-// build can run again. The languages are the desktop app's (app/src/shared/contract.ts).
+// build can run again. The languages are the desktop app's (app/src/shared/contract.ts);
+// the supported sites and their words too (app/src/shared/sites.ts, site-words.ts).
 //
 //   node scripts/build-site.mjs          write the pages
 //   node scripts/build-site.mjs --check  fail when a page is not what the build writes
 //   node scripts/build-site.mjs --english  print the English words, to start a translation
 import {mkdirSync, readFileSync, writeFileSync} from 'node:fs'
 import {dirname, join} from 'node:path'
-import {fileURLToPath} from 'node:url'
+import {fileURLToPath, pathToFileURL} from 'node:url'
+import {tsImport} from 'tsx/esm/api'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
+// the app's own list, read as TypeScript on any Node the CI runs (tsx, not type stripping)
+const {SITES} = await tsImport(pathToFileURL(join(ROOT, 'app/src/shared/sites.ts')).href, import.meta.url)
+const {SITE_WORDS} = await tsImport(pathToFileURL(join(ROOT, 'app/src/shared/site-words.ts')).href, import.meta.url)
 const DOCS = join(ROOT, 'docs')
 const SITE = 'https://isaachq.github.io/media-downloader-core/'
 const RELEASES = 'https://github.com/isaachq/media-downloader-core/releases'
@@ -64,6 +70,52 @@ const between = (text, start, end, inner) => {
   const b = text.indexOf(end, a)
   if (a < 0 || b < 0) throw new Error(`no ${start} … ${end} in docs/index.html`)
   return text.slice(0, a + start.length) + inner + text.slice(b)
+}
+
+// the supported sites, in one language: O(sites) per page
+const siteRows = code => {
+  const words = SITE_WORDS[code]
+  return SITES.map(entry => ({
+    entry,
+    name: entry.brand ?? (entry.site === 'web' ? words.nameWeb : words.nameFile),
+    what: words.what[entry.site],
+    signIn: entry.signIn ? words.signInFor.replace('{what}', words.needs[entry.site]) : words.notNeeded,
+    phone: entry.phone ? words.yes : words.desktopOnly,
+  }))
+}
+const sitesSection = code => {
+  const words = SITE_WORDS[code]
+  const rows = siteRows(code)
+    .map(
+      row =>
+        `\n        <tr data-site="${row.entry.site}"><th scope="row">${escapeAttr(row.name)}</th><td>${escapeAttr(row.what)}</td><td${row.entry.signIn ? '' : ' class="muted"'}>${row.entry.signIn ? `<a href="#signin">${escapeAttr(row.signIn)}</a>` : escapeAttr(row.signIn)}</td><td${row.entry.phone ? '' : ' class="muted"'}>${escapeAttr(row.phone)}</td></tr>`,
+    )
+    .join('')
+  return `
+    <h2>${escapeAttr(words.title)}</h2>
+    <p class="intro">${escapeAttr(words.intro)}</p>
+    <div class="sites-table">
+      <table>
+        <thead><tr><th scope="col">${escapeAttr(words.colSite)}</th><th scope="col">${escapeAttr(words.colWhat)}</th><th scope="col">${escapeAttr(words.colSignIn)}</th><th scope="col">${escapeAttr(words.colPhone)}</th></tr></thead>
+        <tbody>${rows}
+        </tbody>
+      </table>
+    </div>
+    `
+}
+// the README's table, in English, with how each site is read
+const readmeSites = () => {
+  const words = SITE_WORDS.en
+  const cell = text => text.replaceAll('|', '\\|')
+  const lines = [
+    `| ${words.colSite} | ${words.colWhat} | ${words.colSignIn} | Read by | ${words.colPhone} |`,
+    '| --- | --- | --- | --- | --- |',
+    ...siteRows('en').map(
+      row =>
+        `| ${cell(row.name)} | ${cell(row.what)} | ${cell(row.signIn)} | ${row.entry.engine === 'native' ? 'the library' : 'yt-dlp'} | ${cell(row.phone)} |`,
+    ),
+  ]
+  return `\n${lines.join('\n')}\n`
 }
 
 const template = readFileSync(join(DOCS, 'index.html'), 'utf8')
@@ -175,6 +227,7 @@ const page = language => {
   const dynamic = Object.fromEntries(Object.keys(runtime).map(key => [key, word(key)]))
 
   html = between(html, '<!-- seo:start -->', '<!-- seo:end -->', `\n${seo}\n`)
+  html = between(html, '<!-- sites:start -->', '<!-- sites:end -->', sitesSection(code))
   html = between(html, '<!-- langs:dialog:start -->', '<!-- langs:dialog:end -->', `${dialog}\n  `)
   html = between(html, '<!-- langs:footer:start -->', '<!-- langs:footer:end -->', footer)
   html = between(html, '/*languages:start*/', '/*languages:end*/', JSON.stringify(siteCodes).replaceAll('"', "'"))
@@ -201,6 +254,10 @@ const outputs = new Map()
 for (const language of LANGUAGES)
   outputs.set(language.code === 'en' ? 'index.html' : `${language.code}/index.html`, page(language))
 outputs.set('sitemap.xml', sitemap())
+outputs.set(
+  '../README.md',
+  between(readFileSync(join(ROOT, 'README.md'), 'utf8'), '<!-- sites:start -->', '<!-- sites:end -->', readmeSites()),
+)
 
 if (problems.length) {
   console.error(problems.map(problem => `  ✗ ${problem}`).join('\n'))

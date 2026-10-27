@@ -31,6 +31,61 @@ describe('detectLink: the site of a pasted or shared link', () => {
     assert.equal(site('https://vkontakte.ru/video1_2'), 'vk')
   })
 
+  it('names Snapchat on its main host and on its short-link and story subdomains', () => {
+    assert.equal(
+      site('https://www.snapchat.com/spotlight/W7_EDlXWTBiXAEEniNoMPwAAYeG9xcGd0ZWd3AZ14BVv0AZ14BQkrAAAAAQ'),
+      'snapchat',
+    )
+    assert.equal(site('https://snapchat.com/@nasa'), 'snapchat')
+    assert.equal(site('https://www.snapchat.com/add/djkhaled305?share_id=1'), 'snapchat')
+    assert.equal(site('https://story.snapchat.com/s/djkhaled305'), 'snapchat')
+    assert.equal(site('https://t.snapchat.com/eFgH5678'), 'snapchat')
+    assert.equal(site('Look: https://www.snapchat.com/t/aBcD1234.'), 'snapchat')
+    assert.equal(detectLink('https://www.snapchat.com/@nasa')?.host, 'snapchat.com')
+    assert.equal(site('https://snapchat.com.evil.example/@nasa'), 'web')
+    assert.equal(site('https://notsnapchat.com/@nasa'), 'web')
+  })
+
+  it('names Threads on threads.com and the old threads.net', () => {
+    assert.equal(site('https://www.threads.com/@zuck/post/DHV7vTivqWD'), 'threads')
+    assert.equal(site('https://threads.net/@zuck'), 'threads')
+    assert.equal(site('https://www.threads.net/t/Ddt7cL5EfUG?xmt=1'), 'threads')
+    assert.equal(site('See https://www.threads.com/@mosseri.'), 'threads')
+    assert.equal(detectLink('https://www.threads.com/@zuck')?.host, 'threads.com')
+    assert.equal(site('https://threads.com.evil.example/@zuck'), 'web')
+    assert.equal(site('https://notthreads.net/@zuck'), 'web')
+  })
+
+  it('names SoundCloud on soundcloud.com, m., w. and on.soundcloud.com', () => {
+    assert.equal(site('https://soundcloud.com/forss/flickermood'), 'soundcloud')
+    assert.equal(site('https://m.soundcloud.com/flume/sets/dumb-499556491'), 'soundcloud')
+    assert.equal(site('Listen: https://on.soundcloud.com/fqRmvhVEbVvCLEJ29 !'), 'soundcloud')
+    assert.equal(site('https://w.soundcloud.com/player/?url=https%3A//soundcloud.com/forss/flickermood'), 'soundcloud')
+    assert.equal(detectLink('https://www.soundcloud.com/flume')?.host, 'soundcloud.com')
+    assert.equal(site('https://soundcloud.com.evil.example/forss/flickermood'), 'web')
+    assert.equal(site('https://notsoundcloud.com/forss'), 'web')
+  })
+
+  it('names Bluesky on bsky.app', () => {
+    assert.equal(site('https://bsky.app/profile/bsky.app/post/3mnslrkd6ok2g'), 'bluesky')
+    assert.equal(site('https://bsky.app/profile/did:plc:z72i7hdynmk6r22z27h6tvur'), 'bluesky')
+    assert.equal(site('Look: https://www.bsky.app/profile/jay.bsky.team/post/3mwhqanugyc2z!'), 'bluesky')
+    assert.equal(detectLink('https://bsky.app/profile/theverge.com')?.host, 'bsky.app')
+    assert.equal(site('https://bsky.app.evil.example/profile/bsky.app'), 'web')
+    assert.equal(site('https://notbsky.app/profile/bsky.app'), 'web')
+  })
+
+  it('names Twitch on twitch.tv and clips.twitch.tv', () => {
+    assert.equal(site('https://clips.twitch.tv/FaintLightGullWholeWheat'), 'twitch')
+    assert.equal(site('https://www.twitch.tv/shroud/clip/PreciousRelievedCodCorgiDerp-IqjaHMAL8JQQH78F'), 'twitch')
+    assert.equal(site('Watch: https://m.twitch.tv/shroud/clips?range=7d.'), 'twitch')
+    assert.equal(site('https://www.twitch.tv/videos/2602093345'), 'twitch')
+    assert.equal(site('https://player.twitch.tv/?video=v2602093345&parent=example.com'), 'twitch')
+    assert.equal(detectLink('https://www.twitch.tv/shroud')?.host, 'twitch.tv')
+    assert.equal(site('https://twitch.tv.evil.example/shroud'), 'web')
+    assert.equal(site('https://nottwitch.tv/shroud'), 'web')
+  })
+
   it('any other site is "web", and a link straight to a file says so', () => {
     const page = detectLink('https://www.trannyvideosx.com/video/81455/ts-havenna-sofia-solo-1')
     assert.deepEqual(page, {

@@ -229,6 +229,15 @@ describe('terminal rendering', () => {
     assert.equal(stripAnsi(stepTrack(job({}).steps, color)), 'D▸ C· V· F·')
   })
 
+  it('renders a live recording as REC with the time recorded, never a percentage or an ETA', () => {
+    const live = job({progress: {live: true, elapsedSec: 65, bytes: 5_000_000, speed: 1_000_000}})
+    const row = stripAnsi(jobLine(live, color, 160))
+    assert.match(row, /REC/)
+    assert.match(row, /rec 1:05/)
+    assert.doesNotMatch(row, /%|eta/)
+    assert.ok(visibleLength(jobLine(live, color, 60)) <= 60)
+  })
+
   it('renders log lines with short ids and the summary with the session id', () => {
     const entry: LogEntry = {
       level: 'warn',

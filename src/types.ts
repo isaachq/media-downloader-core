@@ -1,12 +1,17 @@
 import type {YtDlpPolicy} from './binaries/manager.js'
 import type {FileNameStyle} from './core/files.js'
+import type {BlueskyOptions} from './sources/bluesky/source.js'
 import type {LinkSite} from './sources/detect.js'
 import type {DirectOptions} from './sources/direct/source.js'
 import type {FacebookOptions} from './sources/facebook/source.js'
 import type {InstagramOptions} from './sources/instagram/source.js'
 import type {MixPlanSkip} from './sources/mix-plan.js'
+import type {SnapchatOptions} from './sources/snapchat/source.js'
+import type {SoundcloudOptions} from './sources/soundcloud/source.js'
 import type {MediaSource} from './sources/source.js'
+import type {ThreadsOptions} from './sources/threads/source.js'
 import type {TikTokOptions} from './sources/tiktok/source.js'
+import type {TwitchOptions} from './sources/twitch/source.js'
 import type {VkOptions} from './sources/vk/source.js'
 import type {XOptions} from './sources/x/source.js'
 import type {AttestationOptions, AttestationStrategy} from './youtube/attestation.js'
@@ -301,6 +306,16 @@ export type JobProgress = {
   readonly totalParts?: number | undefined
   readonly fragmentIndex?: number | undefined
   readonly fragmentCount?: number | undefined
+  /**
+   * A live recording (a Twitch channel on the air): it has no end to measure against, so `fraction`,
+   * `totalBytes` and `eta` stay undefined; `elapsedSec` and `bytes` say how far it got. Stop it with
+   * `MediaDownloader.stop(id)` to keep it, `cancel(id)` to discard it.
+   */
+  readonly live?: boolean | undefined
+  /** Seconds since the recording started (wall clock). */
+  readonly elapsedSec?: number | undefined
+  /** Bytes recorded so far (the same as `downloadedBytes`). */
+  readonly bytes?: number | undefined
 }
 
 /**
@@ -395,9 +410,33 @@ export type JobSnapshot = {
    */
   readonly validationPending?: boolean | undefined
   readonly error?: JobError | undefined
+  /**
+   * A live recording's download step finished (a Twitch channel): how it ended and what it left out,
+   * so a host can say "stopped", "the broadcast ended", "12 h reached" without reading the log. Set
+   * once the recording is handed over (before convert / validate), cleared when a retry starts.
+   */
+  readonly recording?: RecordingSummary | undefined
   readonly createdAt: number
   readonly startedAt?: number | undefined
   readonly finishedAt?: number | undefined
+}
+
+/**
+ * How a live recording ended and what it left out. `ended`: 'stopped' (MediaDownloader.stop),
+ * 'endlist' (the broadcast ended), 'offline' (the channel left the air), 'max-duration' (the cap,
+ * 12 h by default), 'refused' (the playlist stopped answering and could not be re-signed).
+ */
+export type RecordingSummary = {
+  readonly ended: 'endlist' | 'stopped' | 'max-duration' | 'offline' | 'refused'
+  /** Seconds of media in the file. */
+  readonly seconds: number
+  readonly segments: number
+  /** Places where segments were lost, and how many. */
+  readonly gaps: number
+  readonly lostSegments: number
+  /** Seconds left out on purpose (Twitch's stitched ads). */
+  readonly skippedSeconds: number
+  readonly refreshes: number
 }
 
 export type JobRequest = {
@@ -818,7 +857,10 @@ export type DownloaderOptions = {
    * up to 0.6 (⌊CPUs × 0.6⌋), leaving the rest for the user. Live with `setMaxCpuShare`.
    */
   readonly maxCpuShare?: number | undefined
-  /** Parallel fragments inside one download (HLS/DASH sites). Network-bound. Default 3. */
+  /**
+   * Parallel fragments inside one download (HLS/DASH sites): yt-dlp's --concurrent-fragments, and the
+   * segments the native HLS downloader fetches at once (clamped to ⌊CPUs/2⌋). Network-bound. Default 3.
+   */
   readonly fragmentsPerDownload?: number | undefined
   /** Default 'full'. */
   readonly validation?: ValidationLevel | undefined
@@ -870,6 +912,52 @@ export type DownloaderOptions = {
    * urls to yt-dlp.
    */
   readonly vk?: false | VkOptions | undefined
+  /**
+   * Snapchat through the built-in extractor (the public web pages' own data,
+   * paced; anonymous, no yt-dlp): spotlights, a public profile's live story,
+   * highlights and spotlights (what its page embeds), one highlight, one story
+   * snap, short links. Private accounts are shown in the app only. `false`
+   * hands Snapchat urls to yt-dlp (which reads spotlights).
+   */
+  readonly snapchat?: false | SnapchatOptions | undefined
+  /**
+   * Threads through the built-in extractor (the web pages' own data and the
+   * web client's listing query, paced; anonymous, or with the browser's
+   * threads.com session for private accounts it follows): posts (video,
+   * photo, carousel) and public profiles. yt-dlp has no Threads extractor:
+   * `false` hands Threads urls to its generic extractor, which reads none.
+   */
+  readonly threads?: false | ThreadsOptions | undefined
+  /**
+   * SoundCloud through the built-in extractor (the anonymous api-v2 with the
+   * web app's own client id; audio only): tracks, private tracks by their
+   * `s-` link, sets and albums, and public profiles' tracks, likes, sets and
+   * albums. The clear HLS AAC goes through the core's HLS module. DRM-only
+   * label releases, Go+ previews and region blocks are refused as such.
+   * `false` hands SoundCloud urls to yt-dlp's SoundCloud extractor.
+   */
+  readonly soundcloud?: false | SoundcloudOptions | undefined
+  /**
+   * Bluesky through the built-in extractor (the public AppView, anonymous;
+   * every file the author's original blob from their own PDS, paced per
+   * host): posts (pictures, galleries, video, quotes with media) and public
+   * profiles. `false` hands Bluesky urls to yt-dlp's Bluesky extractor,
+   * which reads posts only (no galleries, no profiles).
+   */
+  readonly bluesky?: false | BlueskyOptions | undefined
+  /**
+   * Twitch through the built-in extractor (plain GraphQL queries on
+   * gql.twitch.tv, anonymous): clips (each a signed progressive MP4), a
+   * channel's clips (`/<channel>/clips?range=…`), VODs (archives, highlights,
+   * uploads: HLS, downloaded by the core) and a channel's videos
+   * (`/<channel>/videos?filter=…&sort=…`). A channel on the air (its link,
+   * `twitch.tv/<channel>`) is recorded by the core's live recorder until
+   * `stop` (kept) or `cancel` (discarded), ads left out, 12 h at most
+   * (`twitch.live`); a VOD still recording fails as `live-now`. Nothing live
+   * is ever handed to yt-dlp. `false` hands every Twitch url to yt-dlp, live
+   * ones included.
+   */
+  readonly twitch?: false | TwitchOptions | undefined
   /**
    * Links straight to a media file (`…/clip.mp4`, `…/song.mp3`) on any other
    * site, read natively (one ranged request, then the file): extractor "Web".

@@ -319,6 +319,295 @@
         "https://www.tiktok.com/@nasa",
         "https://www.tiktok.com/@natgeo"
       ]
+    },
+    {
+      "id": "SC-01",
+      "category": "Spotlight",
+      "expect": "video",
+      "urls": [
+        "https://www.snapchat.com/spotlight/W7_EDlXWTBiXAEEniNoMPwAAYeG9xcGd0ZWd3AZ14BVv0AZ14BQkrAAAAAQ",
+        "https://www.snapchat.com/@nasa/spotlight/W7_EDlXWTBiXAEEniNoMPwAAYdHBmbG9hdHR0AZ1ytS-RAZ1ytSiwAAAAAQ",
+        "https://www.snapchat.com/@djkhaled305/spotlight/W7_EDlXWTBiXAEEniNoMPwAAYbHJvd3p4ZWJxAaF5D6o6AaF5D5ecAAAAAA",
+        "https://www.snapchat.com/add/djkhaled305/spotlight/W7_EDlXWTBiXAEEniNoMPwAAYdWx3a2FyZmpuAaFbX8IrAaFbX29CAAAAAw"
+      ]
+    },
+    {
+      "id": "SC-02",
+      "category": "Public profile (live story, highlights, spotlights)",
+      "expect": "playlist",
+      "urls": [
+        "https://www.snapchat.com/@nasa",
+        "https://www.snapchat.com/add/djkhaled305",
+        "https://story.snapchat.com/s/nasa",
+        "https://www.snapchat.com/@nasa/spotlights"
+      ]
+    },
+    {
+      "id": "SC-03",
+      "category": "Curated highlight",
+      "expect": "playlist",
+      "urls": [
+        "https://www.snapchat.com/@nasa/highlight/ddf02468-ae16-4fc6-b1bc-bde7e1e22218",
+        "https://www.snapchat.com/@nasa/highlight/5ac6fa4d-187f-4c0f-86ef-bed137cc9180",
+        "https://www.snapchat.com/@nasa/highlight/1adebd07-5e35-4a1a-a681-451afab01512"
+      ]
+    },
+    {
+      "id": "SC-04",
+      "category": "Story snap (lasts 24 hours: replace when it expires)",
+      "expect": "video",
+      "urls": [
+        "https://www.snapchat.com/@djkhaled305/sWO_duZfSV-aKluMi_U4sgAAgbnpwempiYm9oAaF5D6o6AaF5D5ecAAAAAA"
+      ]
+    },
+    {
+      "id": "SC-05",
+      "category": "Picture snap (a highlight entry)",
+      "expect": "photo",
+      "urls": [
+        "https://www.snapchat.com/@nasa/highlight/264684ee-96ec-4281-a1a9-79562a350f4e/1",
+        "https://www.snapchat.com/@nasa/highlight/264684ee-96ec-4281-a1a9-79562a350f4e/2",
+        "https://www.snapchat.com/@nasa/highlight/264684ee-96ec-4281-a1a9-79562a350f4e/3"
+      ]
+    },
+    {
+      "id": "SC-06",
+      "category": "Short link (snapchat.com/t/, t.snapchat.com)",
+      "expect": "video",
+      "urls": [],
+      "note": "share links carry the sharer: they go in compendium.local.json"
+    },
+    {
+      "id": "TH-01",
+      "category": "Threads video post",
+      "expect": "video",
+      "urls": [
+        "https://www.threads.com/@instagram/post/Dd1k17rDPEv",
+        "https://www.threads.com/@instagram/post/Dd7D9nlEuew",
+        "https://www.threads.com/@mosseri/post/DdrY7cAAPhB",
+        "https://www.threads.net/@zuck/post/DeZtrvAEfEr",
+        "https://www.threads.com/t/Dd9UWBbmgf1"
+      ]
+    },
+    {
+      "id": "TH-02",
+      "category": "Threads photo post",
+      "expect": "photo",
+      "urls": [
+        "https://www.threads.com/@zuck/post/DeZgeQhm6RW",
+        "https://www.threads.com/@mosseri/post/Db_AU3kFko7",
+        "https://www.threads.com/@instagram/post/DdHU5MsG2jr",
+        "https://www.threads.com/t/DOuZDXoj2N4"
+      ]
+    },
+    {
+      "id": "TH-03",
+      "category": "Threads carousel (photos, or photos and videos)",
+      "expect": "carousel",
+      "urls": [
+        "https://www.threads.com/@zuck/post/DJDhoQfxb43",
+        "https://www.threads.com/@zuck/post/Ddt7cL5EfUG/media",
+        "https://www.threads.com/@instagram/post/DdowCVvG60h",
+        "https://www.threads.com/@instagram/post/DduMBkoEsjQ"
+      ]
+    },
+    {
+      "id": "TH-04",
+      "category": "Threads public profile",
+      "expect": "playlist",
+      "urls": [
+        "https://www.threads.com/@zuck",
+        "https://www.threads.com/@mosseri",
+        "https://www.threads.com/@instagram",
+        "https://www.threads.net/@zuck/media"
+      ]
+    },
+    {
+      "id": "SO-01",
+      "category": "SoundCloud track (clear HLS AAC, or legacy MP3)",
+      "expect": "audio",
+      "urls": [
+        "https://soundcloud.com/forss/flickermood",
+        "https://soundcloud.com/david_sanya/my-love",
+        "https://soundcloud.com/widowdusk/woodbury-town-centre-bedroom-demo",
+        "https://soundcloud.com/rudeboy2025/late-night-melancholy",
+        "https://m.soundcloud.com/c0tt0nm0uth/intro-1"
+      ]
+    },
+    {
+      "id": "SO-02",
+      "category": "SoundCloud private track by its secret link",
+      "expect": "audio",
+      "urls": ["https://soundcloud.com/jaimemf/youtube-dl-test-video-a-y-baw/s-8Pjrp"],
+      "note": "yt-dlp's own test track (2013, legacy MP3 progressive and HLS); private tracks are rarely public by definition"
+    },
+    {
+      "id": "SO-03",
+      "category": "SoundCloud set (playlist or album)",
+      "expect": "playlist",
+      "urls": [
+        "https://soundcloud.com/lofi_chill/sets/lofi-study",
+        "https://soundcloud.com/flume/sets/dumb-499556491",
+        "https://soundcloud.com/flume/sets/we-live-in-a-society-2",
+        "https://soundcloud.com/flume/sets/emma-louise-flume-dumb"
+      ]
+    },
+    {
+      "id": "SO-04",
+      "category": "SoundCloud public profile (tracks, likes, sets, albums)",
+      "expect": "playlist",
+      "urls": [
+        "https://soundcloud.com/flume",
+        "https://soundcloud.com/forss/tracks",
+        "https://soundcloud.com/unsound",
+        "https://soundcloud.com/flume/likes",
+        "https://soundcloud.com/flume/albums"
+      ]
+    },
+    {
+      "id": "SO-05",
+      "category": "SoundCloud short link (on.soundcloud.com)",
+      "expect": "audio",
+      "urls": [],
+      "note": "share links carry the sharer's id: in .local/live-matrix/compendium.local.json"
+    },
+    {
+      "id": "BS-01",
+      "category": "Bluesky post with a picture",
+      "expect": "photo",
+      "urls": [
+        "https://bsky.app/profile/bsky.app/post/3mxu3hsnebc2v",
+        "https://bsky.app/profile/jay.bsky.team/post/3mxzuw4zxds2y",
+        "https://bsky.app/profile/theverge.com/post/3mys7szjqw22u",
+        "https://bsky.app/profile/nytimes.com/post/3myt2zk5mz722",
+        "https://bsky.app/profile/jay.bsky.team/post/3mwkwqqs5322e"
+      ]
+    },
+    {
+      "id": "BS-02",
+      "category": "Bluesky gallery (2 to 10 pictures, images or gallery embed)",
+      "expect": "carousel",
+      "urls": [
+        "https://bsky.app/profile/bsky.app/post/3mnslrkd6ok2g",
+        "https://bsky.app/profile/jay.bsky.team/post/3mp5hivvpi227",
+        "https://bsky.app/profile/theverge.com/post/3mx5ifetqzs2w",
+        "https://bsky.app/profile/jay.bsky.team/post/3mwhqanugyc2z",
+        "https://bsky.app/profile/theverge.com/post/3mycvcabsw22p"
+      ]
+    },
+    {
+      "id": "BS-03",
+      "category": "Bluesky video post",
+      "expect": "video",
+      "urls": [
+        "https://bsky.app/profile/nytimes.com/post/3mytan74flu22",
+        "https://bsky.app/profile/theverge.com/post/3mxxhikx5wc2k",
+        "https://bsky.app/profile/nytimes.com/post/3mysmjozofc24",
+        "https://bsky.app/profile/jay.bsky.team/post/3mvorbgjaks24",
+        "https://bsky.app/profile/did:plc:eclio37ymobqex2ncko63h4r/post/3myrzk4rwv32r"
+      ]
+    },
+    {
+      "id": "BS-04",
+      "category": "Bluesky public profile",
+      "expect": "playlist",
+      "urls": [
+        "https://bsky.app/profile/bsky.app",
+        "https://bsky.app/profile/jay.bsky.team",
+        "https://bsky.app/profile/theverge.com/media",
+        "https://bsky.app/profile/did:plc:z72i7hdynmk6r22z27h6tvur"
+      ]
+    },
+    {
+      "id": "TW-01",
+      "category": "Twitch clip on clips.twitch.tv (old and new slugs, the embed link)",
+      "expect": "video",
+      "urls": [
+        "https://clips.twitch.tv/FaintLightGullWholeWheat",
+        "https://clips.twitch.tv/DeliciousDelightfulPicklesWOOP",
+        "https://clips.twitch.tv/PreciousRelievedCodCorgiDerp-IqjaHMAL8JQQH78F",
+        "https://clips.twitch.tv/LittleEvilPheasantMikeHogu-mHLOSU8F6SKzB3qk",
+        "https://clips.twitch.tv/embed?clip=PoliteBrightMouseOSkomodo-JROWcZVK4SouyFS4&parent=example.com"
+      ]
+    },
+    {
+      "id": "TW-02",
+      "category": "Twitch clip on a channel (twitch.tv/<channel>/clip/<slug>)",
+      "expect": "video",
+      "urls": [
+        "https://www.twitch.tv/shroud/clip/TangentialBillowingJalapenoYee-ccA2oB1pEYh4CHWJ",
+        "https://www.twitch.tv/summit1g/clip/PolishedVictoriousToadDerp-9mT4lzGsLDsc3Njw",
+        "https://www.twitch.tv/pokimane/clip/TriangularVastNewtWutFace-OfdOWNc7jG9VnTY8",
+        "https://www.twitch.tv/lirik/clip/AffluentWittyPlumSpicyBoy-EDD2TVe-4vqsvR3s",
+        "https://m.twitch.tv/xqc/clip/NimbleProductiveAsparagusHeyGuys-s77ZvN10Yr-O2sfo"
+      ]
+    },
+    {
+      "id": "TW-03",
+      "category": "Twitch channel clips listing (twitch.tv/<channel>/clips, with and without a period)",
+      "expect": "playlist",
+      "urls": [
+        "https://www.twitch.tv/shroud/clips?filter=clips&range=all",
+        "https://www.twitch.tv/pokimane/clips?range=30d",
+        "https://www.twitch.tv/xqc/clips?range=7d",
+        "https://www.twitch.tv/summit1g/clips"
+      ]
+    },
+    {
+      "id": "TW-04",
+      "category": "Twitch past broadcast, short (twitch.tv/videos/<id>, /<channel>/v/<id>, the player link, ?t=)",
+      "expect": "video",
+      "urls": [
+        "https://www.twitch.tv/videos/2910697066",
+        "https://www.twitch.tv/pokimane/v/2886637167",
+        "https://player.twitch.tv/?video=v2517093025&parent=example.com",
+        "https://www.twitch.tv/videos/2772084072?t=0h1m5s",
+        "https://www.twitch.tv/videos/2663850064"
+      ]
+    },
+    {
+      "id": "TW-05",
+      "category": "Twitch highlight",
+      "expect": "video",
+      "urls": [
+        "https://www.twitch.tv/videos/98913403",
+        "https://www.twitch.tv/devolverdigital/video/100019585",
+        "https://www.twitch.tv/videos/101139548"
+      ],
+      "note": "Highlights 5938473 and 6732619 (2014, 2016) and 1484137772, and the muted past broadcast 2795007999, are damaged at the source (ffmpeg alone and the yt-dlp path fail the decode check the same way): read fine, left out of the download check"
+    },
+    {
+      "id": "TW-06",
+      "category": "Twitch upload and past premiere",
+      "expect": "video",
+      "urls": [
+        "https://www.twitch.tv/videos/1816688726",
+        "https://www.twitch.tv/twitch/v/799499623",
+        "https://www.twitch.tv/videos/2159223180",
+        "https://www.twitch.tv/videos/253803185",
+        "https://www.twitch.tv/videos/1730380575"
+      ]
+    },
+    {
+      "id": "TW-07",
+      "category": "Twitch channel videos listing (twitch.tv/<channel>/videos, filter and sort from the link)",
+      "expect": "playlist",
+      "urls": [
+        "https://www.twitch.tv/riotgames/videos",
+        "https://www.twitch.tv/shroud/videos?filter=highlights&sort=time",
+        "https://www.twitch.tv/twitch/videos?filter=uploads&sort=views",
+        "https://www.twitch.tv/pokimane/videos?filter=archives",
+        "https://www.twitch.tv/ibai/videos?filter=all&sort=views"
+      ]
+    },
+    {
+      "id": "TW-08",
+      "category": "Twitch past broadcast about an hour long (the download check)",
+      "expect": "video",
+      "note": "1 h 1 min 50 s at 1080p60 (~3.5 GB); run with --only TW-08",
+      "urls": [
+        "https://www.twitch.tv/videos/2868182901"
+      ]
     }
   ]
 }

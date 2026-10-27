@@ -1,9 +1,14 @@
 import * as fs from 'node:fs/promises'
+import {isBlueskyListing} from '../sources/bluesky/links.js'
 import {isFacebookListing} from '../sources/facebook/links.js'
 import {isInstagramListing} from '../sources/instagram/links.js'
 import {type MixLink, planMix} from '../sources/mix-plan.js'
+import {isSnapchatListing} from '../sources/snapchat/links.js'
+import {isSoundcloudListing} from '../sources/soundcloud/links.js'
+import {isThreadsListing} from '../sources/threads/links.js'
 import {isTikTokProfile} from '../sources/tiktok/links.js'
 import {DEFAULT_SLIDESHOW} from '../sources/tiktok/slideshow.js'
+import {isTwitchListing} from '../sources/twitch/links.js'
 import {isVkListing} from '../sources/vk/links.js'
 import {isXProfile} from '../sources/x/links.js'
 import type {
@@ -56,7 +61,12 @@ export function isListingLink(url: string, engine: Pick<MixEngine, 'defaultListS
     isInstagramListing(url) ||
     isFacebookListing(url) ||
     isVkListing(url) ||
-    isXProfile(url)
+    isXProfile(url) ||
+    isSnapchatListing(url) ||
+    isThreadsListing(url) ||
+    isSoundcloudListing(url) ||
+    isBlueskyListing(url) ||
+    isTwitchListing(url)
   )
 }
 

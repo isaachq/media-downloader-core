@@ -1,10 +1,11 @@
 import {CoffeeOutlined, GithubOutlined, HeartFilled, StarFilled} from '@ant-design/icons'
-import {Button, Descriptions, Modal, Space, Typography} from 'antd'
+import {Button, Collapse, Descriptions, Modal, Space, Typography} from 'antd'
 import {api} from '../api'
 import mark from '../assets/mdc-mark.png'
 import {useApp} from '../context'
 import {useT} from '../i18n'
 import {Rows} from './Rows'
+import {SupportedSites} from './SupportedSites'
 import {useUpdateState} from './UpdateBanner'
 
 /** Where the project lives: source, issues, releases — and its stars. */
@@ -61,6 +62,13 @@ export function AboutModal({open, onClose}: {readonly open: boolean; readonly on
           </Typography.Text>
         </Descriptions.Item>
       </Descriptions>
+
+      <Collapse
+        size="small"
+        style={{marginBottom: 16}}
+        data-testid="about-sites"
+        items={[{key: 'sites', label: t('sites.title'), children: <SupportedSites />}]}
+      />
 
       <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16}}>
         <div

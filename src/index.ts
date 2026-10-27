@@ -123,6 +123,9 @@ export {
   retryDelay,
 } from './downloader.js'
 export {BatchScheduler} from './scheduler.js'
+export type {BlueskyEndpoints} from './sources/bluesky/endpoints.js'
+export {type BlueskyLink, isBlueskyListing, parseBlueskyLink} from './sources/bluesky/links.js'
+export {BLUESKY_PROFILE_DEFAULT_ITEMS, type BlueskyOptions, BlueskySource} from './sources/bluesky/source.js'
 export type {BrowserAssist, BrowserPage, MediaResolver, PlayerMedia} from './sources/browser.js'
 export {type DetectedLink, detectLink, LINK_SITES, type LinkSite} from './sources/detect.js'
 export {DIRECT_NAME, DirectFileSource, type DirectOptions, directFile} from './sources/direct/source.js'
@@ -171,11 +174,41 @@ export {
 } from './sources/player-page/source.js'
 export {type Rendition, rankRenditions, renditionChoices, type VideoCodec} from './sources/renditions.js'
 export type {SessionCookies, SessionProvider, SiteSession} from './sources/session.js'
-export type {ListingProgress, MediaSource, SourceDownload, SourceFile} from './sources/source.js'
+export type {SnapchatEndpoints} from './sources/snapchat/endpoints.js'
+export {isSnapchatListing, parseSnapchatLink, type SnapchatLink} from './sources/snapchat/links.js'
+export {SNAPCHAT_LIST_DEFAULT_ITEMS, type SnapchatOptions, SnapchatSource} from './sources/snapchat/source.js'
+export type {SoundcloudEndpoints} from './sources/soundcloud/endpoints.js'
+export {isSoundcloudListing, parseSoundcloudLink, type SoundcloudLink} from './sources/soundcloud/links.js'
+export {SOUNDCLOUD_LIST_DEFAULT_ITEMS, type SoundcloudOptions, SoundcloudSource} from './sources/soundcloud/source.js'
+export type {
+  ListingProgress,
+  LivePlayback,
+  MediaSource,
+  RecordingSummary,
+  SourceDownload,
+  SourceFile,
+} from './sources/source.js'
+export type {ThreadsQueries} from './sources/threads/endpoints.js'
+export {isThreadsListing, parseThreadsLink, type ThreadsLink} from './sources/threads/links.js'
+export {THREADS_PROFILE_DEFAULT_ITEMS, type ThreadsOptions, ThreadsSource} from './sources/threads/source.js'
 export {TikTokError, type TikTokProblem} from './sources/tiktok/errors.js'
 export {isTikTokProfile, parseTikTokLink, type TikTokLink} from './sources/tiktok/links.js'
 export {DEFAULT_SLIDESHOW, slideshowOptions} from './sources/tiktok/slideshow.js'
 export {TIKTOK_PROFILE_DEFAULT_ITEMS, type TikTokOptions, TikTokSource} from './sources/tiktok/source.js'
+export {readLiveStream, type TwitchLiveStream} from './sources/twitch/data.js'
+export {
+  ALT_CLIENT_ID as TWITCH_ALT_CLIENT_ID,
+  type TwitchEndpoints,
+  WEB_CLIENT_ID as TWITCH_WEB_CLIENT_ID,
+} from './sources/twitch/endpoints.js'
+export {isTwitchListing, parseTwitchLink, type TwitchLink} from './sources/twitch/links.js'
+export {
+  isTwitchAd,
+  TWITCH_LIST_DEFAULT_ITEMS,
+  type TwitchLiveOptions,
+  type TwitchOptions,
+  TwitchSource,
+} from './sources/twitch/source.js'
 export {VkError, type VkProblem} from './sources/vk/data.js'
 export {isVkListing, parseVkLink, type VkLink} from './sources/vk/links.js'
 export {VK_LIST_DEFAULT_ITEMS, type VkOptions, VkSource} from './sources/vk/source.js'

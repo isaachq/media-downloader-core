@@ -32,7 +32,8 @@ export type FakeBinaries = {
  *   …pot…          the bot check unless the run carries a PO token: like yt-dlp's plugin, it asks the
  *                  broker in MDC_POT_URL (with MDC_POT_KEY) for one bound to the video id
  * Cookies: '--cookies-from-browser B --cookies F … mdc:cookies' exports a jar (B starting "unreadable"
- * fails like a browser yt-dlp can't read); every export is counted in F's folder (exports.log).
+ * fails like a browser yt-dlp can't read); every export is counted in F's folder (exports.log). The jar
+ * also signs in to Twitch (auth-token fake-ok, a subscriber on fake-twitch) and Threads (sessionid).
  * A run is signed in with --cookies-from-browser, or --cookies naming a jar with a SID cookie.
  * Real media (the nightly matrix, with the real ffmpeg beside this fake): MDC_FAKE_MEDIA_VIDEO
  * is copied as the video download, MDC_FAKE_MEDIA_AUDIO as the audio one — converted to the
@@ -50,7 +51,8 @@ if (args.includes('--cookies-from-browser') && args[args.length - 1] === 'mdc:co
   const browser = args[args.indexOf('--cookies-from-browser') + 1]
   fs.appendFileSync(path.join(path.dirname(out), 'exports.log'), browser + '\\n')
   if (browser.startsWith('unreadable')) { console.error('ERROR: could not find ' + browser + ' cookies database'); process.exit(1) }
-  fs.writeFileSync(out, '# Netscape HTTP Cookie File\\n.youtube.com\\tTRUE\\t/\\tTRUE\\t0\\tSID\\tfake-' + browser + '\\n.example.org\\tTRUE\\t/\\tFALSE\\t0\\tother\\t1\\n')
+  // a signed-in Twitch subscriber (fake-twitch's AUTH.sub) and a Threads session ride along
+  fs.writeFileSync(out, '# Netscape HTTP Cookie File\\n.youtube.com\\tTRUE\\t/\\tTRUE\\t0\\tSID\\tfake-' + browser + '\\n.example.org\\tTRUE\\t/\\tFALSE\\t0\\tother\\t1\\n.twitch.tv\\tTRUE\\t/\\tTRUE\\t0\\tauth-token\\tfake-ok\\n.threads.com\\tTRUE\\t/\\tTRUE\\t0\\tsessionid\\tfake\\n')
   console.error("ERROR: 'mdc:cookies' is not a valid URL")
   process.exit(1)
 }
@@ -206,6 +208,18 @@ if (process.argv.includes('-show_format')) {
     if (text.startsWith('comment:')) probe.format.tags = {comment: text.slice('comment:'.length).trim()}
   } catch {}
   console.log(JSON.stringify(probe))
+  process.exit(0)
+}
+// the concat demuxer (-f concat -safe 0 -i list … out): the listed files, one after the other
+const demuxer = process.argv.indexOf('-f')
+if (demuxer !== -1 && process.argv[demuxer + 1] === 'concat') {
+  const fs = require('node:fs')
+  const listFile = process.argv[process.argv.indexOf('-i') + 1]
+  const list = fs.readFileSync(listFile, 'utf8')
+  // names are relative to the list (it sits beside them), quoted the demuxer's way ('\\'' for a ')
+  const parts = [...list.matchAll(/^file '((?:[^']|'\\\\'')*)'$/gm)].map(m => m[1].replaceAll("'\\\\''", "'"))
+  const read = part => fs.readFileSync(require('node:path').resolve(require('node:path').dirname(listFile), part))
+  fs.writeFileSync(process.argv[process.argv.length - 1], Buffer.concat(parts.map(read)))
   process.exit(0)
 }
 // a conversion (-i in … out): copy the input to the output, like a perfect encoder would

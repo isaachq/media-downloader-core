@@ -191,6 +191,13 @@ section .intro { color: var(--muted); margin: 0 0 32px; max-width: 46em; font-si
 .feature .icon { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent-ink); margin-bottom: 12px; }
 .feature h3 { margin: 0 0 6px; font-size: 18px; }
 .feature p { margin: 0; color: var(--muted); font-size: 15px; }
+.sites-table { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.sites-table table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.sites-table th, .sites-table td { text-align: start; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.sites-table tbody tr:last-child > * { border-bottom: 0; }
+.sites-table thead th { font-size: 13px; color: var(--muted); font-weight: 600; white-space: nowrap; }
+.sites-table tbody th { white-space: nowrap; }
+.sites-table .muted { color: var(--muted); }
 
 .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; counter-reset: step; }
 @media (max-width: 800px) { .steps { grid-template-columns: 1fr; } }
@@ -264,6 +271,7 @@ footer a { color: var(--muted); }
     <div class="links">
       <a href="#new" data-i18n="nav.new">الجديد</a>
       <a href="#features" data-i18n="nav.features">الميزات</a>
+      <a href="#sites" data-i18n="nav.sites">المواقع</a>
       <a href="#how" data-i18n="nav.how">طريقة العمل</a>
       <a href="#signin" data-i18n="nav.signin">تسجيل الدخول</a>
       <a href="#versions" data-i18n="nav.versions">الإصدارات</a>
@@ -313,39 +321,39 @@ footer a { color: var(--muted); }
 
 <section id="new">
   <div class="wrap">
-    <span class="new-badge" data-i18n="new.badge">الإصدار التجريبي 20</span>
-    <h2 data-i18n="new.title">الجديد في الإصدار التجريبي 20</h2>
-    <p class="intro" data-i18n="new.intro">ستة إصدارات تجريبية منذ آخر تحديث لهذه الصفحة: روابط من أي موقع في دفعة واحدة، وقراءة VK وX مباشرةً، ومربع واحد لكل المواقع، والتطبيق بأربع عشرة لغة، ومظهر جديد.</p>
+    <span class="new-badge" data-i18n="new.badge">بيتا 22</span>
+    <h2 data-i18n="new.title">الجديد في بيتا 22</h2>
+    <p class="intro" data-i18n="new.intro">خمسة مواقع أخرى يقرؤها التطبيق بنفسه، وقنوات Twitch المباشرة تُسجَّل وتُشاهَد، وقائمة واحدة تقول ما ينزّله كل موقع.</p>
     <div class="features">
       <article class="feature">
-        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h6"/><path d="M17 15v6m-3-3h6"/></svg></div>
-        <h3 data-i18n="b1.title">قائمة مختلطة: أي موقع، دفعة واحدة</h3>
-        <p data-i18n="b1.text">أضف الروابط واحدًا تلو الآخر أو الصق قائمة كاملة — YouTube وTikTok وInstagram وFacebook وVK وX وملف. تُفحص معًا، وقبل تنزيل أي شيء ترى ما سيُنزَّل وما تم تخطيه ولماذا. نقرة واحدة تنزّلها كلها دفعةً واحدة.</p>
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M12 8v8M8 12h8"/></svg></div>
+        <h3 data-i18n="b1.title">خمسة مواقع جديدة</h3>
+        <p data-i18n="b1.text">Threads وBluesky وTwitch وSoundCloud وSnapchat: منشورات ومنشورات دوّارة وفيديوهات ومقطوعات وملفات شخصية عامة كاملة، يقرؤها التطبيق بنفسه — بالفحوص نفسها كأي تنزيل آخر.</p>
       </article>
       <article class="feature">
-        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>
-        <h3 data-i18n="b2.title">الصيغة: للجميع أو لكل رابط</h3>
-        <p data-i18n="b2.text">اختر MP4 بأفضل جودة أو الصوت للقائمة كلها — أو امنح رابطًا واحدًا صيغته الخاصة، كأغنية MP3 بين الفيديوهات. تبقى دفعة واحدة ومجلدًا واحدًا.</p>
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4" fill="currentColor"/></svg></div>
+        <h3 data-i18n="b2.title">سجّل Twitch مباشرة</h3>
+        <p data-i18n="b2.text">الصق قناة على الهواء واضغط سجّل: يستمر حتى توقفه أو ينتهي البث أو تمر 12 ساعة، من دون الإعلانات. «أوقف واحفظ» يحتفظ به؛ «تجاهل» يحذفه.</p>
       </article>
       <article class="feature">
-        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg></div>
-        <h3 data-i18n="b3.title">VK وX مباشرةً</h3>
-        <p data-i18n="b3.text">فيديوهات ومقاطع وقوائم تشغيل VK حتى 1080p، ومنشورات X التي تحتوي على فيديو واحد أو أكثر وصور GIF وفيديوهات مقتبسة — دون تسجيل الدخول.</p>
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></div>
+        <h3 data-i18n="b3.title">شاهد أثناء التسجيل</h3>
+        <p data-i18n="b3.text">«شاهد» يفتح مشغّلًا للبث، وحده أو بجانب تسجيل. إغلاق المشغّل لا يوقف التسجيل أبدًا.</p>
       </article>
       <article class="feature">
-        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="10" rx="3"/><path d="M7 12h6"/></svg></div>
-        <h3 data-i18n="b4.title">مربع واحد لكل المواقع</h3>
-        <p data-i18n="b4.text">الصق أي رابط وسيتعرّف التطبيق على الموقع. لا حاجة بعد الآن لاختيار موقع في كل جلسة أو إعادة التشغيل لتغييره.</p>
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></div>
+        <h3 data-i18n="b4.title">فيديوهات Twitch وSoundCloud، أسرع</h3>
+        <p data-i18n="b4.text">البثوث السابقة والمميزات ومقطوعات SoundCloud تُنزَّل قطعة قطعة، عدة قطع معًا، وتُضمّ من دون إعادة ترميز: فيديو مدته ساعة بدقة 1080p60 استغرق نحو سبع دقائق ونصف، مفحوصًا إطارًا إطارًا.</p>
       </article>
       <article class="feature">
-        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h8M8 3v2m-2 0c0 5 3 8 6 9M12 5c0 4-3 8-7 10"/><path d="m13 21 4-9 4 9m-7-3h6"/></svg></div>
-        <h3 data-i18n="b5.title">أربع عشرة لغة</h3>
-        <p data-i18n="b5.text">الإسبانية والإنجليزية والبرتغالية والإندونيسية والهندية والفيتنامية والتايلاندية والتركية والعربية (من اليمين إلى اليسار) والفرنسية والألمانية والروسية والصينية والإيطالية.</p>
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></div>
+        <h3 data-i18n="b5.title">أي المواقع، وماذا تحتاج</h3>
+        <p data-i18n="b5.text">قائمة واحدة تقول ما ينزّله كل موقع، وهل يحتاج إلى تسجيل دخولك، وهل يدعمه تطبيق Android — في هذه الصفحة وفي التطبيق وتحت كل رابط تلصقه.</p>
       </article>
       <article class="feature">
-        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4l3 4h8l3-4v9a7 7 0 0 1-14 0z"/><path d="M12 10v5m0 0-2-2m2 2 2-2"/></svg></div>
-        <h3 data-i18n="b6.title">مظهر جديد</h3>
-        <p data-i18n="b6.text">شعار القط البري مع سهم التنزيل على جبهته، في التطبيق وأدوات التثبيت وهذه الصفحة. كما في الأعلى، كذلك في الأسفل.</p>
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div>
+        <h3 data-i18n="b6.title">تسجيل الدخول لـ Threads وTwitch</h3>
+        <p data-i18n="b6.text">ملفات Threads الخاصة التي تتابعها وفيديوهات Twitch الخاصة بالمشتركين تُفتح بجلسة المتصفح الذي تستخدمه أصلًا. لا تُطلب كلمة مرور أبدًا.</p>
       </article>
     </div>
   </div>
@@ -359,7 +367,7 @@ footer a { color: var(--muted); }
       <article class="feature">
         <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div>
         <h3 data-i18n="f1.title">قوائم تشغيل وملفات شخصية كاملة</h3>
-        <p data-i18n="f1.text">قوائم تشغيل YouTube وقنواته وخلطاته؛ وفيديوهات وعروض شرائح ومنشورات دوّارة من TikTok وInstagram وFacebook (كفيديو، أو كصور مع صوتها) وملفات شخصية كاملة؛ وفيديوهات وقوائم تشغيل VK؛ ومنشورات X — مع «تحميل الكل» لآلاف المنشورات في حساب قديم.</p>
+        <p data-i18n="f1.text">قوائم تشغيل YouTube وقنواته وMix؛ ملفات شخصية كاملة من TikTok وInstagram وFacebook وThreads وBluesky وSnapchat وSoundCloud، بما فيها المنشورات الدوّارة (كفيديو، أو كصور مع صوتها)؛ فيديوهات Twitch وقنواته المباشرة؛ X وVK — مع «تحميل الكل» لآلاف منشورات حساب قديم.</p>
       </article>
       <article class="feature">
         <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 12 5 5L20 6"/></svg></div>
@@ -420,12 +428,39 @@ footer a { color: var(--muted); }
   </div>
 </section>
 
+<section id="sites">
+  <div class="wrap"><!-- sites:start -->
+    <h2>المواقع المدعومة</h2>
+    <p class="intro">ما ينزّله كل موقع، وهل يحتاج إلى تسجيل دخولك، وهل يدعمه تطبيق Android.</p>
+    <div class="sites-table">
+      <table>
+        <thead><tr><th scope="col">الموقع</th><th scope="col">ما ينزّله</th><th scope="col">تسجيل الدخول</th><th scope="col">تطبيق Android</th></tr></thead>
+        <tbody>
+        <tr data-site="youtube"><th scope="row">YouTube</th><td>فيديوهات وShorts وقوائم تشغيل وقنوات وMix</td><td><a href="#signin">من أجل الفيديوهات الخاصة وفيديوهات الأعضاء والمقيّدة بالعمر</a></td><td class="muted">سطح المكتب فقط</td></tr>
+        <tr data-site="tiktok"><th scope="row">TikTok</th><td>فيديوهات ومنشورات صور وملفات شخصية كاملة</td><td class="muted">غير مطلوب</td><td>نعم</td></tr>
+        <tr data-site="instagram"><th scope="row">Instagram</th><td>منشورات وريلز ومنشورات دوّارة وملفات شخصية وقصص ومميزات</td><td><a href="#signin">من أجل القصص والمميزات والحسابات الخاصة</a></td><td>نعم</td></tr>
+        <tr data-site="facebook"><th scope="row">Facebook</th><td>فيديوهات وريلز وفيديوهات الصفحات</td><td><a href="#signin">من أجل معظم الفيديوهات والقصص</a></td><td>نعم</td></tr>
+        <tr data-site="twitch"><th scope="row">Twitch</th><td>مقاطع وبثوث سابقة ومميزات وقنوات وتسجيل البث المباشر</td><td><a href="#signin">من أجل الفيديوهات والبثوث الخاصة بالمشتركين</a></td><td>نعم</td></tr>
+        <tr data-site="soundcloud"><th scope="row">SoundCloud</th><td>مقطوعات ومجموعات وملفات شخصية عامة</td><td class="muted">غير مطلوب</td><td>نعم</td></tr>
+        <tr data-site="x"><th scope="row">X</th><td>منشورات فيها فيديو أو GIF أو صور</td><td class="muted">غير مطلوب</td><td>نعم</td></tr>
+        <tr data-site="threads"><th scope="row">Threads</th><td>منشورات ومنشورات دوّارة وملفات شخصية عامة</td><td><a href="#signin">من أجل الحسابات الخاصة</a></td><td>نعم</td></tr>
+        <tr data-site="bluesky"><th scope="row">Bluesky</th><td>منشورات ومعارض صور وفيديوهات وملفات شخصية عامة</td><td class="muted">غير مطلوب</td><td>نعم</td></tr>
+        <tr data-site="snapchat"><th scope="row">Snapchat</th><td>Spotlight وقصص ومميزات وملفات شخصية عامة</td><td class="muted">غير مطلوب</td><td>نعم</td></tr>
+        <tr data-site="vk"><th scope="row">VK</th><td>فيديوهات وقوائم تشغيل</td><td><a href="#signin">من أجل الفيديوهات الخاصة والمقيّدة</a></td><td>نعم</td></tr>
+        <tr data-site="web"><th scope="row">مواقع أخرى</th><td>فيديوهات من المواقع الأخرى التي يعرفها yt-dlp</td><td><a href="#signin">من أجل المواقع التي تطلبه</a></td><td class="muted">سطح المكتب فقط</td></tr>
+        <tr data-site="file"><th scope="row">رابط إلى ملف</th><td>رابط مباشر إلى ملف فيديو أو صوت أو صورة</td><td class="muted">غير مطلوب</td><td>نعم</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <!-- sites:end --></div>
+</section>
+
 <section id="how">
   <div class="wrap">
     <h2 data-i18n="how.title">ثلاث خطوات</h2>
     <p class="intro" data-i18n="how.intro">لا سطر أوامر، ولا إعدادات تتعلّمها أولًا — في المرة الأولى يأخذك دليل قصير في جولة. بأربع عشرة لغة، فاتح أو داكن.</p>
     <div class="steps">
-      <div class="step"><h3 data-i18n="s1.title">الصق رابطًا</h3><p data-i18n="s1.text">فيديو، أو قائمة تشغيل، أو قناة، أو ملف شخصي على TikTok أو Instagram أو Facebook، أو منشور على VK أو X — أو قائمة كاملة من الروابط من أي موقع.</p></div>
+      <div class="step"><h3 data-i18n="s1.title">الصق رابطًا</h3><p data-i18n="s1.text">فيديو، أو قائمة تشغيل، أو قناة، أو ملف شخصي من أي موقع مدعوم، أو قناة Twitch تبث مباشرة — أو قائمة كاملة من روابط أي مواقع.</p></div>
       <div class="step"><h3 data-i18n="s2.title">اختر ما تريد</h3><p data-i18n="s2.text">يُعرض كل ما فيه أولًا. اختر MP4 أو MP3، والجودة، والمجلد.</p></div>
       <div class="step"><h3 data-i18n="s3.title">دعه يعمل</h3><p data-i18n="s3.text">عدة تنزيلات في آنٍ واحد، كلٌّ منها يُتحقَّق منه. تابع التقرير، أو عُد لاحقًا.</p></div>
     </div>

@@ -1,8 +1,10 @@
 // The desktop interface in Russian: every key of ../i18n.ts, translated from the English
 // (and kept in line with the Android app). Placeholders ({name}) stay as they are; no long dashes.
+import {siteMessages} from '../../../shared/site-words'
 import type {MessageKey} from '../i18n'
 
 export const ru: Readonly<Record<MessageKey, string>> = {
+  ...siteMessages('ru'),
   'app.tagline': 'Мощные пакетные загрузки с проверкой каждого файла',
   'header.logs': 'Журнал',
   'header.settings': 'Настройки',
@@ -33,9 +35,15 @@ export const ru: Readonly<Record<MessageKey, string>> = {
   'site.facebook': 'Facebook',
   'site.vk': 'VK',
   'site.x': 'X',
+  'site.snapchat': 'Snapchat',
+  'site.threads': 'Threads',
+  'site.bluesky': 'Bluesky',
+  'site.twitch': 'Twitch',
+  'site.soundcloud': 'SoundCloud',
   'site.web': 'Сайт',
   'site.file': 'Файл',
-  'download.urlLabel': 'Вставьте ссылку с YouTube, TikTok, Instagram, Facebook, VK, X или любого сайта',
+  'download.urlLabel':
+    'Вставьте ссылку с YouTube, TikTok, Instagram, Twitch или любого из {count} поддерживаемых сайтов',
   'download.invalidUrl': 'Введите корректную ссылку http(s)',
   'download.paste': 'Вставить',
   'download.format': 'Формат',
@@ -310,7 +318,7 @@ export const ru: Readonly<Record<MessageKey, string>> = {
   'hint.private': 'Приватное видео',
   'hint.removed': 'Удалено или недоступно',
   'hint.geo-blocked': 'Заблокировано в вашей стране',
-  'hint.members-only': 'Только для участников. Нужны cookies аккаунта с подпиской',
+  'hint.members-only': 'Только для участников или подписчиков. Нужна сессия аккаунта с доступом.',
   'hint.not-started': 'Трансляция или премьера ещё не началась',
   'hint.unsupported-url': 'Сайт или ссылка не поддерживаются',
   'hint.format-unavailable': 'Выбранный формат недоступен',
@@ -475,7 +483,7 @@ export const ru: Readonly<Record<MessageKey, string>> = {
   'hint.cookies-unreadable':
     'Не удалось прочитать cookies браузера. Для Safari нужен «Полный доступ к диску», либо выберите другой браузер в настройках',
   'settings.cookiesHelp':
-    'Ваш сеанс со входом: для приватных видео, видео только для участников или с возрастным ограничением, а также на случай, если YouTube попросит подтвердить, что вы не робот. Применяется сразу.',
+    'Ваша сессия входа — для закрытых, спонсорских или видео с возрастным ограничением, историй Instagram, закрытых профилей Threads, видео Twitch только для подписчиков и для случаев, когда YouTube просит подтвердить, что вы не бот. Применяется сразу.',
   'about.star':
     'Если приложение Media Download Core вам помогло, поставьте ему звезду на GitHub: это бесплатно, занимает секунду и помогает другим его найти.',
   'about.starButton': 'Поставить звезду на GitHub',
@@ -591,7 +599,7 @@ export const ru: Readonly<Record<MessageKey, string>> = {
   'hint.damaged-source': 'Повреждено в источнике, повторно не скачивается',
   'cause.damaged-source': 'повреждено в источнике',
   'hint.no-video': 'В этой публикации есть фото или текст, но нет видео',
-  'hint.live-now': 'Сейчас идёт прямой эфир. Скачайте его после окончания, как запись.',
+  'hint.live-now': 'Сейчас в эфире: вставьте ссылку на канал (twitch.tv/имя), чтобы записать его.',
   'hint.stream-only': 'Доступно только как трансляция, которую приложение пока не умеет сохранять',
   'cause.no-video': 'без видео',
   'cause.live-now': 'идёт эфир',
@@ -654,9 +662,9 @@ export const ru: Readonly<Record<MessageKey, string>> = {
   'signin.open': 'Как войти',
   'signin.title': 'Используйте свой сеанс',
   'signin.intro':
-    'Для приватных видео и видео только для участников, видео с возрастными ограничениями, профилей и историй Instagram, а также видео страницы Facebook нужен сеанс вашего аккаунта. Для YouTube тоже, когда он просит подтвердить, что вы не робот. Приложение берёт сеанс из вашего браузера, поэтому ничего копировать и вставлять не нужно.',
+    'Некоторым загрузкам нужна сессия вашего собственного аккаунта; список ниже говорит, каким. Приложение берёт сессию из вашего браузера, так что копировать и вставлять ничего не нужно.',
   'signin.step1':
-    'Откройте свой обычный браузер (Chrome, Edge, Firefox, Safari, Brave…) и войдите там как обычно: в Google / YouTube, Instagram или Facebook.',
+    'Откройте свой обычный браузер (Chrome, Edge, Firefox, Safari, Brave…) и войдите там как обычно: в Google / YouTube, Instagram, Facebook, Threads или Twitch.',
   'signin.step2': 'Здесь, в разделе Настройки → Cookies из браузера, выберите тот же браузер.',
   'signin.step3': 'В первый раз система запросит разрешение (см. ниже). Разрешите. Запрос появляется только один раз.',
   'signin.step4':
@@ -669,4 +677,37 @@ export const ru: Readonly<Record<MessageKey, string>> = {
     'Linux (Fedora, Ubuntu…): связка ключей (GNOME Keyring / KWallet) может запросить доступ к сохранённым данным браузера: разрешите его. Firefox разрешений не требует.',
   'signin.privacy':
     'Ваши cookies остаются на вашем компьютере: они один раз считываются в закрытую копию, которую приложение использует только для скачивания, и никуда больше не отправляются.',
+  'signin.sites': 'Что открывает сессия',
+  'signin.twitchNote':
+    'Сессия Twitch используется только чтобы получить видео: никогда для чата, подписок на канал или платных подписок.',
+  'live.tag': 'ЭФИР',
+  'live.rec': 'ЗАПИСЬ',
+  'live.title': 'Прямой эфир на Twitch',
+  'live.intro':
+    'Запись начинается с последних полминуты, которые Twitch ещё хранит, и идёт, пока вы её не остановите, эфир не закончится или не пройдёт 12 часов. Реклама не записывается.',
+  'live.startedAt': 'В эфире с {time}',
+  'live.record': 'Записать',
+  'live.watch': 'Смотреть',
+  'live.stop': 'Остановить и сохранить',
+  'live.discard': 'Отменить',
+  'live.discardConfirm': 'Отменить эту запись? Всё записанное будет удалено.',
+  'live.elapsed': 'Записано {time}',
+  'live.saving': 'Запись сохраняется…',
+  'live.recordings': 'Записи',
+  'live.recordStarted': 'Идёт запись {channel}',
+  'live.ended.stopped': 'Остановлено вами',
+  'live.ended.offline': 'Эфир закончился',
+  'live.ended.max-duration': 'Достигнут предел в 12 часов',
+  'live.ended.refused': 'Twitch перестал отдавать эфир',
+  'live.gaps': 'Пропусков: {count} (потерянные сегменты)',
+  'live.adsLeftOut': 'Не записано рекламы: {time}',
+  'live.finishedTag': 'Запись эфира',
+  'live.playerError': 'Плеер эфира остановился. Попробуйте ещё раз.',
+  'live.retry': 'Ещё раз',
+  'live.quit.title': 'Идёт запись',
+  'live.quit.text': 'Записей идёт: {count}. Сохранить записанное перед выходом?',
+  'live.quit.save': 'Остановить, сохранить и выйти',
+  'live.quit.discard': 'Отменить и выйти',
+  'live.quit.keep': 'Продолжить запись',
+  'live.notify.saved': 'Запись сохранена: {title}',
 }

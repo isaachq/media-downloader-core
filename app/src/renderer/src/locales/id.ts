@@ -1,8 +1,10 @@
 // The desktop interface in Indonesian: every key of ../i18n.ts, translated from the English
 // (and kept in line with the Android app). Placeholders ({name}) stay as they are; no long dashes.
+import {siteMessages} from '../../../shared/site-words'
 import type {MessageKey} from '../i18n'
 
 export const id: Readonly<Record<MessageKey, string>> = {
+  ...siteMessages('id'),
   'app.tagline': 'Unduhan batch skala besar, diverifikasi file demi file',
   'header.logs': 'Log',
   'header.settings': 'Pengaturan',
@@ -33,9 +35,15 @@ export const id: Readonly<Record<MessageKey, string>> = {
   'site.facebook': 'Facebook',
   'site.vk': 'VK',
   'site.x': 'X',
+  'site.snapchat': 'Snapchat',
+  'site.threads': 'Threads',
+  'site.bluesky': 'Bluesky',
+  'site.twitch': 'Twitch',
+  'site.soundcloud': 'SoundCloud',
   'site.web': 'Situs web',
   'site.file': 'File',
-  'download.urlLabel': 'Tempel tautan dari YouTube, TikTok, Instagram, Facebook, VK, X, atau situs web apa pun',
+  'download.urlLabel':
+    'Tempel tautan dari YouTube, TikTok, Instagram, Twitch, atau salah satu dari {count} situs yang didukung',
   'download.invalidUrl': 'Masukkan tautan http(s) yang valid',
   'download.paste': 'Tempel',
   'download.format': 'Format',
@@ -311,7 +319,7 @@ export const id: Readonly<Record<MessageKey, string>> = {
   'hint.private': 'Video privat',
   'hint.removed': 'Dihapus atau tidak tersedia',
   'hint.geo-blocked': 'Diblokir di negara Anda',
-  'hint.members-only': 'Khusus anggota. Perlu cookie dari akun anggota',
+  'hint.members-only': 'Khusus anggota atau pelanggan. Perlu sesi akun yang punya akses.',
   'hint.not-started': 'Siaran langsung atau tayang perdana belum dimulai',
   'hint.unsupported-url': 'Situs atau tautan tidak didukung',
   'hint.format-unavailable': 'Format yang dipilih tidak tersedia',
@@ -475,7 +483,7 @@ export const id: Readonly<Record<MessageKey, string>> = {
   'hint.cookies-unreadable':
     'Tidak dapat membaca cookie browser. Safari memerlukan Akses Disk Penuh, atau pilih browser lain di Pengaturan',
   'settings.cookiesHelp':
-    'Sesi masuk Anda, untuk video privat, khusus anggota, atau yang dibatasi usia, dan untuk saat YouTube meminta konfirmasi bahwa Anda bukan bot. Langsung berlaku.',
+    'Sesi akun Anda yang sudah masuk, untuk video pribadi, khusus anggota, atau dibatasi usia, story Instagram, profil Threads pribadi, video Twitch khusus pelanggan, dan saat YouTube meminta konfirmasi bahwa Anda bukan bot. Langsung berlaku.',
   'about.star':
     'Jika Media Download Core bermanfaat, beri bintang di GitHub: gratis, hanya sedetik, dan membantu orang lain menemukannya.',
   'about.starButton': 'Beri bintang di GitHub',
@@ -595,7 +603,7 @@ export const id: Readonly<Record<MessageKey, string>> = {
   'hint.damaged-source': 'Rusak dari sumbernya, tidak diunduh lagi',
   'cause.damaged-source': 'rusak dari sumbernya',
   'hint.no-video': 'Postingan ini berisi foto atau teks, tetapi tidak ada video',
-  'hint.live-now': 'Sedang siaran langsung. Unduh setelah selesai, sebagai rekaman.',
+  'hint.live-now': 'Sedang siaran langsung: tempel tautan kanal (twitch.tv/nama) untuk merekamnya.',
   'hint.stream-only': 'Hanya tersedia sebagai streaming, yang belum bisa disimpan aplikasi ini',
   'cause.no-video': 'tanpa video',
   'cause.live-now': 'sedang siaran langsung',
@@ -658,9 +666,9 @@ export const id: Readonly<Record<MessageKey, string>> = {
   'signin.open': 'Cara masuk',
   'signin.title': 'Gunakan sesi Anda yang sudah masuk',
   'signin.intro':
-    'Video privat atau khusus anggota, video dengan batasan usia, profil dan story Instagram, video dari halaman Facebook, serta YouTube saat meminta konfirmasi bahwa Anda bukan bot, memerlukan sesi akun Anda sendiri. Aplikasi membacanya dari browser Anda: tidak ada yang perlu disalin atau ditempel.',
+    'Beberapa unduhan memerlukan sesi akun Anda sendiri; daftar di bawah menyebutkan yang mana. Aplikasi membaca sesi dari browser Anda, jadi tidak ada yang perlu disalin atau ditempel.',
   'signin.step1':
-    'Buka browser yang biasa Anda pakai (Chrome, Edge, Firefox, Safari, Brave…) dan masuk di sana seperti biasa: ke Google / YouTube, Instagram, atau Facebook.',
+    'Buka browser yang biasa Anda pakai (Chrome, Edge, Firefox, Safari, Brave…) dan masuk di sana seperti biasa: ke Google / YouTube, Instagram, Facebook, Threads, atau Twitch.',
   'signin.step2': 'Di sini, di Pengaturan → Cookie dari browser, pilih browser yang sama.',
   'signin.step3':
     'Pertama kali, sistem Anda meminta izin (lihat di bawah). Izinkan. Permintaan ini hanya muncul sekali.',
@@ -674,4 +682,37 @@ export const id: Readonly<Record<MessageKey, string>> = {
     'Linux (Fedora, Ubuntu…): keyring Anda (GNOME Keyring / KWallet) mungkin meminta izin akses ke data tersimpan browser: izinkan. Firefox tidak memerlukan izin.',
   'signin.privacy':
     'Cookie Anda tetap di komputer Anda: cookie dibaca sekali ke salinan pribadi yang hanya dipakai aplikasi untuk mengunduh, dan tidak pernah dikirim ke tempat lain.',
+  'signin.sites': 'Yang dibuka oleh sesi',
+  'signin.twitchNote':
+    'Sesi Twitch hanya dipakai untuk mengambil video: tidak pernah untuk chat, mengikuti, atau berlangganan.',
+  'live.tag': 'LIVE',
+  'live.rec': 'REC',
+  'live.title': 'Siaran langsung di Twitch',
+  'live.intro':
+    'Rekaman dimulai dari setengah menit terakhir yang masih disimpan Twitch dan berlanjut sampai Anda menghentikannya, siaran berakhir, atau 12 jam. Iklan tidak ikut.',
+  'live.startedAt': 'Mengudara sejak {time}',
+  'live.record': 'Rekam',
+  'live.watch': 'Tonton',
+  'live.stop': 'Hentikan dan simpan',
+  'live.discard': 'Buang',
+  'live.discardConfirm': 'Buang rekaman ini? Semua yang sudah terekam akan dihapus.',
+  'live.elapsed': '{time} terekam',
+  'live.saving': 'Menyimpan rekaman…',
+  'live.recordings': 'Rekaman',
+  'live.recordStarted': 'Merekam {channel}',
+  'live.ended.stopped': 'Dihentikan oleh Anda',
+  'live.ended.offline': 'Siaran berakhir',
+  'live.ended.max-duration': 'Mencapai batas 12 jam',
+  'live.ended.refused': 'Twitch berhenti mengirim siaran',
+  'live.gaps': '{count} celah (segmen hilang)',
+  'live.adsLeftOut': '{time} iklan tidak ikut',
+  'live.finishedTag': 'Rekaman siaran langsung',
+  'live.playerError': 'Pemutar siaran langsung berhenti. Coba lagi.',
+  'live.retry': 'Coba lagi',
+  'live.quit.title': 'Ada rekaman yang sedang berjalan',
+  'live.quit.text': '{count} rekaman masih berjalan. Simpan yang sudah terekam sebelum keluar?',
+  'live.quit.save': 'Hentikan, simpan, dan keluar',
+  'live.quit.discard': 'Buang dan keluar',
+  'live.quit.keep': 'Terus merekam',
+  'live.notify.saved': 'Rekaman disimpan: {title}',
 }

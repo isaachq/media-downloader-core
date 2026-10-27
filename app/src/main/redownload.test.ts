@@ -1,6 +1,6 @@
 import * as path from 'node:path'
 import {describe, expect, it} from 'vitest'
-import {positionOf, profileFromKey, redownloadRequest, retryTarget} from './redownload'
+import {isLiveRecord, positionOf, profileFromKey, redownloadRequest, retryTarget} from './redownload'
 
 describe('profileFromKey', () => {
   it('reads back the video and audio keys the archive writes', () => {
@@ -74,6 +74,16 @@ describe('redownloadRequest', () => {
     expect(request.selection.entries[0]!.id).toBe('2')
     expect(redownloadRequest([record(1, 'nope')], 'Again')).toBeUndefined()
     expect(redownloadRequest([], 'Again')).toBeUndefined()
+  })
+
+  it('never a live recording: its link records whatever is on the air now', () => {
+    const live = {...record(1), mediaId: 'live-322020126170-1793086943', extractor: 'Twitch'}
+    expect(isLiveRecord(live)).toBe(true)
+    expect(isLiveRecord({...live, extractor: 'Example'})).toBe(false)
+    expect(isLiveRecord(record(2))).toBe(false)
+    const request = redownloadRequest([live, record(2)], 'Again')!
+    expect(request.selection.entries.map(entry => entry.id)).toEqual(['2'])
+    expect(redownloadRequest([live], 'Again')).toBeUndefined()
   })
 })
 

@@ -191,6 +191,13 @@ section .intro { color: var(--muted); margin: 0 0 32px; max-width: 46em; font-si
 .feature .icon { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent-ink); margin-bottom: 12px; }
 .feature h3 { margin: 0 0 6px; font-size: 18px; }
 .feature p { margin: 0; color: var(--muted); font-size: 15px; }
+.sites-table { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.sites-table table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.sites-table th, .sites-table td { text-align: start; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.sites-table tbody tr:last-child > * { border-bottom: 0; }
+.sites-table thead th { font-size: 13px; color: var(--muted); font-weight: 600; white-space: nowrap; }
+.sites-table tbody th { white-space: nowrap; }
+.sites-table .muted { color: var(--muted); }
 
 .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; counter-reset: step; }
 @media (max-width: 800px) { .steps { grid-template-columns: 1fr; } }
@@ -264,6 +271,7 @@ footer a { color: var(--muted); }
     <div class="links">
       <a href="#new" data-i18n="nav.new">Mới</a>
       <a href="#features" data-i18n="nav.features">Tính năng</a>
+      <a href="#sites" data-i18n="nav.sites">Trang web</a>
       <a href="#how" data-i18n="nav.how">Cách hoạt động</a>
       <a href="#signin" data-i18n="nav.signin">Đăng nhập</a>
       <a href="#versions" data-i18n="nav.versions">Phiên bản</a>
@@ -313,39 +321,39 @@ footer a { color: var(--muted); }
 
 <section id="new">
   <div class="wrap">
-    <span class="new-badge" data-i18n="new.badge">Beta 20</span>
-    <h2 data-i18n="new.title">Có gì mới trong beta 20</h2>
-    <p class="intro" data-i18n="new.intro">Sáu bản beta kể từ lần cập nhật trước của trang này: liên kết từ mọi trang trong một lô, đọc VK và X nguyên bản, một ô cho mọi trang, ứng dụng bằng mười bốn ngôn ngữ và giao diện mới.</p>
+    <span class="new-badge" data-i18n="new.badge">Beta 22</span>
+    <h2 data-i18n="new.title">Có gì mới ở beta 22</h2>
+    <p class="intro" data-i18n="new.intro">Thêm năm trang do chính ứng dụng đọc, kênh Twitch đang phát trực tiếp được ghi và xem, và một danh sách cho biết mỗi trang tải được gì.</p>
     <div class="features">
       <article class="feature">
-        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h6"/><path d="M17 15v6m-3-3h6"/></svg></div>
-        <h3 data-i18n="b1.title">Danh sách hỗn hợp: mọi trang, một lô</h3>
-        <p data-i18n="b1.text">Thêm từng liên kết hoặc dán cả danh sách — YouTube, TikTok, Instagram, Facebook, VK, X, một tệp. Chúng được kiểm tra cùng nhau, và trước khi tải bất cứ thứ gì bạn sẽ thấy những gì sẽ được tải, những gì bị bỏ qua và lý do. Một cú nhấp tải tất cả thành một lô.</p>
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M12 8v8M8 12h8"/></svg></div>
+        <h3 data-i18n="b1.title">Năm trang mới</h3>
+        <p data-i18n="b1.text">Threads, Bluesky, Twitch, SoundCloud và Snapchat: bài đăng, băng chuyền, video, bài hát và toàn bộ trang cá nhân công khai, do chính ứng dụng đọc — với cùng kiểm tra như mọi lượt tải khác.</p>
       </article>
       <article class="feature">
-        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>
-        <h3 data-i18n="b2.title">Định dạng, cho tất cả hoặc từng liên kết</h3>
-        <p data-i18n="b2.text">Chọn MP4 chất lượng tốt nhất hoặc âm thanh cho cả danh sách — hoặc đặt định dạng riêng cho một liên kết, như một bài hát MP3 giữa các video. Vẫn một lô, một thư mục.</p>
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4" fill="currentColor"/></svg></div>
+        <h3 data-i18n="b2.title">Ghi Twitch trực tiếp</h3>
+        <p data-i18n="b2.text">Dán một kênh đang phát và nhấn Ghi: tiếp tục đến khi bạn dừng, buổi phát kết thúc hoặc đủ 12 giờ, bỏ quảng cáo. Dừng và lưu giữ lại; Bỏ thì xóa đi.</p>
       </article>
       <article class="feature">
-        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg></div>
-        <h3 data-i18n="b3.title">VK và X, nguyên bản</h3>
-        <p data-i18n="b3.text">Video, clip và danh sách phát VK đến 1080p, cùng bài đăng X có một hoặc nhiều video, GIF và video được trích dẫn — không cần đăng nhập.</p>
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></div>
+        <h3 data-i18n="b3.title">Xem trong khi ghi</h3>
+        <p data-i18n="b3.text">Xem mở trình phát buổi phát, riêng hoặc bên cạnh một bản ghi. Đóng trình phát không bao giờ dừng bản ghi.</p>
       </article>
       <article class="feature">
-        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="10" rx="3"/><path d="M7 12h6"/></svg></div>
-        <h3 data-i18n="b4.title">Một ô cho mọi trang</h3>
-        <p data-i18n="b4.text">Dán bất kỳ liên kết nào và ứng dụng nhận ra trang web. Không còn phải chọn trang cho mỗi phiên hay khởi động lại để đổi trang.</p>
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></div>
+        <h3 data-i18n="b4.title">Video Twitch và SoundCloud, nhanh hơn</h3>
+        <p data-i18n="b4.text">Buổi phát đã qua, highlight và bài hát SoundCloud được tải từng phần, nhiều phần cùng lúc, ghép lại không mã hóa lại: một video một giờ 1080p60 mất khoảng bảy phút rưỡi, được kiểm tra từng khung hình.</p>
       </article>
       <article class="feature">
-        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h8M8 3v2m-2 0c0 5 3 8 6 9M12 5c0 4-3 8-7 10"/><path d="m13 21 4-9 4 9m-7-3h6"/></svg></div>
-        <h3 data-i18n="b5.title">Mười bốn ngôn ngữ</h3>
-        <p data-i18n="b5.text">Tây Ban Nha, Anh, Bồ Đào Nha, Indonesia, Hindi, Việt, Thái, Thổ Nhĩ Kỳ, Ả Rập (phải sang trái), Pháp, Đức, Nga, Trung và Ý.</p>
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></div>
+        <h3 data-i18n="b5.title">Những trang nào, và cần gì</h3>
+        <p data-i18n="b5.text">Một danh sách cho biết mỗi trang tải được gì, có cần đăng nhập không và ứng dụng Android có hỗ trợ không — trên trang này, trong ứng dụng và dưới mỗi liên kết bạn dán.</p>
       </article>
       <article class="feature">
-        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4l3 4h8l3-4v9a7 7 0 0 1-14 0z"/><path d="M12 10v5m0 0-2-2m2 2 2-2"/></svg></div>
-        <h3 data-i18n="b6.title">Giao diện mới</h3>
-        <p data-i18n="b6.text">Biểu tượng mèo rừng với mũi tên tải xuống trên trán, trên ứng dụng, trình cài đặt và trang này. Trên sao, dưới vậy.</p>
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div>
+        <h3 data-i18n="b6.title">Đăng nhập cho Threads và Twitch</h3>
+        <p data-i18n="b6.text">Trang Threads riêng tư bạn theo dõi và video Twitch chỉ dành cho người đăng ký mở được bằng phiên của trình duyệt bạn vẫn dùng. Không bao giờ hỏi mật khẩu.</p>
       </article>
     </div>
   </div>
@@ -359,7 +367,7 @@ footer a { color: var(--muted); }
       <article class="feature">
         <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div>
         <h3 data-i18n="f1.title">Toàn bộ danh sách phát và hồ sơ</h3>
-        <p data-i18n="f1.text">Danh sách phát, kênh và Mix YouTube; video, trình chiếu và băng chuyền TikTok, Instagram và Facebook (dưới dạng video, hoặc dạng ảnh kèm âm thanh) và toàn bộ hồ sơ; video và danh sách phát VK; bài đăng X — với “Tải tất cả” cho hàng nghìn bài đăng của một tài khoản lâu năm.</p>
+        <p data-i18n="f1.text">Danh sách phát, kênh và Mix của YouTube; toàn bộ trang cá nhân TikTok, Instagram, Facebook, Threads, Bluesky, Snapchat và SoundCloud, kể cả băng chuyền (thành video, hoặc thành ảnh kèm âm thanh); video và kênh trực tiếp của Twitch; X và VK — với “Tải tất cả” cho hàng nghìn bài đăng của một tài khoản lâu năm.</p>
       </article>
       <article class="feature">
         <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 12 5 5L20 6"/></svg></div>
@@ -420,12 +428,39 @@ footer a { color: var(--muted); }
   </div>
 </section>
 
+<section id="sites">
+  <div class="wrap"><!-- sites:start -->
+    <h2>Trang được hỗ trợ</h2>
+    <p class="intro">Mỗi trang tải được gì, có cần đăng nhập không, và ứng dụng Android có hỗ trợ không.</p>
+    <div class="sites-table">
+      <table>
+        <thead><tr><th scope="col">Trang</th><th scope="col">Tải được gì</th><th scope="col">Đăng nhập</th><th scope="col">Ứng dụng Android</th></tr></thead>
+        <tbody>
+        <tr data-site="youtube"><th scope="row">YouTube</th><td>Video, Shorts, danh sách phát, kênh và Mix</td><td><a href="#signin">Cho video riêng tư, dành cho hội viên và giới hạn độ tuổi</a></td><td class="muted">Chỉ trên máy tính</td></tr>
+        <tr data-site="tiktok"><th scope="row">TikTok</th><td>Video, bài đăng ảnh và toàn bộ trang cá nhân</td><td class="muted">Không cần</td><td>Có</td></tr>
+        <tr data-site="instagram"><th scope="row">Instagram</th><td>Bài đăng, reels, băng chuyền, trang cá nhân, tin và tin nổi bật</td><td><a href="#signin">Cho tin, tin nổi bật và tài khoản riêng tư</a></td><td>Có</td></tr>
+        <tr data-site="facebook"><th scope="row">Facebook</th><td>Video, reels và video của một trang</td><td><a href="#signin">Cho phần lớn video và tin</a></td><td>Có</td></tr>
+        <tr data-site="twitch"><th scope="row">Twitch</th><td>Clip, buổi phát đã qua, highlight, kênh và ghi hình trực tiếp</td><td><a href="#signin">Cho video và buổi phát chỉ dành cho người đăng ký</a></td><td>Có</td></tr>
+        <tr data-site="soundcloud"><th scope="row">SoundCloud</th><td>Bài hát, set và trang cá nhân công khai</td><td class="muted">Không cần</td><td>Có</td></tr>
+        <tr data-site="x"><th scope="row">X</th><td>Bài đăng có video, GIF hoặc ảnh</td><td class="muted">Không cần</td><td>Có</td></tr>
+        <tr data-site="threads"><th scope="row">Threads</th><td>Bài đăng, băng chuyền và trang cá nhân công khai</td><td><a href="#signin">Cho tài khoản riêng tư</a></td><td>Có</td></tr>
+        <tr data-site="bluesky"><th scope="row">Bluesky</th><td>Bài đăng, thư viện ảnh, video và trang cá nhân công khai</td><td class="muted">Không cần</td><td>Có</td></tr>
+        <tr data-site="snapchat"><th scope="row">Snapchat</th><td>Spotlight, tin, tin nổi bật và trang cá nhân công khai</td><td class="muted">Không cần</td><td>Có</td></tr>
+        <tr data-site="vk"><th scope="row">VK</th><td>Video và danh sách phát</td><td><a href="#signin">Cho video riêng tư và bị giới hạn</a></td><td>Có</td></tr>
+        <tr data-site="web"><th scope="row">Các trang web khác</th><td>Video từ các trang khác mà yt-dlp biết</td><td><a href="#signin">Cho các trang yêu cầu</a></td><td class="muted">Chỉ trên máy tính</td></tr>
+        <tr data-site="file"><th scope="row">Liên kết tới tệp</th><td>Liên kết thẳng đến tệp video, âm thanh hoặc ảnh</td><td class="muted">Không cần</td><td>Có</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <!-- sites:end --></div>
+</section>
+
 <section id="how">
   <div class="wrap">
     <h2 data-i18n="how.title">Ba bước</h2>
     <p class="intro" data-i18n="how.intro">Không dòng lệnh, không cài đặt phải học trước — lần đầu, một hướng dẫn ngắn sẽ dẫn bạn đi một vòng. Bằng mười bốn ngôn ngữ, sáng hoặc tối.</p>
     <div class="steps">
-      <div class="step"><h3 data-i18n="s1.title">Dán liên kết</h3><p data-i18n="s1.text">Một video, danh sách phát, kênh, hồ sơ TikTok, Instagram hoặc Facebook, bài đăng VK hoặc X — hoặc cả danh sách liên kết từ mọi trang.</p></div>
+      <div class="step"><h3 data-i18n="s1.title">Dán liên kết</h3><p data-i18n="s1.text">Một video, một danh sách phát, một kênh, trang cá nhân của bất kỳ trang được hỗ trợ nào, một kênh Twitch đang phát trực tiếp — hoặc cả một danh sách liên kết từ bất kỳ trang nào.</p></div>
       <div class="step"><h3 data-i18n="s2.title">Chọn thứ bạn muốn</h3><p data-i18n="s2.text">Mọi thứ bên trong được liệt kê trước. Chọn MP4 hoặc MP3, chất lượng và thư mục.</p></div>
       <div class="step"><h3 data-i18n="s3.title">Để nó làm việc</h3><p data-i18n="s3.text">Nhiều lượt tải cùng lúc, mỗi lượt đều được xác minh. Theo dõi báo cáo, hoặc quay lại sau.</p></div>
     </div>

@@ -2,7 +2,14 @@ import type {Executable} from '../binaries/executable.js'
 import type {ExtractResult} from '../core/analyze.js'
 import type {MediaTags} from '../core/convert.js'
 import type {DownloadedInfo} from '../core/download.js'
-import type {AnalysisResult, FormatProfile, JobProgress, SlideshowOptions} from '../types.js'
+import type {
+  AnalysisResult,
+  FormatProfile,
+  JobProgress,
+  MediaSummary,
+  RecordingSummary,
+  SlideshowOptions,
+} from '../types.js'
 
 /**
  * A site the engine talks to natively, instead of through yt-dlp. A source
@@ -53,6 +60,25 @@ export interface MediaSource {
   ): Promise<Map<string, ExtractResult>>
   /** Fetch the media for `profile` into `workDir`; the engine converts / extracts / validates it. */
   download(task: SourceDownload): Promise<SourceFile>
+  /**
+   * A live stream's signed master playlist, for a host's own player (MediaDownloader.livePlayback):
+   * built, never fetched. Undefined when the url is not a live channel or it is off the air. Only
+   * sources with live streams implement it.
+   */
+  livePlayback?(
+    url: string,
+    opts?: {readonly signal?: AbortSignal | undefined; readonly fresh?: boolean | undefined},
+  ): Promise<LivePlayback | undefined>
+}
+
+/** A live stream as a player opens it: its signed master playlist and what is on the air. */
+export type LivePlayback = {
+  /** The master playlist (H.264 variants), signed for this viewer; a player fetches it and its variants. */
+  readonly url: string
+  /** When the signature runs out (ms, less a margin): ask again before it (`fresh`). */
+  readonly expiresAt?: number | undefined
+  /** The broadcast (`isLive: true`), as an analysis of the channel describes it. */
+  readonly media: MediaSummary
 }
 
 export type ListingProgress = {readonly listed: number; readonly expected?: number | undefined}
@@ -72,6 +98,12 @@ export type SourceDownload = {
   readonly profile: FormatProfile
   readonly workDir: string
   readonly signal: AbortSignal
+  /**
+   * Stop (`MediaDownloader.stop`): a live recording ends and hands over what it recorded, which the
+   * engine finalizes as any download (`signal` instead cancels and discards). Sources that only
+   * download what already exists ignore it.
+   */
+  readonly stop?: AbortSignal | undefined
   /** A previous attempt failed: don't trust cached links. */
   readonly fresh: boolean
   /** Whether a downloaded file carries sound (ffprobe), to skip silent encodings. */
@@ -80,6 +112,11 @@ export type SourceDownload = {
   readonly ffmpeg: Executable
   /** Encoder threads: this job's share of the CPU budget. */
   readonly threads: number
+  /**
+   * Segments of one HLS download fetched at once (the engine's `fragmentsPerDownload`, default 3;
+   * `core/hls` clamps it to ⌊CPUs/2⌋). A source passes it on instead of reading engine settings.
+   */
+  readonly fragments: number
   /** What a photo post becomes. */
   readonly slideshow: SlideshowOptions
   readonly onInfo: (info: DownloadedInfo) => void
@@ -98,4 +135,8 @@ export type SourceFile = {
    * only validated.
    */
   readonly tags?: MediaTags | undefined
+  /** A live recording: how it ended and what it left out (logged by the engine). */
+  readonly recording?: RecordingSummary | undefined
 }
+
+export type {RecordingSummary}

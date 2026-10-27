@@ -47,13 +47,18 @@ import {utf8Env} from './core/process.js'
 import {PendingJournal} from './core/queue-store.js'
 import {TraceLog} from './core/trace-log.js'
 import {ffprobe, ProbeError, summarizeProbe, validateBundle, validateFile} from './core/validate.js'
+import {BlueskySource} from './sources/bluesky/source.js'
 import {DirectFileSource} from './sources/direct/source.js'
 import {FacebookSource} from './sources/facebook/source.js'
 import {InstagramSource} from './sources/instagram/source.js'
 import {COOLING_DOWN, withPatience} from './sources/pacer.js'
-import {type ListingProgress, type MediaSource, needsFallback} from './sources/source.js'
+import {SnapchatSource} from './sources/snapchat/source.js'
+import {SoundcloudSource} from './sources/soundcloud/source.js'
+import {type ListingProgress, type LivePlayback, type MediaSource, needsFallback} from './sources/source.js'
+import {ThreadsSource} from './sources/threads/source.js'
 import {DEFAULT_SLIDESHOW, slideshowOptions} from './sources/tiktok/slideshow.js'
 import {TikTokSource} from './sources/tiktok/source.js'
+import {TwitchSource} from './sources/twitch/source.js'
 import {VkSource} from './sources/vk/source.js'
 import {XSource} from './sources/x/source.js'
 import type {
@@ -132,6 +137,19 @@ export type LaterCheck = {
 }
 
 /** What a photo post of this request is made into (an MP4 unless asked otherwise). O(1). */
+/** What a work folder's name looks like (`workFolderName`): anything else in `work/` is never swept. */
+const WORK_FOLDER = /^[0-9a-f]{16}$/
+
+/**
+ * A job's work folder name: deterministic per url + profile (+ the folder a photo post becomes), so a
+ * retry or an app restart resumes the .part files, and a folder of images never picks up another
+ * mode's leftovers. O(url length).
+ */
+export function workFolderName(request: JobRequest): string {
+  const kept = request.photoPost === false ? undefined : archiveSlideshow(request.profile, slideshowMode(request))
+  return shortHash(`${request.url}|${profileKey(request.profile)}${kept ? `|${kept}` : ''}`)
+}
+
 function slideshowMode(request: JobRequest): SlideshowOptions['mode'] {
   return (request.slideshow ?? DEFAULT_SLIDESHOW).mode
 }
@@ -242,6 +260,8 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
   /** Identifies this engine instance (one app launch / CLI run) in every log entry. */
   readonly sessionId: TraceId = newId()
   #disposing = false
+  /** The start-up sweep of stale work folders (restoreQueue), once per engine: jobs wait for it. */
+  #sweeping: Promise<void> | undefined
 
   /** Upper bound of `concurrency` on this machine: ⌊logical CPUs / 2⌋, or ⌊CPUs × share⌋ (share 0.5–0.6). */
   static maxConcurrency(share?: number): number {
@@ -294,6 +314,17 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
         : [new FacebookSource({log, cookies: () => this.#siteCookies(['facebook.com']), ...options.facebook})]),
       ...(options.x === false ? [] : [new XSource({log, ...options.x})]),
       ...(options.vk === false ? [] : [new VkSource({log, ...options.vk})]),
+      ...(options.snapchat === false ? [] : [new SnapchatSource({log, ...options.snapchat})]),
+      // Threads' own session cookies live on .threads.com (instagram.com's are never sent there)
+      ...(options.threads === false
+        ? []
+        : [new ThreadsSource({log, cookies: () => this.#siteCookies(['threads.com']), ...options.threads})]),
+      ...(options.soundcloud === false ? [] : [new SoundcloudSource({log, ...options.soundcloud})]),
+      ...(options.bluesky === false ? [] : [new BlueskySource({log, ...options.bluesky})]),
+      // Twitch's sign-in is the auth-token cookie of .twitch.tv (subscriber-only VODs, clips, streams)
+      ...(options.twitch === false
+        ? []
+        : [new TwitchSource({log, cookies: () => this.#siteCookies(['twitch.tv']), ...options.twitch})]),
       ...(options.sources ?? []),
       // a link straight to a media file, on any other site: last, after every site's own source
       ...(options.direct === false ? [] : [new DirectFileSource(options.direct)]),
@@ -1140,10 +1171,17 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
   /**
    * Re-queue whatever was pending when the app last closed (or crashed).
    * Partial files resume. `filter` lets a scheduler keep the jobs it restores itself.
+   * The first call also clears the work folders a crash or a killed process left behind
+   * (`#clearStaleWork`): every pending request's folder is kept, the filtered-out ones too.
    */
   async restoreQueue(filter: (request: JobRequest) => boolean = () => true): Promise<JobSnapshot[]> {
     const restored: JobSnapshot[] = []
-    for (const request of await this.#queue.load()) {
+    const pending = await this.#queue.load()
+    if (!this.#sweeping) {
+      this.#sweeping = this.#clearStaleWork(pending)
+      await this.#sweeping
+    }
+    for (const request of pending) {
       if (!filter(request)) continue
       try {
         restored.push(this.add({...request, infoJsonPath: undefined}))
@@ -1173,6 +1211,35 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     if (!job || job.terminal) return
     if (this.#pool.remove(id)) this.#finish(job, 'cancelled', {error: cancelledError().toJSON()})
     else job.controller?.abort()
+  }
+
+  /**
+   * Stop a live recording and keep it: no new segment is recorded, what was recorded is finalized and
+   * goes through the usual validate, checksum and archive steps (the job completes). `cancel` instead
+   * discards it. True when the job is running and was told to stop; a job that records nothing (a
+   * download, a job still queued) is not affected by it. O(1).
+   */
+  stop(id: JobId): boolean {
+    const job = this.#jobs.get(id)
+    if (!job || job.terminal || !job.stopper || job.stopper.signal.aborted) return false
+    job.stopper.abort()
+    this.#log('info', 'stop asked: finishing the recording', job)
+    return true
+  }
+
+  /**
+   * A live channel's signed master playlist, for the host's own player (watching without
+   * recording): the url, never fetched here, and the broadcast as an analysis describes it.
+   * Undefined off the air, or for a link no source plays live (only Twitch channels today). The
+   * read is shared with the channel's analysis and its recording for a minute (`fresh` asks
+   * again: a signature that ran out). 0 or 1 request; throws a DownloadError as analyze does.
+   */
+  async livePlayback(
+    url: string,
+    opts: {readonly signal?: AbortSignal | undefined; readonly fresh?: boolean | undefined} = {},
+  ): Promise<LivePlayback | undefined> {
+    const source = this.#sources.find(source => source.livePlayback !== undefined && source.handles(url))
+    return source?.livePlayback?.(url, opts)
   }
 
   cancelAll(): void {
@@ -1438,16 +1505,13 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
 
   async #run(job: Job): Promise<void> {
     job.controller = new AbortController()
+    job.stopper = new AbortController()
     job.startedAt = Date.now()
     const {signal} = job.controller
     const {request} = job
-    // deterministic per url + profile (+ the folder a photo post becomes): a retry or an app restart
-    // resumes the .part files, and a folder of images never picks up another mode's leftovers
-    const kept = request.photoPost === false ? undefined : archiveSlideshow(request.profile, slideshowMode(request))
-    const workDir = path.join(
-      this.#workRoot,
-      shortHash(`${request.url}|${profileKey(request.profile)}${kept ? `|${kept}` : ''}`),
-    )
+    const workDir = path.join(this.#workRoot, workFolderName(request))
+    // the start-up sweep of stale work folders never runs under a job's feet
+    if (this.#sweeping) await this.#sweeping
     let infoJsonPath = await this.#freshMetadata(job)
     let profile = request.profile
     let strategy: AttemptStrategy = 'primary'
@@ -1677,10 +1741,12 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
           profile,
           workDir,
           signal,
+          stop: job.stopper?.signal,
           fresh: strategy === 'fresh-extraction' || job.attempt > 1,
           hasAudio: file => this.#hasAudio(bins, file, signal),
           ffmpeg: bins.ffmpeg.exe,
           threads: this.#cpuShare(job),
+          fragments: this.#settings.fragmentsPerDownload,
           slideshow: request.slideshow ?? DEFAULT_SLIDESHOW,
           onInfo,
           onProgress: progress => this.#update(job, {status: 'downloading', progress}),
@@ -1708,6 +1774,16 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
         )
     info = {...info, ...downloaded.info}
     if (source && 'tags' in downloaded && downloaded.tags && this.#settings.embedMetadata) tags = downloaded.tags
+    if (source && 'recording' in downloaded && downloaded.recording) {
+      const r = downloaded.recording
+      job.recorded(r)
+      this.#log(
+        'info',
+        `recorded ${Math.round(r.seconds)} s live (${r.ended}): ${r.segments} segments, ` +
+          `${Math.round(r.skippedSeconds)} s of ads left out, ${r.gaps} gap(s) (${r.lostSegments} segments lost)`,
+        job,
+      )
+    }
     this.#stepDone(job, 'download', 'success')
 
     // ── convert (video only, and only when the codecs don't already match)
@@ -2091,6 +2167,38 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       }, wait)
       job.emitTimer.unref()
     }
+  }
+
+  /**
+   * Remove the work folders nothing will resume: those of jobs that ended while the process was
+   * killed or crashed, or failed with a network error (kept for an in-session retry) in a past run.
+   * Kept: the folder of every request the journal still holds (`pending`, whoever restores it:
+   * a scheduler re-adds its batches' jobs under the same url and profile, so the same folder) and of
+   * every job this engine already has. Only names a work folder can have (16 hex digits) are touched.
+   * Jobs wait for it before using their folder (`#run`). One readdir, O(p) to hash the p pending
+   * requests, O(1) per entry to decide, once per engine.
+   */
+  async #clearStaleWork(pending: readonly JobRequest[]): Promise<void> {
+    const keep = new Set<string>()
+    for (const request of pending) keep.add(workFolderName(request))
+    for (const job of this.#jobs.values()) if (!job.terminal) keep.add(workFolderName(job.request))
+    let entries: string[]
+    try {
+      entries = await fs.readdir(this.#workRoot)
+    } catch {
+      return // no work folder yet: a first launch
+    }
+    let cleared = 0
+    for (const name of entries) {
+      if (!WORK_FOLDER.test(name) || keep.has(name)) continue
+      try {
+        await fs.rm(path.join(this.#workRoot, name), {recursive: true, force: true})
+        cleared++
+      } catch (error) {
+        this.#log('warn', `a stale work folder could not be removed (${name}): ${toJobError(error).message}`)
+      }
+    }
+    if (cleared > 0) this.#log('info', `cleared ${cleared} stale work folder(s) left by an earlier run`)
   }
 
   #pendingEntries(): Array<readonly [string, JobRequest]> {

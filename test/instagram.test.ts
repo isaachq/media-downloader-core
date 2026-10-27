@@ -793,7 +793,8 @@ describe('Instagram, end to end (local fake)', () => {
     const logs: string[] = []
     const source = new InstagramSource({
       origin: site.origin,
-      pacing: {spacingMs: 0, jitterMs: 0},
+      // the walls are refusals: no real back off in a fast test
+      pacing: {spacingMs: 0, jitterMs: 0, backoffMs: 0},
       log: (_, message) => logs.push(message),
     })
     await assert.rejects(source.analyze(postUrl(site)), (e: DownloadError) => {

@@ -86,7 +86,13 @@ function imageOf(raw: Json, id: string): MetaImage | undefined {
   return {kind: 'image', id, urls: [...new Set(candidates.map(c => c.url))], width: best.width, height: best.height}
 }
 
-function mediaOfV1(raw: Json): MetaMedia | undefined {
+/**
+ * One v1 media item (a post, or one item of a carousel) as a video or an
+ * image, the shape Instagram and Threads share: `video_versions` (progressive
+ * H.264, sized by `original_width` / `original_height` when the versions are
+ * not), `image_versions2.candidates` best first. O(v + c log c).
+ */
+export function mediaOfV1(raw: Json): MetaMedia | undefined {
   const id = pkOf(raw) ?? ''
   const width = num(raw['original_width']) ?? 0
   const height = num(raw['original_height']) ?? 0

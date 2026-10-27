@@ -1,8 +1,10 @@
 // The desktop interface in Italian: every key of ../i18n.ts, translated from the English
 // (and kept in line with the Android app). Placeholders ({name}) stay as they are; no long dashes.
+import {siteMessages} from '../../../shared/site-words'
 import type {MessageKey} from '../i18n'
 
 export const it: Readonly<Record<MessageKey, string>> = {
+  ...siteMessages('it'),
   'app.tagline': 'Download in blocco a tutta prova, verificati file per file',
   'header.logs': 'Registri',
   'header.settings': 'Impostazioni',
@@ -34,9 +36,14 @@ export const it: Readonly<Record<MessageKey, string>> = {
   'site.facebook': 'Facebook',
   'site.vk': 'VK',
   'site.x': 'X',
+  'site.snapchat': 'Snapchat',
+  'site.threads': 'Threads',
+  'site.bluesky': 'Bluesky',
+  'site.twitch': 'Twitch',
+  'site.soundcloud': 'SoundCloud',
   'site.web': 'Sito web',
   'site.file': 'File',
-  'download.urlLabel': 'Incolla un link da YouTube, TikTok, Instagram, Facebook, VK, X o da qualsiasi sito web',
+  'download.urlLabel': 'Incolla un link da YouTube, TikTok, Instagram, Twitch o da uno dei {count} siti supportati',
   'download.invalidUrl': 'Inserisci un link http(s) valido',
   'download.paste': 'Incolla',
   'download.format': 'Formato',
@@ -311,7 +318,7 @@ export const it: Readonly<Record<MessageKey, string>> = {
   'hint.private': 'Video privato',
   'hint.removed': 'Rimosso o non disponibile',
   'hint.geo-blocked': 'Bloccato nel tuo paese',
-  'hint.members-only': 'Solo membri. Servono i cookie di un account membro',
+  'hint.members-only': 'Solo per membri o abbonati. Serve la sessione di un account che ha accesso.',
   'hint.not-started': 'La diretta o la première non è ancora iniziata',
   'hint.unsupported-url': 'Sito o link non supportato',
   'hint.format-unavailable': 'Il formato scelto non è disponibile',
@@ -478,7 +485,7 @@ export const it: Readonly<Record<MessageKey, string>> = {
   'hint.cookies-unreadable':
     "Impossibile leggere i cookie del browser. Safari ha bisogno dell'Accesso completo al disco, oppure scegli un altro browser in Impostazioni",
   'settings.cookiesHelp':
-    'La tua sessione con accesso effettuato, per video privati, riservati ai membri o con limiti di età, e per quando YouTube chiede di confermare che non sei un bot. Si applica subito.',
+    'La tua sessione con accesso, per i video privati, per i membri o con limiti d’età, le storie di Instagram, i profili Threads privati, i video Twitch solo per abbonati, e per quando YouTube chiede di confermare che non sei un bot. Si applica subito.',
   'about.star':
     'Se Media Download Core ti è stato utile, dagli una stella su GitHub: è gratis, richiede un secondo e aiuta altre persone a trovarlo.',
   'about.starButton': 'Metti una stella su GitHub',
@@ -598,7 +605,7 @@ export const it: Readonly<Record<MessageKey, string>> = {
   'hint.damaged-source': "Danneggiato all'origine, non viene più scaricato",
   'cause.damaged-source': "danneggiati all'origine",
   'hint.no-video': 'Questo post ha foto o testo, ma nessun video',
-  'hint.live-now': 'In diretta ora. Scaricalo quando finisce, come registrazione.',
+  'hint.live-now': 'In diretta ora: incolla il link del canale (twitch.tv/nome) per registrarlo.',
   'hint.stream-only': 'Disponibile solo in streaming, che l’app non può ancora salvare',
   'cause.no-video': 'senza video',
   'cause.live-now': 'in diretta ora',
@@ -661,9 +668,9 @@ export const it: Readonly<Record<MessageKey, string>> = {
   'signin.open': 'Come accedere',
   'signin.title': 'Usa la tua sessione attiva',
   'signin.intro':
-    "I video privati o riservati ai membri, quelli con limiti di età, i profili e le storie di Instagram e i video di una pagina Facebook richiedono la sessione del tuo account. Lo stesso vale per YouTube quando chiede di confermare che non sei un bot. L'app legge la sessione dal tuo browser, quindi non c'è niente da copiare o incollare.",
+    'Alcuni download hanno bisogno della sessione del tuo account; l’elenco qui sotto dice quali. L’app legge la sessione dal tuo browser, quindi non c’è niente da copiare o incollare.',
   'signin.step1':
-    'Apri il tuo solito browser (Chrome, Edge, Firefox, Safari, Brave…) e accedi lì come sempre: a Google / YouTube, Instagram o Facebook.',
+    'Apri il tuo solito browser (Chrome, Edge, Firefox, Safari, Brave…) e accedi lì come sempre: a Google / YouTube, Instagram, Facebook, Threads o Twitch.',
   'signin.step2': 'Qui, in Impostazioni → Cookie dal browser, scegli lo stesso browser.',
   'signin.step3':
     "Concedi l'autorizzazione che il sistema chiede la prima volta (vedi sotto). Viene chiesta una sola volta.",
@@ -677,4 +684,36 @@ export const it: Readonly<Record<MessageKey, string>> = {
     "Linux (Fedora, Ubuntu…): il portachiavi (GNOME Keyring / KWallet) potrebbe chiedere di consentire l'accesso ai dati salvati del browser: consentilo. Firefox non richiede autorizzazioni.",
   'signin.privacy':
     "I tuoi cookie restano sul tuo computer: vengono letti una volta in una copia privata che l'app usa solo per scaricare, e non vengono mai inviati altrove.",
+  'signin.sites': 'Cosa apre una sessione',
+  'signin.twitchNote': 'La sessione di Twitch serve solo a ottenere il video: mai a chattare, seguire o abbonarsi.',
+  'live.tag': 'LIVE',
+  'live.rec': 'REC',
+  'live.title': 'In diretta su Twitch',
+  'live.intro':
+    'La registrazione parte dall’ultimo mezzo minuto che Twitch conserva ancora e continua finché non la fermi, la diretta finisce o passano 12 ore. Le pubblicità restano fuori.',
+  'live.startedAt': 'In onda dalle {time}',
+  'live.record': 'Registra',
+  'live.watch': 'Guarda',
+  'live.stop': 'Ferma e salva',
+  'live.discard': 'Scarta',
+  'live.discardConfirm': 'Scartare questa registrazione? Tutto ciò che è stato registrato finora viene eliminato.',
+  'live.elapsed': '{time} registrati',
+  'live.saving': 'Salvataggio della registrazione…',
+  'live.recordings': 'Registrazioni',
+  'live.recordStarted': 'Registrazione di {channel}',
+  'live.ended.stopped': 'Fermata da te',
+  'live.ended.offline': 'La diretta è finita',
+  'live.ended.max-duration': 'Raggiunto il limite di 12 ore',
+  'live.ended.refused': 'Twitch ha smesso di inviare la diretta',
+  'live.gaps': '{count} buchi (segmenti persi)',
+  'live.adsLeftOut': '{time} di pubblicità lasciati fuori',
+  'live.finishedTag': 'Registrazione in diretta',
+  'live.playerError': 'Il lettore in diretta si è fermato. Riprova.',
+  'live.retry': 'Riprova',
+  'live.quit.title': 'C’è una registrazione in corso',
+  'live.quit.text': '{count} registrazione/i ancora in corso. Salvare ciò che è stato registrato prima di uscire?',
+  'live.quit.save': 'Ferma, salva ed esci',
+  'live.quit.discard': 'Scarta ed esci',
+  'live.quit.keep': 'Continua a registrare',
+  'live.notify.saved': 'Registrazione salvata: {title}',
 }

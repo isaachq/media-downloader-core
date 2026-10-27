@@ -191,6 +191,13 @@ section .intro { color: var(--muted); margin: 0 0 32px; max-width: 46em; font-si
 .feature .icon { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent-ink); margin-bottom: 12px; }
 .feature h3 { margin: 0 0 6px; font-size: 18px; }
 .feature p { margin: 0; color: var(--muted); font-size: 15px; }
+.sites-table { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.sites-table table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.sites-table th, .sites-table td { text-align: start; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.sites-table tbody tr:last-child > * { border-bottom: 0; }
+.sites-table thead th { font-size: 13px; color: var(--muted); font-weight: 600; white-space: nowrap; }
+.sites-table tbody th { white-space: nowrap; }
+.sites-table .muted { color: var(--muted); }
 
 .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; counter-reset: step; }
 @media (max-width: 800px) { .steps { grid-template-columns: 1fr; } }
@@ -264,6 +271,7 @@ footer a { color: var(--muted); }
     <div class="links">
       <a href="#new" data-i18n="nav.new">Новое</a>
       <a href="#features" data-i18n="nav.features">Возможности</a>
+      <a href="#sites" data-i18n="nav.sites">Сайты</a>
       <a href="#how" data-i18n="nav.how">Как это работает</a>
       <a href="#signin" data-i18n="nav.signin">Вход</a>
       <a href="#versions" data-i18n="nav.versions">Версии</a>
@@ -313,39 +321,39 @@ footer a { color: var(--muted); }
 
 <section id="new">
   <div class="wrap">
-    <span class="new-badge" data-i18n="new.badge">Бета 20</span>
-    <h2 data-i18n="new.title">Что нового в бете 20</h2>
-    <p class="intro" data-i18n="new.intro">Шесть бет с последнего обновления этой страницы: ссылки с любых сайтов в одном пакете, VK и X читаются нативно, одно поле для всех сайтов, приложение на четырнадцати языках и новый внешний вид.</p>
+    <span class="new-badge" data-i18n="new.badge">Бета 22</span>
+    <h2 data-i18n="new.title">Новое в бете 22</h2>
+    <p class="intro" data-i18n="new.intro">Ещё пять сайтов, которые приложение читает само, прямые эфиры Twitch — запись и просмотр, и один список, который говорит, что скачивается с каждого сайта.</p>
     <div class="features">
       <article class="feature">
-        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h6"/><path d="M17 15v6m-3-3h6"/></svg></div>
-        <h3 data-i18n="b1.title">Смешанный список: любые сайты, один пакет</h3>
-        <p data-i18n="b1.text">Добавляйте ссылки по одной или вставьте целый список — YouTube, TikTok, Instagram, Facebook, VK, X, файл. Они проверяются вместе, и ещё до загрузки вы видите, что будет скачано, что пропущено и почему. Один клик — и всё скачивается одним пакетом.</p>
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M12 8v8M8 12h8"/></svg></div>
+        <h3 data-i18n="b1.title">Пять новых сайтов</h3>
+        <p data-i18n="b1.text">Threads, Bluesky, Twitch, SoundCloud и Snapchat: посты, карусели, видео, треки и открытые профили целиком, приложение читает их само — с теми же проверками, что и любая другая загрузка.</p>
       </article>
       <article class="feature">
-        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>
-        <h3 data-i18n="b2.title">Формат — для всех или для каждой ссылки</h3>
-        <p data-i18n="b2.text">Выберите MP4 в лучшем качестве или аудио для всего списка — или задайте отдельной ссылке свой формат, например песню в MP3 среди видео. По-прежнему один пакет, одна папка.</p>
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4" fill="currentColor"/></svg></div>
+        <h3 data-i18n="b2.title">Запись Twitch в прямом эфире</h3>
+        <p data-i18n="b2.text">Вставьте канал, который сейчас в эфире, и нажмите «Записать»: запись идёт, пока вы её не остановите, эфир не закончится или не пройдёт 12 часов, без рекламы. «Остановить и сохранить» её оставляет; «Отменить» удаляет.</p>
       </article>
       <article class="feature">
-        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg></div>
-        <h3 data-i18n="b3.title">VK и X — нативно</h3>
-        <p data-i18n="b3.text">Видео, клипы и плейлисты VK до 1080p, а также публикации X с одним или несколькими видео, GIF и цитируемыми видео — без входа в аккаунт.</p>
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></div>
+        <h3 data-i18n="b3.title">Смотрите, пока идёт запись</h3>
+        <p data-i18n="b3.text">«Смотреть» открывает плеер эфира — отдельно или рядом с записью. Закрытие плеера никогда не останавливает запись.</p>
       </article>
       <article class="feature">
-        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="10" rx="3"/><path d="M7 12h6"/></svg></div>
-        <h3 data-i18n="b4.title">Одно поле для всех сайтов</h3>
-        <p data-i18n="b4.text">Вставьте любую ссылку — приложение само распознает сайт. Больше не нужно выбирать сайт на каждый сеанс или перезапускаться, чтобы сменить его.</p>
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></div>
+        <h3 data-i18n="b4.title">Видео Twitch и SoundCloud — быстрее</h3>
+        <p data-i18n="b4.text">Прошлые трансляции, яркие моменты и треки SoundCloud скачиваются по частям, по несколько сразу, и склеиваются без перекодирования: часовое видео в 1080p60 скачалось примерно за семь с половиной минут, проверенное кадр за кадром.</p>
       </article>
       <article class="feature">
-        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h8M8 3v2m-2 0c0 5 3 8 6 9M12 5c0 4-3 8-7 10"/><path d="m13 21 4-9 4 9m-7-3h6"/></svg></div>
-        <h3 data-i18n="b5.title">Четырнадцать языков</h3>
-        <p data-i18n="b5.text">Испанский, английский, португальский, индонезийский, хинди, вьетнамский, тайский, турецкий, арабский (справа налево), французский, немецкий, русский, китайский и итальянский.</p>
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></div>
+        <h3 data-i18n="b5.title">Какие сайты и что им нужно</h3>
+        <p data-i18n="b5.text">Один список говорит, что скачивается с каждого сайта, нужен ли вход и есть ли он в приложении для Android — на этой странице, в приложении и под каждой вставленной ссылкой.</p>
       </article>
       <article class="feature">
-        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4l3 4h8l3-4v9a7 7 0 0 1-14 0z"/><path d="M12 10v5m0 0-2-2m2 2 2-2"/></svg></div>
-        <h3 data-i18n="b6.title">Новый внешний вид</h3>
-        <p data-i18n="b6.text">Эмблема дикой кошки со стрелкой загрузки на лбу — в приложении, установщиках и на этой странице. Что вверху, то и внизу.</p>
+        <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div>
+        <h3 data-i18n="b6.title">Вход для Threads и Twitch</h3>
+        <p data-i18n="b6.text">Закрытые профили Threads, на которые вы подписаны, и видео Twitch только для подписчиков открываются с сессией браузера, которым вы уже пользуетесь. Пароль никогда не запрашивается.</p>
       </article>
     </div>
   </div>
@@ -359,7 +367,7 @@ footer a { color: var(--muted); }
       <article class="feature">
         <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div>
         <h3 data-i18n="f1.title">Целые плейлисты и профили</h3>
-        <p data-i18n="f1.text">Плейлисты, каналы и миксы YouTube; видео, слайд-шоу и карусели TikTok, Instagram и Facebook (как видео или как изображения со звуком) и целые профили; видео и плейлисты VK; публикации X — с кнопкой «Загрузить все» для тысяч публикаций давнего аккаунта.</p>
+        <p data-i18n="f1.text">Плейлисты, каналы и миксы YouTube; профили TikTok, Instagram, Facebook, Threads, Bluesky, Snapchat и SoundCloud целиком, включая карусели (как видео или как картинки со звуком); видео и прямые эфиры Twitch; X и VK — с «Загрузить всё» для тысяч постов старого аккаунта.</p>
       </article>
       <article class="feature">
         <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 12 5 5L20 6"/></svg></div>
@@ -420,12 +428,39 @@ footer a { color: var(--muted); }
   </div>
 </section>
 
+<section id="sites">
+  <div class="wrap"><!-- sites:start -->
+    <h2>Поддерживаемые сайты</h2>
+    <p class="intro">Что скачивается с каждого сайта, нужен ли вход в аккаунт и есть ли он в приложении для Android.</p>
+    <div class="sites-table">
+      <table>
+        <thead><tr><th scope="col">Сайт</th><th scope="col">Что скачивает</th><th scope="col">Вход</th><th scope="col">Приложение для Android</th></tr></thead>
+        <tbody>
+        <tr data-site="youtube"><th scope="row">YouTube</th><td>Видео, Shorts, плейлисты, каналы и миксы</td><td><a href="#signin">Для: закрытые, спонсорские и видео с возрастным ограничением</a></td><td class="muted">Только на компьютере</td></tr>
+        <tr data-site="tiktok"><th scope="row">TikTok</th><td>Видео, фотопосты и профили целиком</td><td class="muted">Не нужен</td><td>Да</td></tr>
+        <tr data-site="instagram"><th scope="row">Instagram</th><td>Посты, Reels, карусели, профили, истории и актуальное</td><td><a href="#signin">Для: истории, актуальное и закрытые аккаунты</a></td><td>Да</td></tr>
+        <tr data-site="facebook"><th scope="row">Facebook</th><td>Видео, Reels и видео страниц</td><td><a href="#signin">Для: большинство видео и истории</a></td><td>Да</td></tr>
+        <tr data-site="twitch"><th scope="row">Twitch</th><td>Клипы, прошлые трансляции, яркие моменты, каналы и запись прямых эфиров</td><td><a href="#signin">Для: видео и трансляции только для подписчиков</a></td><td>Да</td></tr>
+        <tr data-site="soundcloud"><th scope="row">SoundCloud</th><td>Треки, сеты и открытые профили</td><td class="muted">Не нужен</td><td>Да</td></tr>
+        <tr data-site="x"><th scope="row">X</th><td>Посты с видео, GIF или фото</td><td class="muted">Не нужен</td><td>Да</td></tr>
+        <tr data-site="threads"><th scope="row">Threads</th><td>Посты, карусели и открытые профили</td><td><a href="#signin">Для: закрытые аккаунты</a></td><td>Да</td></tr>
+        <tr data-site="bluesky"><th scope="row">Bluesky</th><td>Посты, галереи, видео и открытые профили</td><td class="muted">Не нужен</td><td>Да</td></tr>
+        <tr data-site="snapchat"><th scope="row">Snapchat</th><td>Spotlight, истории, актуальное и открытые профили</td><td class="muted">Не нужен</td><td>Да</td></tr>
+        <tr data-site="vk"><th scope="row">VK</th><td>Видео и плейлисты</td><td><a href="#signin">Для: закрытые и ограниченные видео</a></td><td>Да</td></tr>
+        <tr data-site="web"><th scope="row">Другие сайты</th><td>Видео с других сайтов, которые знает yt-dlp</td><td><a href="#signin">Для: сайты, которые его требуют</a></td><td class="muted">Только на компьютере</td></tr>
+        <tr data-site="file"><th scope="row">Ссылка на файл</th><td>Прямая ссылка на видео-, аудиофайл или изображение</td><td class="muted">Не нужен</td><td>Да</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <!-- sites:end --></div>
+</section>
+
 <section id="how">
   <div class="wrap">
     <h2 data-i18n="how.title">Три шага</h2>
     <p class="intro" data-i18n="how.intro">Никакой командной строки и настроек, которые надо сначала изучить, — в первый раз короткий гид всё покажет. На четырнадцати языках, в светлой или тёмной теме.</p>
     <div class="steps">
-      <div class="step"><h3 data-i18n="s1.title">Вставьте ссылку</h3><p data-i18n="s1.text">Видео, плейлист, канал, профиль TikTok, Instagram или Facebook, публикация VK или X — или целый список ссылок с любых сайтов.</p></div>
+      <div class="step"><h3 data-i18n="s1.title">Вставьте ссылку</h3><p data-i18n="s1.text">Видео, плейлист, канал, профиль любого поддерживаемого сайта, канал Twitch в прямом эфире — или целый список ссылок с любых сайтов.</p></div>
       <div class="step"><h3 data-i18n="s2.title">Выберите нужное</h3><p data-i18n="s2.text">Сначала показывается всё, что там есть. Выберите MP4 или MP3, качество и папку.</p></div>
       <div class="step"><h3 data-i18n="s3.title">Пусть работает</h3><p data-i18n="s3.text">Несколько загрузок одновременно, каждая проверяется. Следите за отчётом или вернитесь позже.</p></div>
     </div>

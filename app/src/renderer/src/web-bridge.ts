@@ -640,6 +640,27 @@ export function createWebBridge(): MdcApi {
       }
     },
 
+    // the browser preview has no live channels: nothing records, no player opens
+    async record(): Promise<JobSnapshot> {
+      throw new Error('Live recording needs the desktop app.')
+    },
+
+    async stopJob(): Promise<boolean> {
+      return false
+    },
+
+    async liveOpen(): Promise<undefined> {
+      return undefined
+    },
+
+    async liveClose(): Promise<void> {},
+
+    onQuitRequested(): () => void {
+      return () => {}
+    },
+
+    async quitWith(): Promise<void> {},
+
     async retryJob(jobId: JobId): Promise<void> {
       const job = jobs.get(jobId)
       if (job) {

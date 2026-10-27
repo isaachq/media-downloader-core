@@ -1,15 +1,20 @@
 name: CI
 
-# Two depths, one workflow:
+# Two depths, one workflow. Budget: every job of a pull request finishes in 5 minutes
+# (timeout-minutes cuts it there); what is heavy runs locally with `npm run test:full`.
 #
 # - smoke (every pull request): what breaks per platform, as fast as it can be told.
-#   Linux runs the library's whole suite with the real ffmpeg, the packed package and
-#   the desktop app end to end; macOS and Windows run the library's suite and the
-#   app's unit tests. About 3–4 minutes of wall time.
-# - full (Actions tab → CI → Run workflow → full): today's whole regression — Node 20
-#   and 24 too, ffmpeg and the end-to-end app on every OS, a real yt-dlp/ffmpeg install,
-#   the Linux packages. Run it before a release; locally the same suite is
-#   `npm run test:full` (see CONTRIBUTING.md → Development).
+#   Every OS runs the library's fast suite (no ffmpeg, no network) and the app's unit
+#   tests; Linux also runs types, lint, the website check, the integrity smoke with a
+#   cached static ffmpeg, the packed package and the three end-to-end tests tagged @smoke.
+# - full (Actions tab → CI → Run workflow → full): the whole regression — Node 20 and
+#   24 too, the heavy suites with ffmpeg and every end-to-end test on every OS, a real
+#   yt-dlp/ffmpeg install, the Linux packages. Locally the same suite is
+#   `npm run test:full` (see CONTRIBUTING.md → Development), which runs before every PR.
+#
+# A pull request that only touches documentation runs the same jobs (branch protection
+# requires them by name), but their test steps are skipped: lint and the website check
+# run once, in seconds.
 #
 # No run on push to main: branch protection is strict (a pull request must be up to
 # date with main), so the merged tree is the one the pull request already checked.
@@ -31,10 +36,37 @@ env:
   FULL: ${{ github.event_name == 'workflow_dispatch' && inputs.full }}
 
 jobs:
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      code: ${{ github.event_name != 'pull_request' || steps.filter.outputs.code == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      # code = anything that is not documentation; a docs-only PR skips the test steps
+      - id: filter
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@v3
+        with:
+          predicate-quantifier: every
+          filters: |
+            code:
+              - '**'
+              - '!docs/**'
+              - '!documentation/**'
+              - '!**/*.md'
+              - '!PRIVACY*'
+
   check:
     # the Node 22 runs keep their old names: branch protection requires them by name
     name: ${{ matrix.node == 22 && matrix.os || format('{0} · node {1}', matrix.os, matrix.node) }}
+    needs: changes
     runs-on: ${{ matrix.os }}
+    # full runs carry the heavy suites and a real install: they get more room
+    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && inputs.full && 30 || 5 }}
+    env:
+      CODE: ${{ needs.changes.outputs.code }}
     strategy:
       fail-fast: false
       matrix:
@@ -44,16 +76,46 @@ jobs:
         include: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.full && '[{"os":"ubuntu-latest","node":20},{"os":"ubuntu-latest","node":24}]' || '[]') }}
     steps:
       - uses: actions/checkout@v4
+        if: runner.os == 'Linux' || env.CODE == 'true'
       - uses: actions/setup-node@v4
+        if: runner.os == 'Linux' || env.CODE == 'true'
         with:
           node-version: ${{ matrix.node }}
           cache: npm
+      - if: runner.os == 'Linux' || env.CODE == 'true'
+        run: npm ci
 
-      # ffmpeg/ffprobe enable the integrity test suite (it is skipped without them):
-      # every run on Linux, the other systems in full runs
-      - name: Install ffmpeg (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      # types, lint and the website read the same files on every system: once is enough.
+      # A docs-only PR still runs lint and the website check (the generated language
+      # pages must not drift).
+      - if: runner.os == 'Linux' && env.CODE == 'true' || env.FULL == 'true'
+        run: npm run typecheck
+      - if: runner.os == 'Linux' || env.FULL == 'true'
+        run: npm run lint
+      - if: runner.os == 'Linux' || env.FULL == 'true'
+        run: npm run site:check
+
+      # no ffmpeg, no network: well under 90 s on every OS
+      - if: env.CODE == 'true'
+        run: npm run test:fast
+
+      # a static ffmpeg, cached: no apt-get update on every run. Linux only in smoke runs
+      - name: Cache ffmpeg (Linux)
+        if: runner.os == 'Linux' && env.CODE == 'true'
+        id: ffmpeg-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/ffmpeg
+          key: ffmpeg-static-linux-${{ runner.arch }}-v1
+      - name: Install ffmpeg (Linux, static)
+        if: runner.os == 'Linux' && env.CODE == 'true' && steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/ffmpeg
+          curl -fsSL --retry 3 https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz \
+            | tar -xJ -C ~/ffmpeg --strip-components=1
+      - name: Put ffmpeg on the PATH (Linux)
+        if: runner.os == 'Linux' && env.CODE == 'true'
+        run: echo "$HOME/ffmpeg" >> "$GITHUB_PATH"
       - name: Install ffmpeg (macOS)
         if: runner.os == 'macOS' && env.FULL == 'true'
         run: brew install ffmpeg
@@ -61,19 +123,17 @@ jobs:
         if: runner.os == 'Windows' && env.FULL == 'true'
         run: choco install ffmpeg -y --no-progress
 
-      - run: npm ci
-      # types and lint read the same files on every system: once is enough
-      - if: runner.os == 'Linux' || env.FULL == 'true'
-        run: npm run typecheck
-      - if: runner.os == 'Linux' || env.FULL == 'true'
-        run: npm run lint
-      # the website's language pages are generated from docs/index.html + docs/i18n: none may drift
-      - if: runner.os == 'Linux' || env.FULL == 'true'
-        run: npm run site:check
-      - run: npm test
-      - run: npm run build
+      # one video and one audio check with the real ffmpeg, about 30 s
+      - if: runner.os == 'Linux' && env.CODE == 'true'
+        run: npm run test:integrity-smoke
+      # the suites that encode real media: full runs here, `npm run test:full` locally
+      - if: env.FULL == 'true'
+        run: npm run test:heavy
+
+      - if: env.CODE == 'true'
+        run: npm run build
       # the package as a consumer gets it: packed, installed in an empty project, loaded as ESM and CJS
-      - if: runner.os == 'Linux' || env.FULL == 'true'
+      - if: runner.os == 'Linux' && env.CODE == 'true' || env.FULL == 'true'
         run: npm run pack:check
 
       # the real thing: download, checksum-verify and test yt-dlp + ffmpeg, then diagnose
@@ -86,43 +146,66 @@ jobs:
 
   app:
     name: app (${{ matrix.os }})
+    needs: changes
     runs-on: ${{ matrix.os }}
+    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && inputs.full && 30 || 5 }}
+    env:
+      CODE: ${{ needs.changes.outputs.code }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
+        if: env.CODE == 'true'
       - uses: actions/setup-node@v4
+        if: env.CODE == 'true'
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: |
             package-lock.json
             app/package-lock.json
-      - run: npm ci && npm run build
-      - run: npm ci
+      # Electron's binary is downloaded by every `npm ci` unless it is cached
+      - name: Cache Electron
+        if: env.CODE == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/electron
+            ~/Library/Caches/electron
+            ~/AppData/Local/electron/Cache
+          key: electron-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('app/package-lock.json') }}
+      - if: env.CODE == 'true'
+        run: npm ci && npm run build
+      - if: env.CODE == 'true'
+        run: npm ci
         working-directory: app
-      - if: runner.os == 'Linux' || env.FULL == 'true'
+      - if: env.CODE == 'true' && (runner.os == 'Linux' || env.FULL == 'true')
         run: npm run typecheck
         working-directory: app
-      - run: npm test
+      - if: env.CODE == 'true'
+        run: npm test
         working-directory: app
       # Ubuntu 24.04 restricts unprivileged user namespaces, which Chromium's sandbox
       # needs; installed packages get an AppArmor profile for it (see the .deb), here
       # the runner allows them so the app is tested with its sandbox on
       - name: Allow Chromium's sandbox (Linux)
-        if: runner.os == 'Linux'
+        if: env.CODE == 'true' && runner.os == 'Linux'
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
-      # the real Electron app, driven by Playwright with the engine's fake tools:
-      # every run on Linux, macOS and Windows in full runs
+      # the real Electron app, driven by Playwright with the engine's fake tools.
+      # Smoke runs: Linux, the three tests tagged @smoke. Full runs: every test, every OS
+      - name: End-to-end smoke (virtual display)
+        if: env.CODE == 'true' && runner.os == 'Linux' && env.FULL != 'true'
+        run: xvfb-run -a npm run test:e2e:smoke
+        working-directory: app
+      - name: End-to-end (virtual display)
+        if: runner.os == 'Linux' && env.FULL == 'true'
+        run: xvfb-run -a npm run test:e2e
+        working-directory: app
       - name: End-to-end
         if: runner.os != 'Linux' && env.FULL == 'true'
         run: npm run test:e2e
-        working-directory: app
-      - name: End-to-end (virtual display)
-        if: runner.os == 'Linux'
-        run: xvfb-run -a npm run test:e2e
         working-directory: app
       # a failed run keeps what it saw: error contexts, screenshots and the app's own output
       - name: Keep the end-to-end results

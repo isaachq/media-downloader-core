@@ -59,7 +59,8 @@ export function stepTrack(steps: readonly JobStep[], style: Style): string {
 export function jobLine(job: JobSnapshot, style: Style, width: number, tick = 0): string {
   const p = job.progress
   const downloading = job.status === 'downloading'
-  const pct = p.fraction === undefined ? ' ···' : `${Math.round(p.fraction * 100)}%`.padStart(4)
+  // a live recording has no end to measure: REC, and the time recorded where the ETA would be
+  const pct = p.live ? ' REC' : p.fraction === undefined ? ' ···' : `${Math.round(p.fraction * 100)}%`.padStart(4)
   const barWidth = width >= 90 ? 16 : 10
   const segments: Array<{text: string; size: number}> = [
     {text: style.lime('▸'), size: 1},
@@ -72,7 +73,17 @@ export function jobLine(job: JobSnapshot, style: Style, width: number, tick = 0)
     {text: stepTrack(job.steps, style), size: 11},
     ...(job.attempt > 1 ? [{text: style.yellow(`↻${job.attempt}/${job.maxAttempts}`), size: 4}] : []),
     {text: style.dim((downloading && p.speed ? formatRate(p.speed) : '').padStart(10)), size: 10},
-    {text: style.dim((downloading && p.eta ? `eta ${formatClock(p.eta)}` : '').padEnd(10)), size: 10},
+    {
+      text: style.dim(
+        (downloading && p.live && p.elapsedSec !== undefined
+          ? `rec ${formatClock(p.elapsedSec)}`
+          : downloading && p.eta
+            ? `eta ${formatClock(p.eta)}`
+            : ''
+        ).padEnd(10),
+      ),
+      size: 10,
+    },
   ]
   let used = segments.reduce((sum, s) => sum + s.size + 1, 0)
   for (const segment of optional) {

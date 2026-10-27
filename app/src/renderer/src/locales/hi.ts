@@ -1,8 +1,10 @@
 // The desktop interface in Hindi: every key of ../i18n.ts, translated from the English
 // (and kept in line with the Android app). Placeholders ({name}) stay as they are; no long dashes.
+import {siteMessages} from '../../../shared/site-words'
 import type {MessageKey} from '../i18n'
 
 export const hi: Readonly<Record<MessageKey, string>> = {
+  ...siteMessages('hi'),
   'app.tagline': 'भारी-भरकम बैच डाउनलोड, हर फ़ाइल सत्यापित',
   'header.logs': 'लॉग',
   'header.settings': 'सेटिंग्स',
@@ -33,9 +35,14 @@ export const hi: Readonly<Record<MessageKey, string>> = {
   'site.facebook': 'Facebook',
   'site.vk': 'VK',
   'site.x': 'X',
+  'site.snapchat': 'Snapchat',
+  'site.threads': 'Threads',
+  'site.bluesky': 'Bluesky',
+  'site.twitch': 'Twitch',
+  'site.soundcloud': 'SoundCloud',
   'site.web': 'वेबसाइट',
   'site.file': 'फ़ाइल',
-  'download.urlLabel': 'YouTube, TikTok, Instagram, Facebook, VK, X या किसी भी वेबसाइट का लिंक पेस्ट करें',
+  'download.urlLabel': 'YouTube, TikTok, Instagram, Twitch या {count} समर्थित साइटों में से किसी का भी लिंक पेस्ट करें',
   'download.invalidUrl': 'मान्य http(s) लिंक डालें',
   'download.paste': 'पेस्ट करें',
   'download.format': 'फ़ॉर्मेट',
@@ -310,7 +317,7 @@ export const hi: Readonly<Record<MessageKey, string>> = {
   'hint.private': 'प्राइवेट वीडियो',
   'hint.removed': 'हटाया गया या उपलब्ध नहीं',
   'hint.geo-blocked': 'आपके देश में ब्लॉक है',
-  'hint.members-only': 'सिर्फ़ सदस्यों के लिए. किसी सदस्य अकाउंट की कुकीज़ चाहिए',
+  'hint.members-only': 'सिर्फ़ सदस्यों या सब्सक्राइबर के लिए। ऐसे अकाउंट का सेशन चाहिए जिसके पास पहुँच हो।',
   'hint.not-started': 'लाइव या प्रीमियर अभी शुरू नहीं हुआ',
   'hint.unsupported-url': 'साइट या लिंक सपोर्ट नहीं है',
   'hint.format-unavailable': 'चुना गया फ़ॉर्मेट उपलब्ध नहीं है',
@@ -471,7 +478,7 @@ export const hi: Readonly<Record<MessageKey, string>> = {
   'hint.cookies-unreadable':
     'ब्राउज़र की कुकीज़ पढ़ी नहीं जा सकीं. Safari को Full Disk Access चाहिए, या सेटिंग्स में कोई दूसरा ब्राउज़र चुनें',
   'settings.cookiesHelp':
-    'आपका साइन इन किया हुआ सत्र: प्राइवेट, सिर्फ़ सदस्यों वाले या उम्र-सीमा वाले वीडियो के लिए, और तब के लिए जब YouTube पुष्टि माँगे कि आप बॉट नहीं हैं. तुरंत लागू होता है.',
+    'आपका साइन-इन सेशन — निजी, सिर्फ़ सदस्यों वाले या उम्र-प्रतिबंधित वीडियो, Instagram स्टोरी, निजी Threads प्रोफ़ाइल, Twitch के सिर्फ़ सब्सक्राइबर वाले वीडियो के लिए, और जब YouTube पूछे कि आप बॉट नहीं हैं। तुरंत लागू होता है।',
   'about.star':
     'अगर Media Download Core से आपकी मदद हुई, तो GitHub पर इसे स्टार दें: यह मुफ़्त है, एक सेकंड लगता है और इससे दूसरों को इसे ढूँढने में मदद मिलती है.',
   'about.starButton': 'GitHub पर स्टार दें',
@@ -587,7 +594,7 @@ export const hi: Readonly<Record<MessageKey, string>> = {
   'hint.damaged-source': 'स्रोत पर ही खराब, दोबारा डाउनलोड नहीं होगी',
   'cause.damaged-source': 'स्रोत पर ही खराब',
   'hint.no-video': 'इस पोस्ट में फ़ोटो या टेक्स्ट है, लेकिन वीडियो नहीं',
-  'hint.live-now': 'अभी लाइव चल रहा है. ख़त्म होने के बाद इसे रिकॉर्डिंग के रूप में डाउनलोड करें.',
+  'hint.live-now': 'अभी लाइव है: इसे रिकॉर्ड करने के लिए चैनल का लिंक (twitch.tv/नाम) पेस्ट करें।',
   'hint.stream-only': 'सिर्फ़ स्ट्रीम के रूप में उपलब्ध है, जिसे ऐप अभी सेव नहीं कर सकता',
   'cause.no-video': 'वीडियो नहीं',
   'cause.live-now': 'अभी लाइव',
@@ -648,9 +655,9 @@ export const hi: Readonly<Record<MessageKey, string>> = {
   'signin.open': 'साइन इन कैसे करें',
   'signin.title': 'अपने साइन इन किए हुए सत्र का इस्तेमाल करें',
   'signin.intro':
-    'प्राइवेट या सिर्फ़ सदस्यों वाले वीडियो, उम्र की पाबंदी वाले वीडियो, Instagram प्रोफ़ाइल और स्टोरी, और किसी Facebook पेज के वीडियो के लिए आपके अपने अकाउंट का सत्र चाहिए. YouTube के लिए भी, जब वह यह पुष्टि करने को कहता है कि आप बॉट नहीं हैं. ऐप सत्र को आपके ब्राउज़र से पढ़ता है, इसलिए कुछ भी कॉपी या पेस्ट नहीं करना पड़ता.',
+    'कुछ डाउनलोड के लिए आपके अपने अकाउंट का सेशन चाहिए; नीचे की सूची बताती है कौन से। ऐप सेशन आपके ब्राउज़र से पढ़ता है, इसलिए कुछ भी कॉपी या पेस्ट नहीं करना है।',
   'signin.step1':
-    'अपना रोज़ का ब्राउज़र (Chrome, Edge, Firefox, Safari, Brave…) खोलें और वहाँ हमेशा की तरह साइन इन करें: Google / YouTube, Instagram या Facebook में.',
+    'अपना रोज़ का ब्राउज़र (Chrome, Edge, Firefox, Safari, Brave…) खोलें और वहाँ हमेशा की तरह साइन इन करें: Google / YouTube, Instagram, Facebook, Threads या Twitch में.',
   'signin.step2': 'यहाँ, सेटिंग्स → ब्राउज़र की कुकीज़ में, वही ब्राउज़र चुनें.',
   'signin.step3': 'पहली बार आपका सिस्टम जो अनुमति माँगे (नीचे देखें), वह दे दें. यह सिर्फ़ एक बार पूछा जाता है.',
   'signin.step4': 'लिंक फिर से पेस्ट करें: यह आपके सत्र के साथ डाउनलोड होगा. ब्राउज़र में साइन आउट हो गए? वहाँ फिर से साइन इन करें.',
@@ -662,4 +669,36 @@ export const hi: Readonly<Record<MessageKey, string>> = {
     'Linux (Fedora, Ubuntu…): आपका कीरिंग (GNOME Keyring / KWallet) ब्राउज़र के सहेजे गए डेटा तक पहुँचने की अनुमति माँग सकता है: अनुमति दे दें. Firefox को किसी अनुमति की ज़रूरत नहीं होती.',
   'signin.privacy':
     'आपकी कुकीज़ आपके कंप्यूटर पर ही रहती हैं: उन्हें एक बार पढ़कर एक निजी कॉपी में रखा जाता है, जिसे ऐप सिर्फ़ डाउनलोड के लिए इस्तेमाल करता है, और उन्हें कभी कहीं और नहीं भेजा जाता.',
+  'signin.sites': 'सेशन से क्या खुलता है',
+  'signin.twitchNote': 'Twitch का सेशन सिर्फ़ वीडियो लेने के लिए इस्तेमाल होता है: कभी चैट, फ़ॉलो या सब्सक्राइब करने के लिए नहीं।',
+  'live.tag': 'लाइव',
+  'live.rec': 'REC',
+  'live.title': 'Twitch पर लाइव',
+  'live.intro':
+    'रिकॉर्डिंग उस आख़िरी आधे मिनट से शुरू होती है जो Twitch अभी भी रखता है, और तब तक चलती है जब तक आप इसे रोकें, स्ट्रीम ख़त्म हो, या 12 घंटे हो जाएँ। विज्ञापन छोड़ दिए जाते हैं।',
+  'live.startedAt': '{time} से प्रसारण पर',
+  'live.record': 'रिकॉर्ड करें',
+  'live.watch': 'देखें',
+  'live.stop': 'रोकें और सहेजें',
+  'live.discard': 'हटाएँ',
+  'live.discardConfirm': 'यह रिकॉर्डिंग हटाएँ? अब तक रिकॉर्ड हुआ सब मिट जाएगा।',
+  'live.elapsed': '{time} रिकॉर्ड हुआ',
+  'live.saving': 'रिकॉर्डिंग सहेजी जा रही है…',
+  'live.recordings': 'रिकॉर्डिंग',
+  'live.recordStarted': '{channel} रिकॉर्ड हो रहा है',
+  'live.ended.stopped': 'आपने रोका',
+  'live.ended.offline': 'स्ट्रीम ख़त्म हो गई',
+  'live.ended.max-duration': '12 घंटे की सीमा पूरी हुई',
+  'live.ended.refused': 'Twitch ने स्ट्रीम भेजना बंद कर दिया',
+  'live.gaps': '{count} खाली जगह (खोए हुए सेगमेंट)',
+  'live.adsLeftOut': '{time} के विज्ञापन छोड़े गए',
+  'live.finishedTag': 'लाइव रिकॉर्डिंग',
+  'live.playerError': 'लाइव प्लेयर रुक गया। फिर से कोशिश करें।',
+  'live.retry': 'फिर से कोशिश करें',
+  'live.quit.title': 'एक रिकॉर्डिंग चल रही है',
+  'live.quit.text': '{count} रिकॉर्डिंग अभी चल रही हैं। बंद करने से पहले जो रिकॉर्ड हुआ उसे सहेजें?',
+  'live.quit.save': 'रोकें, सहेजें और बंद करें',
+  'live.quit.discard': 'हटाएँ और बंद करें',
+  'live.quit.keep': 'रिकॉर्डिंग जारी रखें',
+  'live.notify.saved': 'रिकॉर्डिंग सहेजी गई: {title}',
 }

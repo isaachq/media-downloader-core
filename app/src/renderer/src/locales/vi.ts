@@ -1,8 +1,10 @@
 // The desktop interface in Vietnamese: every key of ../i18n.ts, translated from the English
 // (and kept in line with the Android app). Placeholders ({name}) stay as they are; no long dashes.
+import {siteMessages} from '../../../shared/site-words'
 import type {MessageKey} from '../i18n'
 
 export const vi: Readonly<Record<MessageKey, string>> = {
+  ...siteMessages('vi'),
   'app.tagline': 'Tải hàng loạt mạnh mẽ, xác minh từng tệp',
   'header.logs': 'Nhật ký',
   'header.settings': 'Cài đặt',
@@ -34,9 +36,15 @@ export const vi: Readonly<Record<MessageKey, string>> = {
   'site.facebook': 'Facebook',
   'site.vk': 'VK',
   'site.x': 'X',
+  'site.snapchat': 'Snapchat',
+  'site.threads': 'Threads',
+  'site.bluesky': 'Bluesky',
+  'site.twitch': 'Twitch',
+  'site.soundcloud': 'SoundCloud',
   'site.web': 'Trang web',
   'site.file': 'Tệp',
-  'download.urlLabel': 'Dán liên kết từ YouTube, TikTok, Instagram, Facebook, VK, X hoặc bất kỳ trang web nào',
+  'download.urlLabel':
+    'Dán liên kết từ YouTube, TikTok, Instagram, Twitch hoặc bất kỳ trang nào trong {count} trang được hỗ trợ',
   'download.invalidUrl': 'Nhập một liên kết http(s) hợp lệ',
   'download.paste': 'Dán',
   'download.format': 'Định dạng',
@@ -311,7 +319,7 @@ export const vi: Readonly<Record<MessageKey, string>> = {
   'hint.private': 'Video riêng tư',
   'hint.removed': 'Đã bị gỡ hoặc không khả dụng',
   'hint.geo-blocked': 'Bị chặn ở quốc gia của bạn',
-  'hint.members-only': 'Chỉ dành cho hội viên. Cần cookie của một tài khoản hội viên',
+  'hint.members-only': 'Chỉ dành cho hội viên hoặc người đăng ký. Cần phiên của một tài khoản có quyền xem.',
   'hint.not-started': 'Buổi phát trực tiếp hoặc công chiếu chưa bắt đầu',
   'hint.unsupported-url': 'Trang web hoặc liên kết không được hỗ trợ',
   'hint.format-unavailable': 'Không có định dạng đã chọn',
@@ -476,7 +484,7 @@ export const vi: Readonly<Record<MessageKey, string>> = {
   'hint.cookies-unreadable':
     'Không đọc được cookie của trình duyệt. Safari cần quyền Truy cập toàn bộ ổ đĩa; hoặc hãy chọn trình duyệt khác trong Cài đặt',
   'settings.cookiesHelp':
-    'Phiên đăng nhập của bạn, dùng cho video riêng tư, chỉ dành cho hội viên hoặc giới hạn độ tuổi, và khi YouTube yêu cầu xác nhận bạn không phải bot. Áp dụng ngay.',
+    'Phiên đăng nhập của bạn, cho video riêng tư, dành cho hội viên hoặc giới hạn độ tuổi, tin Instagram, trang Threads riêng tư, video Twitch chỉ dành cho người đăng ký, và khi YouTube yêu cầu xác nhận bạn không phải bot. Áp dụng ngay.',
   'about.star':
     'Nếu Media Download Core có ích cho bạn, hãy tặng một sao trên GitHub: miễn phí, chỉ mất một giây và giúp nhiều người khác tìm thấy ứng dụng.',
   'about.starButton': 'Tặng sao trên GitHub',
@@ -594,7 +602,7 @@ export const vi: Readonly<Record<MessageKey, string>> = {
   'hint.damaged-source': 'Hỏng từ nguồn, không tải lại',
   'cause.damaged-source': 'hỏng từ nguồn',
   'hint.no-video': 'Bài đăng này có ảnh hoặc chữ nhưng không có video',
-  'hint.live-now': 'Đang phát trực tiếp. Hãy tải về khi kết thúc, dưới dạng bản ghi.',
+  'hint.live-now': 'Đang trực tiếp: dán liên kết kênh (twitch.tv/tên) để ghi lại.',
   'hint.stream-only': 'Chỉ có ở dạng phát trực tuyến, ứng dụng chưa thể lưu',
   'cause.no-video': 'không có video',
   'cause.live-now': 'đang phát trực tiếp',
@@ -656,9 +664,9 @@ export const vi: Readonly<Record<MessageKey, string>> = {
   'signin.open': 'Cách đăng nhập',
   'signin.title': 'Dùng phiên đã đăng nhập của bạn',
   'signin.intro':
-    'Video riêng tư hoặc chỉ dành cho hội viên, video giới hạn độ tuổi, trang cá nhân và tin trên Instagram, video của một trang Facebook, và cả YouTube khi yêu cầu xác nhận bạn không phải bot, đều cần phiên tài khoản của chính bạn. Ứng dụng đọc phiên từ trình duyệt: không cần sao chép hay dán gì cả.',
+    'Một số lượt tải cần phiên đăng nhập của chính tài khoản bạn; danh sách bên dưới cho biết lượt nào. Ứng dụng đọc phiên từ trình duyệt của bạn, nên không cần sao chép hay dán gì cả.',
   'signin.step1':
-    'Mở trình duyệt bạn hay dùng (Chrome, Edge, Firefox, Safari, Brave…) và đăng nhập ở đó như mọi khi: vào Google / YouTube, Instagram hoặc Facebook.',
+    'Mở trình duyệt bạn hay dùng (Chrome, Edge, Firefox, Safari, Brave…) và đăng nhập ở đó như mọi khi: vào Google / YouTube, Instagram, Facebook, Threads hoặc Twitch.',
   'signin.step2': 'Tại đây, trong Cài đặt → Cookie từ trình duyệt, chọn đúng trình duyệt đó.',
   'signin.step3': 'Cho phép quyền mà hệ thống hỏi trong lần đầu (xem bên dưới). Hệ thống chỉ hỏi một lần.',
   'signin.step4':
@@ -671,4 +679,36 @@ export const vi: Readonly<Record<MessageKey, string>> = {
     'Linux (Fedora, Ubuntu…): keyring của bạn (GNOME Keyring / KWallet) có thể hỏi quyền truy cập dữ liệu đã lưu của trình duyệt: hãy cho phép. Firefox không cần cấp quyền.',
   'signin.privacy':
     'Cookie của bạn ở lại trên máy tính: chúng được đọc một lần vào một bản sao riêng mà ứng dụng chỉ dùng để tải xuống, và không bao giờ được gửi đi nơi khác.',
+  'signin.sites': 'Phiên đăng nhập mở được gì',
+  'signin.twitchNote': 'Phiên Twitch chỉ được dùng để lấy video: không bao giờ để trò chuyện, theo dõi hay đăng ký.',
+  'live.tag': 'TRỰC TIẾP',
+  'live.rec': 'REC',
+  'live.title': 'Đang phát trực tiếp trên Twitch',
+  'live.intro':
+    'Bản ghi bắt đầu từ nửa phút cuối Twitch còn giữ và tiếp tục cho đến khi bạn dừng, buổi phát kết thúc hoặc đủ 12 giờ. Quảng cáo được bỏ ra.',
+  'live.startedAt': 'Đang phát từ {time}',
+  'live.record': 'Ghi',
+  'live.watch': 'Xem',
+  'live.stop': 'Dừng và lưu',
+  'live.discard': 'Bỏ',
+  'live.discardConfirm': 'Bỏ bản ghi này? Mọi thứ đã ghi đến giờ sẽ bị xóa.',
+  'live.elapsed': 'Đã ghi {time}',
+  'live.saving': 'Đang lưu bản ghi…',
+  'live.recordings': 'Bản ghi',
+  'live.recordStarted': 'Đang ghi {channel}',
+  'live.ended.stopped': 'Bạn đã dừng',
+  'live.ended.offline': 'Buổi phát đã kết thúc',
+  'live.ended.max-duration': 'Đã đến giới hạn 12 giờ',
+  'live.ended.refused': 'Twitch ngừng gửi buổi phát',
+  'live.gaps': '{count} chỗ hụt (đoạn bị mất)',
+  'live.adsLeftOut': 'Đã bỏ {time} quảng cáo',
+  'live.finishedTag': 'Bản ghi trực tiếp',
+  'live.playerError': 'Trình phát trực tiếp đã dừng. Hãy thử lại.',
+  'live.retry': 'Thử lại',
+  'live.quit.title': 'Đang có bản ghi chạy',
+  'live.quit.text': '{count} bản ghi vẫn đang chạy. Lưu những gì đã ghi trước khi thoát?',
+  'live.quit.save': 'Dừng, lưu và thoát',
+  'live.quit.discard': 'Bỏ và thoát',
+  'live.quit.keep': 'Tiếp tục ghi',
+  'live.notify.saved': 'Đã lưu bản ghi: {title}',
 }

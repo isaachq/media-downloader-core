@@ -10,6 +10,7 @@ import type {
   JobStatus,
   JobStep,
   JobTier,
+  RecordingSummary,
   StepName,
   StepState,
   TerminalStatus,
@@ -54,6 +55,8 @@ export class Job {
   /** Finished with its check put off until its batch has downloaded everything. */
   validationPending = false
   error: JobError | undefined
+  /** How the current attempt's live recording ended (JobSnapshot.recording). */
+  #recording: RecordingSummary | undefined
   readonly createdAt = Date.now()
   startedAt: number | undefined
   finishedAt: number | undefined
@@ -64,6 +67,8 @@ export class Job {
   #currentStep: StepName | undefined
 
   controller: AbortController | undefined
+  /** Stop (keep what was recorded): a live recording finishes and is finalized; other downloads ignore it. */
+  stopper: AbortController | undefined
   /** When the last event went out, for throttling. */
   lastEmit = 0
   emitTimer: NodeJS.Timeout | undefined
@@ -118,8 +123,15 @@ export class Job {
     this.#attempts.push({id: newId(), strategy, attempt: this.#attempts.length + 1, startedAt: Date.now()})
     this.#steps = freshSteps()
     this.#currentStep = undefined
+    this.#recording = undefined
     this.#snapshot = undefined
     return this.#attempts.length
+  }
+
+  /** The live recording this attempt handed over (how it ended, its gaps, the ads left out). O(1). */
+  recorded(summary: RecordingSummary): void {
+    this.#recording = summary
+    this.#snapshot = undefined
   }
 
   /** Close the current attempt with its error and, if another follows, the wait before it. */
@@ -226,6 +238,7 @@ export class Job {
       validation: this.validation,
       ...(this.validationPending && {validationPending: true}),
       error: this.error,
+      ...(this.#recording && {recording: this.#recording}),
       createdAt: this.createdAt,
       startedAt: this.startedAt,
       finishedAt: this.finishedAt,
@@ -243,6 +256,7 @@ export class Job {
     if (this.emitTimer) clearTimeout(this.emitTimer)
     this.emitTimer = undefined
     this.controller = undefined
+    this.stopper = undefined
     this.#snapshot = undefined
   }
 }

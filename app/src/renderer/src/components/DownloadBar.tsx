@@ -5,7 +5,7 @@ import {
   ScheduleOutlined,
   SnippetsOutlined,
 } from '@ant-design/icons'
-import {App as AntApp, Button, Card, Col, Form, Input, Row, Select, Space, Tag, Typography} from 'antd'
+import {App as AntApp, Button, Card, Col, Form, Input, Modal, Row, Select, Space, Tag, Typography} from 'antd'
 import {type DragEvent, useMemo, useRef, useState} from 'react'
 import {
   AUDIO_FORMATS,
@@ -19,16 +19,19 @@ import {
   type ScheduleInput,
   VIDEO_FORMATS,
 } from '../../../shared/contract'
+import {SITES} from '../../../shared/sites'
 import {api} from '../api'
 import {useApp} from '../context'
 import {errorText} from '../format'
 import {type MessageKey, useT} from '../i18n'
 import {type AppStore, useAppStore, useStoreValue} from '../store'
 import {AnalyzeLoader} from './AnalyzeLoader'
+import {isLivePreview, LiveModal} from './Live'
 import {MixListModal} from './MixListModal'
 import {type PlaylistPreview, type PreviewChoice, PreviewModal} from './PreviewModal'
 import {SiteTag} from './SiteTag'
 import {SlideshowModal} from './SlideshowChoice'
+import {SiteLine, SupportedSites} from './SupportedSites'
 import {SyncPanel} from './SyncPanel'
 
 const ACTIVE = new Set(['checking', 'running', 'validating'])
@@ -64,6 +67,7 @@ export function DownloadBar() {
   /** A mix list being put together: several links pasted or dropped at once (checked at once), or the button. */
   const [mix, setMix] = useState<{readonly text: string; readonly check: boolean} | undefined>()
   const [dropping, setDropping] = useState(false)
+  const [sitesOpen, setSitesOpen] = useState(false)
   // set when the user stops the reading: its rejection is not an error to show
   const cancelled = useRef(false)
 
@@ -78,7 +82,10 @@ export function DownloadBar() {
     // YouTube's bot check: one line here; the banner above says when it goes on, and how to go on now
     if (/not a (?:ro)?bot/i.test(text)) void message.error(t('hint.bot-check'))
     // a site that keeps this for signed-in accounts: say how to sign in (the browser's session)
-    else if (/asks to sign in|sign-in required|login required/i.test(text))
+    // (Twitch, Threads, Bluesky and VK say "signed-in account / session" or "watched signed in")
+    else if (
+      /asks to sign in|sign-in required|login required|signed-in (?:account|session)|watched signed in/i.test(text)
+    )
       void message.error(`${text} ${t('hint.needs-sign-in')}`)
     else void message.error(text)
   }
@@ -86,6 +93,8 @@ export function DownloadBar() {
   const slideshow = {mode: settings.slideshowMode, secondsPerImage: settings.slideshowSeconds}
   /** A single slideshow link waiting for its choice. */
   const [slide, setSlide] = useState<{url: string; title: string} | undefined>()
+  /** A Twitch channel on the air: recorded or watched, never scheduled as a download. */
+  const [live, setLive] = useState<{url: string; preview: Parameters<typeof LiveModal>[0]['preview']} | undefined>()
 
   const schedule = async (target: string, extra: Pick<ScheduleInput, 'selection'> = {}) => {
     const batch = await api().schedule({
@@ -112,6 +121,7 @@ export function DownloadBar() {
     try {
       const result = await api().analyze(target)
       if (result.kind === 'playlist') setPreview({url: target, data: result})
+      else if (isLivePreview(result)) setLive({url: target, preview: result})
       // a slideshow with a video format: first, what it should become
       else if (result.slideshow && !audio) setSlide({url: target, title: result.title})
       else await schedule(target)
@@ -217,7 +227,21 @@ export function DownloadBar() {
     >
       <Form layout="vertical" onFinish={() => void submit()} requiredMark={false}>
         <Form.Item
-          label={t('download.urlLabel')}
+          label={
+            <span>
+              {t('download.urlLabel', {count: SITES.length})}{' '}
+              <Typography.Link
+                data-testid="open-sites"
+                onClick={event => {
+                  // the link sits in the field's label: it opens the list, not the field
+                  event.preventDefault()
+                  setSitesOpen(true)
+                }}
+              >
+                {t('sites.title')}
+              </Typography.Link>
+            </span>
+          }
           validateStatus={touched && !valid ? 'error' : ''}
           help={touched && !valid ? t('download.invalidUrl') : undefined}
         >
@@ -254,6 +278,7 @@ export function DownloadBar() {
             <SiteTag site={detected.file && detected.site === 'web' ? 'file' : detected.site} />
             {/playlist|\/sets\/|\/album\//i.test(detected.url) && <Tag color="gold">{t('download.tag.list')}</Tag>}
             {/@[\w.-]+/.test(detected.url) && <Tag color="lime">{t('download.tag.profile')}</Tag>}
+            <SiteLine site={detected.file && detected.site === 'web' ? 'file' : detected.site} />
           </div>
         ) : null}
         <div style={{marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap'}}>
@@ -355,6 +380,18 @@ export function DownloadBar() {
           ? t('download.scheduledHint', {position: waiting})
           : t('download.capacity', {normal: cap, cpus: info.cpus, long: longAtOnce})}
       </Typography.Text>
+      {live ? (
+        <LiveModal
+          url={live.url}
+          preview={live.preview}
+          onRecording={() => {
+            setLive(undefined)
+            setUrl('')
+            setTouched(false)
+          }}
+          onClose={() => setLive(undefined)}
+        />
+      ) : null}
       {slide ? (
         <SlideshowModal
           title={slide.title}
@@ -366,6 +403,16 @@ export function DownloadBar() {
           onCancel={() => setSlide(undefined)}
         />
       ) : null}
+      <Modal
+        open={sitesOpen}
+        title={t('sites.title')}
+        width={860}
+        footer={null}
+        onCancel={() => setSitesOpen(false)}
+        destroyOnHidden
+      >
+        <SupportedSites />
+      </Modal>
       {mix ? (
         <MixListModal
           text={mix.text}

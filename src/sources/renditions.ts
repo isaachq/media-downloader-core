@@ -8,7 +8,10 @@ import type {AudioContainer, FormatChoice, FormatProfile, ProcessingKind, VideoC
  * is the same wherever a post comes from.
  */
 
-export type VideoCodec = 'h264' | 'h265'
+export type VideoCodec = 'h264' | 'h265' | 'av1'
+
+/** Order at equal resolution outside mp4's H.264-first rule: H.265, then AV1, then H.264. */
+const CODEC_ORDER: Readonly<Record<VideoCodec, number>> = {h265: 0, av1: 1, h264: 2}
 
 /** One encoding of a post's video. */
 export type Rendition = {
@@ -33,8 +36,8 @@ export type Rendition = {
  * when a mirror refuses or a file comes without sound):
  *  - audio: the smallest file — the soundtrack is the same in all of them;
  *  - mp4:   H.264 first (plays everywhere: car stereos, TVs, old phones),
- *           highest resolution within the cap; H.265 only as a fallback;
- *  - mkv / webm: highest resolution, H.265 before H.264 at equal size.
+ *           highest resolution within the cap; H.265 / AV1 only as a fallback;
+ *  - mkv / webm: highest resolution, H.265 before AV1 before H.264 at equal size.
  * O(r log r) for r renditions (a handful).
  */
 export function rankRenditions(renditions: readonly Rendition[], profile: FormatProfile): Rendition[] {
@@ -49,7 +52,7 @@ export function rankRenditions(renditions: readonly Rendition[], profile: Format
   return pool.sort((a, b) => {
     if (h264First && a.codec !== b.codec) return a.codec === 'h264' ? -1 : 1
     if (a.resolution !== b.resolution) return b.resolution - a.resolution
-    if (a.codec !== b.codec) return a.codec === 'h265' ? -1 : 1
+    if (a.codec !== b.codec) return CODEC_ORDER[a.codec] - CODEC_ORDER[b.codec]
     return b.bitrate - a.bitrate
   })
 }
@@ -98,7 +101,7 @@ export function renditionChoices(renditions: readonly Rendition[], duration: num
             : 'none'
       return {
         profile,
-        label: `${resolution}p · ${container.toUpperCase()}${best?.codec === 'h265' ? ' · H.265' : ''}`,
+        label: `${resolution}p · ${container.toUpperCase()}${best?.codec === 'h265' ? ' · H.265' : best?.codec === 'av1' ? ' · AV1' : ''}`,
         estimatedBytes: best?.bytes,
         requiresConversion: kind !== 'none',
         processingKind: kind,

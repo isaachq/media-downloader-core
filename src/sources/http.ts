@@ -178,7 +178,10 @@ export class HttpSession {
     }
     const cookie = this.cookieHeader(target.hostname)
     if (cookie) headers['Cookie'] = cookie
-    const timeout = AbortSignal.timeout(opts.timeoutMs ?? this.#timeoutMs)
+    // Infinity: no timer at all (the caller guards the transfer, as fetchMedia's stall watchdog does): an
+    // AbortSignal.timeout lives until it fires, so a long one per request is memory held per request
+    const timeoutMs = opts.timeoutMs ?? this.#timeoutMs
+    const timeout = Number.isFinite(timeoutMs) ? AbortSignal.timeout(timeoutMs) : undefined
     let response: Response
     try {
       response = await this.#fetch(target.href, {
@@ -186,7 +189,7 @@ export class HttpSession {
         ...(opts.method === 'POST' && {body: opts.body ?? ''}),
         headers,
         redirect: opts.redirect ?? 'follow',
-        signal: opts.signal ? AbortSignal.any([opts.signal, timeout]) : timeout,
+        signal: opts.signal && timeout ? AbortSignal.any([opts.signal, timeout]) : (opts.signal ?? timeout ?? null),
       })
     } catch (error) {
       throw withCause(error)

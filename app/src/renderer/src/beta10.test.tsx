@@ -29,9 +29,10 @@ describe('one link box for every site', () => {
     expect(screen.queryByTestId('mode-tag')).not.toBeInTheDocument()
     expect(screen.getByRole('tab', {name: 'New download'})).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('tab', {name: 'Sync Up'})).toBeInTheDocument()
-    expect(
-      screen.getByText('Paste a link from YouTube, TikTok, Instagram, Facebook, VK, X or any website'),
-    ).toBeInTheDocument()
+    // the label counts the supported sites and links to their list
+    expect(screen.getByTestId('open-sites').parentElement).toHaveTextContent(
+      'Paste a link from YouTube, TikTok, Instagram, Twitch or any of the 13 supported sites Supported sites',
+    )
     expect(screen.getByLabelText(FIELD)).toHaveAttribute('placeholder', 'Link to a video, playlist, profile or post')
     expect(screen.queryByTestId('site-tag')).not.toBeInTheDocument()
   })
@@ -61,9 +62,13 @@ describe('one link box for every site', () => {
     await user.clear(field)
     await user.type(field, 'https://vk.com/video-1_2')
     expect(await screen.findByTestId('site-tag')).toHaveTextContent('VK')
-    expect(
-      screen.getByText('Pega un enlace de YouTube, TikTok, Instagram, Facebook, VK, X o de cualquier sitio web'),
-    ).toBeInTheDocument()
+    expect(screen.getByTestId('open-sites').parentElement).toHaveTextContent(
+      'Pega un enlace de YouTube, TikTok, Instagram, Twitch o de cualquiera de los 13 sitios compatibles Sitios compatibles',
+    )
+    // and the line under the tag speaks the app's language too
+    expect(screen.getByTestId('site-line')).toHaveTextContent(
+      'Videos y listas · Pide tu sesión para videos privados y restringidos',
+    )
   })
 
   it('keeps the list and profile tags next to the site', async () => {
@@ -144,7 +149,21 @@ describe('signing in', () => {
     await user.click(screen.getByRole('button', {name: /settings/i}))
     await user.click(await screen.findByTestId('open-signin-help'))
     const help = await screen.findByTestId('signin-help')
-    expect(help).toHaveTextContent('sign in there as always: to Google / YouTube, Instagram or Facebook')
+    expect(help).toHaveTextContent(
+      'sign in there as always: to Google / YouTube, Instagram, Facebook, Threads or Twitch',
+    )
+    // what a session opens, site by site: the supported-sites list's own words
+    const sites = within(help).getByTestId('signin-sites')
+    expect([...sites.querySelectorAll('li')].map(item => item.dataset['site'])).toEqual([
+      'youtube',
+      'instagram',
+      'facebook',
+      'twitch',
+      'threads',
+      'vk',
+    ])
+    expect(sites.querySelector('[data-site="twitch"]')).toHaveTextContent('Twitch: subscriber-only videos and streams')
+    expect(help).toHaveTextContent('never to chat, follow or subscribe')
     expect(help).toHaveTextContent('choose that same browser')
     expect(within(help).getByTestId('signin-system')).toHaveTextContent('Always Allow')
     expect(help).toHaveTextContent('never sent anywhere else')

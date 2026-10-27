@@ -1,8 +1,10 @@
 // The desktop interface in Turkish: every key of ../i18n.ts, translated from the English
 // (and kept in line with the Android app). Placeholders ({name}) stay as they are; no long dashes.
+import {siteMessages} from '../../../shared/site-words'
 import type {MessageKey} from '../i18n'
 
 export const tr: Readonly<Record<MessageKey, string>> = {
+  ...siteMessages('tr'),
   'app.tagline': 'Güçlü toplu indirme, her dosya tek tek doğrulanır',
   'header.logs': 'Kayıtlar',
   'header.settings': 'Ayarlar',
@@ -35,10 +37,15 @@ export const tr: Readonly<Record<MessageKey, string>> = {
   'site.facebook': 'Facebook',
   'site.vk': 'VK',
   'site.x': 'X',
+  'site.snapchat': 'Snapchat',
+  'site.threads': 'Threads',
+  'site.bluesky': 'Bluesky',
+  'site.twitch': 'Twitch',
+  'site.soundcloud': 'SoundCloud',
   'site.web': 'Web sitesi',
   'site.file': 'Dosya',
   'download.urlLabel':
-    'YouTube, TikTok, Instagram, Facebook, VK, X veya herhangi bir web sitesinden bir bağlantı yapıştır',
+    'YouTube, TikTok, Instagram, Twitch veya desteklenen {count} siteden birinden bir bağlantı yapıştır',
   'download.invalidUrl': 'Geçerli bir http(s) bağlantısı gir',
   'download.paste': 'Yapıştır',
   'download.format': 'Biçim',
@@ -313,7 +320,7 @@ export const tr: Readonly<Record<MessageKey, string>> = {
   'hint.private': 'Gizli video',
   'hint.removed': 'Kaldırılmış veya kullanılamıyor',
   'hint.geo-blocked': 'Ülkende engellenmiş',
-  'hint.members-only': 'Yalnızca üyelere açık. Üye bir hesabın çerezleri gerekir',
+  'hint.members-only': 'Yalnızca üyeler veya aboneler. Erişimi olan bir hesabın oturumu gerekir.',
   'hint.not-started': 'Canlı yayın veya prömiyer henüz başlamadı',
   'hint.unsupported-url': 'Site veya bağlantı desteklenmiyor',
   'hint.format-unavailable': 'Seçilen biçim sunulmuyor',
@@ -479,7 +486,7 @@ export const tr: Readonly<Record<MessageKey, string>> = {
   'hint.cookies-unreadable':
     "Tarayıcının çerezleri okunamadı. Safari için Tam Disk Erişimi gerekir ya da Ayarlar'dan başka bir tarayıcı seç",
   'settings.cookiesHelp':
-    'Giriş yapılmış oturumun: gizli, yalnızca üyelere açık veya yaş sınırlı videolar için ve YouTube bot olmadığını doğrulamanı istediğinde kullanılır. Hemen geçerli olur.',
+    'Oturum açmış hesabın: gizli, yalnızca üyelere açık veya yaş sınırlı videolar, Instagram hikâyeleri, gizli Threads profilleri, Twitch’te yalnızca abonelere açık videolar için ve YouTube bot olmadığını doğrulamanı istediğinde. Hemen uygulanır.',
   'about.star':
     "Media Download Core işine yaradıysa GitHub'da ona bir yıldız ver: ücretsizdir, bir saniye sürer ve başkalarının da onu bulmasına yardımcı olur.",
   'about.starButton': "GitHub'da yıldız ver",
@@ -596,7 +603,7 @@ export const tr: Readonly<Record<MessageKey, string>> = {
   'hint.damaged-source': 'Kaynakta bozuk, tekrar indirilmedi',
   'cause.damaged-source': 'kaynakta bozuk',
   'hint.no-video': 'Bu gönderide fotoğraf veya metin var ama video yok',
-  'hint.live-now': 'Şu an canlı yayında. Bittiğinde kayıt olarak indir.',
+  'hint.live-now': 'Şu an canlı: kaydetmek için kanal bağlantısını (twitch.tv/ad) yapıştır.',
   'hint.stream-only': 'Yalnızca canlı akış olarak sunuluyor; uygulama bunu henüz kaydedemiyor',
   'cause.no-video': 'video yok',
   'cause.live-now': 'şu an canlı',
@@ -658,9 +665,9 @@ export const tr: Readonly<Record<MessageKey, string>> = {
   'signin.open': 'Nasıl giriş yapılır',
   'signin.title': 'Giriş yapılmış oturumunu kullan',
   'signin.intro':
-    'Gizli veya yalnızca üyelere açık videolar, yaş sınırlı videolar, Instagram profilleri ve hikayeleri ile bir Facebook sayfasının videoları kendi hesabının oturumunu gerektirir. YouTube bot olmadığını doğrulamanı istediğinde de öyle. Uygulama oturumu tarayıcından okur, yani kopyalayıp yapıştıracak bir şey yok.',
+    'Bazı indirmeler kendi hesabının oturumunu ister; aşağıdaki liste hangilerinin istediğini söyler. Uygulama oturumu tarayıcından okur, kopyalayıp yapıştıracak bir şey yok.',
   'signin.step1':
-    'Her zamanki tarayıcını (Chrome, Edge, Firefox, Safari, Brave…) aç ve orada her zamanki gibi Google / YouTube, Instagram veya Facebook hesabına giriş yap.',
+    'Her zamanki tarayıcını (Chrome, Edge, Firefox, Safari, Brave…) aç ve orada her zamanki gibi Google / YouTube, Instagram, Facebook, Threads veya Twitch hesabına giriş yap.',
   'signin.step2': 'Burada, Ayarlar → Tarayıcı çerezleri bölümünde aynı tarayıcıyı seç.',
   'signin.step3': 'İlk seferde sistemin bir izin ister (aşağıya bak). İzin ver. Yalnızca bir kez sorar.',
   'signin.step4':
@@ -673,4 +680,37 @@ export const tr: Readonly<Record<MessageKey, string>> = {
     'Linux (Fedora, Ubuntu…): Anahtarlığın (GNOME Keyring / KWallet), tarayıcının kayıtlı verilerine erişim izni isteyebilir: izin ver. Firefox izin gerektirmez.',
   'signin.privacy':
     'Çerezlerin bilgisayarında kalır: uygulamanın yalnızca indirmek için kullandığı özel bir kopyaya bir kez okunur ve başka hiçbir yere gönderilmez.',
+  'signin.sites': 'Bir oturum neleri açar',
+  'signin.twitchNote':
+    'Twitch oturumu yalnızca videoyu almak için kullanılır: asla sohbet, takip ya da abonelik için değil.',
+  'live.tag': 'CANLI',
+  'live.rec': 'KAYIT',
+  'live.title': "Twitch'te canlı",
+  'live.intro':
+    "Kayıt, Twitch'in hâlâ tuttuğu son yarım dakikadan başlar ve sen durdurana, yayın bitene ya da 12 saat dolana kadar sürer. Reklamlar dışarıda kalır.",
+  'live.startedAt': '{time} itibarıyla yayında',
+  'live.record': 'Kaydet',
+  'live.watch': 'İzle',
+  'live.stop': 'Durdur ve kaydet',
+  'live.discard': 'At',
+  'live.discardConfirm': 'Bu kayıt atılsın mı? Şimdiye kadar kaydedilen her şey silinir.',
+  'live.elapsed': '{time} kaydedildi',
+  'live.saving': 'Kayıt kaydediliyor…',
+  'live.recordings': 'Kayıtlar',
+  'live.recordStarted': '{channel} kaydediliyor',
+  'live.ended.stopped': 'Sen durdurdun',
+  'live.ended.offline': 'Yayın bitti',
+  'live.ended.max-duration': '12 saat sınırına ulaştı',
+  'live.ended.refused': 'Twitch yayını göndermeyi bıraktı',
+  'live.gaps': '{count} boşluk (kayıp parçalar)',
+  'live.adsLeftOut': '{time} reklam dışarıda bırakıldı',
+  'live.finishedTag': 'Canlı yayın kaydı',
+  'live.playerError': 'Canlı oynatıcı durdu. Tekrar dene.',
+  'live.retry': 'Tekrar dene',
+  'live.quit.title': 'Süren bir kayıt var',
+  'live.quit.text': '{count} kayıt hâlâ sürüyor. Çıkmadan önce kaydedilenler saklansın mı?',
+  'live.quit.save': 'Durdur, kaydet ve çık',
+  'live.quit.discard': 'At ve çık',
+  'live.quit.keep': 'Kayda devam et',
+  'live.notify.saved': 'Kayıt kaydedildi: {title}',
 }

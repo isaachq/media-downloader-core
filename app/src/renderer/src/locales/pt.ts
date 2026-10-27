@@ -1,8 +1,10 @@
 // The desktop interface in Brazilian Portuguese: every key of ../i18n.ts, translated from the English
 // (and kept in line with the Android app). Placeholders ({name}) stay as they are; no long dashes.
+import {siteMessages} from '../../../shared/site-words'
 import type {MessageKey} from '../i18n'
 
 export const pt: Readonly<Record<MessageKey, string>> = {
+  ...siteMessages('pt'),
   'app.tagline': 'Downloads em lote para trabalho pesado, verificados arquivo por arquivo',
   'header.logs': 'Registros',
   'header.settings': 'Ajustes',
@@ -35,9 +37,15 @@ export const pt: Readonly<Record<MessageKey, string>> = {
   'site.facebook': 'Facebook',
   'site.vk': 'VK',
   'site.x': 'X',
+  'site.snapchat': 'Snapchat',
+  'site.threads': 'Threads',
+  'site.bluesky': 'Bluesky',
+  'site.twitch': 'Twitch',
+  'site.soundcloud': 'SoundCloud',
   'site.web': 'Site',
   'site.file': 'Arquivo',
-  'download.urlLabel': 'Cole um link do YouTube, TikTok, Instagram, Facebook, VK, X ou de qualquer site',
+  'download.urlLabel':
+    'Cole um link do YouTube, TikTok, Instagram, Twitch ou de qualquer um dos {count} sites compatíveis',
   'download.invalidUrl': 'Digite um link http(s) válido',
   'download.paste': 'Colar',
   'download.format': 'Formato',
@@ -312,7 +320,7 @@ export const pt: Readonly<Record<MessageKey, string>> = {
   'hint.private': 'Vídeo privado',
   'hint.removed': 'Removido ou indisponível',
   'hint.geo-blocked': 'Bloqueado no seu país',
-  'hint.members-only': 'Só para membros. Precisa de cookies de uma conta de membro',
+  'hint.members-only': 'Só para membros ou inscritos. Precisa da sessão de uma conta com acesso.',
   'hint.not-started': 'A live ou estreia ainda não começou',
   'hint.unsupported-url': 'Site ou link não compatível',
   'hint.format-unavailable': 'O formato escolhido não é oferecido',
@@ -477,7 +485,7 @@ export const pt: Readonly<Record<MessageKey, string>> = {
   'hint.cookies-unreadable':
     'Não foi possível ler os cookies do navegador. O Safari precisa de Acesso Total ao Disco; ou escolha outro navegador em Ajustes',
   'settings.cookiesHelp':
-    'Sua sessão iniciada, para vídeos privados, só para membros ou com restrição de idade, e para quando o YouTube pede para confirmar que você não é um robô. Vale na hora.',
+    'Sua sessão conectada, para vídeos privados, para membros ou com restrição de idade, stories do Instagram, perfis privados do Threads, vídeos da Twitch só para inscritos, e para quando o YouTube pede para confirmar que você não é um robô. Vale na hora.',
   'about.star':
     'Se o Media Download Core ajudou você, dê uma estrela no GitHub: é grátis, leva um segundo e ajuda outras pessoas a encontrá-lo.',
   'about.starButton': 'Dar uma estrela no GitHub',
@@ -596,7 +604,7 @@ export const pt: Readonly<Record<MessageKey, string>> = {
   'hint.damaged-source': 'Danificado na origem, não será baixado de novo',
   'cause.damaged-source': 'danificado na origem',
   'hint.no-video': 'Esta publicação tem fotos ou texto, mas nenhum vídeo',
-  'hint.live-now': 'Ao vivo agora. Baixe quando terminar, como gravação.',
+  'hint.live-now': 'Ao vivo agora: cole o link do canal (twitch.tv/nome) para gravar.',
   'hint.stream-only': 'Disponível só como transmissão, que o app ainda não consegue salvar',
   'cause.no-video': 'sem vídeo',
   'cause.live-now': 'ao vivo agora',
@@ -659,9 +667,9 @@ export const pt: Readonly<Record<MessageKey, string>> = {
   'signin.open': 'Como entrar',
   'signin.title': 'Use sua sessão conectada',
   'signin.intro':
-    'Vídeos privados ou só para membros, vídeos com restrição de idade, perfis e stories do Instagram e os vídeos de uma página do Facebook (e o YouTube, quando pede para confirmar que você não é um robô) precisam da sessão da sua própria conta. O app lê a sessão do seu navegador: não há nada para copiar ou colar.',
+    'Alguns downloads precisam da sessão da sua própria conta; a lista abaixo diz quais. O app lê a sessão do seu navegador, então não há nada para copiar nem colar.',
   'signin.step1':
-    'Abra o navegador de sempre (Chrome, Edge, Firefox, Safari, Brave…) e entre nele como sempre: no Google / YouTube, Instagram ou Facebook.',
+    'Abra o navegador de sempre (Chrome, Edge, Firefox, Safari, Brave…) e entre nele como sempre: no Google / YouTube, Instagram, Facebook, Threads ou Twitch.',
   'signin.step2': 'Aqui, em Ajustes → Cookies do navegador, escolha esse mesmo navegador.',
   'signin.step3': 'Na primeira vez, o sistema pede uma permissão (veja abaixo): conceda. Ele só pede uma vez.',
   'signin.step4': 'Cole o link de novo: ele é baixado com a sua sessão. Saiu da conta no navegador? Entre de novo lá.',
@@ -673,4 +681,37 @@ export const pt: Readonly<Record<MessageKey, string>> = {
     'Linux (Fedora, Ubuntu…): o seu chaveiro (GNOME Keyring / KWallet) pode pedir para permitir o acesso aos dados salvos do navegador: permita. O Firefox não precisa de permissão.',
   'signin.privacy':
     'Seus cookies ficam no seu computador: são lidos uma vez para uma cópia privada que o app usa só para baixar, e nunca são enviados para nenhum outro lugar.',
+  'signin.sites': 'O que uma sessão libera',
+  'signin.twitchNote':
+    'A sessão da Twitch só é usada para obter o vídeo: nunca para conversar no chat, seguir ou se inscrever.',
+  'live.tag': 'AO VIVO',
+  'live.rec': 'GRAV',
+  'live.title': 'Ao vivo na Twitch',
+  'live.intro':
+    'A gravação começa no último meio minuto que a Twitch ainda guarda e continua até você parar, a transmissão acabar ou passarem 12 horas. Os anúncios ficam de fora.',
+  'live.startedAt': 'No ar desde {time}',
+  'live.record': 'Gravar',
+  'live.watch': 'Assistir',
+  'live.stop': 'Parar e salvar',
+  'live.discard': 'Descartar',
+  'live.discardConfirm': 'Descartar esta gravação? Tudo o que foi gravado até agora é apagado.',
+  'live.elapsed': '{time} gravado',
+  'live.saving': 'Salvando a gravação…',
+  'live.recordings': 'Gravações',
+  'live.recordStarted': 'Gravando {channel}',
+  'live.ended.stopped': 'Parada por você',
+  'live.ended.offline': 'A transmissão acabou',
+  'live.ended.max-duration': 'Chegou ao limite de 12 horas',
+  'live.ended.refused': 'A Twitch parou de enviar a transmissão',
+  'live.gaps': '{count} lacunas (segmentos perdidos)',
+  'live.adsLeftOut': '{time} de anúncios deixados de fora',
+  'live.finishedTag': 'Gravação ao vivo',
+  'live.playerError': 'O player ao vivo parou. Tente de novo.',
+  'live.retry': 'Tentar de novo',
+  'live.quit.title': 'Há uma gravação em andamento',
+  'live.quit.text': '{count} gravação(ões) em andamento. Salvar o que foi gravado antes de sair?',
+  'live.quit.save': 'Parar, salvar e sair',
+  'live.quit.discard': 'Descartar e sair',
+  'live.quit.keep': 'Continuar gravando',
+  'live.notify.saved': 'Gravação salva: {title}',
 }

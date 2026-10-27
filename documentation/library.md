@@ -21,6 +21,7 @@ new MediaDownloader({
 dl.analyze(url, {signal?, maxEntries?})  → VideoAnalysis | PlaylistAnalysis
 dl.add(request) · dl.addVideo(analysis, profile, outDir) · dl.addPlaylist(analysis, profile, outDir, {indexes?})
 dl.cancel(id) · dl.cancelAll() · dl.retry(id) · dl.prioritize(id) · dl.clearFinished()
+dl.stop(id)                   // a live recording: stop and keep it (finalized, validated, archived); cancel discards
 dl.pause() · dl.resume() · dl.setConcurrency(n) · dl.setValidation(level)
 dl.jobs() · dl.job(id) · dl.stats · dl.whenIdle()
 dl.restoreQueue() · dl.verifyArchive(onProgress?, signal?) · dl.updateYtDlp() · dl.resolveBinaries()
@@ -30,6 +31,10 @@ events: 'job' (any change, throttled) · 'completed' · 'failed' · 'idle' · 'l
 ```
 
 Job lifecycle: `queued → downloading → processing → converting → validating → finalizing → completed`, or `skipped` (already archived), `failed`, `cancelled`.
+
+A live recording (a Twitch channel on the air) is a job like the others whose download step lasts until
+`dl.stop(id)` (or the stream ends, or 12 h): its progress is `{live: true, elapsedSec, bytes}` with no
+`fraction`, `totalBytes` or `eta`, so a host shows the time recorded instead of a bar.
 
 ## Scheduling: schedule → batch → jobs
 

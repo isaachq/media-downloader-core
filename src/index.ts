@@ -177,7 +177,7 @@ export type {SessionCookies, SessionProvider, SiteSession} from './sources/sessi
 export type {SnapchatEndpoints} from './sources/snapchat/endpoints.js'
 export {isSnapchatListing, parseSnapchatLink, type SnapchatLink} from './sources/snapchat/links.js'
 export {SNAPCHAT_LIST_DEFAULT_ITEMS, type SnapchatOptions, SnapchatSource} from './sources/snapchat/source.js'
-export type {ListingProgress, MediaSource, SourceDownload, SourceFile} from './sources/source.js'
+export type {ListingProgress, MediaSource, RecordingSummary, SourceDownload, SourceFile} from './sources/source.js'
 export type {ThreadsQueries} from './sources/threads/endpoints.js'
 export {isThreadsListing, parseThreadsLink, type ThreadsLink} from './sources/threads/links.js'
 export {THREADS_PROFILE_DEFAULT_ITEMS, type ThreadsOptions, ThreadsSource} from './sources/threads/source.js'

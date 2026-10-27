@@ -305,6 +305,16 @@ export type JobProgress = {
   readonly totalParts?: number | undefined
   readonly fragmentIndex?: number | undefined
   readonly fragmentCount?: number | undefined
+  /**
+   * A live recording (a Twitch channel on the air): it has no end to measure against, so `fraction`,
+   * `totalBytes` and `eta` stay undefined; `elapsedSec` and `bytes` say how far it got. Stop it with
+   * `MediaDownloader.stop(id)` to keep it, `cancel(id)` to discard it.
+   */
+  readonly live?: boolean | undefined
+  /** Seconds since the recording started (wall clock). */
+  readonly elapsedSec?: number | undefined
+  /** Bytes recorded so far (the same as `downloadedBytes`). */
+  readonly bytes?: number | undefined
 }
 
 /**

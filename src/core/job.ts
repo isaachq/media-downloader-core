@@ -64,6 +64,8 @@ export class Job {
   #currentStep: StepName | undefined
 
   controller: AbortController | undefined
+  /** Stop (keep what was recorded): a live recording finishes and is finalized; other downloads ignore it. */
+  stopper: AbortController | undefined
   /** When the last event went out, for throttling. */
   lastEmit = 0
   emitTimer: NodeJS.Timeout | undefined
@@ -243,6 +245,7 @@ export class Job {
     if (this.emitTimer) clearTimeout(this.emitTimer)
     this.emitTimer = undefined
     this.controller = undefined
+    this.stopper = undefined
     this.#snapshot = undefined
   }
 }

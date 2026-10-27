@@ -1,6 +1,7 @@
-// downloadHls with the real ffmpeg on real HLS made by ffmpeg's own hls muxer (heavy: ffmpeg encodes
-// the fixtures). Checks what the byte-level fake can't: that the -c copy output plays — streams,
-// codecs, duration across a discontinuity, AES-128 decrypted, a demuxed audio track muxed in.
+// downloadHls and recordHls with the real ffmpeg on real HLS made by ffmpeg's own hls muxer (heavy:
+// ffmpeg encodes the fixtures). Checks what the byte-level fake can't: that the -c copy output plays —
+// streams, codecs, duration across a discontinuity, AES-128 decrypted, a demuxed audio track muxed in,
+// a live recording with an ad left out and a gap.
 import {strict as assert} from 'node:assert'
 import {spawnSync} from 'node:child_process'
 import * as fs from 'node:fs/promises'
@@ -8,7 +9,10 @@ import * as http from 'node:http'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import {after, before, describe, it} from 'node:test'
-import {downloadHls, type HlsDownloadOptions} from '../src/core/hls/index.js'
+import {toExecutable} from '../src/binaries/executable.js'
+import {rulesFor} from '../src/core/formats.js'
+import {downloadHls, type HlsDownloadOptions, recordHls} from '../src/core/hls/index.js'
+import {validateFile} from '../src/core/validate.js'
 import {HttpSession} from '../src/sources/http.js'
 import {listenLocal} from './helpers/listen.js'
 
@@ -181,4 +185,93 @@ describe('downloadHls with the real ffmpeg', () => {
     )
     assert.equal(decodes(a.filepath), '')
   })
+})
+
+// ── a live recording, finalized by the real ffmpeg ──────────────────────────────────────────────
+//
+// A sliding window (4 segments of 1 s) over a real 16 s H.264 + AAC encode, served on a simulated clock,
+// with an ad break titled "Amazon|…" (segments 6–8, skipped) and a 3 s freeze of the recorder (a gap):
+// the recording joins three periods whose timestamps jump, and the file must still be one clean mp4.
+describe('recordHls with the real ffmpeg', () => {
+  it(
+    'a recording with an ad left out and a gap: one mp4, h264 + aac, the recorded duration, a clean decode, valid',
+    T,
+    async () => {
+      const dir = path.join(media, 'live')
+      await fs.mkdir(dir, {recursive: true})
+      ffmpeg([...VIDEO, ...AUDIO, '-t', '16', ...H264, ...AAC, ...HLS('live')], media)
+      const vod = await fs.readFile(path.join(dir, 'index.m3u8'), 'utf8')
+      const segments: Array<{readonly uri: string; readonly duration: number}> = []
+      let pending = 0
+      for (const line of vod.split('\n')) {
+        if (line.startsWith('#EXTINF:')) pending = Number.parseFloat(line.slice(8))
+        else if (line && !line.startsWith('#')) segments.push({uri: line.trim(), duration: pending})
+      }
+      assert.ok(segments.length >= 15, `${segments.length} segments`)
+      let now = 0
+      const t0 = Date.parse('2026-10-27T12:00:00Z')
+      const starts: number[] = []
+      for (let i = 0, at = 0; i < segments.length; i++) {
+        starts.push(at)
+        at += segments[i]?.duration ?? 0
+      }
+      const live = http.createServer((req, res) => {
+        const made = Math.min(segments.length, 4 + Math.floor(now / 1000))
+        const first = Math.max(0, made - 4)
+        const lines = ['#EXTM3U', '#EXT-X-VERSION:3', '#EXT-X-TARGETDURATION:2', `#EXT-X-MEDIA-SEQUENCE:${first}`]
+        for (let i = first; i < made; i++) {
+          if (i === 6 || i === 9) lines.push('#EXT-X-DISCONTINUITY')
+          lines.push(`#EXT-X-PROGRAM-DATE-TIME:${new Date(t0 + (starts[i] ?? 0) * 1000).toISOString()}`)
+          lines.push(`#EXTINF:${segments[i]?.duration.toFixed(3)},${i >= 6 && i < 9 ? 'Amazon|1' : 'live'}`)
+          lines.push(`${origin}/live/${segments[i]?.uri}`)
+        }
+        if (made === segments.length) lines.push('#EXT-X-ENDLIST')
+        void req
+        res.writeHead(200, {'content-type': 'application/vnd.apple.mpegurl'}).end(`${lines.join('\n')}\n`)
+      })
+      const port = await listenLocal(live)
+      try {
+        let sleeps = 0
+        const result = await recordHls({
+          session: new HttpSession(),
+          site: 'Test',
+          playlist: `http://127.0.0.1:${port}/index.m3u8`,
+          kind: 'video',
+          codecs: ['avc1.64000d', 'mp4a.40.2'],
+          workDir: path.join(tmp, `job-${++jobs}`),
+          ffmpeg: {command: 'ffmpeg', args: []},
+          signal: AbortSignal.timeout(25_000),
+          skip: segment => segment.title !== 'live',
+          now: () => t0 + now,
+          // the 4th wait (after the ad break) freezes 4 s more: the window moves past segments 10 and 11
+          sleep: async ms => {
+            now += ms + (++sleeps === 4 ? 4000 : 0)
+          },
+          onProgress: () => {},
+        })
+        assert.equal(result.ended, 'endlist')
+        assert.equal(result.skippedSegments, 3)
+        assert.ok(result.gaps >= 1, `gaps: ${result.gaps}`)
+        const p = probe(result.filepath)
+        assert.deepEqual(p.streams.map(s => s.codec_name).sort(), ['aac', 'h264'])
+        assert.match(p.format.format_name, /mp4/)
+        near(Number(p.format.duration), result.duration, 0.5, 'the file lasts what was recorded')
+        assert.ok(result.duration < 16 - 3, 'the ad and the gap are not in it')
+        assert.equal(decodes(result.filepath), '', 'a full decode, no error')
+        const report = await validateFile({
+          ffmpeg: toExecutable('ffmpeg'),
+          ffprobe: toExecutable('ffprobe'),
+          file: result.filepath,
+          rules: rulesFor({kind: 'video', container: 'mp4'}),
+          level: 'full',
+          expectedDuration: result.duration,
+          expectAudio: true,
+          threads: 1,
+        })
+        assert.equal(report.ok, true, JSON.stringify(report.issues))
+      } finally {
+        await new Promise<void>(resolve => live.close(() => resolve()))
+      }
+    },
+  )
 })

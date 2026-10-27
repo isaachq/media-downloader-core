@@ -72,6 +72,12 @@ export type SourceDownload = {
   readonly profile: FormatProfile
   readonly workDir: string
   readonly signal: AbortSignal
+  /**
+   * Stop (`MediaDownloader.stop`): a live recording ends and hands over what it recorded, which the
+   * engine finalizes as any download (`signal` instead cancels and discards). Sources that only
+   * download what already exists ignore it.
+   */
+  readonly stop?: AbortSignal | undefined
   /** A previous attempt failed: don't trust cached links. */
   readonly fresh: boolean
   /** Whether a downloaded file carries sound (ffprobe), to skip silent encodings. */
@@ -103,4 +109,19 @@ export type SourceFile = {
    * only validated.
    */
   readonly tags?: MediaTags | undefined
+  /** A live recording: how it ended and what it left out (logged by the engine). */
+  readonly recording?: RecordingSummary | undefined
+}
+
+export type RecordingSummary = {
+  readonly ended: 'endlist' | 'stopped' | 'max-duration' | 'offline' | 'refused'
+  /** Seconds of media in the file. */
+  readonly seconds: number
+  readonly segments: number
+  /** Places where segments were lost, and how many. */
+  readonly gaps: number
+  readonly lostSegments: number
+  /** Seconds left out on purpose (Twitch's stitched ads). */
+  readonly skippedSeconds: number
+  readonly refreshes: number
 }

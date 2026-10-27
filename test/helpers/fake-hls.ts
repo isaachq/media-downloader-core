@@ -495,3 +495,300 @@ export async function writeCopyFfmpeg(dir: string): Promise<{command: string; ar
   await fs.writeFile(file, COPY_FFMPEG)
   return {command: process.execPath, args: [file]}
 }
+
+// ── a live origin ─────────────────────────────────────────────────────────────────────────────────
+//
+// A sliding-window live playlist that advances on a controllable clock (never real time): segment i
+// (absolute, from 0) exists once the clock passes (i − made + 1) × duration, the playlist lists the
+// last `window` of them with EXT-X-MEDIA-SEQUENCE, EXT-X-DISCONTINUITY-SEQUENCE and a program date-time
+// on every segment, titled "live" as Twitch titles them. Ads are segments titled "Amazon|…" (or "live",
+// to leave only the date range to tell them) inside an EXT-X-DATERANGE of CLASS "twitch-stitched-ad",
+// with a discontinuity on both sides. The stream ends with ENDLIST after `endAfter` segments, or stops
+// growing after `stopAfter` (and then answers 404 with `offline404`). A signed track's token is good for
+// N requests (playlist included), then 403 until `/l/<name>/sign` mints another; `renumberOnSign` makes
+// each new token a new session whose media sequence numbering starts elsewhere (same segments, same
+// dates). AES-128 rotates its key every `rotateEvery` segments, the IV from the media sequence.
+
+export type FakeLiveTrack = {
+  /** EXTINF and EXT-X-TARGETDURATION. Default 2. */
+  readonly duration?: number
+  /** Segments the window lists. Default 6. */
+  readonly window?: number
+  /** Segments made already at clock 0 (the window shows the newest of them). Default `window`. */
+  readonly made?: number
+  /** Media sequence of segment 0. Default 100. */
+  readonly mediaSequence?: number
+  readonly format?: 'ts' | 'fmp4'
+  /** Bytes per segment (before encryption). Default 188 × 16. */
+  readonly bytes?: number
+  /** ENDLIST once this many segments exist. */
+  readonly endAfter?: number
+  /** The window stops growing at this many segments (no ENDLIST). */
+  readonly stopAfter?: number
+  /** Once stopped: the playlist answers 404. */
+  readonly offline404?: boolean
+  /** Ad breaks: absolute segments [from, to); `titled: false` keeps their title "live" (date range only). */
+  readonly ads?: ReadonlyArray<{readonly from: number; readonly to: number; readonly titled?: boolean}>
+  /** Absolute segments that start a new period (EXT-X-DISCONTINUITY; fMP4: a new EXT-X-MAP). */
+  readonly discontinuities?: readonly number[]
+  readonly aes?: {readonly rotateEvery?: number}
+  readonly signed?: {readonly validFor: number}
+  /** Each token minted after the first starts the numbering this much further (a new session). */
+  readonly renumberOnSign?: number
+  /** Absolute segments that always answer 404. */
+  readonly missing?: readonly number[]
+  /** Absolute segments whose first request sends half its bytes, then nothing (a stalled CDN edge). */
+  readonly stallOnce?: readonly number[]
+}
+
+export type FakeLive = {
+  readonly origin: string
+  /** The simulated clock, in ms from 0 (shared by every track: `reset` it before each recording). */
+  readonly clock: {now(): number; advance(ms: number): void; reset(): void}
+  /** Playlist url (a signed track: with a fresh token). */
+  playlistUrl(name: string): string
+  /** A fresh signed url, as the site's re-signing would give it. */
+  signedUrl(name: string): string
+  /** Absolute index of a media sequence number under the first token's numbering. */
+  indexOf(name: string, sequence: number): number
+  /** Bytes segments [from, to) (absolute) must give once appended, `except` left out, inits per period. */
+  expected(name: string, from: number, to: number, except?: ReadonlySet<number>): Buffer
+  /** Segments made so far. */
+  made(name: string): number
+  count(pathname: string): number
+  /** Segment requests of a track. */
+  segmentRequests(name: string): number
+  readonly maxInFlight: () => number
+  update(name: string, track: FakeLiveTrack): void
+  close(): Promise<void>
+}
+
+export const LIVE_T0 = Date.parse('2026-10-27T12:00:00.000Z')
+
+export async function startFakeLive(config: {
+  readonly tracks: Readonly<Record<string, FakeLiveTrack>>
+}): Promise<FakeLive> {
+  const tracks = new Map<string, FakeLiveTrack>(Object.entries(config.tracks))
+  const counts = new Map<string, number>()
+  const tokens = new Map<string, {left: number; generation: number}>()
+  const generations = new Map<string, number>()
+  const stalled = new Set<string>()
+  let tokenSeq = 0
+  let now = 0
+  let inFlight = 0
+  let maxInFlight = 0
+  const sockets = new Set<Socket>()
+
+  const dur = (t: FakeLiveTrack) => t.duration ?? 2
+  const win = (t: FakeLiveTrack) => t.window ?? 6
+  const madeOf = (t: FakeLiveTrack) => {
+    let n = (t.made ?? win(t)) + Math.floor(now / (dur(t) * 1000))
+    if (t.endAfter !== undefined) n = Math.min(n, t.endAfter)
+    if (t.stopAfter !== undefined) n = Math.min(n, t.stopAfter)
+    return n
+  }
+  const asTrack = (t: FakeLiveTrack): FakeTrack => ({
+    segments: 0,
+    ...(t.bytes !== undefined && {bytes: t.bytes}),
+    ...(t.format !== undefined && {format: t.format}),
+  })
+  const keyOf = (t: FakeLiveTrack, i: number) => (t.aes ? Math.floor(i / (t.aes.rotateEvery ?? 1e9)) : -1)
+  const base = (t: FakeLiveTrack) => t.mediaSequence ?? 100
+  const body = (name: string, t: FakeLiveTrack, i: number): Buffer => {
+    const plain = segmentBody(name, i, asTrack(t))
+    if (!t.aes) return plain
+    const c = createCipheriv('aes-128-cbc', keyBytes(keyOf(t, i)), seqIv(base(t) + i))
+    return Buffer.concat([c.update(plain), c.final()])
+  }
+  const startsPeriod = (t: FakeLiveTrack, i: number) =>
+    i > 0 && ((t.discontinuities ?? []).includes(i) || (t.ads ?? []).some(ad => ad.from === i || ad.to === i))
+  /** Period of segment i: the period starts at or before it (a few ads and discontinuities: O(d)). */
+  const periodOf = (t: FakeLiveTrack, i: number) => {
+    let p = 0
+    for (const d of t.discontinuities ?? []) if (d > 0 && d <= i) p++
+    for (const ad of t.ads ?? []) {
+      if (ad.from > 0 && ad.from <= i) p++
+      if (ad.to <= i) p++
+    }
+    return p
+  }
+  const iso = (ms: number) => new Date(ms).toISOString()
+  const mint = (name: string) => {
+    const t = tracks.get(name)
+    if (!t?.signed) return ''
+    const generation = generations.get(name) ?? 0
+    generations.set(name, generation + 1)
+    const token = `${name}-${++tokenSeq}`
+    tokens.set(token, {left: t.signed.validFor, generation})
+    return token
+  }
+  const ext = (t: FakeLiveTrack) => (t.format === 'fmp4' ? 'm4s' : 'ts')
+
+  function playlist(t: FakeLiveTrack, token: string, generation: number): string {
+    const q = token ? `?tok=${token}` : ''
+    const made = madeOf(t)
+    const first = Math.max(0, made - win(t))
+    const shift = generation * (t.renumberOnSign ?? 0)
+    const lines = [
+      '#EXTM3U',
+      '#EXT-X-VERSION:6',
+      `#EXT-X-TARGETDURATION:${Math.ceil(dur(t))}`,
+      `#EXT-X-MEDIA-SEQUENCE:${base(t) + first + shift}`,
+    ]
+    const discBefore = periodOf(t, first)
+    if (discBefore) lines.push(`#EXT-X-DISCONTINUITY-SEQUENCE:${discBefore}`)
+    for (const ad of t.ads ?? []) {
+      if (ad.to <= first || ad.from >= made) continue
+      lines.push(
+        `#EXT-X-DATERANGE:ID="stitched-ad-${ad.from}",CLASS="twitch-stitched-ad",START-DATE="${iso(LIVE_T0 + ad.from * dur(t) * 1000)}",DURATION=${((ad.to - ad.from) * dur(t)).toFixed(3)},X-TV-TWITCH-AD-POD-LENGTH="1"`,
+      )
+    }
+    if (t.format === 'fmp4') lines.push(`#EXT-X-MAP:URI="init${periodOf(t, first)}.mp4${q}"`)
+    let lastKey = -1
+    for (let i = first; i < made; i++) {
+      if (i > first && startsPeriod(t, i)) {
+        lines.push('#EXT-X-DISCONTINUITY')
+        if (t.format === 'fmp4') lines.push(`#EXT-X-MAP:URI="init${periodOf(t, i)}.mp4${q}"`)
+      }
+      const k = keyOf(t, i)
+      if (k !== lastKey) {
+        lines.push(`#EXT-X-KEY:METHOD=AES-128,URI="key${k}.bin${q}"`)
+        lastKey = k
+      }
+      const ad = (t.ads ?? []).find(a => a.from <= i && i < a.to)
+      lines.push(`#EXT-X-PROGRAM-DATE-TIME:${iso(LIVE_T0 + i * dur(t) * 1000)}`)
+      lines.push(`#EXTINF:${dur(t).toFixed(3)},${ad && ad.titled !== false ? `Amazon|${ad.from}` : 'live'}`)
+      lines.push(`s${i}.${ext(t)}${q}`)
+    }
+    if (t.endAfter !== undefined && made >= t.endAfter) lines.push('#EXT-X-ENDLIST')
+    return `${lines.join('\n')}\n`
+  }
+
+  const server = http.createServer((req, res) => {
+    inFlight++
+    maxInFlight = Math.max(maxInFlight, inFlight)
+    res.on('close', () => inFlight--)
+    const url = new URL(req.url ?? '/', 'http://x')
+    counts.set(url.pathname, (counts.get(url.pathname) ?? 0) + 1)
+    const m = /^\/l\/([^/]+)\/(.+)$/.exec(url.pathname)
+    const name = m?.[1] ?? ''
+    const file = m?.[2] ?? ''
+    const t = tracks.get(name)
+    if (!t) {
+      res.writeHead(404).end('not found')
+      return
+    }
+    if (file === 'sign') {
+      res
+        .writeHead(200, {'content-type': 'application/json'})
+        .end(JSON.stringify({url: `${origin}/l/${name}/index.m3u8?tok=${mint(name)}`}))
+      return
+    }
+    let generation = 0
+    if (t.signed) {
+      const token = tokens.get(url.searchParams.get('tok') ?? '')
+      if (!token || token.left <= 0) {
+        res.writeHead(403, {'content-type': 'text/plain'}).end('expired')
+        return
+      }
+      token.left--
+      generation = token.generation
+    }
+    if (file === 'index.m3u8') {
+      if (t.offline404 && t.stopAfter !== undefined && madeOf(t) >= t.stopAfter) {
+        res.writeHead(404, {'content-type': 'text/plain'}).end('offline')
+        return
+      }
+      res
+        .writeHead(200, {'content-type': 'application/vnd.apple.mpegurl'})
+        .end(playlist(t, url.searchParams.get('tok') ?? '', generation))
+      return
+    }
+    const key = /^key(\d+)\.bin$/.exec(file)
+    if (key) {
+      res.writeHead(200, {'content-type': 'application/octet-stream'}).end(keyBytes(Number(key[1])))
+      return
+    }
+    const init = /^init(\d+)\.mp4$/.exec(file)
+    if (init) {
+      sendMedia(req, res, initBody(name, Number(init[1])), 'video/mp4')
+      return
+    }
+    const seg = /^s(\d+)\.\w+$/.exec(file)
+    const i = Number(seg?.[1] ?? -1)
+    if (!seg || i >= madeOf(t) || (t.missing ?? []).includes(i)) {
+      res.writeHead(404, {'content-type': 'text/plain'}).end('gone')
+      return
+    }
+    const type = t.format === 'fmp4' ? 'video/iso.segment' : 'video/mp2t'
+    if ((t.stallOnce ?? []).includes(i) && !stalled.has(`${name}/${i}`)) {
+      stalled.add(`${name}/${i}`)
+      const media = body(name, t, i)
+      res.writeHead(200, {'content-type': type, 'content-length': media.length})
+      res.write(media.subarray(0, Math.floor(media.length / 2)))
+      return // never ends: the recorder's stall watchdog has to give up on it
+    }
+    sendMedia(req, res, body(name, t, i), type)
+  })
+  server.on('connection', socket => {
+    sockets.add(socket)
+    socket.on('close', () => sockets.delete(socket))
+  })
+  const port = await listenLocal(server)
+  const origin = `http://127.0.0.1:${port}`
+  const track = (name: string) => {
+    const t = tracks.get(name)
+    if (!t) throw new Error(`no live track ${name}`)
+    return t
+  }
+  const urlOf = (name: string) => {
+    const tok = mint(name)
+    return `${origin}/l/${name}/index.m3u8${tok ? `?tok=${tok}` : ''}`
+  }
+  return {
+    origin,
+    clock: {
+      now: () => now,
+      advance: ms => {
+        now += ms
+      },
+      reset: () => {
+        now = 0
+      },
+    },
+    playlistUrl: urlOf,
+    signedUrl: urlOf,
+    indexOf: (name, sequence) => sequence - base(track(name)),
+    expected(name, from, to, except) {
+      const t = track(name)
+      const parts: Buffer[] = []
+      let period = -1
+      for (let i = from; i < to; i++) {
+        if (except?.has(i)) continue
+        const p = periodOf(t, i)
+        if (p !== period) {
+          period = p
+          if (t.format === 'fmp4') parts.push(initBody(name, p))
+        }
+        parts.push(segmentBody(name, i, asTrack(t)))
+      }
+      return Buffer.concat(parts)
+    },
+    made: name => madeOf(track(name)),
+    count: pathname => counts.get(pathname) ?? 0,
+    segmentRequests(name) {
+      let n = 0
+      for (const [p, c] of counts) if (p.startsWith(`/l/${name}/s`)) n += c
+      return n
+    },
+    maxInFlight: () => maxInFlight,
+    update(name, t) {
+      tracks.set(name, t)
+    },
+    close: () =>
+      new Promise<void>(resolve => {
+        for (const s of sockets) s.destroy()
+        server.close(() => resolve())
+      }),
+  }
+}

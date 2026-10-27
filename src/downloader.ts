@@ -1186,6 +1186,20 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     else job.controller?.abort()
   }
 
+  /**
+   * Stop a live recording and keep it: no new segment is recorded, what was recorded is finalized and
+   * goes through the usual validate, checksum and archive steps (the job completes). `cancel` instead
+   * discards it. True when the job is running and was told to stop; a job that records nothing (a
+   * download, a job still queued) is not affected by it. O(1).
+   */
+  stop(id: JobId): boolean {
+    const job = this.#jobs.get(id)
+    if (!job || job.terminal || !job.stopper || job.stopper.signal.aborted) return false
+    job.stopper.abort()
+    this.#log('info', 'stop asked: finishing the recording', job)
+    return true
+  }
+
   cancelAll(): void {
     for (const id of this.#jobs.keys()) this.cancel(id)
   }
@@ -1449,6 +1463,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
 
   async #run(job: Job): Promise<void> {
     job.controller = new AbortController()
+    job.stopper = new AbortController()
     job.startedAt = Date.now()
     const {signal} = job.controller
     const {request} = job
@@ -1688,6 +1703,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
           profile,
           workDir,
           signal,
+          stop: job.stopper?.signal,
           fresh: strategy === 'fresh-extraction' || job.attempt > 1,
           hasAudio: file => this.#hasAudio(bins, file, signal),
           ffmpeg: bins.ffmpeg.exe,
@@ -1720,6 +1736,15 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
         )
     info = {...info, ...downloaded.info}
     if (source && 'tags' in downloaded && downloaded.tags && this.#settings.embedMetadata) tags = downloaded.tags
+    if (source && 'recording' in downloaded && downloaded.recording) {
+      const r = downloaded.recording
+      this.#log(
+        'info',
+        `recorded ${Math.round(r.seconds)} s live (${r.ended}): ${r.segments} segments, ` +
+          `${Math.round(r.skippedSeconds)} s of ads left out, ${r.gaps} gap(s) (${r.lostSegments} segments lost)`,
+        job,
+      )
+    }
     this.#stepDone(job, 'download', 'success')
 
     // ── convert (video only, and only when the codecs don't already match)

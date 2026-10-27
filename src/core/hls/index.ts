@@ -5,7 +5,8 @@
 // `verifySegment` (one segment to a checked file), `KeyCache` + `fetchKey` + `ivFor` (AES-128),
 // `TrackAppender` + `StateWriter` (in-order append per period, keyed by media sequence, with a resume
 // cursor) and `assembleHls` (the one ffmpeg -c copy). `downloadHls` is the VOD loop over them and
-// refuses open-ended playlists as `live-now`.
+// refuses open-ended playlists as `live-now`; `recordHls` is the live loop over the same pieces (a sliding
+// window re-read every target duration, Stop keeps and finalizes, cancel discards). Twitch only reaches it.
 export {type AppenderOptions, type AppendSegment, StaleResumeError, TrackAppender} from './appender.js'
 export {type AssembleOptions, type AssembleTrack, assembleHls, containerFor, type HlsContainer} from './assemble.js'
 export {
@@ -41,6 +42,17 @@ export {
   parsePlaylist,
   pathOf,
 } from './playlist.js'
+export {
+  DEFAULT_EMPTY_RELOADS,
+  DEFAULT_MAX_RECORDING,
+  type HlsRecordEnd,
+  type HlsRecordEvent,
+  type HlsRecordOptions,
+  type HlsRecordResult,
+  LIVE_STALL_MS,
+  type RefreshLive,
+  recordHls,
+} from './record.js'
 export {
   decipherFor,
   fetchKey,

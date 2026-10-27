@@ -53,6 +53,7 @@ import {FacebookSource} from './sources/facebook/source.js'
 import {InstagramSource} from './sources/instagram/source.js'
 import {COOLING_DOWN, withPatience} from './sources/pacer.js'
 import {SnapchatSource} from './sources/snapchat/source.js'
+import {SoundcloudSource} from './sources/soundcloud/source.js'
 import {type ListingProgress, type MediaSource, needsFallback} from './sources/source.js'
 import {ThreadsSource} from './sources/threads/source.js'
 import {DEFAULT_SLIDESHOW, slideshowOptions} from './sources/tiktok/slideshow.js'
@@ -303,6 +304,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       ...(options.threads === false
         ? []
         : [new ThreadsSource({log, cookies: () => this.#siteCookies(['threads.com']), ...options.threads})]),
+      ...(options.soundcloud === false ? [] : [new SoundcloudSource({log, ...options.soundcloud})]),
       ...(options.bluesky === false ? [] : [new BlueskySource({log, ...options.bluesky})]),
       ...(options.twitch === false ? [] : [new TwitchSource({log, ...options.twitch})]),
       ...(options.sources ?? []),

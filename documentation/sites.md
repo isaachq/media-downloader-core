@@ -229,6 +229,49 @@ quotes as links of their own; spoiler-blurred media; the phone's network.
 `threads: false` hands Threads urls to yt-dlp, whose generic extractor
 reads none of them.
 
+## SoundCloud (built-in extractor)
+
+Tracks, sets and public profiles are read by the library itself from
+SoundCloud's anonymous `api-v2`, with the `client_id` the web app itself
+uses. **Audio only**: the analysis offers audio formats only, and a video
+profile is refused before any request (`invalid-request` /
+`format-unavailable`). The media is the clear HLS fMP4 AAC, downloaded by
+the core's HLS module and handed over as an M4A (the engine's M4A step
+copies the AAC as it is; MP3, Opus, FLAC and WAV are encoded from it).
+
+```ts
+scheduler.schedule({url: 'https://soundcloud.com/forss/flickermood', profile: {kind: 'audio', container: 'm4a'}, outDir})
+scheduler.schedule({url: 'https://soundcloud.com/lofi_chill/sets/lofi-study', profile: {kind: 'audio', container: 'mp3'}, outDir})
+```
+
+| | How |
+| --- | --- |
+| Links | `soundcloud.com/<user>/<track>` (and its `/recommended`, `/likes`, `/sets`, `/reposts`, `/comments` pages): one track; `/<user>/<track>/s-<token>`: a private track by its secret link; `/<user>/sets/<set>[/s-<token>]`: a set (playlist or album); `/<user>`, `/<user>/tracks`, `/<user>/likes`, `/<user>/sets`, `/<user>/albums`: a profile's tab. On `soundcloud.com`, `www.` and `m.` (read back as `soundcloud.com`: the API answers 404 to `m.` pages), `w.soundcloud.com/player/?url=<a link above>[&secret_token=]`, and `on.soundcloud.com/<code>` short links (one 302 to the page, followed with `followShortLink`; the sharer's `si`, `ref`, `p`, `c` and `utm_*` never reach the resolve). Reposts, followers, comments, stations, search and the API's own urls are not read here (yt-dlp takes what it can). |
+| Client id | `soundcloud.clientId` when given (the escape hatch yt-dlp users ask for when the home page sits behind a WAF, #16742). Else the home page is read once per session: its hydration names one (`"hydratable":"apiClient","data":{"id":"…"}`, free, flagged `isExpiring`); when it has none, or the API refuses it, the page's `a-v2.sndcdn.com/assets/*.js` bundles are read **last first** (the id has been in the last one for years), each streamed and left at the first `client_id:"…"`, so the 2.9 MB bundle is never held whole. A 401 (empty body) refuses that id for an hour and reads another once; a second 401 on the new one is `source:format-changed` (yt-dlp). A home page that is a bot check (a non-200, a WAF script) is `source:blocked`. |
+| How it is read | A track, a set or a user is **one request**: `GET /resolve?url=<the page>&client_id=`. 404 `{}` → `removed` (a private track without its token is a 404 too: the message says so). |
+| Media | The transcodings, best first: `aac_160k` over HLS, `aac_96k` over HLS, then a legacy track's MP3 (progressive before HLS: 1 request instead of 1 + n) and Opus (an Opus profile takes an Opus stream first). Left out: `abr_*` (a master that answers 404), Go+'s `hq` (a subscriber session), snipped previews, and **DRM** (`cbc-` / `ctr-encrypted-hls`, Widevine + PlayReady). Each is minted by `GET <transcoding url>&client_id=&track_authorization=` → `{url}` (a 404 tries the next). HLS: a CloudFront-signed playlist (about 5 minutes) is fetched at once, re-minted once if it already ran out; its fMP4 segments (about 2 hours) go through `downloadHls` with a refresh that mints again when the CDN refuses one (403), within the core's budget; init + segments in order are already a playable fragmented M4A (no ffmpeg). Legacy MP3 HLS is packed audio, joined with one `ffmpeg -c copy`. Progressive (`cf-media.sndcdn.com/<id>.128.mp3`, about 5 minutes) goes through `fetchMedia`, re-minted once and resumed with Range when its link runs out. CDN requests are not paced. |
+| Refused, never handed to yt-dlp | A track whose only formats are DRM (about 40 % of the catalog: label releases): `unavailable` / `format-unavailable`, its message says DRM (yt-dlp refuses them too, #17335); a DRM key in a playlist that looked clear: the same. A Go+ preview (`policy: SNIP`, every format `snipped`, or a minted `/preview/` stream): `format-unavailable` ("only a 30-second preview"), unless the track also has a whole format, which is taken. `policy: BLOCK`: `geo-blocked`. |
+| Listing | Tracks and likes: `/users/<id>/tracks` and `/likes`, `limit=50&linked_partitioning=1`, then `next_href` (a keyset cursor without `client_id` or `linked_partitioning`: both added) until it is `null`: **pages come back short** (17 of 20 seen), so the page size never ends a walk. Map by id, a cursor seen twice or 3 pages with nothing new end it (`walkCursor`), `maxEntries` (default 500, `soundcloud.maxListItems`), `known` (an incremental sync stops after 20 known tracks in a row: both are newest first). A liked set is left out of likes (its own link reads it). Sets and albums tabs: `/users/<id>/playlists` and `/albums`, each set's tracks in order, each track once. Every listed track is whole in its page (with its transcodings and authorization): **a listed track is never read again** (its check and its download make one mint request only). |
+| Sets | The resolve gives a set's first 5 tracks whole and the rest as stubs `{id}`; the stubs within `maxEntries` go **50 a request** to `/tracks?ids=` (51 is a 400), whose answer comes in no particular order: put back in the set's order by id; an id it leaves out was removed (left out, logged). A private set adds `playlistId` and `playlistSecretToken`. |
+| Errors | 429 / 5xx: every api request backs off together (Pacer) and is retried (3 tries). A 403 with `x-datadome` or a captcha body: `source:blocked`, and the source steps aside for 10 minutes (`available` false: yt-dlp, where there is one, takes SoundCloud urls). An answer in a shape this module doesn't read, a track without formats or with formats it doesn't know, or every format answering 404: `source:format-changed` (yt-dlp's SoundCloud extractor takes that url). |
+| Cache | Tracks by id 30 min (5,000), `<user>/<slug>` → id (5,000), users 30 min (500), listings 15 min (100). Resolves of one page at the same time share one request; so does a client id read (`Coalescer`). |
+| Pace | api-v2 and the web app: one Pacer, 2 in flight 0.7 to 1.1 s apart (`soundcloud.pacing`; yt-dlp's figure is about 600 requests per 10 minutes). |
+| Endpoints | The API, the web app, the short-link host, the asset host and the page size live in `src/sources/soundcloud/endpoints.ts` with the client id patterns and the preset order; `soundcloud.endpoints` overrides them without a release. |
+
+**What was verified, and what wasn't.** Verified live on 2026-10-27
+(anonymous, from Mexico): see the CHANGELOG's Status line 5 for the live
+matrix and the downloads (ffprobe codec and length against the track's, and
+a full decode). The client id from the hydration and from the bundle, the
+resolve of tracks, a private `s-` track, sets, users and their tabs, a 404,
+`m.` pages, `?ids=` capped at 50 and unordered, short links (one 302), the
+5-minute playlist link and the 2-hour segments were checked by hand first
+(`.local/soundcloud/research.md`). **Not verified**: a private `s-` set, a
+Go+ preview and `policy: BLOCK` from this region (none seen; the fake serves
+the shapes yt-dlp and cobalt describe), DataDome's 403 (not reproduced; the
+fake serves yt-dlp #15660's), the hydration id ever going stale while the
+bundle's works, `encrypted-hls` (AES-128) live, the razr 50. `soundcloud:
+false` hands SoundCloud urls to yt-dlp's SoundCloud extractor.
+
 ## Bluesky (built-in extractor)
 
 Posts and public profiles are read by the library itself from Bluesky's

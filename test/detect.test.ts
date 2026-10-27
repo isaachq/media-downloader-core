@@ -56,6 +56,16 @@ describe('detectLink: the site of a pasted or shared link', () => {
     assert.equal(site('https://notthreads.net/@zuck'), 'web')
   })
 
+  it('names SoundCloud on soundcloud.com, m., w. and on.soundcloud.com', () => {
+    assert.equal(site('https://soundcloud.com/forss/flickermood'), 'soundcloud')
+    assert.equal(site('https://m.soundcloud.com/flume/sets/dumb-499556491'), 'soundcloud')
+    assert.equal(site('Listen: https://on.soundcloud.com/fqRmvhVEbVvCLEJ29 !'), 'soundcloud')
+    assert.equal(site('https://w.soundcloud.com/player/?url=https%3A//soundcloud.com/forss/flickermood'), 'soundcloud')
+    assert.equal(detectLink('https://www.soundcloud.com/flume')?.host, 'soundcloud.com')
+    assert.equal(site('https://soundcloud.com.evil.example/forss/flickermood'), 'web')
+    assert.equal(site('https://notsoundcloud.com/forss'), 'web')
+  })
+
   it('names Bluesky on bsky.app', () => {
     assert.equal(site('https://bsky.app/profile/bsky.app/post/3mnslrkd6ok2g'), 'bluesky')
     assert.equal(site('https://bsky.app/profile/did:plc:z72i7hdynmk6r22z27h6tvur'), 'bluesky')

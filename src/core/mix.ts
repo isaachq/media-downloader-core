@@ -4,6 +4,7 @@ import {isFacebookListing} from '../sources/facebook/links.js'
 import {isInstagramListing} from '../sources/instagram/links.js'
 import {type MixLink, planMix} from '../sources/mix-plan.js'
 import {isSnapchatListing} from '../sources/snapchat/links.js'
+import {isSoundcloudListing} from '../sources/soundcloud/links.js'
 import {isThreadsListing} from '../sources/threads/links.js'
 import {isTikTokProfile} from '../sources/tiktok/links.js'
 import {DEFAULT_SLIDESHOW} from '../sources/tiktok/slideshow.js'
@@ -63,6 +64,7 @@ export function isListingLink(url: string, engine: Pick<MixEngine, 'defaultListS
     isXProfile(url) ||
     isSnapchatListing(url) ||
     isThreadsListing(url) ||
+    isSoundcloudListing(url) ||
     isBlueskyListing(url) ||
     isTwitchListing(url)
   )

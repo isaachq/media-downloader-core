@@ -16,6 +16,7 @@
 //
 // Writes a JSON report to .local/live-matrix/report-<time>.json and exits 1 on any
 // failure.
+import {spawnSync} from 'node:child_process'
 import {readFileSync} from 'node:fs'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
@@ -42,6 +43,8 @@ type Expect =
   | 'carousel'
   /** A listing with entries. */
   | 'playlist'
+  /** One audio track (SoundCloud): audio choices only; downloaded as M4A, its length and a full decode checked. */
+  | 'audio'
 
 type Scenario = {
   readonly id: string
@@ -142,6 +145,7 @@ dl.on('log', entry => {
 // (a native run is the phone's engine: no yt-dlp to install, ffmpeg / ffprobe from the PATH)
 if (!args.native) await dl.setup()
 const probeExe = args.native ? toExecutable('ffprobe') : (await dl.resolveBinaries()).ffprobe.exe
+const ffmpegExe = args.native ? toExecutable('ffmpeg') : (await dl.resolveBinaries()).ffmpeg.exe
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 const jitter = () => sleep(jitterMin + Math.random() * Math.max(0, jitterMax - jitterMin))
@@ -155,6 +159,10 @@ function check(expect: Expect, result: AnalysisResult): string | undefined {
   if (result.kind !== 'video') return 'a listing, not one item'
   const show = result.media.slideshow
   switch (expect) {
+    case 'audio':
+      if (show) return 'a photo post, not a track'
+      if (result.choices.length === 0) return 'no format to download'
+      return result.choices.every(c => c.profile.kind === 'audio') ? undefined : 'video choices on an audio track'
     case 'video':
       if (show) return `a photo post (${show.images} images${show.videos ? ', with videos' : ''}), not a video`
       return result.choices.length > 0 ? undefined : 'no format to download'
@@ -186,7 +194,7 @@ async function download(url: string, analysis: AnalysisResult, expect: Expect, o
   const media = analysis.kind === 'video' ? analysis.media : undefined
   const job = dl.add({
     url,
-    profile: {kind: 'video', container: 'mp4'},
+    profile: expect === 'audio' ? {kind: 'audio', container: 'm4a'} : {kind: 'video', container: 'mp4'},
     outDir,
     slideshow,
     ...(media?.slideshow && {photoPost: true}),
@@ -216,6 +224,24 @@ async function download(url: string, analysis: AnalysisResult, expect: Expect, o
     return {video: `${images} images${videos ? ` + ${videos} videos` : ''}`, ...(audio && {audio})}
   }
   const probe = summarizeProbe(await ffprobe(probeExe, done.filepath))
+  if (expect === 'audio') {
+    if (probe.video) throw new Error(`an audio track with a video stream (${probe.video.codec_name})`)
+    if (!probe.audio) throw new Error('the file has no audio stream')
+    const wanted = media?.duration
+    if (wanted !== undefined && (probe.duration === undefined || Math.abs(probe.duration - wanted) > 2)) {
+      throw new Error(`the file lasts ${probe.duration ?? '?'} s, the track ${wanted} s`)
+    }
+    // every frame decoded: a broken segment in the middle shows here, not only in the header
+    const decode = spawnSync(ffmpegExe.command, [...ffmpegExe.args, '-v', 'error', '-i', done.filepath, '-f', 'null', '-'], {
+      encoding: 'utf8',
+    })
+    if (decode.status !== 0 || decode.stderr.trim()) throw new Error(`decode: ${decode.stderr.trim().slice(0, 300)}`)
+    return {
+      video: 'none',
+      audio: `${probe.audio.codec_name} · decoded`,
+      ...(probe.duration !== undefined && {duration: Math.round(probe.duration)}),
+    }
+  }
   if (!probe.video) throw new Error('the file has no video stream')
   if (!probe.audio && expect !== 'carousel') throw new Error('DASH audio missing: the file has no audio stream')
   return {

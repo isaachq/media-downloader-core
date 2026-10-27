@@ -7,6 +7,7 @@ import type {FacebookOptions} from './sources/facebook/source.js'
 import type {InstagramOptions} from './sources/instagram/source.js'
 import type {MixPlanSkip} from './sources/mix-plan.js'
 import type {SnapchatOptions} from './sources/snapchat/source.js'
+import type {SoundcloudOptions} from './sources/soundcloud/source.js'
 import type {MediaSource} from './sources/source.js'
 import type {ThreadsOptions} from './sources/threads/source.js'
 import type {TikTokOptions} from './sources/tiktok/source.js'
@@ -903,6 +904,15 @@ export type DownloaderOptions = {
    * `false` hands Threads urls to its generic extractor, which reads none.
    */
   readonly threads?: false | ThreadsOptions | undefined
+  /**
+   * SoundCloud through the built-in extractor (the anonymous api-v2 with the
+   * web app's own client id; audio only): tracks, private tracks by their
+   * `s-` link, sets and albums, and public profiles' tracks, likes, sets and
+   * albums. The clear HLS AAC goes through the core's HLS module. DRM-only
+   * label releases, Go+ previews and region blocks are refused as such.
+   * `false` hands SoundCloud urls to yt-dlp's SoundCloud extractor.
+   */
+  readonly soundcloud?: false | SoundcloudOptions | undefined
   /**
    * Bluesky through the built-in extractor (the public AppView, anonymous;
    * every file the author's original blob from their own PDS, paced per

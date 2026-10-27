@@ -423,6 +423,55 @@
       ]
     },
     {
+      "id": "SO-01",
+      "category": "SoundCloud track (clear HLS AAC, or legacy MP3)",
+      "expect": "audio",
+      "urls": [
+        "https://soundcloud.com/forss/flickermood",
+        "https://soundcloud.com/david_sanya/my-love",
+        "https://soundcloud.com/widowdusk/woodbury-town-centre-bedroom-demo",
+        "https://soundcloud.com/rudeboy2025/late-night-melancholy",
+        "https://m.soundcloud.com/c0tt0nm0uth/intro-1"
+      ]
+    },
+    {
+      "id": "SO-02",
+      "category": "SoundCloud private track by its secret link",
+      "expect": "audio",
+      "urls": ["https://soundcloud.com/jaimemf/youtube-dl-test-video-a-y-baw/s-8Pjrp"],
+      "note": "yt-dlp's own test track (2013, legacy MP3 progressive and HLS); private tracks are rarely public by definition"
+    },
+    {
+      "id": "SO-03",
+      "category": "SoundCloud set (playlist or album)",
+      "expect": "playlist",
+      "urls": [
+        "https://soundcloud.com/lofi_chill/sets/lofi-study",
+        "https://soundcloud.com/flume/sets/dumb-499556491",
+        "https://soundcloud.com/flume/sets/we-live-in-a-society-2",
+        "https://soundcloud.com/flume/sets/emma-louise-flume-dumb"
+      ]
+    },
+    {
+      "id": "SO-04",
+      "category": "SoundCloud public profile (tracks, likes, sets, albums)",
+      "expect": "playlist",
+      "urls": [
+        "https://soundcloud.com/flume",
+        "https://soundcloud.com/forss/tracks",
+        "https://soundcloud.com/unsound",
+        "https://soundcloud.com/flume/likes",
+        "https://soundcloud.com/flume/albums"
+      ]
+    },
+    {
+      "id": "SO-05",
+      "category": "SoundCloud short link (on.soundcloud.com)",
+      "expect": "audio",
+      "urls": [],
+      "note": "share links carry the sharer's id: in .local/live-matrix/compendium.local.json"
+    },
+    {
       "id": "BS-01",
       "category": "Bluesky post with a picture",
       "expect": "photo",

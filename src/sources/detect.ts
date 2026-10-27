@@ -16,6 +16,7 @@ export type LinkSite =
   | 'x'
   | 'snapchat'
   | 'threads'
+  | 'soundcloud'
   | 'bluesky'
   | 'twitch'
   | 'web'
@@ -28,6 +29,7 @@ export const LINK_SITES: readonly LinkSite[] = [
   'x',
   'snapchat',
   'threads',
+  'soundcloud',
   'bluesky',
   'twitch',
   'web',
@@ -56,6 +58,8 @@ const DOMAINS: ReadonlyArray<readonly [Exclude<LinkSite, 'web'>, readonly string
   ['snapchat', ['snapchat.com']],
   // threads.net is the old host (a 301 to threads.com)
   ['threads', ['threads.com', 'threads.net']],
+  // m., w. (the embed player) and on.soundcloud.com (short links) are subdomains
+  ['soundcloud', ['soundcloud.com']],
   // the web app (bsky.app); the AT Protocol API hosts are never pasted
   ['bluesky', ['bsky.app']],
   // clips.twitch.tv, m.twitch.tv and player.twitch.tv are subdomains

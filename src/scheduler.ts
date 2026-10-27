@@ -226,12 +226,18 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
       if (link.analysis) known.set(link.url, link.analysis)
     }
     if (entries.length === 0) throw new DownloadError('invalid-request', 'No link of this mix list can be downloaded.')
-    // a link with a format of its own (one song in MP3 among videos): a target of the same batch, same folder. O(n)
+    // a link with a format or a folder of its own (one song in MP3 among videos): a target of the same batch. O(n)
     const targets: BatchTarget[] = []
     for (const entry of entries) {
-      const profile = request.formats?.[entry.url]
-      if (profile && profileKey(profile) !== profileKey(request.profile)) {
-        targets.push({index: entry.index, outDir: request.outDir, profile})
+      const own = request.formats?.[entry.url]
+      const profile = own && profileKey(own) !== profileKey(request.profile) ? own : undefined
+      const folder = request.outDirs?.[entry.url]
+      if (folder !== undefined && !path.isAbsolute(folder)) {
+        throw new DownloadError('invalid-request', 'outDirs must be absolute paths.')
+      }
+      const outDir = folder !== undefined && folder !== request.outDir ? folder : undefined
+      if (profile || outDir) {
+        targets.push({index: entry.index, outDir: outDir ?? request.outDir, profile: profile ?? request.profile})
       }
     }
     return this.#add(

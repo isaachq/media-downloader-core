@@ -796,7 +796,7 @@ export type MixAnalyzeOptions = {
   readonly onProgress?: ((progress: MixProgress) => void) | undefined
 }
 
-/** How a mix list downloads: one batch, every file straight into `outDir`. */
+/** How a mix list downloads: one batch, every file straight into `outDir` (or its link's `outDirs` folder). */
 export type MixRequest = {
   readonly profile: FormatProfile
   readonly outDir: string
@@ -810,6 +810,12 @@ export type MixRequest = {
    * Same batch, same folder (each such link is a `BatchTarget`).
    */
   readonly formats?: Readonly<Record<string, FormatProfile>> | undefined
+  /**
+   * A folder of its own for some links, by their url, absolute: on Android a song goes to
+   * Music and a video to Movies, the only media each of those shared folders takes. Same
+   * batch (each such link is a `BatchTarget`); the rest go to `outDir`.
+   */
+  readonly outDirs?: Readonly<Record<string, string>> | undefined
 }
 
 // ─── Options ────────────────────────────────────────────────────────────────

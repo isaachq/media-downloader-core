@@ -450,6 +450,39 @@ describe('BatchScheduler.scheduleMix: one batch', () => {
     ])
   })
 
+  it('a link can have a folder of its own: the song in Music, the videos in Movies, one batch', async () => {
+    const {engine, scheduler, out} = setup('mix-folders')
+    const video = {kind: 'video', container: 'mp4'} as const
+    const movies = path.join(out, 'Movies')
+    const music = path.join(out, 'Music')
+    const mix = await engine.analyzeMix('https://fake.test/g1\nhttps://fake.test/g2\nhttps://fake.test/g3', {
+      profile: video,
+    })
+    const batch = scheduler.scheduleMix(mix, {
+      profile: video,
+      outDir: movies,
+      formats: {'https://fake.test/g2': audio},
+      // g3's folder is the batch's own: no target for it
+      outDirs: {'https://fake.test/g2': music, 'https://fake.test/g3': movies},
+    })
+    await scheduler.whenIdle()
+    const done = scheduler.batch(batch.id)!
+    assert.equal(done.status, 'completed', JSON.stringify(done.error))
+    assert.equal(done.jobs.succeeded, 3)
+    assert.deepEqual(
+      (await fs.readdir(movies)).map(name => path.extname(name)),
+      ['.mp4', '.mp4'],
+    )
+    assert.deepEqual(
+      (await fs.readdir(music)).map(name => path.extname(name)),
+      ['.m4a'],
+    )
+    assert.throws(
+      () => scheduler.scheduleMix(mix, {profile: video, outDir: movies, outDirs: {'https://fake.test/g1': 'Music'}}),
+      {code: 'invalid-request'},
+    )
+  })
+
   it('refuses a mix list with nothing to download', async () => {
     const {engine, scheduler, out} = setup('nothing')
     const mix = await engine.analyzeMix('https://fake.test/unavailable-n1\nnothing here')

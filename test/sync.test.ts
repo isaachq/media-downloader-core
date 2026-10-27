@@ -169,11 +169,19 @@ describe('sync: a TikTok account into a folder (local fake)', () => {
     )
     assert.equal(first.caughtUp, false)
 
+    // a view that says a run ended says the account is idle too: whenDone's caller may sync again at once
+    // (on Windows CI the next run once came between the two and was refused as "already syncing")
+    const endedBusy: string[] = []
+    sync.on('subscription', view => {
+      const [latest] = view.runs
+      if (latest && latest.status !== 'running' && view.state === 'downloading') endedBusy.push(latest.id)
+    })
     const run = await sync.run(sub.id)
     assert.equal(run.new, 15)
     assert.equal(run.deep, true)
     assert.ok(run.batchId)
     const done = await sync.whenDone(sub.id, run.id)
+    assert.deepEqual(endedBusy, [], 'a run announced as ended while the account still read as downloading')
     assert.equal(done?.status, 'done')
     assert.equal(done?.downloaded, 15)
     const files = await fs.readdir(folder)

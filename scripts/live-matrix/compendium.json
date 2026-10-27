@@ -319,6 +319,63 @@
         "https://www.tiktok.com/@nasa",
         "https://www.tiktok.com/@natgeo"
       ]
+    },
+    {
+      "id": "SC-01",
+      "category": "Spotlight",
+      "expect": "video",
+      "urls": [
+        "https://www.snapchat.com/spotlight/W7_EDlXWTBiXAEEniNoMPwAAYeG9xcGd0ZWd3AZ14BVv0AZ14BQkrAAAAAQ",
+        "https://www.snapchat.com/@nasa/spotlight/W7_EDlXWTBiXAEEniNoMPwAAYdHBmbG9hdHR0AZ1ytS-RAZ1ytSiwAAAAAQ",
+        "https://www.snapchat.com/@djkhaled305/spotlight/W7_EDlXWTBiXAEEniNoMPwAAYbHJvd3p4ZWJxAaF5D6o6AaF5D5ecAAAAAA",
+        "https://www.snapchat.com/add/djkhaled305/spotlight/W7_EDlXWTBiXAEEniNoMPwAAYdWx3a2FyZmpuAaFbX8IrAaFbX29CAAAAAw"
+      ]
+    },
+    {
+      "id": "SC-02",
+      "category": "Public profile (live story, highlights, spotlights)",
+      "expect": "playlist",
+      "urls": [
+        "https://www.snapchat.com/@nasa",
+        "https://www.snapchat.com/add/djkhaled305",
+        "https://story.snapchat.com/s/nasa",
+        "https://www.snapchat.com/@nasa/spotlights"
+      ]
+    },
+    {
+      "id": "SC-03",
+      "category": "Curated highlight",
+      "expect": "playlist",
+      "urls": [
+        "https://www.snapchat.com/@nasa/highlight/ddf02468-ae16-4fc6-b1bc-bde7e1e22218",
+        "https://www.snapchat.com/@nasa/highlight/5ac6fa4d-187f-4c0f-86ef-bed137cc9180",
+        "https://www.snapchat.com/@nasa/highlight/1adebd07-5e35-4a1a-a681-451afab01512"
+      ]
+    },
+    {
+      "id": "SC-04",
+      "category": "Story snap (lasts 24 hours: replace when it expires)",
+      "expect": "video",
+      "urls": [
+        "https://www.snapchat.com/@djkhaled305/sWO_duZfSV-aKluMi_U4sgAAgbnpwempiYm9oAaF5D6o6AaF5D5ecAAAAAA"
+      ]
+    },
+    {
+      "id": "SC-05",
+      "category": "Picture snap (a highlight entry)",
+      "expect": "photo",
+      "urls": [
+        "https://www.snapchat.com/@nasa/highlight/264684ee-96ec-4281-a1a9-79562a350f4e/1",
+        "https://www.snapchat.com/@nasa/highlight/264684ee-96ec-4281-a1a9-79562a350f4e/2",
+        "https://www.snapchat.com/@nasa/highlight/264684ee-96ec-4281-a1a9-79562a350f4e/3"
+      ]
+    },
+    {
+      "id": "SC-06",
+      "category": "Short link (snapchat.com/t/, t.snapchat.com)",
+      "expect": "video",
+      "urls": [],
+      "note": "share links carry the sharer: they go in compendium.local.json"
     }
   ]
 }

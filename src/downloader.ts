@@ -51,6 +51,7 @@ import {DirectFileSource} from './sources/direct/source.js'
 import {FacebookSource} from './sources/facebook/source.js'
 import {InstagramSource} from './sources/instagram/source.js'
 import {COOLING_DOWN, withPatience} from './sources/pacer.js'
+import {SnapchatSource} from './sources/snapchat/source.js'
 import {type ListingProgress, type MediaSource, needsFallback} from './sources/source.js'
 import {DEFAULT_SLIDESHOW, slideshowOptions} from './sources/tiktok/slideshow.js'
 import {TikTokSource} from './sources/tiktok/source.js'
@@ -294,6 +295,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
         : [new FacebookSource({log, cookies: () => this.#siteCookies(['facebook.com']), ...options.facebook})]),
       ...(options.x === false ? [] : [new XSource({log, ...options.x})]),
       ...(options.vk === false ? [] : [new VkSource({log, ...options.vk})]),
+      ...(options.snapchat === false ? [] : [new SnapchatSource({log, ...options.snapchat})]),
       ...(options.sources ?? []),
       // a link straight to a media file, on any other site: last, after every site's own source
       ...(options.direct === false ? [] : [new DirectFileSource(options.direct)]),

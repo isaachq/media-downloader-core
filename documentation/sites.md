@@ -147,6 +147,46 @@ hand a link to yt-dlp, its own reason comes back instead (`unavailable`, its
 hint or `retry-later`), a source that would step aside is asked all the same,
 and anything else that needs yt-dlp fails with `binary-missing`.
 
+## Snapchat (built-in extractor)
+
+Spotlights, public profiles, curated highlights and story snaps are read by
+the library itself: one anonymous page read per link, no API, no session, no
+browser, no yt-dlp. The media is a progressive MP4 or a JPEG on Snapchat's
+CDN, streamed to disk with resume (Range) like every other native source:
+
+```ts
+scheduler.schedule({url: 'https://www.snapchat.com/spotlight/W7_EDlXW…', profile: {kind: 'video', container: 'mp4'}, outDir})
+scheduler.schedule({url: 'https://www.snapchat.com/@nasa', profile: {kind: 'video', container: 'mp4'}, outDir, slideshow: {mode: 'images', secondsPerImage: 3}})
+```
+
+| | How |
+| --- | --- |
+| Links | `/spotlight/<id>`, `/@<u>/spotlight/<id>`, `/add/<u>/spotlight/<id>` (one spotlight); `/@<u>`, `/add/<u>`, `story.snapchat.com/s/<u>` and `/@<u>` (a profile; `/@<u>/stories`, `/highlights`, `/spotlights` narrow it to one kind); `/@<u>/<snapId>` (one snap of the live story); `/@<u>/highlight/<id>` (a curated highlight); `snapchat.com/t/<code>` and `t.snapchat.com/<code>` (short links, followed with the shared redirect follower). `/@<u>/highlight/<id>/<n>` is this library's link for a highlight's n-th snap: the site has no page per snap, and the highlight's page is what is read. |
+| How it is read | The page's own data: `<script id="__NEXT_DATA__">` located with `indexOf` (never a regular expression over a page of up to 1 MB), parsed once, kept as the items it names (not the HTML). A spotlight is picked by its id out of the page's feed (the other ~24 entries are recommendations of other creators, never listed). A page whose data moved, or one without `__NEXT_DATA__`, is `source:format-changed`: the engine hands the url to yt-dlp, which reads spotlights. |
+| Media | **Downloaded exactly as the page serves it**: a spotlight's `contentUrl` (540 × 960, Snapchat's watermark and the creator's name burned in), a snap's `snapUrls.mediaUrl`. A watermark-free render of every spotlight exists (the `.1034` render, 480 × 852, 10 of 10 checked): it was deliberately not used (the owner's call). The CDN can answer 200 with bytes that are no media (a render a key lacks): each file's first bytes are checked (an MP4 `ftyp` box, a JPEG / PNG / WebP / GIF signature) and anything else fails as `source:format-changed`, with no file left behind. |
+| Pictures | A picture snap is a one-image photo post, the Instagram / TikTok convention: an MP4 of it (`slideshow.mode` `'video'`, N seconds) or a folder with the picture (`'images'`, `'images-audio'`); an audio format has nothing to take (`format-unavailable`). `MediaSummary.slideshow` is `{images: 1, audio: false}`. |
+| Listing | A profile is its live story, then every curated highlight's snaps, then its spotlights, **only what the page embeds** (~20 spotlights, ~10 highlights of up to 12 snaps): Snapchat pages further on its servers only (the cursors in the page are never sent by its web client, the data routes answer 404). A non-empty cursor makes the listing `complete: false`. Empty placeholder slots are skipped. `maxEntries` (default 500, `snapchat.maxListItems`) and `known` (an incremental sync leaves known ids out, `caughtUp`) cost O(1) per item. |
+| Cache | Pages by path, an LRU of 200 kept 10 minutes; items by id, 5,000. Reads of one page at the same time share one request (`Coalescer`): an analysis, its check and its download, or a whole profile's listing and every entry's download, make one page request. `fresh` (a retry) reads again. |
+| Errors | 404 → `unavailable` / `removed` (an unknown account, a removed spotlight or highlight); a story snap that is gone (the page's `showSnapExpiredToast`, or the snap no longer in the story) → `removed` ("stories last 24 hours"); a private account (`userProfile.$case === 'userInfo'`) → `unavailable` / `private`: Snapchat shows it to its friends in the app only, and no sign-in here changes that. 403 / 429 / 5xx back every request off together (Pacer) and are retried. |
+| Session | None: everything above is public. Private profiles, friends' stories, Snap Map and chats need Snapchat's app API and its login; not doable over HTTP. |
+| Pace | One Pacer for www.snapchat.com: 2 pages at a time, ~1–1.5 s apart (`snapchat.pacing`). Media downloads aren't paced. |
+| Endpoints | The origin, the `__NEXT_DATA__` marker and the routes live in `src/sources/snapchat/endpoints.ts`, overridable without a release (`snapchat.endpoints`). |
+
+**What was verified, and what wasn't.** Verified live on 2026-10-26
+(anonymous, from Mexico, desktop Chrome user agent; `npm run live:matrix --
+--platform snapchat`, with and without `--native`, 15 of 15 links): spotlights,
+profiles (`/@u`, `/add/u`, `story.snapchat.com/s/u`, `/@u/spotlights`),
+curated highlights, a story snap, picture snaps of a highlight, unknown
+accounts (404); downloaded natively, each file checked: spotlights H.264
+540 × 960 + AAC, a story snap 480 × 846, highlight JPEGs. No bot check and no
+rate limit at the matrix's pace. **Not verified**: short
+links (`snapchat.com/t/<code>`, `t.snapchat.com/<code>`; no live code was
+found, the follow is tested against the fake only); a private profile page
+(none found: the `userInfo` case is what Snapchat's own web code treats as
+private, and the fake serves a guess of its shape); a picture inside a live
+story (seen only in curated highlights); the phone's network (Android may get
+another `lang` / region). `snapchat: false` sends Snapchat urls to yt-dlp.
+
 ## TikTok sync (Sync Up)
 
 A **subscription** keeps a TikTok account in step with a folder. A sync

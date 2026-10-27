@@ -5,6 +5,7 @@ import type {DirectOptions} from './sources/direct/source.js'
 import type {FacebookOptions} from './sources/facebook/source.js'
 import type {InstagramOptions} from './sources/instagram/source.js'
 import type {MixPlanSkip} from './sources/mix-plan.js'
+import type {SnapchatOptions} from './sources/snapchat/source.js'
 import type {MediaSource} from './sources/source.js'
 import type {TikTokOptions} from './sources/tiktok/source.js'
 import type {VkOptions} from './sources/vk/source.js'
@@ -870,6 +871,14 @@ export type DownloaderOptions = {
    * urls to yt-dlp.
    */
   readonly vk?: false | VkOptions | undefined
+  /**
+   * Snapchat through the built-in extractor (the public web pages' own data,
+   * paced; anonymous, no yt-dlp): spotlights, a public profile's live story,
+   * highlights and spotlights (what its page embeds), one highlight, one story
+   * snap, short links. Private accounts are shown in the app only. `false`
+   * hands Snapchat urls to yt-dlp (which reads spotlights).
+   */
+  readonly snapchat?: false | SnapchatOptions | undefined
   /**
    * Links straight to a media file (`…/clip.mp4`, `…/song.mp3`) on any other
    * site, read natively (one ranged request, then the file): extractor "Web".

@@ -31,6 +31,21 @@ describe('detectLink: the site of a pasted or shared link', () => {
     assert.equal(site('https://vkontakte.ru/video1_2'), 'vk')
   })
 
+  it('names Snapchat on its main host and on its short-link and story subdomains', () => {
+    assert.equal(
+      site('https://www.snapchat.com/spotlight/W7_EDlXWTBiXAEEniNoMPwAAYeG9xcGd0ZWd3AZ14BVv0AZ14BQkrAAAAAQ'),
+      'snapchat',
+    )
+    assert.equal(site('https://snapchat.com/@nasa'), 'snapchat')
+    assert.equal(site('https://www.snapchat.com/add/djkhaled305?share_id=1'), 'snapchat')
+    assert.equal(site('https://story.snapchat.com/s/djkhaled305'), 'snapchat')
+    assert.equal(site('https://t.snapchat.com/eFgH5678'), 'snapchat')
+    assert.equal(site('Look: https://www.snapchat.com/t/aBcD1234.'), 'snapchat')
+    assert.equal(detectLink('https://www.snapchat.com/@nasa')?.host, 'snapchat.com')
+    assert.equal(site('https://snapchat.com.evil.example/@nasa'), 'web')
+    assert.equal(site('https://notsnapchat.com/@nasa'), 'web')
+  })
+
   it('any other site is "web", and a link straight to a file says so', () => {
     const page = detectLink('https://www.trannyvideosx.com/video/81455/ts-havenna-sofia-solo-1')
     assert.deepEqual(page, {

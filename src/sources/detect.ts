@@ -7,8 +7,17 @@
  */
 
 /** The sites the engine reads natively or through yt-dlp; "web" is any other site. */
-export type LinkSite = 'youtube' | 'tiktok' | 'instagram' | 'facebook' | 'vk' | 'x' | 'web'
-export const LINK_SITES: readonly LinkSite[] = ['youtube', 'tiktok', 'instagram', 'facebook', 'vk', 'x', 'web']
+export type LinkSite = 'youtube' | 'tiktok' | 'instagram' | 'facebook' | 'vk' | 'x' | 'snapchat' | 'web'
+export const LINK_SITES: readonly LinkSite[] = [
+  'youtube',
+  'tiktok',
+  'instagram',
+  'facebook',
+  'vk',
+  'x',
+  'snapchat',
+  'web',
+]
 
 export type DetectedLink = {
   readonly site: LinkSite
@@ -29,6 +38,8 @@ const DOMAINS: ReadonlyArray<readonly [Exclude<LinkSite, 'web'>, readonly string
   ['vk', ['vk.com', 'vk.ru', 'vkvideo.ru', 'vk.cc', 'vkontakte.ru']],
   // the "fixer" hosts people share X posts through read as X too (XSource takes them)
   ['x', ['x.com', 'twitter.com', 't.co', 'fxtwitter.com', 'vxtwitter.com', 'fixupx.com', 'fixvx.com']],
+  // t.snapchat.com (short links) and story.snapchat.com are subdomains
+  ['snapchat', ['snapchat.com']],
 ]
 
 /** The first http(s) link in a text; its end is the first space or quote. */

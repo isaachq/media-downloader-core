@@ -1,4 +1,4 @@
-// The live URL matrix: real public links on Facebook, Instagram and TikTok, read
+// The live URL matrix: real public links on Facebook, Instagram, TikTok and Snapchat, read
 // (and optionally downloaded) by the whole engine against the real sites. Local
 // only — it is never part of `npm test` or CI: it talks to the live sites, takes
 // minutes to hours, and its links rot.
@@ -26,6 +26,7 @@ import {diagnoseFailure, type FailureDiagnostic, platformOf} from '../../src/cor
 import {toJobError} from '../../src/core/errors.js'
 import {ffprobe, summarizeProbe} from '../../src/core/validate.js'
 import {MediaDownloader} from '../../src/downloader.js'
+import {detectLink} from '../../src/sources/detect.js'
 import type {SessionProvider} from '../../src/sources/session.js'
 import type {AnalysisResult, JobSnapshot, SlideshowOptions} from '../../src/types.js'
 
@@ -93,7 +94,10 @@ try {
 const extra = new Map(local.scenarios.map(s => [s.id, s.urls]))
 const merged = compendium.scenarios.map(s => ({...s, urls: [...s.urls, ...(extra.get(s.id) ?? [])]}))
 const wanted = merged.filter(
-  s => (!only || only.has(s.id)) && (!args.platform || s.urls.some(u => platformOf(u) === args.platform)),
+  s =>
+    (!only || only.has(s.id)) &&
+    // the diagnostic's platforms, else the site detection names (snapchat…)
+    (!args.platform || s.urls.some(u => platformOf(u) === args.platform || detectLink(u)?.site === args.platform)),
 )
 /** Scenarios without a single link yet: reported, never counted as passed. */
 const uncovered = wanted.filter(s => s.urls.length === 0)

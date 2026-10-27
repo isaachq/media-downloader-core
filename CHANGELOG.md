@@ -14,7 +14,7 @@ away when the beta closes.
 - [ ] 3 `source(twitch)` · not done
 - [ ] 4 `source(bluesky)` · not done
 - [ ] 5 `source(soundcloud)` · not done
-- [ ] 6 `source(snapchat)` · not done
+- [x] 6 `source(snapchat)` · done · verified locally: `typecheck` and `lint` clean, `test:fast` 502 pass / 0 fail (18 Snapchat tests against the fake, Snapchat detection), `test:heavy` 75 pass, `perf --quick` within 10% of the baseline; live `live:matrix --platform snapchat` 15 of 15 links pass, `--native` 15 of 15, `--native --download` 8 of 8 single items (spotlights H.264 540x960 + AAC, a story snap 480x846, highlight JPEGs). Not verified: short links (no live code), a private profile page, a picture in a live story, the razr 50
 - [ ] 7 `release: library x.y.z` · not done
 - [ ] 8 `app: site tags and icons` · not done (Isaac reviews the icons before code)
 - [ ] 9 `app: supported sites` · not done
@@ -22,6 +22,24 @@ away when the beta closes.
 - [ ] 11 `app: beta 11 e2e` · not done
 - [ ] 12 `release: app 0.2.0-beta.22` · not done
 - [ ] Android `feature/beta-11` (phone repo) · not done
+
+**Library**
+
+- **Snapchat, natively.** Spotlights (`/spotlight/<id>`, `/@u/spotlight/<id>`), public profiles
+  (`/@u`, `/add/u`, `story.snapchat.com`): the live story, every curated highlight's snaps and
+  the spotlights, a curated highlight (`/@u/highlight/<id>`), one story snap (`/@u/<snapId>`), and
+  short links (`snapchat.com/t/`, `t.snapchat.com/`; not verified live). One anonymous page read per
+  link (the page's own `__NEXT_DATA__`), no session, no browser, no yt-dlp; the media is fetched
+  exactly as the page serves it (spotlights keep Snapchat's watermark: the clean render exists and
+  is deliberately not used). A picture snap is a one-image photo post (`slideshow`). A profile lists
+  what its page embeds (`complete: false` when the page says there is more); a private account is
+  `private`, an expired snap `removed`, a page whose data moved falls back to yt-dlp. Bytes from
+  the CDN that are not media fail cleanly. New `LinkSite` `'snapchat'`, option `snapchat`
+  (`false` hands it to yt-dlp; `endpoints` overrides the origin, the data marker and the routes).
+  Cost: one page request per link, O(size of the page) to find and parse its data once; O(1) per
+  item to list (`maxEntries`, `known`), one media GET per item, constant memory (streamed);
+  pages kept in a 200-entry LRU and items in a 5,000-entry one, reads of one page shared, so a
+  whole profile (its listing, checks and downloads) costs one page request.
 
 ## App 0.2.0-beta.21 · library 1.20.2
 

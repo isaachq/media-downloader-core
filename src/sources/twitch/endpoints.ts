@@ -23,6 +23,27 @@
  *    false at offset 1000, whatever the period;
  *  - up to 15 root fields (aliases) per query ("root field aliases limit
  *    allowed (15)" past that).
+ *
+ * VODs (verified live 2026-10-27, anonymous, from Mexico):
+ *  - `video(id)` and `videoPlaybackAccessToken(id)` in one raw query: the VOD
+ *    (`status` RECORDING while its broadcast is on the air, RECORDED once it
+ *    ended; `broadcastType` ARCHIVE, HIGHLIGHT, UPLOAD) and a token for usher
+ *    (`expires` ~20 h ahead, `authorization.forbidden`, `maximum_resolution`
+ *    FULL_HD anonymously); `video: null` and no token for a VOD that is gone;
+ *  - `usher.ttvnw.net/vod/<id>.m3u8?…&sig&token` is the master playlist of
+ *    archives, highlights, uploads and past premieres alike: H.264 + AAC
+ *    variants (`chunked` is the source), an audio_only one, unsigned absolute
+ *    variant urls on cloudfront; fMP4 (newer) or MPEG-TS segments of 10 s in
+ *    an EVENT playlist that ends (ENDLIST) once recorded and stays open while
+ *    recording; muted parts listed as `<n>-muted.ts` (200; `-unmuted` and the
+ *    bare name answer 403). A refused token is a 403 JSON
+ *    `[{"error", "error_code": "nauth_sig_invalid", "type"}]`.
+ *    `supported_codecs` is sent per profile, but no VOD of 32 channels
+ *    answered anything but H.264 either way (nor for `av1` alone);
+ *  - a channel's `videos(first: 100, after, type, sort)` pages by a cursor
+ *    `"<videoId>|<n>|<publishedAt>|<n>"`, the same on every edge of a page and
+ *    null on the last; `totalCount` counts them all (2,667 on one channel,
+ *    read past page 3 on the default client id).
  */
 
 /**
@@ -50,6 +71,10 @@ export type TwitchEndpoints = {
    * renames a field, without a release.
    */
   readonly clipFields: string
+  /** The selection set read of every VOD (a single read, a batch of checks, a listing page): a fragment on `Video`. */
+  readonly videoFields: string
+  /** Where VOD master playlists are asked for (`<usher>/vod/<id>.m3u8`). */
+  readonly usher: string
 }
 
 const QUALITY_FIELDS = 'quality frameRate width height bitrate codecs sourceURL'
@@ -65,6 +90,10 @@ export const DEFAULT_ENDPOINTS: TwitchEndpoints = {
     `videoQualities { ${QUALITY_FIELDS} } ` +
     `assets { aspectRatio videoQualities { ${QUALITY_FIELDS} } } ` +
     `playbackAccessToken(params: {${ACCESS_PARAMS}}) { signature value }`,
+  videoFields:
+    'id title createdAt publishedAt lengthSeconds viewCount broadcastType status ' +
+    'owner { login displayName } game { name } previewThumbnailURL(width: 1280, height: 720)',
+  usher: 'https://usher.ttvnw.net',
 }
 
 /** The web site, for the links handed back (entries, playlists) and the Referer. */
@@ -123,10 +152,79 @@ export function channelStreamQuery(): string {
   return 'query ChannelStream($login: String!) { user(login: $login) { id login displayName stream { id type title createdAt } } }'
 }
 
+/** The token that signs a VOD's usher request, asked as the web player asks it. */
+const VOD_TOKEN = `videoPlaybackAccessToken(id: $id, params: {${ACCESS_PARAMS}}) { value signature }`
+
 /**
- * A VOD's state: `status` "RECORDING" while its broadcast is still on the air
- * (verified live 2026-10-26), "RECORDED" once it ended. O(1).
+ * One VOD and its playback token in one request: `status` "RECORDING" while
+ * its broadcast is still on the air, "RECORDED" once it ended. O(1).
  */
-export function vodStatusQuery(): string {
-  return 'query VodStatus($id: ID!) { video(id: $id) { id status broadcastType owner { login } } }'
+export function vodQuery(fields: string): string {
+  return `query Vod($id: ID!) { video(id: $id) { ${fields} } ${VOD_TOKEN} }`
+}
+
+/** A VOD's token alone (a VOD a listing read, a token that ran out). O(1). */
+export function vodTokenQuery(): string {
+  return `query VodToken($id: ID!) { ${VOD_TOKEN} }`
+}
+
+/** n VODs in one request, as aliases v0…v(n-1) of `video`, n ≤ ALIAS_LIMIT (checks: no token). O(n). */
+export function vodsQuery(fields: string, n: number): string {
+  const vars: string[] = []
+  const roots: string[] = []
+  for (let i = 0; i < n; i++) {
+    vars.push(`$v${i}: ID!`)
+    roots.push(`v${i}: video(id: $v${i}) { ...V }`)
+  }
+  return `query Vods(${vars.join(', ')}) { ${roots.join(' ')} } fragment V on Video { ${fields} }`
+}
+
+/** A video listing's `?filter=` → the API's `type` (all: none). */
+export const VIDEO_TYPES = {
+  all: undefined,
+  archives: 'ARCHIVE',
+  highlights: 'HIGHLIGHT',
+  uploads: 'UPLOAD',
+  past_premieres: 'PAST_PREMIERE',
+} as const
+/** A video listing's `?sort=` → the API's `sort`. */
+export const VIDEO_SORTS = {time: 'TIME', views: 'VIEWS'} as const
+
+/** One page of a channel's videos (100), newest first or by views. O(1). */
+export function videosPageQuery(fields: string): string {
+  return (
+    'query ChannelVideos($login: String!, $after: Cursor, $type: BroadcastType, $sort: VideoSort) { ' +
+    'user(login: $login) { id login displayName ' +
+    `videos(first: ${PAGE_SIZE}, after: $after, type: $type, sort: $sort) { totalCount ` +
+    `pageInfo { hasNextPage } edges { cursor node { ${fields} } } } } }`
+  )
+}
+
+/** `supported_codecs` of an mp4 profile (no transcode), and of every other one. */
+export const CODECS_COMPAT = 'h264'
+export const CODECS_BEST = 'av1,h265,h264'
+
+/**
+ * A VOD's master playlist url at usher, signed with its token, the
+ * parameters the web player sends. `p` is the player's cache buster. O(L).
+ */
+export function usherUrl(
+  origin: string,
+  id: string,
+  token: {readonly signature: string; readonly value: string},
+  codecs: string,
+  p: number,
+): string {
+  const query = new URLSearchParams({
+    allow_source: 'true',
+    allow_audio_only: 'true',
+    platform: 'web',
+    player: 'twitchweb',
+    supported_codecs: codecs,
+    playlist_include_framerate: 'true',
+    p: String(p),
+    sig: token.signature,
+    token: token.value,
+  })
+  return `${origin}/vod/${id}.m3u8?${query}`
 }

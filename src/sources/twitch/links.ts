@@ -9,10 +9,9 @@ import {CLIP_PERIODS, type ClipPeriod, DEFAULT_CLIP_PERIOD, TWITCH_ORIGIN} from 
  *   player.twitch.tv/?video=v<id>, /<u>/schedule?vodID=<id> (?t=1h2m3s)  → vod
  *   twitch.tv/<u>/videos (?filter=all|archives|highlights|uploads|past_premieres&sort=time|views) → videos
  *   twitch.tv/<u>                                                        → channel (its live stream)
- * Clips and clip listings are read natively; VODs, video listings and
- * channels are known here so that only their download is left to add (they
- * are HLS: TODO(core-hls)), and go to yt-dlp meanwhile. No request:
- * everything is in the link. O(L) for its length.
+ * Clips, VODs and both listings are read natively (VODs are HLS, through
+ * core/hls); a channel is checked for a live stream, which is never
+ * downloaded. No request: everything is in the link. O(L) for its length.
  */
 export type TwitchLink =
   | {readonly kind: 'clip'; readonly slug: string}
@@ -184,13 +183,21 @@ export function isTwitchListing(url: string): boolean {
   return kind === 'clips' || kind === 'videos'
 }
 
+/** A VOD's page on the web site. */
+export function vodUrl(id: string): string {
+  return `${TWITCH_ORIGIN}/videos/${id}`
+}
+
+/** A channel's videos page, with its filter and sort. */
+export function videosUrl(channel: string, filter: VideoFilter, sort: 'time' | 'views'): string {
+  return `${TWITCH_ORIGIN}/${channel}/videos?filter=${filter}&sort=${sort}`
+}
+
 /**
- * What the source takes: clips and clip listings (read natively), VODs and
- * channels (checked natively: on the air they are `live-now`, never handed to
- * yt-dlp, which would record the stream; a finished VOD goes to yt-dlp, HLS).
- * Video listings go to yt-dlp as they are; each of their VODs comes back here
- * when it is downloaded. TODO(core-hls): read VODs and video listings here.
+ * What the source takes: every link this module understands. Clips, VODs
+ * and both listings are read natively; a channel (and a VOD) on the air is
+ * `live-now`, never handed to yt-dlp, which would record the stream.
  */
 export function isNativeTwitchLink(link: TwitchLink | undefined): boolean {
-  return link !== undefined && link.kind !== 'videos'
+  return link !== undefined
 }

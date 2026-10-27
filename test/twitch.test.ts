@@ -3,7 +3,7 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import {after, before, describe, it} from 'node:test'
-import {toExecutable} from '../src/binaries/executable.js'
+import {type Executable, toExecutable} from '../src/binaries/executable.js'
 import type {DownloadError} from '../src/core/errors.js'
 import {isListingLink} from '../src/core/mix.js'
 import {MediaDownloader} from '../src/downloader.js'
@@ -11,7 +11,8 @@ import {SOURCE_BLOCKED, SOURCE_FORMAT_CHANGED, type SourceDownload} from '../src
 import {isTwitchListing, parseTwitchLink} from '../src/sources/twitch/links.js'
 import {type TwitchOptions, TwitchSource} from '../src/sources/twitch/source.js'
 import type {AnalysisResult, PlaylistAnalysis, VideoAnalysis} from '../src/types.js'
-import {CHANNELS, SLUGS, startFakeTwitch, VODS, WEB_ID} from './helpers/fake-twitch.js'
+import {type FakeHls, startFakeHls, writeCopyFfmpeg} from './helpers/fake-hls.js'
+import {CHANNELS, SLUGS, startFakeTwitch, VOD_TRACKS, VODS, WEB_ID} from './helpers/fake-twitch.js'
 import {type FakeBinaries, writeFakes} from './helpers/fakes.js'
 
 const mp4 = {kind: 'video', container: 'mp4'} as const
@@ -72,15 +73,14 @@ describe('Twitch links', () => {
     }
   })
 
-  it('clips and clip listings are read here; VODs and channels checked here; video listings go to yt-dlp', () => {
+  it('clips, VODs and both listings are read here; channels checked here', () => {
     const source = new TwitchSource()
     assert.equal(source.handles(clip(SLUGS.old)), true)
     assert.equal(source.handles(clips('shroud')), true)
-    // TODO(core-hls): these become native once the core reads HLS
-    // VODs and channels are checked here (a live one is never handed to yt-dlp); video listings are not
     assert.equal(source.handles('https://www.twitch.tv/videos/2602093345'), true)
     assert.equal(source.handles('https://www.twitch.tv/shroud'), true)
-    assert.equal(source.handles('https://www.twitch.tv/shroud/videos'), false)
+    assert.equal(source.handles('https://www.twitch.tv/shroud/videos'), true)
+    assert.equal(source.defaultListSize('https://www.twitch.tv/shroud/videos?filter=archives'), 500)
     assert.equal(isTwitchListing(clips('shroud')), true)
     assert.equal(isTwitchListing('https://www.twitch.tv/shroud/videos?filter=archives'), true)
     assert.equal(isTwitchListing(clip(SLUGS.old)), false)
@@ -92,10 +92,12 @@ describe('Twitch links', () => {
 
 let root: string
 let bins: FakeBinaries
+let copy: Executable
 const cleanups: Array<() => Promise<void>> = []
 before(async () => {
   root = await fs.mkdtemp(path.join(os.tmpdir(), 'mdc-twitch-'))
   bins = await writeFakes(path.join(root, 'bin'))
+  copy = await writeCopyFfmpeg(path.join(root, 'copy-ffmpeg'))
 })
 after(async () => {
   for (const cleanup of cleanups) await cleanup()
@@ -103,8 +105,9 @@ after(async () => {
 })
 
 async function setup(name: string, config: Parameters<typeof startFakeTwitch>[0] = {}, extra: TwitchOptions = {}) {
-  const site = await startFakeTwitch(config)
-  const options: TwitchOptions = {endpoints: {gql: site.gql}, pacing: fast, ...extra}
+  const hls: FakeHls = await startFakeHls({tracks: VOD_TRACKS})
+  const site = await startFakeTwitch({...config, hls})
+  const options: TwitchOptions = {endpoints: {gql: site.gql, usher: site.usher}, pacing: fast, ...extra}
   const engine = new MediaDownloader({
     dataDir: path.join(root, name),
     binaries: bins,
@@ -125,10 +128,14 @@ async function setup(name: string, config: Parameters<typeof startFakeTwitch>[0]
   cleanups.push(async () => {
     await engine.dispose()
     await site.close()
+    await hls.close()
   })
   const work = path.join(root, name, 'work')
   await fs.mkdir(work, {recursive: true})
-  return {site, engine, options, source: new TwitchSource(options), work}
+  let jobs = 0
+  /** A fresh work folder per VOD download (core/hls resumes from what a folder holds). */
+  const workDir = () => path.join(work, `job-${++jobs}`)
+  return {site, hls, engine, options, source: new TwitchSource(options), work, workDir}
 }
 
 const asVideo = (analysis: AnalysisResult): VideoAnalysis => {
@@ -235,21 +242,8 @@ describe('Twitch, end to end (local fake)', () => {
     assert.equal(fallback.kind === 'video' ? fallback.media.extractor : fallback.extractor, 'Fake')
   })
 
-  it('a finished VOD goes to yt-dlp after one status request (HLS: TODO(core-hls)); a deleted one is removed', {
-    timeout: 5_000,
-  }, async () => {
-    const {site, engine, source} = await setup('vod')
-    const vod = await engine.analyze(`https://www.twitch.tv/videos/${VODS.recorded}`)
-    assert.equal(vod.kind === 'video' ? vod.media.extractor : vod.extractor, 'Fake')
-    assert.equal(site.hits.vod, 1)
-    await assert.rejects(source.analyze(`https://www.twitch.tv/videos/${VODS.gone}`), (e: DownloadError) => {
-      assert.equal(e.hint, 'removed')
-      return true
-    })
-  })
-
   it('a VOD still on the air is live-now, natively: never handed to yt-dlp', {timeout: 5_000}, async () => {
-    const {source, engine, work} = await setup('vod-live')
+    const {site, source, engine, work} = await setup('vod-live')
     const url = `https://www.twitch.tv/${CHANNELS.live}/v/${VODS.recording}`
     const isLive = (e: DownloadError) => {
       assert.equal(e.code, 'unavailable')
@@ -263,6 +257,7 @@ describe('Twitch, end to end (local fake)', () => {
     await assert.rejects(source.download(task(url, work)), isLive)
     const check = (await source.preflight([{url}], {})).get(url)
     assert.equal(check?.ok === false && check.error.hint, 'live-now')
+    assert.equal(site.hits.usher, 0, 'usher is never asked for a broadcast on the air')
   })
 
   it('a channel streaming now is live-now, natively: never handed to yt-dlp (it would record it)', {
@@ -448,5 +443,253 @@ describe('Twitch, end to end (local fake)', () => {
         [4, 'listing'],
       ],
     )
+  })
+})
+
+describe('Twitch VODs and video listings, end to end (local fake + fake HLS origin)', () => {
+  const vod = (id: string) => `https://www.twitch.tv/videos/${id}`
+  const videos = (channel: string, query = '') => `https://www.twitch.tv/${channel}/videos${query}`
+  const bytesOf = async (file: string) => fs.readFile(file)
+
+  it('a finished VOD: one query and one usher request, its variants as choices, then segments only', {
+    timeout: 10_000,
+  }, async () => {
+    const {site, hls, source, workDir} = await setup('vod-finished')
+    const analysis = asVideo(await source.analyze(vod(VODS.recorded)))
+    assert.equal(analysis.media.id, `v${VODS.recorded}`, 'recorded under yt-dlp’s id')
+    assert.equal(analysis.media.duration, 12)
+    assert.equal(analysis.media.extractor, 'Twitch')
+    assert.equal(analysis.media.isLive, false)
+    const labels = analysis.choices.map(choice => choice.label)
+    assert.ok(labels.includes('1080p · MP4'), labels.join(', '))
+    assert.deepEqual(
+      [site.hits.vod, site.hits.token, site.hits.usher],
+      [1, 0, 1],
+      'the VOD and its token in one query, then usher',
+    )
+    assert.equal(site.ushers[0]?.codecs, 'av1,h265,h264', 'an analysis asks usher for every codec')
+    const file = await source.download(task(vod(VODS.recorded), workDir(), {ffmpeg: copy}))
+    assert.deepEqual(await bytesOf(file.filepath), hls.expected('rec'), 'the source variant, byte for byte, in order')
+    assert.equal(file.info.id, `v${VODS.recorded}`)
+    assert.equal(file.info.vcodec, 'avc1')
+    assert.equal(file.info.duration, 12)
+    assert.deepEqual(
+      [site.hits.vod, site.hits.token, site.hits.usher],
+      [1, 0, 1],
+      'the analysis read feeds the download',
+    )
+    assert.equal(hls.count('/t/high/index.m3u8'), 0, 'a variant without sound is never chosen')
+    assert.equal(hls.count('/t/rec/index.m3u8'), 1)
+  })
+
+  it('usher is asked for H.264 for an mp4 profile and for every codec otherwise; audio is the audio_only variant', {
+    timeout: 10_000,
+  }, async () => {
+    const {site, hls, source, workDir} = await setup('vod-codecs')
+    await source.download(task(vod(VODS.recorded), workDir(), {ffmpeg: copy}))
+    assert.equal(site.ushers.at(-1)?.codecs, 'h264')
+    const mkv = await source.download(
+      task(vod(VODS.recorded), workDir(), {ffmpeg: copy, profile: {kind: 'video', container: 'mkv'}}),
+    )
+    assert.equal(site.ushers.at(-1)?.codecs, 'av1,h265,h264')
+    assert.deepEqual(await bytesOf(mkv.filepath), hls.expected('rec'))
+    const audio = await source.download(
+      task(vod(VODS.recorded), workDir(), {ffmpeg: copy, profile: {kind: 'audio', container: 'm4a'}}),
+    )
+    assert.deepEqual(await bytesOf(audio.filepath), hls.expected('recaudio'))
+    assert.equal(audio.info.vcodec, 'none')
+    assert.equal(site.hits.vod, 1, 'one read of the VOD for every download')
+    const capped = await source.download(
+      task(vod(VODS.recorded), workDir(), {ffmpeg: copy, profile: {kind: 'video', container: 'mp4', maxHeight: 720}}),
+    )
+    assert.deepEqual(await bytesOf(capped.filepath), hls.expected('rec720'))
+  })
+
+  it('highlights and uploads are VODs too', {timeout: 10_000}, async () => {
+    const {source} = await setup('vod-kinds')
+    for (const id of [VODS.highlight, VODS.upload]) {
+      const analysis = asVideo(await source.analyze(`https://www.twitch.tv/shroud/v/${id}`))
+      assert.equal(analysis.media.id, `v${id}`)
+      assert.ok(analysis.choices.length > 0)
+    }
+  })
+
+  it('a muted VOD: its -unmuted parts are asked as -muted (no 403 on the way)', {timeout: 10_000}, async () => {
+    const {hls, source, workDir} = await setup('vod-muted')
+    const file = await source.download(task(vod(VODS.muted), workDir(), {ffmpeg: copy}))
+    assert.deepEqual(await bytesOf(file.filepath), hls.expected('muted'))
+    assert.equal(hls.count('/t/muted/s2-unmuted.ts'), 0)
+    assert.equal(hls.count('/t/muted/s3-unmuted.ts'), 0)
+    assert.equal(hls.count('/t/muted/s2-muted.ts'), 1)
+  })
+
+  it('a token running out mid-download: the refusal re-signs through a fresh token and usher, the same variant', {
+    timeout: 10_000,
+  }, async () => {
+    const {site, hls, source, workDir} = await setup('vod-expiring')
+    const file = await source.download(task(vod(VODS.expiring), workDir(), {ffmpeg: copy}))
+    assert.deepEqual(await bytesOf(file.filepath), hls.expected('signed'), 'every segment once, in order')
+    assert.ok(site.hits.token >= 1, `re-signed with a token of its own (${site.hits.token})`)
+    assert.ok(site.hits.usher >= 2, `and a new master (${site.hits.usher} usher requests)`)
+    assert.equal(hls.count('/t/high/index.m3u8'), 0)
+    assert.ok(hls.count('/t/signed/index.m3u8') >= 2)
+  })
+
+  it('a subscriber-only VOD needs a sign-in (usher’s 403, or a forbidden token), and yt-dlp is not asked', {
+    timeout: 10_000,
+  }, async () => {
+    const {source, engine, workDir} = await setup('vod-subs')
+    const needsSignIn = (e: DownloadError) => {
+      assert.equal(e.code, 'unavailable')
+      assert.equal(e.hint, 'needs-sign-in')
+      assert.equal(e.details, undefined)
+      assert.match(e.message, /subscribers/)
+      return true
+    }
+    await assert.rejects(source.analyze(vod(VODS.subsOnly)), needsSignIn)
+    await assert.rejects(source.download(task(vod(VODS.subsOnly), workDir(), {ffmpeg: copy})), needsSignIn)
+    await assert.rejects(source.analyze(vod(VODS.locked)), (e: DownloadError) => {
+      needsSignIn(e)
+      assert.match(e.message, /UNAUTHORIZED_ENTITLEMENTS/)
+      return true
+    })
+    await assert.rejects(engine.analyze(vod(VODS.subsOnly)), needsSignIn)
+  })
+
+  it('a deleted VOD is removed (analysis, check and download)', {timeout: 10_000}, async () => {
+    const {site, source, workDir} = await setup('vod-gone')
+    const removed = (e: DownloadError) => {
+      assert.equal(e.code, 'unavailable')
+      assert.equal(e.hint, 'removed')
+      return true
+    }
+    await assert.rejects(source.analyze(vod(VODS.gone)), removed)
+    await assert.rejects(source.download(task(vod(VODS.gone), workDir(), {ffmpeg: copy})), removed)
+    const check = (await source.preflight([{url: vod(VODS.gone)}], {})).get(vod(VODS.gone))
+    assert.equal(check?.ok === false && check.error.hint, 'removed')
+    assert.equal(site.hits.usher, 0)
+  })
+
+  it('a native failure (usher answers a page, not a playlist) hands the VOD to yt-dlp', {timeout: 10_000}, async () => {
+    const {source, engine} = await setup('vod-broken')
+    await assert.rejects(source.analyze(vod(VODS.broken)), (e: DownloadError) => {
+      assert.equal(e.details, SOURCE_FORMAT_CHANGED)
+      return true
+    })
+    const fallback = await engine.analyze(vod(VODS.broken))
+    assert.equal(fallback.kind === 'video' ? fallback.media.extractor : fallback.extractor, 'Fake')
+  })
+
+  it('a VOD that says RECORDED but whose playlist is still open is live-now, never handed to yt-dlp', {
+    timeout: 10_000,
+  }, async () => {
+    const {hls, source, workDir} = await setup('vod-racing')
+    const isLive = (e: DownloadError) => {
+      assert.equal(e.hint, 'live-now')
+      assert.equal(e.details, undefined, 'nothing for the engine to hand to yt-dlp')
+      return true
+    }
+    await assert.rejects(source.download(task(vod(VODS.racing), workDir(), {ffmpeg: copy})), isLive)
+    assert.equal(hls.segmentRequests('open'), 0, 'no segment asked')
+  })
+
+  it('a channel’s videos: pages of 100 by the page’s cursor, filter and sort from the link, listed VODs never read again', {
+    timeout: 10_000,
+  }, async () => {
+    const {site, hls, source, workDir} = await setup('videos')
+    const list = asList(await source.analyze(videos(CHANNELS.mid)))
+    assert.equal(list.entries.length, 250)
+    assert.equal(list.total, 250)
+    assert.equal(list.complete, true)
+    assert.match(list.title, /MIDCHANNEL · videos/)
+    assert.equal(site.hits.videoPage, 3)
+    const afters = site.videoPages.map(page => page['after'])
+    assert.equal(afters[0], undefined)
+    assert.match(String(afters[1]), /^\d+\|100\|2026-[\d-]+T[\d:]+Z\|\d+$/, 'the cursor as Twitch writes it')
+    assert.match(String(afters[2]), /^\d+\|200\|/)
+    assert.deepEqual(
+      site.videoPages.map(page => [page['sort'], page['type']]),
+      [
+        ['TIME', undefined],
+        ['TIME', undefined],
+        ['TIME', undefined],
+      ],
+    )
+    assert.equal(new Set(list.entries.map(entry => entry.id)).size, 250, 'no entry twice')
+    assert.ok(list.entries.every(entry => entry.id.startsWith('v')))
+    // the newest is still recording: listed as live (the engine skips it), live-now when asked for
+    const recording = list.entries[0]!
+    assert.equal(recording.isLive, true)
+    assert.equal(list.entries[1]!.isLive, false)
+    // a listed VOD: checked from the listing, downloaded with its token alone
+    const url = list.entries[5]!.url
+    const checks = await source.preflight([{url}, {url: recording.url}], {})
+    assert.equal(checks.get(url)?.ok, true)
+    const live = checks.get(recording.url)
+    assert.equal(live?.ok === false && live.error.hint, 'live-now')
+    assert.deepEqual([site.hits.vod, site.hits.vodBatch, site.hits.token, site.hits.usher], [0, 0, 0, 0])
+    const file = await source.download(task(url, workDir(), {ffmpeg: copy}))
+    assert.deepEqual(await bytesOf(file.filepath), hls.expected('rec'))
+    assert.deepEqual(
+      [site.hits.vod, site.hits.token, site.hits.usher],
+      [0, 1, 1],
+      'its token, its master, nothing else',
+    )
+    await assert.rejects(source.download(task(recording.url, workDir(), {ffmpeg: copy})), (e: DownloadError) => {
+      assert.equal(e.hint, 'live-now')
+      assert.equal(e.details, undefined)
+      return true
+    })
+    assert.equal(site.hits.usher, 1, 'never asked for the recording one')
+    // filter and sort from the link
+    const highlights = asList(await source.analyze(videos(CHANNELS.mid, '?filter=highlights&sort=views')))
+    assert.equal(highlights.entries.length, 25)
+    assert.deepEqual([site.videoPages.at(-1)?.['type'], site.videoPages.at(-1)?.['sort']], ['HIGHLIGHT', 'VIEWS'])
+    assert.match(highlights.title, /highlights, most viewed/)
+    const uploads = asList(await source.analyze(videos(CHANNELS.mid, '?filter=uploads')))
+    assert.equal(site.videoPages.at(-1)?.['type'], 'UPLOAD')
+    assert.equal(uploads.entries.length, 25)
+  })
+
+  it('a videos listing: maxEntries, an incremental walk that stops at known VODs, an empty channel, one not there', {
+    timeout: 10_000,
+  }, async () => {
+    const {site, source} = await setup('videos-limits')
+    const some = asList(await source.analyze(videos(CHANNELS.mid), {maxEntries: 120}))
+    assert.equal(some.entries.length, 120)
+    assert.equal(some.complete, false)
+    assert.equal(site.hits.videoPage, 2)
+    const known = new Set(some.entries.slice(3, 60).map(entry => entry.id))
+    const fresh = new TwitchSource({endpoints: {gql: site.gql, usher: site.usher}, pacing: fast})
+    const newer = asList(await fresh.analyze(videos(CHANNELS.mid), {known}))
+    assert.equal(newer.caughtUp, true)
+    assert.equal(newer.entries.length, 100, 'the walk stops at the end of the page the known run is in')
+    assert.equal(site.hits.videoPage, 3, 'one page, not three')
+    assert.equal(asList(await source.analyze(videos(CHANNELS.empty))).entries.length, 0)
+    await assert.rejects(source.analyze(videos('nosuchchannel')), (e: DownloadError) => e.hint === 'removed')
+  })
+
+  it('checks of VODs not read yet: 15 a request, a recording one live-now, a deleted one removed', {
+    timeout: 10_000,
+  }, async () => {
+    const {site, source} = await setup('vod-batch')
+    const ids = Array.from({length: 16}, (_, i) => String(3_000_000_000 + 248 - i))
+    const urls = [...ids.map(vod), vod(VODS.recording), vod(VODS.gone), videos(CHANNELS.mid)]
+    const results = await source.preflight(
+      urls.map(url => ({url})),
+      {},
+    )
+    assert.equal(results.size, urls.length)
+    assert.deepEqual(
+      site.vodBatches.map(batch => batch.length),
+      [15, 3],
+    )
+    assert.equal([...results.values()].filter(result => result.ok).length, 16)
+    const live = results.get(vod(VODS.recording))
+    assert.equal(live?.ok === false && live.error.hint, 'live-now')
+    const gone = results.get(vod(VODS.gone))
+    assert.equal(gone?.ok === false && gone.error.hint, 'removed')
+    assert.equal(results.get(videos(CHANNELS.mid))?.ok, false, 'a listing link is no item')
+    assert.equal(site.hits.usher, 0, 'checks never ask usher')
   })
 })

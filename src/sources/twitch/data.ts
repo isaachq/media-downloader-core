@@ -7,8 +7,9 @@ import {clipUrl} from './links.js'
 /**
  * Twitch's GraphQL answers read into what the source needs, and nothing more:
  * a clip (its signed progressive MP4s by quality), a page of a channel's
- * clips, and the errors GraphQL puts beside its data. Every reader is O(size
- * of the answer) and never trusts a shape it did not check.
+ * clips, a VOD and its playback token, a page of a channel's videos, usher's
+ * refusals, and the errors GraphQL puts beside its data. Every reader is
+ * O(size of the answer) and never trusts a shape it did not check.
  */
 export type TwitchClip = {
   /** The numeric id (what yt-dlp records too: the archive matches either way). */
@@ -45,6 +46,7 @@ export type ClipsPage = {
 const TOKEN_MARGIN_MS = 10 * 60_000
 const HEVC = /^(?:hvc1|hev1)/i
 const HEVC_PATH = /\/hevc\/(\d{3,4})\//
+const NUMERIC = /^\d+$/
 
 /**
  * The GraphQL `errors` of an answer as this module's errors (the body is an
@@ -324,13 +326,151 @@ export function readLiveStream(body: unknown): TwitchLiveStream | undefined {
   }
 }
 
-/** A `vodStatusQuery` answer: whether the VOD's broadcast is still on the air; `video: null` is `removed`. O(1). */
-export function readVodStatus(body: unknown): {readonly recording: boolean; readonly owner: string | undefined} {
-  const video = dig(gqlData(body), 'video')
-  if (video === null) {
-    throw gqlProblem(body) ?? new MetaError('removed', 'This Twitch video was deleted (or never existed).')
+/** A VOD (an archive, a highlight, an upload, a past premiere), as the source needs it. */
+export type TwitchVod = {
+  /** The numeric id. */
+  readonly id: string
+  readonly title: string
+  /** The owner's login and display name. */
+  readonly channel: string | undefined
+  readonly channelName: string | undefined
+  /** Unix seconds (published, else created). */
+  readonly publishedAt: number | undefined
+  /** Seconds (still growing while recording). */
+  readonly duration: number | undefined
+  readonly thumbnail: string | undefined
+  /** ARCHIVE, HIGHLIGHT, UPLOAD, PAST_PREMIERE. */
+  readonly type: string | undefined
+  /** Its broadcast is still on the air (`status: RECORDING`). */
+  readonly recording: boolean
+}
+
+/** A VOD's playback token: what signs its usher request, and what the token itself says. */
+export type VodToken = {
+  readonly signature: string
+  readonly value: string
+  readonly forbidden: boolean
+  readonly reason: string | undefined
+  /** When it runs out (ms), less a margin. */
+  readonly expiresAt: number | undefined
+}
+
+export type VideosPage = {
+  readonly channel: {readonly login: string; readonly name: string | undefined}
+  readonly vods: readonly TwitchVod[]
+  /** The next page's cursor; undefined on the last page. */
+  readonly next: string | undefined
+  /** Every video of the channel (of the listing's type), listed or not. */
+  readonly total: number | undefined
+}
+
+/** One `Video` node (a `video(id)` answer or a listing edge's); undefined when it isn't one. O(1). */
+export function readVod(node: unknown): TwitchVod | undefined {
+  const raw = dig(node, 'id')
+  const id = text(raw) ?? (typeof raw === 'number' ? String(raw) : undefined)
+  if (!id || !NUMERIC.test(id)) return undefined
+  const published = Date.parse(text(dig(node, 'publishedAt')) ?? text(dig(node, 'createdAt')) ?? '')
+  return {
+    id,
+    title: text(dig(node, 'title')) ?? '',
+    channel: text(dig(node, 'owner', 'login')),
+    channelName: text(dig(node, 'owner', 'displayName')),
+    publishedAt: Number.isFinite(published) ? Math.floor(published / 1000) : undefined,
+    duration: num(dig(node, 'lengthSeconds')),
+    thumbnail: text(dig(node, 'previewThumbnailURL')),
+    type: text(dig(node, 'broadcastType')),
+    recording: text(dig(node, 'status')) === 'RECORDING',
   }
-  if (!isObject(video))
-    throw gqlProblem(body) ?? new MetaError('format-changed', 'Twitch: the video came without data.')
-  return {recording: text(dig(video, 'status')) === 'RECORDING', owner: text(dig(video, 'owner', 'login'))}
+}
+
+/** A `video(id)` answer (or one alias of a batch): the VOD, or why not; `video: null` is a VOD that is gone. O(1). */
+export function readVodAnswer(body: unknown, alias = 'video'): TwitchVod | MetaError {
+  const node = dig(gqlData(body), alias)
+  if (node === null || node === undefined) {
+    return gqlProblem(body, alias) ?? new MetaError('removed', 'This Twitch video was deleted (or never existed).')
+  }
+  return readVod(node) ?? new MetaError('format-changed', 'Twitch: a video came without its id.')
+}
+
+/**
+ * A `videoPlaybackAccessToken` answer: the token, or why not. A token whose
+ * value says `forbidden` is a VOD kept for some viewers (subscribers):
+ * `login-required`. O(size).
+ */
+export function readVodToken(body: unknown): VodToken | MetaError {
+  const raw = dig(gqlData(body), 'videoPlaybackAccessToken')
+  const token = readToken(raw)
+  if (!token) {
+    return (
+      gqlProblem(body, 'videoPlaybackAccessToken') ??
+      (raw === null
+        ? new MetaError('removed', 'This Twitch video was deleted (or never existed).')
+        : new MetaError('format-changed', 'Twitch: the video came without its playback token.'))
+    )
+  }
+  if (token.forbidden) return forbiddenVod(token.reason)
+  return {
+    signature: token.signature,
+    value: token.value,
+    forbidden: false,
+    reason: token.reason,
+    expiresAt: token.expires !== undefined ? token.expires * 1000 - TOKEN_MARGIN_MS : undefined,
+  }
+}
+
+/** A VOD only some viewers may watch (subscribers): a signed-in account that may. */
+export function forbiddenVod(reason: string | undefined): MetaError {
+  return new MetaError(
+    'login-required',
+    `Twitch keeps this video for some viewers only (subscribers)${reason ? ` (${reason})` : ''}: it needs a signed-in account that may watch it.`,
+  )
+}
+
+/**
+ * One page of a channel's videos. `user: null` is a channel that is not
+ * there. Every edge of a page carries the same cursor (the page's last, null
+ * on the last page). O(page).
+ */
+export function readVideosPage(body: unknown): VideosPage {
+  const user = dig(gqlData(body), 'user')
+  if (user === null) {
+    throw gqlProblem(body) ?? new MetaError('removed', 'There is no Twitch channel by that name (or no longer).')
+  }
+  const videos = dig(user, 'videos')
+  if (!isObject(user) || !isObject(videos)) {
+    throw gqlProblem(body) ?? new MetaError('format-changed', 'Twitch: the channel’s videos came without a listing.')
+  }
+  const login = text(dig(user, 'login'))
+  if (!login) throw new MetaError('format-changed', 'Twitch: the channel came without its login.')
+  const edges = list(dig(videos, 'edges'))
+  const vods: TwitchVod[] = []
+  for (const edge of edges) {
+    const vod = readVod(dig(edge, 'node'))
+    if (vod) vods.push(vod)
+  }
+  const cursor = text(dig(edges.at(-1), 'cursor'))
+  const more = dig(videos, 'pageInfo', 'hasNextPage') === true
+  return {
+    channel: {login, name: text(dig(user, 'displayName'))},
+    vods,
+    next: more && cursor ? cursor : undefined,
+    total: num(dig(videos, 'totalCount')),
+  }
+}
+
+/**
+ * Usher's refusal (a 403 JSON `[{error, error_code, type}]`) as this module's
+ * error: a VOD kept for subscribers needs a sign-in; any other code (a token
+ * signature it no longer takes) is a change on Twitch's side. O(size).
+ */
+export function usherProblem(body: unknown, status: number): MetaError {
+  const first = Array.isArray(body) ? body[0] : body
+  const code = text(dig(first, 'error_code')) ?? ''
+  const message = text(dig(first, 'error')) ?? `HTTP ${status}`
+  if (/restricted|entitlement|subscri/i.test(code)) return forbiddenVod(code)
+  return new MetaError(
+    'format-changed',
+    `Twitch: usher refused the video (${message}${code ? `, ${code}` : ''}).`,
+    status,
+  )
 }

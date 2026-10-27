@@ -1,7 +1,20 @@
 import type {ExtractResult} from '../../core/analyze.js'
+import type {MediaTags} from '../../core/convert.js'
+import type {DownloadedInfo} from '../../core/download.js'
 import {cancelledError, DownloadError} from '../../core/errors.js'
 import {genericChoices} from '../../core/formats.js'
-import type {AnalysisResult, PlaylistAnalysis, VideoAnalysis} from '../../types.js'
+import {
+  chooseVariant,
+  downloadHls,
+  HlsError,
+  type HlsMasterPlaylist,
+  type ParseOptions,
+  parsePlaylist,
+  pathOf,
+  type RefreshPlaylist,
+  variantChoices,
+} from '../../core/hls/index.js'
+import type {AnalysisResult, MediaSummary, PlaylistAnalysis, VideoAnalysis} from '../../types.js'
 import {Coalescer} from '../coalesce.js'
 import {type Fetch, HttpSession} from '../http.js'
 import {downloadPost} from '../meta/download.js'
@@ -16,16 +29,24 @@ import {
   readClipAnswer,
   readClipsPage,
   readLiveStream,
-  readVodStatus,
+  readVideosPage,
+  readVodAnswer,
+  readVodToken,
   type TwitchClip,
   type TwitchLiveStream,
+  type TwitchVod,
   toMetaPost,
+  usherProblem,
+  type VideosPage,
+  type VodToken,
 } from './data.js'
 import {
   ALIAS_LIMIT,
   CLIP_LISTING_LIMIT,
   CLIP_PERIODS,
   type ClipPeriod,
+  CODECS_BEST,
+  CODECS_COMPAT,
   channelStreamQuery,
   clipQuery,
   clipsPageQuery,
@@ -34,12 +55,29 @@ import {
   DEFAULT_ENDPOINTS,
   TWITCH_ORIGIN,
   type TwitchEndpoints,
-  vodStatusQuery,
+  usherUrl,
+  VIDEO_SORTS,
+  VIDEO_TYPES,
+  videosPageQuery,
+  vodQuery,
+  vodsQuery,
+  vodTokenQuery,
 } from './endpoints.js'
-import {clipsUrl, isNativeTwitchLink, parseTwitchLink, type TwitchLink} from './links.js'
+import {
+  clipsUrl,
+  isNativeTwitchLink,
+  parseTwitchLink,
+  type TwitchLink,
+  type VideoFilter,
+  videosUrl,
+  vodUrl,
+} from './links.js'
 
 export type TwitchOptions = {
-  /** A channel's clips list at most this many unless asked otherwise. Default 500 (Twitch lists 1,000 at most). */
+  /**
+   * A channel's clips and videos list at most this many unless asked
+   * otherwise. Default 500 (Twitch lists 1,000 clips at most).
+   */
   readonly maxListItems?: number | undefined
   /**
    * The `Client-ID` sent to Twitch's GraphQL endpoint. Default yt-dlp's
@@ -77,11 +115,38 @@ const PERIOD_LABELS: Readonly<Record<ClipPeriod, string>> = {
   all: 'all time',
 }
 
+/** VODs kept by id (a listing's are checked and downloaded without being read again). ~0.5 KB each. */
+const VOD_CACHE_LIMIT = 2000
+const VOD_FRESH_MS = 6 * 60 * 60_000
+/** A VOD still recording is looked at again this soon: its broadcast may have ended meanwhile. */
+const RECORDING_FRESH_MS = 60_000
+/** Playback tokens (and the master playlists they signed) kept by VOD id; a master is ~1 KB. */
+const PLAYBACK_CACHE_LIMIT = 100
+/**
+ * Twitch's muted parts: a part listed `-unmuted` answers 403, the same part as
+ * `-muted` 200 (Twitch lists `<n>-muted.ts` itself today, checked live
+ * 2026-10-27; yt-dlp rewrites the same way). O(1) per segment, while parsing.
+ */
+const UNMUTED = /-unmuted(\.[A-Za-z0-9]+)(?=[?#]|$)/
+const PARSE: ParseOptions = {mapSegmentUri: uri => uri.replace(UNMUTED, '-muted$1')}
+const AUDIO_CODEC = /^mp4a/i
+const AVC = /^avc[13]/i
+const HEVC = /^(?:hvc1|hev1)/i
+const AV1 = /^av01/i
+const VIDEO_LABELS: Readonly<Record<VideoFilter, string>> = {
+  all: 'videos',
+  archives: 'past broadcasts',
+  highlights: 'highlights',
+  uploads: 'uploads',
+  past_premieres: 'past premieres',
+}
+
 type ClipLink = Extract<TwitchLink, {kind: 'clip'}>
 type ClipsLink = Extract<TwitchLink, {kind: 'clips'}>
-/** A VOD or a channel: checked for a broadcast on the air, never read here (HLS). */
-type OnAirLink = Extract<TwitchLink, {kind: 'vod'} | {kind: 'channel'}>
-type NativeLink = Exclude<TwitchLink, {kind: 'videos'}>
+type VodLink = Extract<TwitchLink, {kind: 'vod'}>
+type VideosLink = Extract<TwitchLink, {kind: 'videos'}>
+/** A channel: checked for a broadcast on the air, which is never downloaded. */
+type ChannelLink = Extract<TwitchLink, {kind: 'channel'}>
 type Timed<T> = {readonly value: T; readonly until: number}
 type KeptListing = {
   readonly clips: TwitchClip[]
@@ -90,6 +155,16 @@ type KeptListing = {
   readonly complete: boolean
   readonly at: number
 }
+type KeptVideos = {
+  readonly vods: TwitchVod[]
+  readonly channel: VideosPage['channel']
+  readonly cursor: string | undefined
+  readonly complete: boolean
+  readonly total: number | undefined
+  readonly at: number
+}
+/** A VOD's token, and the master playlists usher gave for it by `supported_codecs`. */
+type Playback = {readonly token: VodToken; readonly masters: Map<string, HlsMasterPlaylist>}
 
 /**
  * Twitch clips, natively: a clip is one plain GraphQL query on
@@ -98,10 +173,18 @@ type KeptListing = {
  * with resume (Range). A channel's clips are its `clips(first: 100)` pages,
  * top by views in the link's period, every clip whole and signed in the page,
  * so a listed clip is never read again. Checks of clips not read yet go 15 a
- * request (aliases). VODs, video listings and live channels are HLS: they are
- * not handled here and go to yt-dlp (TODO(core-hls)). Anything that stops
- * looking as expected, or an integrity check, hands the url to yt-dlp, whose
- * Twitch extractor reads clips too.
+ * request (aliases).
+ *
+ * VODs (archives, highlights, uploads) are HLS, downloaded by core/hls: one
+ * query for the VOD and its playback token, one usher request for the master
+ * playlist, the variant `chooseVariant` ranks for the profile (usher asked
+ * for H.264 only for an mp4 profile), then its segments; a refused segment
+ * re-signs through a fresh token. A channel's videos are `videos(first: 100)`
+ * pages; a listed VOD is checked without another query and downloaded with
+ * its token alone. A VOD still recording, like a channel on the air, is
+ * `live-now` and never handed to yt-dlp (which would record the stream).
+ * Anything else that stops looking as expected, or an integrity check, hands
+ * the url to yt-dlp, whose Twitch extractor reads clips and VODs too.
  */
 export class TwitchSource implements MediaSource {
   readonly name = 'Twitch'
@@ -116,6 +199,14 @@ export class TwitchSource implements MediaSource {
   /** `<login>/<period>` → what its listing gave. */
   readonly #listings = new Map<string, KeptListing>()
   readonly #reading = new Coalescer<string, TwitchClip>()
+  /** id → VOD (insertion order = age). */
+  readonly #vods = new Map<string, Timed<TwitchVod>>()
+  /** id → its playback token and masters, until the token runs out. */
+  readonly #playbacks = new Map<string, Timed<Playback>>()
+  /** `<login>/videos/<filter>/<sort>` → what its listing gave. */
+  readonly #videoListings = new Map<string, KeptVideos>()
+  readonly #vodReading = new Coalescer<string, TwitchVod>()
+  readonly #tokenReading = new Coalescer<string, Playback>()
   #blockedUntil = 0
 
   constructor(options: TwitchOptions = {}) {
@@ -138,16 +229,16 @@ export class TwitchSource implements MediaSource {
   }
 
   /**
-   * Clips and clip listings (read), VODs and channels (checked: on the air they
-   * fail as live-now, never handed to yt-dlp; a finished VOD goes to yt-dlp).
-   * Video listings go to yt-dlp (TODO(core-hls)).
+   * Clips, VODs and both listings (read), channels (checked: on the air they
+   * fail as live-now, never handed to yt-dlp; offline there is nothing to get).
    */
   handles(url: string): boolean {
     return isNativeTwitchLink(parseTwitchLink(url))
   }
 
   defaultListSize(url: string): number | undefined {
-    return parseTwitchLink(url)?.kind === 'clips' ? this.#maxListItems : undefined
+    const kind = parseTwitchLink(url)?.kind
+    return kind === 'clips' || kind === 'videos' ? this.#maxListItems : undefined
   }
 
   async analyze(
@@ -156,12 +247,17 @@ export class TwitchSource implements MediaSource {
       signal?: AbortSignal
       maxEntries?: number
       onProgress?: (progress: ListingProgress) => void
+      known?: ReadonlySet<string>
     } = {},
   ): Promise<AnalysisResult> {
     try {
       const link = this.#link(url)
       if (link.kind === 'clips') return await this.#listing(link, opts.maxEntries, opts.signal, opts.onProgress)
-      if (link.kind === 'vod' || link.kind === 'channel') return await this.#onAir(link, opts.signal)
+      if (link.kind === 'videos') {
+        return await this.#videoListing(link, opts.maxEntries, opts.known, opts.signal, opts.onProgress)
+      }
+      if (link.kind === 'vod') return await this.#vodAnalysis(link, opts.signal)
+      if (link.kind === 'channel') return await this.#onAir(link, opts.signal)
       return this.#videoAnalysis(usable(await this.#clip(link, opts.signal)))
     } catch (error) {
       throw this.#toDownloadError(error, opts.signal)
@@ -169,9 +265,9 @@ export class TwitchSource implements MediaSource {
   }
 
   /**
-   * Each url's clip: from what a listing or an analysis read, else 15 clips a
-   * request (aliases of `clip`). O(n) work, ⌈n / 15⌉ requests for n clips not
-   * read yet.
+   * Each url's clip or VOD: from what a listing or an analysis read, else 15
+   * a request (aliases of `clip`, of `video`; usher is not asked). O(n) work,
+   * ⌈n / 15⌉ requests for n clips or VODs not read yet; channels one each.
    */
   async preflight(
     items: ReadonlyArray<{readonly url: string}>,
@@ -187,13 +283,25 @@ export class TwitchSource implements MediaSource {
     }
     /** slug → the urls asking for it. */
     const wanted = new Map<string, string[]>()
-    /** VODs and channels: one status request each (rare in a batch), through the pacer. */
+    /** VOD id → the urls asking for it. */
+    const vods = new Map<string, string[]>()
+    /** Channels: one status request each (rare in a batch), through the pacer. */
     const onAir: Array<Promise<void>> = []
     for (const {url} of items) {
       try {
         const native = this.#link(url)
-        if (native.kind === 'vod' || native.kind === 'channel') {
+        if (native.kind === 'channel') {
           onAir.push(this.#onAir(native, opts.signal).catch(error => fail(url, error)))
+          continue
+        }
+        if (native.kind === 'vod') {
+          const cached = this.#cachedVod(native.id)
+          if (cached) settle(url, this.#vodCheck(cached))
+          else {
+            const urls = vods.get(native.id)
+            if (urls) urls.push(url)
+            else vods.set(native.id, [url])
+          }
           continue
         }
         const link = this.#clipLink(url)
@@ -209,7 +317,7 @@ export class TwitchSource implements MediaSource {
         fail(url, error)
       }
     }
-    await Promise.all(onAir)
+    await Promise.all([...onAir, this.#checkVods(vods, settle, fail, opts.signal)])
     if (wanted.size > 0 && Date.now() < this.#blockedUntil) {
       for (const urls of wanted.values()) for (const url of urls) fail(url, blocked())
       return results
@@ -252,7 +360,9 @@ export class TwitchSource implements MediaSource {
     for (let attempt = 1; ; attempt++) {
       try {
         const native = this.#link(task.url)
-        if (native.kind === 'vod' || native.kind === 'channel') await this.#onAir(native, task.signal)
+        // a VOD's segments re-sign themselves (core/hls refresh) and resume: no second attempt here
+        if (native.kind === 'vod') return await this.#downloadVod(native, task)
+        if (native.kind === 'channel') await this.#onAir(native, task.signal)
         link = this.#clipLink(task.url)
         const clip = usable(await this.#clip(link, task.signal, task.fresh || attempt > 1))
         return await downloadPost({
@@ -267,6 +377,7 @@ export class TwitchSource implements MediaSource {
         if (link) this.#clips.delete(link.slug)
         // only a refused or broken transfer is worth a fresh token; anything else is the answer
         const final =
+          !link ||
           error instanceof MetaError ||
           (error instanceof DownloadError && error.code !== 'expired' && error.code !== 'network')
         if (task.signal.aborted || attempt >= DOWNLOAD_ATTEMPTS || final) {
@@ -279,24 +390,27 @@ export class TwitchSource implements MediaSource {
 
   // ─── links ───────────────────────────────────────────────────────────────
 
-  #link(url: string): NativeLink {
+  #link(url: string): TwitchLink {
     const link = parseTwitchLink(url)
     if (!link || !isNativeTwitchLink(link)) {
       throw new DownloadError(
         'invalid-request',
-        'Not a Twitch clip, clips page, video or channel url.',
+        'Not a Twitch clip, clips page, video, videos page or channel url.',
         undefined,
         undefined,
         'unsupported-url',
       )
     }
-    return link as NativeLink
+    return link
   }
 
   #clipLink(url: string): ClipLink {
     const link = this.#link(url)
-    if (link.kind === 'clips') {
-      throw new DownloadError('invalid-request', 'A channel’s clips are a list: each clip is its own item.')
+    if (link.kind === 'clips' || link.kind === 'videos') {
+      throw new DownloadError(
+        'invalid-request',
+        `A channel’s ${link.kind} are a list: each ${link.kind === 'clips' ? 'clip' : 'video'} is its own item.`,
+      )
     }
     if (link.kind !== 'clip') throw new DownloadError('invalid-request', 'Not a Twitch clip url.')
     return link
@@ -323,24 +437,357 @@ export class TwitchSource implements MediaSource {
   }
 
   /**
-   * A VOD or a channel, which this source does not download: on the air it
-   * is `live-now` here, never handed to yt-dlp (which would record the live
-   * stream: only what is already available is downloaded). A finished VOD
-   * goes to yt-dlp (HLS: TODO(core-hls)); an offline channel has nothing to
-   * download. One GraphQL request.
+   * A channel, which this source does not download: on the air it is
+   * `live-now` here, never handed to yt-dlp (which would record the live
+   * stream: only what is already available is downloaded); offline it has
+   * nothing to download. One GraphQL request.
    */
-  async #onAir(link: OnAirLink, signal?: AbortSignal): Promise<never> {
-    if (link.kind === 'channel') {
-      const stream = await this.liveStream(link.channel, signal)
-      if (stream) throw liveNow(`${stream.login} is live on Twitch right now`)
-      throw new DownloadError(
-        'unavailable',
-        `${link.channel} is not live: a channel page has nothing else to download (its broadcasts are at /${link.channel}/videos, its clips at /${link.channel}/clips).`,
+  async #onAir(link: ChannelLink, signal?: AbortSignal): Promise<never> {
+    const stream = await this.liveStream(link.channel, signal)
+    if (stream) throw liveNow(`${stream.login} is live on Twitch right now`)
+    throw new DownloadError(
+      'unavailable',
+      `${link.channel} is not live: a channel page has nothing else to download (its broadcasts are at /${link.channel}/videos, its clips at /${link.channel}/clips).`,
+    )
+  }
+
+  // ─── VODs ────────────────────────────────────────────────────────────────
+
+  /** A VOD read or listed lately. O(1). */
+  #cachedVod(id: string): TwitchVod | undefined {
+    const kept = this.#vods.get(id)
+    return kept && Date.now() < kept.until ? kept.value : undefined
+  }
+
+  /** Keep a VOD 6 h (a minute while it is still recording). O(1); the oldest dropped past the bound. */
+  #rememberVod(vod: TwitchVod): void {
+    const until = Date.now() + (vod.recording ? RECORDING_FRESH_MS : VOD_FRESH_MS)
+    bounded(this.#vods, vod.id, {value: vod, until}, VOD_CACHE_LIMIT)
+  }
+
+  /**
+   * One VOD: from memory, else one query that brings its playback token
+   * too (kept for the usher request that follows). Shared by callers at the
+   * same time. A token Twitch refuses (subscribers only) is that error.
+   */
+  async #vod(id: string, signal?: AbortSignal): Promise<TwitchVod> {
+    const cached = this.#cachedVod(id)
+    if (cached) return cached
+    return this.#vodReading.run(id, signal, async shared => {
+      const {vod, token} = await this.#gql(
+        vodQuery(this.#endpoints.videoFields),
+        {id},
+        body => ({vod: readVodAnswer(body), token: readVodToken(body)}),
+        shared,
       )
+      if (vod instanceof MetaError) throw vod
+      this.#rememberVod(vod)
+      if (!vod.recording) {
+        if (token instanceof MetaError) throw token
+        this.#keepPlayback(id, token)
+      }
+      return vod
+    })
+  }
+
+  /** A playback token and its masters, kept until the token runs out (6 h at most). O(1). */
+  #keepPlayback(id: string, token: VodToken): Playback {
+    const playback: Playback = {token, masters: new Map()}
+    const until = Math.min(Date.now() + VOD_FRESH_MS, token.expiresAt ?? Number.POSITIVE_INFINITY)
+    bounded(this.#playbacks, id, {value: playback, until}, PLAYBACK_CACHE_LIMIT)
+    return playback
+  }
+
+  /** The VOD's token: from memory, else its own query (one request). */
+  async #token(id: string, signal: AbortSignal | undefined, fresh: boolean): Promise<Playback> {
+    const kept = this.#playbacks.get(id)
+    if (!fresh && kept && Date.now() < kept.until) return kept.value
+    return this.#tokenReading.run(id, signal, async shared => {
+      const token = await this.#gql(vodTokenQuery(), {id}, readVodToken, shared)
+      if (token instanceof MetaError) throw token
+      return this.#keepPlayback(id, token)
+    })
+  }
+
+  /**
+   * The VOD's master playlist for `codecs`: from memory (an H.264 variant of
+   * the one asked for every codec does for an mp4 profile), else one usher
+   * request with its token. A kept token usher no longer takes is replaced
+   * once. Variants without sound (a 2016 highlight's "high") are left out.
+   */
+  async #master(
+    vod: TwitchVod,
+    codecs: string,
+    signal: AbortSignal | undefined,
+    fresh = false,
+  ): Promise<HlsMasterPlaylist> {
+    const playback = await this.#token(vod.id, signal, fresh)
+    const best = playback.masters.get(CODECS_BEST)
+    const kept =
+      playback.masters.get(codecs) ??
+      (codecs === CODECS_COMPAT && best?.variants.some(v => v.codecs.some(c => AVC.test(c))) ? best : undefined)
+    if (kept) return kept
+    try {
+      const master = await this.#usher(vod.id, playback.token, codecs, signal)
+      playback.masters.set(codecs, master)
+      return master
+    } catch (error) {
+      if (fresh || !(error instanceof MetaError) || error.status !== 403 || error.problem !== 'format-changed') {
+        throw error
+      }
+      return this.#master(vod, codecs, signal, true)
     }
-    const vod = await this.#gql(vodStatusQuery(), {id: link.id}, readVodStatus, signal)
-    if (vod.recording) throw liveNow(`This Twitch broadcast${vod.owner ? ` of ${vod.owner}` : ''} is still on the air`)
-    throw new MetaError('other-extractor', 'Twitch VODs are HLS: yt-dlp reads them until the core does.')
+  }
+
+  /** One usher request: the master playlist, or why not. Not paced (another host than GraphQL). */
+  async #usher(id: string, token: VodToken, codecs: string, signal?: AbortSignal): Promise<HlsMasterPlaylist> {
+    const url = usherUrl(this.#endpoints.usher, id, token, codecs, Math.floor(Math.random() * 10_000_000))
+    const response = await this.#session.get(url, {
+      signal,
+      headers: {Origin: TWITCH_ORIGIN, Referer: `${TWITCH_ORIGIN}/`},
+    })
+    const status = response.status
+    if (status === 429 || status >= 500) {
+      await response.body?.cancel().catch(() => {})
+      throw new MetaError('refused', `Twitch: usher answered HTTP ${status}.`, status)
+    }
+    if (status === 404) {
+      await response.body?.cancel().catch(() => {})
+      throw new MetaError('removed', 'Twitch has no playback for this video any more (deleted, or expired).', status)
+    }
+    if (!response.ok) {
+      const body: unknown = await response.json().catch(() => undefined)
+      throw usherProblem(body, status)
+    }
+    const master = parsePlaylist(await response.text(), response.url || url)
+    if (master.kind !== 'master') {
+      throw new MetaError('format-changed', 'Twitch: usher answered a media playlist where a master was expected.')
+    }
+    const variants = master.variants.filter(v => v.codecs.length === 0 || v.codecs.some(c => AUDIO_CODEC.test(c)))
+    return {...master, variants}
+  }
+
+  async #vodAnalysis(link: VodLink, signal?: AbortSignal): Promise<VideoAnalysis> {
+    const vod = playable(await this.#vod(link.id, signal))
+    const master = await this.#master(vod, CODECS_BEST, signal)
+    return {kind: 'video', media: vodSummary(vod, this.name), choices: variantChoices(master, vod.duration)}
+  }
+
+  /** A check from what is known of a VOD (a listing's, or a batch's): no token, no usher. O(1). */
+  #vodCheck(vod: TwitchVod): ExtractResult {
+    if (vod.recording) return {ok: false, error: recordingError(vod).toJSON()}
+    return {ok: true, analysis: {kind: 'video', media: vodSummary(vod, this.name), choices: genericChoices()}}
+  }
+
+  /** VODs not read yet, 15 a request (aliases of `video`), each chunk through the pacer. ⌈n / 15⌉ requests. */
+  async #checkVods(
+    wanted: ReadonlyMap<string, readonly string[]>,
+    settle: (url: string, result: ExtractResult) => void,
+    fail: (url: string, error: unknown) => void,
+    signal: AbortSignal | undefined,
+  ): Promise<void> {
+    const ids = [...wanted.keys()]
+    const chunks: string[][] = []
+    for (let i = 0; i < ids.length; i += ALIAS_LIMIT) chunks.push(ids.slice(i, i + ALIAS_LIMIT))
+    await Promise.all(
+      chunks.map(async chunk => {
+        try {
+          const variables: Record<string, string> = {}
+          chunk.forEach((id, i) => {
+            variables[`v${i}`] = id
+          })
+          const answers = await this.#gql(
+            vodsQuery(this.#endpoints.videoFields, chunk.length),
+            variables,
+            body => chunk.map((_, i) => readVodAnswer(body, `v${i}`)),
+            signal,
+          )
+          chunk.forEach((id, i) => {
+            const answer = answers[i]!
+            if (!(answer instanceof MetaError)) this.#rememberVod(answer)
+            for (const url of wanted.get(id) ?? []) {
+              if (answer instanceof MetaError) fail(url, answer)
+              else settle(url, this.#vodCheck(answer))
+            }
+          })
+        } catch (error) {
+          for (const id of chunk) for (const url of wanted.get(id) ?? []) fail(url, error)
+        }
+      }),
+    )
+  }
+
+  /**
+   * A VOD to one file through core/hls: the variant for the profile (usher
+   * asked for H.264 only for an mp4 profile, every codec otherwise), its
+   * segments k at a time with resume; a refused segment re-signs through a
+   * fresh token and the same variant of a new master. Before any segment:
+   * 1 GraphQL query (0 when an analysis just read it), 1 usher request
+   * (0 likewise), 1 media playlist. A broadcast still on the air is
+   * `live-now` (by its status, and by an open playlist if it changed since).
+   */
+  async #downloadVod(link: VodLink, task: SourceDownload): Promise<SourceFile> {
+    try {
+      const vod = playable(await this.#vod(link.id, task.signal))
+      const profile = task.profile
+      const codecs = profile.kind === 'video' && profile.container === 'mp4' ? CODECS_COMPAT : CODECS_BEST
+      const master = await this.#master(vod, codecs, task.signal, task.fresh)
+      const choice = chooseVariant(master, profile, vod.duration)
+      const title = vod.title || `Twitch video ${vod.id}`
+      const info: DownloadedInfo = {
+        id: vodMediaId(vod.id),
+        title,
+        extractor: this.name,
+        duration: vod.duration ?? null,
+        publishedAt: vod.publishedAt ?? null,
+      }
+      task.onInfo(info)
+      const resign =
+        (uri: string): RefreshPlaylist =>
+        async (_why, signal) => {
+          const path = pathOf(uri)
+          const next = await this.#master(vod, codecs, signal, true)
+          const same =
+            next.variants.find(v => pathOf(v.uri) === path)?.uri ??
+            [...next.audio.values()].flat().find(t => t.uri !== undefined && pathOf(t.uri) === path)?.uri
+          if (!same)
+            throw new HlsError('changed', 'Twitch: the re-signed master no longer has the variant being downloaded.')
+          return same
+        }
+      const audioUri = choice.audio?.uri
+      const result = await downloadHls({
+        session: this.#session,
+        site: this.name,
+        main: {playlist: choice.variant.uri, refresh: resign(choice.variant.uri)},
+        audio: audioUri ? {playlist: audioUri, refresh: resign(audioUri)} : undefined,
+        kind: profile.kind,
+        codecs: choice.variant.codecs,
+        workDir: task.workDir,
+        ffmpeg: task.ffmpeg,
+        signal: task.signal,
+        concurrency: task.fragments,
+        parse: PARSE,
+        expectedBytes: choice.estimatedBytes,
+        fresh: task.fresh,
+        onProgress: task.onProgress,
+      })
+      const tags: MediaTags = {
+        title,
+        artist: vod.channelName ?? vod.channel,
+        date: vod.publishedAt ? new Date(vod.publishedAt * 1000).toISOString().slice(0, 10) : undefined,
+        comment: vodUrl(vod.id),
+      }
+      return {
+        filepath: result.filepath,
+        info: {
+          ...info,
+          duration: vod.duration ?? result.duration,
+          vcodec: profile.kind === 'audio' ? 'none' : videoCodecOf(choice.variant.codecs),
+          acodec: 'mp4a',
+          filesize: result.bytes,
+        },
+        tags,
+      }
+    } catch (error) {
+      // the next attempt signs again (its token may be what broke)
+      this.#playbacks.delete(link.id)
+      throw this.#toDownloadError(error, task.signal)
+    }
+  }
+
+  // ─── video listings ──────────────────────────────────────────────────────
+
+  /**
+   * A channel's videos (all, or the link's filter), newest first or by views,
+   * up to `maxEntries`, one request per 100. Newest first, an incremental
+   * walk (`known`) stops where the known ones start. Every listed VOD is kept,
+   * so its check reads nothing and its download only its token. A refusal
+   * half-way returns what was listed (`complete: false`). O(1) per VOD.
+   */
+  async #videoListing(
+    link: VideosLink,
+    maxEntries: number | undefined,
+    known: ReadonlySet<string> | undefined,
+    signal?: AbortSignal,
+    onProgress?: (progress: ListingProgress) => void,
+  ): Promise<PlaylistAnalysis> {
+    const max = Math.max(1, Math.floor(maxEntries ?? this.#maxListItems))
+    const key = `${link.channel}/videos/${link.filter}/${link.sort}`
+    // known ids are only a stop where the newest come first
+    const incremental = link.sort === 'time' && known && known.size > 0 ? known : undefined
+    onProgress?.({listed: 0, expected: max})
+    const kept = incremental ? undefined : this.#videoListings.get(key)
+    const fresh = kept && Date.now() - kept.at < LISTING_FRESH_MS ? kept : undefined
+    let vods: TwitchVod[] = fresh?.vods.slice(0, max) ?? []
+    let channel = fresh?.channel
+    let cursor = fresh?.cursor
+    let complete = fresh?.complete ?? false
+    let total = fresh?.total
+    let caughtUp = false
+    const expected = () => Math.min(max, total ?? max)
+    if (!(fresh && (fresh.vods.length >= max || fresh.complete))) {
+      const got = new Map<string, TwitchVod>(vods.map(vod => [vod.id, vod]))
+      try {
+        const listing = await walkCursor(
+          async next => {
+            const page = await this.#gql(
+              videosPageQuery(this.#endpoints.videoFields),
+              {
+                login: link.channel,
+                sort: VIDEO_SORTS[link.sort],
+                ...(VIDEO_TYPES[link.filter] !== undefined && {type: VIDEO_TYPES[link.filter]}),
+                ...(next !== undefined && {after: next}),
+              },
+              readVideosPage,
+              signal,
+            )
+            channel = page.channel
+            total = page.total ?? total
+            for (const vod of page.vods) if (got.size < max && !got.has(vod.id)) got.set(vod.id, vod)
+            return {items: page.vods, next: page.next}
+          },
+          {
+            max,
+            idOf: vod => vodMediaId(vod.id),
+            resume: vods.length > 0 || cursor !== undefined ? {items: vods, cursor} : undefined,
+            known: incremental,
+            onProgress: listed => onProgress?.({listed, expected: expected()}),
+            site: this.name,
+          },
+        )
+        vods = listing.items
+        cursor = listing.cursor
+        complete = listing.complete
+        caughtUp = listing.caughtUp
+      } catch (error) {
+        vods = [...got.values()]
+        complete = false
+        if (signal?.aborted || vods.length === 0 || !channel) throw error
+        this.#log(
+          'warn',
+          `Twitch: ${link.channel}'s videos stopped at ${vods.length} of ${expected()} (${String(error)}) — load again to continue`,
+        )
+      }
+      if (channel && !incremental) {
+        bounded(this.#videoListings, key, {vods, channel, cursor, complete, total, at: Date.now()}, LISTING_CACHE_LIMIT)
+      }
+    }
+    onProgress?.({listed: vods.length, expected: expected()})
+    for (const vod of vods) this.#rememberVod(vod)
+    const name = channel?.name ?? link.channel
+    return {
+      kind: 'playlist',
+      id: `${link.channel}/videos/${link.filter}/${link.sort}`,
+      url: videosUrl(link.channel, link.filter, link.sort),
+      title: `Twitch ${name} · ${VIDEO_LABELS[link.filter]}${link.sort === 'views' ? ', most viewed' : ''}`,
+      uploader: name,
+      extractor: this.name,
+      entries: vods.map((vod, i) => ({...vodSummary(vod, this.name), index: i + 1})),
+      choices: genericChoices(),
+      total,
+      complete,
+      ...(caughtUp && {caughtUp}),
+    }
   }
 
   // ─── GraphQL ─────────────────────────────────────────────────────────────
@@ -547,6 +994,46 @@ function liveNow(what: string): DownloadError {
     undefined,
     'live-now',
   )
+}
+
+/** A VOD whose broadcast is still on the air: live-now, never handed to yt-dlp. */
+function recordingError(vod: TwitchVod): DownloadError {
+  return liveNow(`This Twitch broadcast${vod.channel ? ` of ${vod.channel}` : ''} is still on the air`)
+}
+
+/** A VOD that can be downloaded now; else live-now. O(1). */
+function playable(vod: TwitchVod): TwitchVod {
+  if (vod.recording) throw recordingError(vod)
+  return vod
+}
+
+/** The id a VOD is recorded under: `v<id>`, as yt-dlp's Twitch extractor names it (download archives). */
+export function vodMediaId(id: string): string {
+  return `v${id}`
+}
+
+function vodSummary(vod: TwitchVod, site: string): MediaSummary {
+  return {
+    id: vodMediaId(vod.id),
+    url: vodUrl(vod.id),
+    title: vod.title || `Twitch video ${vod.id}`,
+    uploader: vod.channelName ?? vod.channel,
+    duration: vod.duration,
+    thumbnail: vod.thumbnail,
+    publishedAt: vod.publishedAt,
+    extractor: site,
+    isLive: vod.recording,
+  }
+}
+
+/** The engine's vcodec of a variant's CODECS. O(c). */
+function videoCodecOf(codecs: readonly string[]): string {
+  for (const codec of codecs) {
+    if (AVC.test(codec)) return 'avc1'
+    if (HEVC.test(codec)) return 'hvc1'
+    if (AV1.test(codec)) return 'av01'
+  }
+  return 'avc1'
 }
 
 /** A clip something can be downloaded of; else why not. O(1). */

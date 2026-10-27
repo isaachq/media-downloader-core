@@ -11,7 +11,9 @@ away when the beta closes.
 - [x] 0 `ci: 5-minute budget` · done · verified locally: `test:fast` 483 pass in 58 s, `test:integrity-smoke` 2 pass in 2 s, `test:heavy` 75 pass in 28 s, app unit 204 pass, `test:e2e:smoke` 3 pass in 27 s. Pending: the Actions before/after table on Isaac's first push (before: CI check jobs 15.7 to 16 min, one mix test waited a real 15-minute YouTube pause; app jobs 3.2 to 4.3 min)
 - [x] 1 `source(threads)` · done · verified locally: `typecheck` and `lint` clean, `test:fast` 519 pass / 0 fail (16 Threads tests against the fake, Threads detection), `test:heavy` 75 pass, `perf --quick` within 10% of the baseline (no regression); live `live:matrix --platform threads` 17 of 17 links pass, `--native` 17 of 17, `--native --download` 13 of 13 single posts (H.264 720x1280 + AAC, JPEG / WebP pictures, carousel folders); CDN Range answers 206, no rate limit seen. Not verified: a private profile and a signed-in session (no account), GIFs, reposts and quotes as links, the razr 50
 - [x] 2 `core(hls)` · done (no Source wired yet: Twitch VODs and SoundCloud come in their own commits) · verified locally: `typecheck` and `lint` clean, `test:fast` 604 pass / 0 fail / 2 skipped (44 HLS tests against the fake origin), `test:heavy` 80 pass (5 HLS tests with the real ffmpeg: TS → mp4, fMP4 as is, AES-128, a discontinuity, demuxed audio, all decode clean), `perf --quick` within 10% of the baseline; `scripts/hls-bench.ts` on 18,000 segments × 16 KB: parsed list 4.1 MiB, live heap growth 1.2 MiB at k = 3 and 6, event-loop p99 6.9 / 5.5 ms, 1.000 requests per segment, a kill at 9,000 resumed with 10 segments asked twice (bound W + 1 s = 232; 10 to 236 across runs), 245 / 304 segments a second (Windows Defender costs ~7 ms on the first open of each new file); live end to end: Mux's public test VOD (64 TS segments, 480p, 634.6 s, 9 s) and Apple's advanced fMP4 example (201 segments, demuxed E-AC-3 track, 600 s) ffprobe right and decode clean. Not verified: a real Twitch VOD, SoundCloud and Bluesky playlists, a signed playlist expiring live, the razr 50 (its ffmpeg's concat demuxer and bsfs)
-- [ ] 3 `source(twitch)` · clips done, VODs wait for `core(hls)` · clips verified locally: `typecheck` and `lint` clean on this commit's files (the in-progress `src/core/hls/` excluded), `test:fast` 562 / 560 pass / 0 fail (19 Twitch tests against the fake, Twitch detection), `test:heavy` 75 pass, `perf --quick` no regression in code this commit touches (archive.loadMs and stress swing with machine load; archive imports nothing changed here); live `live:matrix --platform twitch` 14 of 14, `--native` 14 of 14, `--native --download` 10 of 10 single clips (H.264 1920x1080 or 1280x720 + AAC per ffprobe). Client ids re-checked live: the web player's gets `IntegrityCheckFailed` on listing page 2, yt-dlp's (the default) reads pages 1 to 3; both read single clips and batches of 15. Live channel and VOD in progress fail natively as `live-now` (checked live), a finished VOD goes to yt-dlp. Not verified: a subscriber-only clip, a CDN token running out mid-download, a 429 from gql.twitch.tv, the razr 50. Pending: VODs and video listings natively (`core(hls)`), the sign-in (app commit 10)
+- [x] 3 `source(twitch)` · done (clips; VODs and video listings on `core(hls)`) · VODs verified locally: `typecheck` clean, `lint` clean (`biome check` on src, test, scripts, documentation: `biome check .` stops on a nested biome.json in an untracked `.claude/worktrees/` checkout), `test:fast` 615 pass / 0 fail / 2 skipped (12 new VOD and video-listing tests against the fake GraphQL + usher over `fake-hls`: a finished VOD, codecs per profile, highlights and uploads, a muted VOD, a token running out mid-download, subscriber-only, deleted, a native failure to yt-dlp, a playlist still open, a 3-page listing with a recording VOD, an incremental listing, batched checks), `test:heavy` 80 pass, `perf --quick` within 10% of the baseline on every metric (archive.loadMs −1.4%, no re-run needed); live `live:matrix --platform twitch` 33 of 33 links, `--native` 33 of 33, `--native --download` 13 of 13 short VODs (past broadcasts, highlights, uploads, a past premiere: H.264 1920x1080, 1280x720 and 1080x1920 + AAC, full decode clean) and TW-08, a 1 h 1 min 50 s past broadcast (3,710 s), in 444 s end to end (download, assembly and the engine's full decode validation), 2.86 GB, ffprobe H.264 1920x1080 60 fps + AAC, 3,710.25 s against the VOD's 3,710 s, a full decode on its own (`ffmpeg -xerror` into the null muxer, 220 s) exits 0 with no decoder error (one repeated video DTS noted by the null muxer, which the engine counts benign) node working set 85 to 183 MB throughout. Four VODs first picked (highlights 5938473, 6732619, 1484137772 and the muted past broadcast 2795007999) fail the decode check natively and the same way through yt-dlp and through ffmpeg on usher's playlist alone: damaged at the source, replaced in the compendium. Checked live: usher answers H.264 only for `supported_codecs=h264`, `av1,h265,h264` and `av1` alike (32 channels' latest VODs, no HEVC or AV1 VOD found), a recording VOD's playlist is open (EVENT, no ENDLIST), muted parts are `-muted.ts` (200; `-unmuted` 403), the videos cursor and `totalCount` past page 3. Clips verified locally (a81efa5): `typecheck` and `lint` clean on this commit's files (the in-progress `src/core/hls/` excluded), `test:fast` 562 / 560 pass / 0 fail (19 Twitch tests against the fake, Twitch detection), `test:heavy` 75 pass, `perf --quick` no regression in code this commit touches (archive.loadMs and stress swing with machine load; archive imports nothing changed here); live `live:matrix --platform twitch` 14 of 14, `--native` 14 of 14, `--native --download` 10 of 10 single clips (H.264 1920x1080 or 1280x720 + AAC per ffprobe). Client ids re-checked live: the web player's gets `IntegrityCheckFailed` on listing page 2, yt-dlp's (the default) reads pages 1 to 3; both read single clips and batches of 15. Not verified: a subscriber-only clip or VOD (none found anonymously), an HEVC or AV1 VOD, a CDN token running out mid-download on the real CDN (VOD segments are unsigned), a 429 from gql.twitch.tv or usher, the razr 50. Pending: the sign-in (app commit 10)
+- [ ] 3b `core(hls): live recording` · not done (Isaac added Twitch live recording to beta 11: `recordHls`, Stop keeps / Cancel discards, start from the window, 12 h cap)
+- [ ] 3c `source(twitch): live channels` · not done (records a live channel through 3b, Twitch ads skipped, file named channel, start time, title)
 - [x] 4 `source(bluesky)` · done · verified locally: `typecheck` and `lint` clean, `test:fast` 540 pass / 0 fail (20 Bluesky tests against the fake, Bluesky detection), `test:heavy` 75 pass, `perf --quick` within 10% of the baseline (no regression); live `live:matrix --platform bluesky` 19 of 19 links pass, `--native` 19 of 19, `--native --download` 15 of 15 single posts (original JPEG / PNG blobs byte for byte, no WebP; H.264 1080x1920 and 720x1280 + AAC); getBlob ignores Range, no rate limit hit. yt-dlp 2026.10.21 has a Bluesky extractor (posts only, the same API and blobs): nothing handed to it. Not verified: a `!no-unauthenticated` account, did:web and third-party PDS live, a PDS 429, the HLS fallback (waits for `core(hls)`), the razr 50
 - [ ] 5 `source(soundcloud)` · not done
 - [x] 6 `source(snapchat)` · done · verified locally: `typecheck` and `lint` clean, `test:fast` 502 pass / 0 fail (18 Snapchat tests against the fake, Snapchat detection), `test:heavy` 75 pass, `perf --quick` within 10% of the baseline; live `live:matrix --platform snapchat` 15 of 15 links pass, `--native` 15 of 15, `--native --download` 8 of 8 single items (spotlights H.264 540x960 + AAC, a story snap 480x846, highlight JPEGs). Not verified: short links (no live code), a private profile page, a picture in a live story, the razr 50
@@ -19,13 +21,14 @@ away when the beta closes.
 - [ ] 8 `app: site tags and icons` · not done (Isaac reviews the icons before code)
 - [ ] 9 `app: supported sites` · not done
 - [ ] 10 `app: sign-in for threads and twitch` · not done
+- [ ] 10b `app: twitch live` · not done (Record on a live link, a live player with hls.js, elapsed time, Stop and Cancel, 14 locales)
 - [ ] 11 `app: beta 11 e2e` · not done
 - [ ] 12 `release: app 0.2.0-beta.22` · not done
-- [ ] Android `feature/beta-11` (phone repo) · not done
+- [ ] Android `feature/beta-11` (phone repo) · not done (also: the live player on Media3 ExoPlayer, a foreground service while recording)
 
 **Library**
 
-- **Native HLS downloads for VODs and tracks (`core/hls`, internal: no Source uses it yet).** A master
+- **Native HLS downloads for VODs and tracks (`core/hls`, internal: Twitch VODs are its first Source).** A master
   playlist's variants become the shared `Rendition`, so `rankRenditions` picks as it does for every
   native source (H.264 first for MP4 within the height cap, the audio-only variant or a demuxed audio
   track alone for audio); a media playlist is downloaded by k segment workers (the engine's
@@ -61,7 +64,7 @@ away when the beta closes.
   total). One ffmpeg -c copy pass O(bytes); P periods → a P-line concat list. Disk peak 2× the media
   (period files + output). Validation and SHA-256 stay the engine's existing steps.
 
-- **Twitch clips, natively.** Clips (`clips.twitch.tv/<slug>`, `clips.twitch.tv/embed?clip=`,
+- **Twitch clips and VODs, natively.** Clips (`clips.twitch.tv/<slug>`, `clips.twitch.tv/embed?clip=`,
   `twitch.tv/<channel>/clip/<slug>`, on www., m. and go.) and a channel's clips
   (`twitch.tv/<channel>/clips`, its `?range=24hr|7d|30d|all` honoured, a week without one, as
   the site), anonymous, from plain GraphQL queries on `gql.twitch.tv` (never the persisted
@@ -80,15 +83,35 @@ away when the beta closes.
   whose broadcast is still going (`status: RECORDING`) fail natively as `live-now`, never
   handed to yt-dlp (which would record them); the live check is its own function for the
   recorder to come (`TwitchSource.liveStream`, `readLiveStream`: stream id, login, title,
-  start). Finished VODs (`/videos/<id>`, `/<channel>/v/<id>`, the player) and video listings
-  are recognized by the link parser and handed to yt-dlp's Twitch extractor: they are HLS,
-  left for `core(hls)`. New `LinkSite` `'twitch'`, option `twitch`
-  (`clientId`, `endpoints`, `pacing`, `maxListItems`), fake and tests, live matrix scenarios
-  TW-01..03. Cost: one GraphQL request per clip, per VOD and per channel checked (⌈n / 15⌉ for n checks), O(q) to read its q
-  encodings; a listing costs ⌈n / 100⌉ requests for n clips (at most 10), O(1) per clip (Map by
-  id, cursor Set), memory O(n) clips of ~2 KB; 0 requests to download a listed clip, one media
-  GET per file, streamed, constant memory; clips kept in a 2,000-entry LRU until their token
-  runs out, listings 100, concurrent reads of one clip shared.
+  start). VODs (`/videos/<id>`, `/<channel>/v/<id>`, `/<channel>/video/<id>`, the player,
+  `/schedule?vodID=`): past broadcasts, highlights, uploads and past premieres, downloaded by
+  `core/hls`. One query brings the VOD and its playback token, one usher request its master
+  playlist (`supported_codecs=h264` for an MP4 profile, `av1,h265,h264` otherwise; usher
+  answered H.264 only for every VOD tried live), variants without sound left out and the rest
+  ranked by `chooseVariant`; segments (fMP4 or MPEG-TS) go k at a time with `fragments`,
+  a refused one re-signs through a fresh token and the same variant of a new master, and
+  Twitch's muted parts keep the `-unmuted` → `-muted` rewrite. Recorded as `v<id>`, the id
+  yt-dlp gives them. A channel's videos (`/<channel>/videos`, its `?filter=` and `&sort=`
+  honoured) are `videos(first: 100)` pages by the page's cursor, with `totalCount`; listed
+  VODs are kept, so their checks read nothing and their downloads only their token, and an
+  incremental walk (`known`) stops at the known ones when newest first. A VOD still
+  recording stays `live-now` (listed with `isLive`, never handed to yt-dlp), and so does one
+  whose playlist has no end yet; a subscriber-only VOD (a forbidden token, or usher's 403
+  `vod_manifest_restricted`) is `needs-sign-in`; a deleted one is `removed`; any other
+  native failure (usher answering a page, a renamed field) is `source:format-changed` and
+  goes to yt-dlp, as clips do. New `LinkSite` `'twitch'`, option `twitch`
+  (`clientId`, `endpoints` with `usher` and `videoFields`, `pacing`, `maxListItems`), fake
+  GraphQL and usher over the fake HLS origin, tests, live matrix scenarios TW-01..08. Cost: one
+  GraphQL request per clip, per VOD and per channel checked (⌈n / 15⌉ for n checks of clips or
+  VODs not read yet), O(q) to read its q encodings; a clip listing costs ⌈n / 100⌉ requests for
+  n clips (at most 10), a video listing ⌈n / 100⌉ for n VODs, O(1) per item (Map by id, cursor
+  Set), memory O(n) of ~2 KB per clip, ~0.5 KB per VOD; 0 requests to download a listed clip,
+  one media GET per file, streamed, constant memory. A VOD costs 1 GraphQL + 1 usher + 1 media
+  playlist before its segments (a listed one: 1 token query instead of the read; one just
+  analyzed: none), then 1 GET per segment (~1 per 10 s, O(1) each), memory O(segments) for the
+  parsed list and O(k) streams; the expensive read happens once per VOD per token (~20 h),
+  never per segment. Clips and VODs kept in 2,000-entry LRUs (6 h at most, never past their
+  token), VOD tokens and masters 100, listings 100 each, concurrent reads of one item shared.
 
 - **Bluesky, natively.** Posts (`bsky.app/profile/<handle|did>/post/<rkey>`, its `/quotes`,
   `/likes` and `/reposted-by` pages, `at://` uris) with pictures (`images`, up to 4, and the new

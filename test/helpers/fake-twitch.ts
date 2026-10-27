@@ -12,7 +12,19 @@
 // `user: null` for what is not there; GraphQL errors for a field Twitch
 // renamed. The CDN serves a signed file only (401 unsigned or with another
 // signature) and answers Range with 206.
+//
+// VODs (verified live 2026-10-27): `video(id)` + `videoPlaybackAccessToken(id)`
+// in one query (`video: null`, no token, for one that is gone), the token
+// alone, aliased batches v0…v14 of `video`, and
+// `user(login).videos(first: 100, after, type, sort)` with `totalCount` and
+// one cursor `"<id>|<offset>|<publishedAt>|<n>"` on every edge of a page,
+// null on the last. Usher (`GET /vod/<id>.m3u8?…&sig&token`) checks the
+// token's signature (403 `nauth_sig_invalid` JSON otherwise) and answers a
+// master playlist whose variants live on a fake HLS origin
+// (test/helpers/fake-hls.ts): a `chunked` source, a video-only "high", 720p60
+// and audio_only.
 import * as http from 'node:http'
+import type {FakeHls, FakeTrack} from './fake-hls.js'
 import {listenLocal} from './listen.js'
 
 export const WEB_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko'
@@ -34,8 +46,43 @@ export const SLUGS = {
   stale: 'StaleTokenClipSignedTwice-abcdEFGHijklMNOP',
 } as const
 
-/** VODs: one whose broadcast is still on the air, one finished, one deleted. */
-export const VODS = {recording: '2911744751', recorded: '2602093345', gone: '9999'} as const
+/** VODs, each with the master playlist usher gives for it (served from a fake HLS origin). */
+export const VODS = {
+  /** Its broadcast is still on the air (`status: RECORDING`). */
+  recording: '2911744751',
+  /** A finished archive: 6 TS segments of 2 s. */
+  recorded: '2602093345',
+  /** `video: null`. */
+  gone: '9999',
+  /** Segments 2 and 3 listed `-unmuted` (403); `-muted` answers. */
+  muted: '2700000001',
+  /** Its CDN token is good for 5 segments; a fresh usher master re-signs. */
+  expiring: '2700000002',
+  /** Usher answers 403 `vod_manifest_restricted` (a subscriber-only VOD, as yt-dlp and streamlink read it). */
+  subsOnly: '2700000003',
+  /** Its token says `authorization.forbidden`. */
+  locked: '2700000004',
+  /** Usher answers an HTML page: the native read fails, yt-dlp takes over. */
+  broken: '2700000005',
+  /** RECORDED by its status, but its playlist is still open (the broadcast just ended). */
+  racing: '2700000006',
+  highlight: '2700000007',
+  upload: '2700000008',
+} as const
+
+/** The fake HLS origin's tracks the VODs above play from (start it with these). */
+export const VOD_TRACKS: Readonly<Record<string, FakeTrack>> = {
+  rec: {segments: 6},
+  rec720: {segments: 6, bytes: 188 * 8},
+  recaudio: {segments: 6, bytes: 188 * 2},
+  /** A video-only variant (a 2016 highlight's "high", no mp4a): never chosen. */
+  high: {segments: 6, bytes: 188 * 24},
+  muted: {segments: 6, muted: [2, 3]},
+  signed: {segments: 12, signed: {validFor: 5}},
+  open: {segments: 4, ended: false, playlistType: 'EVENT'},
+}
+/** Listed VODs' ids start here (newest first: 3,000,000,000 + total − 1 − i). */
+const LISTED_VOD = 3_000_000_000
 
 export const CHANNELS = {
   /** 1,200 clips (the listing stops at 1,000). */
@@ -71,25 +118,65 @@ export type FakeTwitch = {
     refused: number
     denied: number
     stream: number
+    /** `video(id)` + token queries. */
     vod: number
+    /** Token-only queries. */
+    token: number
+    /** Aliased VOD batches. */
+    vodBatch: number
+    videoPage: number
+    usher: number
   }
   /** Variables of every listing page asked. */
   readonly pages: Array<Record<string, unknown>>
+  /** Variables of every videos page asked. */
+  readonly videoPages: Array<Record<string, unknown>>
   /** Slugs of every batch asked, in order. */
   readonly batches: string[][]
+  /** Ids of every VOD batch asked, in order. */
+  readonly vodBatches: string[][]
+  /** Every usher request: the VOD and its `supported_codecs`. */
+  readonly ushers: Array<{readonly id: string; readonly codecs: string | null}>
   /** Range headers the CDN saw (undefined: none). */
   readonly ranges: Array<string | undefined>
+  readonly usher: string
   close(): Promise<void>
 }
 
 export type FakeTwitchConfig = {
   /** The first N GraphQL requests answer 429. */
   readonly refusals?: number | undefined
+  /** The HLS origin usher's variants point at (started with VOD_TRACKS). */
+  readonly hls?: FakeHls | undefined
+}
+
+/** Videos per channel listing (all types). */
+const VIDEO_TOTALS: Readonly<Record<string, number>> = {
+  [CHANNELS.mid]: 250,
+  [CHANNELS.empty]: 0,
 }
 
 export async function startFakeTwitch(config: FakeTwitchConfig = {}): Promise<FakeTwitch> {
-  const hits = {clip: 0, batch: 0, page: 0, media: 0, refused: 0, denied: 0, stream: 0, vod: 0}
+  const hits = {
+    clip: 0,
+    batch: 0,
+    page: 0,
+    media: 0,
+    refused: 0,
+    denied: 0,
+    stream: 0,
+    vod: 0,
+    token: 0,
+    vodBatch: 0,
+    videoPage: 0,
+    usher: 0,
+  }
   const pages: Array<Record<string, unknown>> = []
+  const videoPages: Array<Record<string, unknown>> = []
+  const vodBatches: string[][] = []
+  const ushers: Array<{readonly id: string; readonly codecs: string | null}> = []
+  /** VOD id → tokens signed so far (vsig-<id>-<n>). */
+  const signed = new Map<string, number>()
   const batches: string[][] = []
   const ranges: Array<string | undefined> = []
   /** slug → reads so far (each read signs anew: sig-<slug>-<n>). */
@@ -189,6 +276,115 @@ export async function startFakeTwitch(config: FakeTwitchConfig = {}): Promise<Fa
     [CHANNELS.gated]: 50,
   }
 
+  const vodType = (i: number) => (i % 10 === 3 ? 'HIGHLIGHT' : i % 10 === 7 ? 'UPLOAD' : 'ARCHIVE')
+  /** Video i of a channel's listing, newest first; the newest of midchannel is still recording. */
+  const listedVod = (login: string, i: number, total: number) => {
+    const id = String(LISTED_VOD + total - 1 - i)
+    return {
+      id,
+      title: `Video ${i} of ${login}`,
+      createdAt: new Date(Date.UTC(2026, 9, 26) - i * 86_400_000).toISOString().replace('.000', ''),
+      publishedAt: new Date(Date.UTC(2026, 9, 26) - i * 86_400_000).toISOString().replace('.000', ''),
+      lengthSeconds: 12,
+      viewCount: (i * 7919) % 1000,
+      broadcastType: vodType(i),
+      status: i === 0 && login === CHANNELS.mid ? 'RECORDING' : 'RECORDED',
+      owner: {login, displayName: login.toUpperCase()},
+      game: {name: 'A Game'},
+      previewThumbnailURL: `${origin}/thumb/vod-${id}.jpg`,
+    }
+  }
+  const vodNode = (id: string): Record<string, unknown> | null => {
+    if (id === VODS.gone) return null
+    const number = Number(id)
+    if (number >= LISTED_VOD && number < LISTED_VOD + 250) {
+      return listedVod(CHANNELS.mid, LISTED_VOD + 249 - number, 250)
+    }
+    const type = id === VODS.highlight ? 'HIGHLIGHT' : id === VODS.upload ? 'UPLOAD' : 'ARCHIVE'
+    const segments = id === VODS.expiring ? 12 : id === VODS.racing ? 4 : 6
+    return {
+      id,
+      title: `VOD ${id}`,
+      createdAt: '2026-10-20T17:45:11Z',
+      publishedAt: '2026-10-20T17:45:11Z',
+      lengthSeconds: segments * 2,
+      viewCount: 1234,
+      broadcastType: type,
+      status: id === VODS.recording ? 'RECORDING' : 'RECORDED',
+      owner: {login: id === VODS.recording ? CHANNELS.live : 'shroud', displayName: 'Shroud'},
+      game: {name: 'A Game'},
+      previewThumbnailURL: `${origin}/thumb/vod-${id}.jpg`,
+    }
+  }
+  const vodToken = (id: string) => {
+    const n = (signed.get(id) ?? 0) + 1
+    signed.set(id, n)
+    const forbidden = id === VODS.locked
+    return {
+      signature: `vsig-${id}-${n}`,
+      value: JSON.stringify({
+        authorization: {forbidden, reason: forbidden ? 'UNAUTHORIZED_ENTITLEMENTS' : ''},
+        chansub: {restricted_bitrates: []},
+        expires: Math.floor(Date.now() / 1000) + 20 * 3600,
+        maximum_resolution: 'FULL_HD',
+        vod_id: Number(id),
+        version: 3,
+      }),
+    }
+  }
+  /** Usher's master for a VOD: the variants on the HLS origin, minted anew (signed tracks get a fresh token). */
+  const master = (id: string): string => {
+    const hls = config.hls
+    if (!hls) throw new Error('the fake usher needs the fake HLS origin (config.hls)')
+    const main = id === VODS.muted ? 'muted' : id === VODS.expiring ? 'signed' : id === VODS.racing ? 'open' : 'rec'
+    const variant = (attrs: string, group: string, name: string, track: string) =>
+      `#EXT-X-MEDIA:TYPE=VIDEO,GROUP-ID="${group}",NAME="${name}",AUTOSELECT=YES,DEFAULT=YES\n` +
+      `#EXT-X-STREAM-INF:${attrs},VIDEO="${group}"\n${hls.playlistUrl(track)}`
+    return [
+      '#EXTM3U',
+      '#EXT-X-TWITCH-INFO:ORIGIN="s3",B="false",REGION="NA",USER-IP="127.0.0.1",CLUSTER="cloudfront_vod"',
+      variant('BANDWIDTH=8500000,CODECS="avc1.42C01F",RESOLUTION=1920x1080,FRAME-RATE=60.000', 'high', 'high', 'high'),
+      variant(
+        'BANDWIDTH=7712738,CODECS="avc1.64002A,mp4a.40.2",RESOLUTION=1920x1080,FRAME-RATE=60.000',
+        'chunked',
+        '1080p60 (source)',
+        main,
+      ),
+      variant(
+        'BANDWIDTH=3249811,CODECS="avc1.4D4020,mp4a.40.2",RESOLUTION=1280x720,FRAME-RATE=60.000',
+        '720p60',
+        '720p60',
+        'rec720',
+      ),
+      variant('BANDWIDTH=203877,CODECS="mp4a.40.2"', 'audio_only', 'Audio Only', 'recaudio'),
+      '',
+    ].join('\n')
+  }
+  /** `GET /vod/<id>.m3u8`: the token's signature checked, then the master (or how usher refuses). */
+  const usher = (res: http.ServerResponse, url: URL) => {
+    hits.usher++
+    const id = /^\/vod\/(\d+)\.m3u8$/.exec(url.pathname)?.[1] ?? ''
+    ushers.push({id, codecs: url.searchParams.get('supported_codecs')})
+    const sig = url.searchParams.get('sig') ?? ''
+    const n = Number(sig.slice(`vsig-${id}-`.length))
+    const value = url.searchParams.get('token')
+    if (!sig.startsWith(`vsig-${id}-`) || !(n >= 1 && n <= (signed.get(id) ?? 0)) || !value) {
+      return json(res, 403, [{error: 'invalid token signature', error_code: 'nauth_sig_invalid', type: 'error'}])
+    }
+    if (id === VODS.subsOnly) {
+      return json(res, 403, [
+        {error: 'You must be subscribed to watch this video', error_code: 'vod_manifest_restricted', type: 'error'},
+      ])
+    }
+    if (id === VODS.broken) {
+      res.writeHead(200, {'content-type': 'text/html; charset=utf-8'})
+      return res.end('<!doctype html><title>Twitch</title>')
+    }
+    if (!vodNode(id)) return json(res, 404, [{error: 'vod not found', error_code: 'vod_manifest_not_found'}])
+    res.writeHead(200, {'content-type': 'application/vnd.apple.mpegurl'})
+    return res.end(master(id))
+  }
+
   const json = (res: http.ServerResponse, status: number, body: unknown) => {
     res.writeHead(status, {'content-type': 'application/json'})
     res.end(JSON.stringify(body))
@@ -228,12 +424,60 @@ export async function startFakeTwitch(config: FakeTwitchConfig = {}): Promise<Fa
           : null
       return json(res, 200, {data: {user: {id: '71092938', login, displayName: login.toUpperCase(), stream}}})
     }
-    if (query.startsWith('query VodStatus(')) {
+    if (query.startsWith('query Vod(')) {
       hits.vod++
       const id = String(variables['id'])
-      if (id === VODS.gone) return json(res, 200, {data: {video: null}})
-      const status = id === VODS.recording ? 'RECORDING' : 'RECORDED'
-      return json(res, 200, {data: {video: {id, status, broadcastType: 'ARCHIVE', owner: {login: CHANNELS.live}}}})
+      const video = vodNode(id)
+      return json(res, 200, {data: {video, videoPlaybackAccessToken: video ? vodToken(id) : null}})
+    }
+    if (query.startsWith('query VodToken(')) {
+      hits.token++
+      const id = String(variables['id'])
+      return json(res, 200, {data: {videoPlaybackAccessToken: vodNode(id) ? vodToken(id) : null}})
+    }
+    if (query.startsWith('query Vods(')) {
+      hits.vodBatch++
+      const ids = Object.keys(variables)
+        .sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)))
+        .map(key => String(variables[key]))
+      vodBatches.push(ids)
+      if (ids.length > 15) return json(res, 200, {errors: [{message: 'root field aliases limit allowed (15)'}]})
+      const data: Record<string, unknown> = {}
+      ids.forEach((id, i) => {
+        data[`v${i}`] = vodNode(id)
+      })
+      return json(res, 200, {data})
+    }
+    if (query.startsWith('query ChannelVideos(')) {
+      hits.videoPage++
+      videoPages.push(variables)
+      const login = String(variables['login'])
+      const total = VIDEO_TOTALS[login]
+      if (total === undefined) return json(res, 200, {data: {user: null}})
+      const type = typeof variables['type'] === 'string' ? variables['type'] : undefined
+      let nodes = Array.from({length: total}, (_, i) => listedVod(login, i, total))
+      if (type) nodes = nodes.filter(node => node.broadcastType === type)
+      if (variables['sort'] === 'VIEWS') nodes.sort((a, b) => b.viewCount - a.viewCount)
+      const after = typeof variables['after'] === 'string' ? Number(variables['after'].split('|')[1]) : 0
+      const end = Math.min(nodes.length, after + PAGE)
+      const page = nodes.slice(after, end)
+      const last = page.at(-1)
+      const more = end < nodes.length
+      const cursor = more && last ? `${last.id}|${end}|${last.publishedAt}|${end * 7}` : null
+      return json(res, 200, {
+        data: {
+          user: {
+            id: '37402112',
+            login,
+            displayName: login.toUpperCase(),
+            videos: {
+              totalCount: nodes.length,
+              pageInfo: {hasNextPage: more},
+              edges: page.map(node => ({cursor, node})),
+            },
+          },
+        },
+      })
     }
     if (query.startsWith('query ChannelClips(')) {
       hits.page++
@@ -297,6 +541,7 @@ export async function startFakeTwitch(config: FakeTwitchConfig = {}): Promise<Fa
       })
       return
     }
+    if (req.method === 'GET' && url.pathname.startsWith('/vod/')) return usher(res, url)
     if (req.method === 'GET' && url.pathname.startsWith('/media/')) {
       hits.media++
       const uuid = url.pathname.split('/')[2] ?? ''
@@ -340,8 +585,12 @@ export async function startFakeTwitch(config: FakeTwitchConfig = {}): Promise<Fa
     gql: `${origin}/gql`,
     hits,
     pages,
+    videoPages,
     batches,
+    vodBatches,
+    ushers,
     ranges,
+    usher: origin,
     close: () =>
       new Promise<void>(resolve => {
         server.closeAllConnections()

@@ -902,13 +902,14 @@ export type DownloaderOptions = {
    */
   readonly bluesky?: false | BlueskyOptions | undefined
   /**
-   * Twitch clips through the built-in extractor (plain GraphQL queries on
-   * gql.twitch.tv, anonymous; each clip a signed progressive MP4): clips and a
-   * channel's clips (`/<channel>/clips?range=…`). VODs, video listings and live
-   * channels are HLS: a finished VOD goes to yt-dlp's Twitch extractor until
-   * the core reads HLS; a channel on the air or a VOD still recording fails as
-   * `live-now` and is never handed to yt-dlp (live streams are not
-   * downloaded). `false` hands every Twitch url to yt-dlp, live ones included.
+   * Twitch through the built-in extractor (plain GraphQL queries on
+   * gql.twitch.tv, anonymous): clips (each a signed progressive MP4), a
+   * channel's clips (`/<channel>/clips?range=…`), VODs (archives, highlights,
+   * uploads: HLS, downloaded by the core) and a channel's videos
+   * (`/<channel>/videos?filter=…&sort=…`). A channel on the air or a VOD still
+   * recording fails as `live-now` and is never handed to yt-dlp (live streams
+   * are not downloaded). `false` hands every Twitch url to yt-dlp, live ones
+   * included.
    */
   readonly twitch?: false | TwitchOptions | undefined
   /**

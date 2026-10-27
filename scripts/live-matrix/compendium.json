@@ -503,6 +503,62 @@
         "https://www.twitch.tv/xqc/clips?range=7d",
         "https://www.twitch.tv/summit1g/clips"
       ]
+    },
+    {
+      "id": "TW-04",
+      "category": "Twitch past broadcast, short (twitch.tv/videos/<id>, /<channel>/v/<id>, the player link, ?t=)",
+      "expect": "video",
+      "urls": [
+        "https://www.twitch.tv/videos/2910697066",
+        "https://www.twitch.tv/pokimane/v/2886637167",
+        "https://player.twitch.tv/?video=v2517093025&parent=example.com",
+        "https://www.twitch.tv/videos/2772084072?t=0h1m5s",
+        "https://www.twitch.tv/videos/2663850064"
+      ]
+    },
+    {
+      "id": "TW-05",
+      "category": "Twitch highlight",
+      "expect": "video",
+      "urls": [
+        "https://www.twitch.tv/videos/98913403",
+        "https://www.twitch.tv/devolverdigital/video/100019585",
+        "https://www.twitch.tv/videos/101139548"
+      ],
+      "note": "Highlights 5938473 and 6732619 (2014, 2016) and 1484137772, and the muted past broadcast 2795007999, are damaged at the source (ffmpeg alone and the yt-dlp path fail the decode check the same way): read fine, left out of the download check"
+    },
+    {
+      "id": "TW-06",
+      "category": "Twitch upload and past premiere",
+      "expect": "video",
+      "urls": [
+        "https://www.twitch.tv/videos/1816688726",
+        "https://www.twitch.tv/twitch/v/799499623",
+        "https://www.twitch.tv/videos/2159223180",
+        "https://www.twitch.tv/videos/253803185",
+        "https://www.twitch.tv/videos/1730380575"
+      ]
+    },
+    {
+      "id": "TW-07",
+      "category": "Twitch channel videos listing (twitch.tv/<channel>/videos, filter and sort from the link)",
+      "expect": "playlist",
+      "urls": [
+        "https://www.twitch.tv/riotgames/videos",
+        "https://www.twitch.tv/shroud/videos?filter=highlights&sort=time",
+        "https://www.twitch.tv/twitch/videos?filter=uploads&sort=views",
+        "https://www.twitch.tv/pokimane/videos?filter=archives",
+        "https://www.twitch.tv/ibai/videos?filter=all&sort=views"
+      ]
+    },
+    {
+      "id": "TW-08",
+      "category": "Twitch past broadcast about an hour long (the download check)",
+      "expect": "video",
+      "note": "1 h 1 min 50 s at 1080p60 (~3.5 GB); run with --only TW-08",
+      "urls": [
+        "https://www.twitch.tv/videos/2868182901"
+      ]
     }
   ]
 }

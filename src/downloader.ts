@@ -1692,6 +1692,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
           hasAudio: file => this.#hasAudio(bins, file, signal),
           ffmpeg: bins.ffmpeg.exe,
           threads: this.#cpuShare(job),
+          fragments: this.#settings.fragmentsPerDownload,
           slideshow: request.slideshow ?? DEFAULT_SLIDESHOW,
           onInfo,
           onProgress: progress => this.#update(job, {status: 'downloading', progress}),

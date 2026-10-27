@@ -80,6 +80,11 @@ export type SourceDownload = {
   readonly ffmpeg: Executable
   /** Encoder threads: this job's share of the CPU budget. */
   readonly threads: number
+  /**
+   * Segments of one HLS download fetched at once (the engine's `fragmentsPerDownload`, default 3;
+   * `core/hls` clamps it to ⌊CPUs/2⌋). A source passes it on instead of reading engine settings.
+   */
+  readonly fragments: number
   /** What a photo post becomes. */
   readonly slideshow: SlideshowOptions
   readonly onInfo: (info: DownloadedInfo) => void

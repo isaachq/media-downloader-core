@@ -10,7 +10,7 @@ away when the beta closes.
 
 - [x] 0 `ci: 5-minute budget` · done · verified locally: `test:fast` 483 pass in 58 s, `test:integrity-smoke` 2 pass in 2 s, `test:heavy` 75 pass in 28 s, app unit 204 pass, `test:e2e:smoke` 3 pass in 27 s. Pending: the Actions before/after table on Isaac's first push (before: CI check jobs 15.7 to 16 min, one mix test waited a real 15-minute YouTube pause; app jobs 3.2 to 4.3 min)
 - [x] 1 `source(threads)` · done · verified locally: `typecheck` and `lint` clean, `test:fast` 519 pass / 0 fail (16 Threads tests against the fake, Threads detection), `test:heavy` 75 pass, `perf --quick` within 10% of the baseline (no regression); live `live:matrix --platform threads` 17 of 17 links pass, `--native` 17 of 17, `--native --download` 13 of 13 single posts (H.264 720x1280 + AAC, JPEG / WebP pictures, carousel folders); CDN Range answers 206, no rate limit seen. Not verified: a private profile and a signed-in session (no account), GIFs, reposts and quotes as links, the razr 50
-- [ ] 2 `core(hls)` · not done (Isaac reviews the API before code)
+- [x] 2 `core(hls)` · done (no Source wired yet: Twitch VODs and SoundCloud come in their own commits) · verified locally: `typecheck` and `lint` clean, `test:fast` 604 pass / 0 fail / 2 skipped (44 HLS tests against the fake origin), `test:heavy` 80 pass (5 HLS tests with the real ffmpeg: TS → mp4, fMP4 as is, AES-128, a discontinuity, demuxed audio, all decode clean), `perf --quick` within 10% of the baseline; `scripts/hls-bench.ts` on 18,000 segments × 16 KB: parsed list 4.1 MiB, live heap growth 1.2 MiB at k = 3 and 6, event-loop p99 6.9 / 5.5 ms, 1.000 requests per segment, a kill at 9,000 resumed with 10 segments asked twice (bound W + 1 s = 232; 10 to 236 across runs), 245 / 304 segments a second (Windows Defender costs ~7 ms on the first open of each new file); live end to end: Mux's public test VOD (64 TS segments, 480p, 634.6 s, 9 s) and Apple's advanced fMP4 example (201 segments, demuxed E-AC-3 track, 600 s) ffprobe right and decode clean. Not verified: a real Twitch VOD, SoundCloud and Bluesky playlists, a signed playlist expiring live, the razr 50 (its ffmpeg's concat demuxer and bsfs)
 - [ ] 3 `source(twitch)` · clips done, VODs wait for `core(hls)` · clips verified locally: `typecheck` and `lint` clean on this commit's files (the in-progress `src/core/hls/` excluded), `test:fast` 562 / 560 pass / 0 fail (19 Twitch tests against the fake, Twitch detection), `test:heavy` 75 pass, `perf --quick` no regression in code this commit touches (archive.loadMs and stress swing with machine load; archive imports nothing changed here); live `live:matrix --platform twitch` 14 of 14, `--native` 14 of 14, `--native --download` 10 of 10 single clips (H.264 1920x1080 or 1280x720 + AAC per ffprobe). Client ids re-checked live: the web player's gets `IntegrityCheckFailed` on listing page 2, yt-dlp's (the default) reads pages 1 to 3; both read single clips and batches of 15. Live channel and VOD in progress fail natively as `live-now` (checked live), a finished VOD goes to yt-dlp. Not verified: a subscriber-only clip, a CDN token running out mid-download, a 429 from gql.twitch.tv, the razr 50. Pending: VODs and video listings natively (`core(hls)`), the sign-in (app commit 10)
 - [x] 4 `source(bluesky)` · done · verified locally: `typecheck` and `lint` clean, `test:fast` 540 pass / 0 fail (20 Bluesky tests against the fake, Bluesky detection), `test:heavy` 75 pass, `perf --quick` within 10% of the baseline (no regression); live `live:matrix --platform bluesky` 19 of 19 links pass, `--native` 19 of 19, `--native --download` 15 of 15 single posts (original JPEG / PNG blobs byte for byte, no WebP; H.264 1080x1920 and 720x1280 + AAC); getBlob ignores Range, no rate limit hit. yt-dlp 2026.10.21 has a Bluesky extractor (posts only, the same API and blobs): nothing handed to it. Not verified: a `!no-unauthenticated` account, did:web and third-party PDS live, a PDS 429, the HLS fallback (waits for `core(hls)`), the razr 50
 - [ ] 5 `source(soundcloud)` · not done
@@ -24,6 +24,42 @@ away when the beta closes.
 - [ ] Android `feature/beta-11` (phone repo) · not done
 
 **Library**
+
+- **Native HLS downloads for VODs and tracks (`core/hls`, internal: no Source uses it yet).** A master
+  playlist's variants become the shared `Rendition`, so `rankRenditions` picks as it does for every
+  native source (H.264 first for MP4 within the height cap, the audio-only variant or a demuxed audio
+  track alone for audio); a media playlist is downloaded by k segment workers (the engine's
+  `fragmentsPerDownload`, default 3, clamped to ⌊CPUs/2⌋, passed to sources as the new
+  `SourceDownload.fragments`) ahead of one in-order appender per track, a 2k reorder window. Each
+  segment goes to a Range-resumable `.part`, is checked from two small reads (the claimed media's
+  first bytes, an HTML page refused, AES block length and PKCS#7 padding), renamed `.done` and
+  streamed into one file per discontinuity period (AES-128 decrypted on the way, keys fetched once,
+  an LRU of 4); a constant-size cursor in `state.json` (tmp + rename, at most once a second) makes a
+  cancel, a crash or a kill resume where it stopped. One `ffmpeg -c copy` joins the periods with the
+  concat demuxer (timestamps stay monotonic across discontinuities) and muxes a demuxed audio track
+  in; a single fMP4 period is handed over as it is. BYTERANGE single-file playlists, EXT-X-MAP before
+  or after EXTINF and repeated after a discontinuity (yt-dlp #10878), EXT-X-GAP, EXT-X-DEFINE,
+  per-site uri rewrites (Twitch `-unmuted` → `-muted`), a wrong playlist Content-Type and redirects
+  are handled; a 401/403 re-signs the playlist through the Source (one call per refusal wave, at most
+  max(3, ⌈hours⌉ + 1)); a missing segment fails as a resumable `network` error (or is skipped when
+  asked), a full disk is `disk-full`, never a gap. **Live streams are never downloaded**: a playlist
+  without an end is refused as `live-now` before any segment is asked for; the parser still reads
+  sliding windows in full (media and discontinuity sequences, program date-time, date ranges with
+  their CLASS and attributes, segment titles) and the segment fetcher, key cache, appender, state
+  writer and assemble step are separate pieces for the recorder to come. DRM (FairPlay, Widevine,
+  PlayReady) is `format-unavailable` with a message that says DRM; SAMPLE-AES is `stream-only`.
+  `VideoCodec` gains `'av1'` (ranked after H.265 and before H.264 outside MP4). `fetchMedia` takes a
+  `range` and links the caller's signal with one listener it removes (no `AbortSignal.any` per call,
+  whose Android polyfill left a listener on the job's signal each time), and no longer arms a
+  24-hour request timer per call (`HttpSession` treats `timeoutMs: Infinity` as none): each held
+  ~2 KB for a day, 36 MB over 18,000 segments. Fake origin `test/helpers/fake-hls.ts`, 44 fast tests,
+  5 heavy ones with the real ffmpeg, `scripts/hls-bench.ts`. Cost: parsing O(L) once per playlist
+  (L characters), O(n) memory for n segments; download O(1) per segment: 1 request, ≤ 1
+  constant-size state write per second, O(1) progress; ≤ k requests in flight, ≤ W = 2k segment
+  files on disk, memory O(k × 64 KB). Requests per item: 1 master + 1 per track playlist + n
+  segments + 1 per distinct key + 1 init per period + the refresh budget (each O(n) to re-check: O(n)
+  total). One ffmpeg -c copy pass O(bytes); P periods → a P-line concat list. Disk peak 2× the media
+  (period files + output). Validation and SHA-256 stay the engine's existing steps.
 
 - **Twitch clips, natively.** Clips (`clips.twitch.tv/<slug>`, `clips.twitch.tv/embed?clip=`,
   `twitch.tv/<channel>/clip/<slug>`, on www., m. and go.) and a channel's clips

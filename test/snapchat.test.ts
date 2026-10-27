@@ -169,6 +169,7 @@ function task(url: string, workDir: string, overrides: Partial<SourceDownload> =
     hasAudio: async () => true,
     ffmpeg: toExecutable('ffmpeg'),
     threads: 1,
+    fragments: 3,
     slideshow: {mode: 'images', secondsPerImage: 3},
     onInfo: () => {},
     onProgress: () => {},

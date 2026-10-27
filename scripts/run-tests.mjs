@@ -20,6 +20,7 @@ import {fileURLToPath} from 'node:url'
 const HEAVY = new Set([
   'characterization.test.ts',
   'conformance-26.test.ts',
+  'hls-real.test.ts',
   'integrity.test.ts',
   'matrix.test.ts',
   'resilience.test.ts',

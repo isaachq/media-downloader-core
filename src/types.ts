@@ -822,7 +822,10 @@ export type DownloaderOptions = {
    * up to 0.6 (⌊CPUs × 0.6⌋), leaving the rest for the user. Live with `setMaxCpuShare`.
    */
   readonly maxCpuShare?: number | undefined
-  /** Parallel fragments inside one download (HLS/DASH sites). Network-bound. Default 3. */
+  /**
+   * Parallel fragments inside one download (HLS/DASH sites): yt-dlp's --concurrent-fragments, and the
+   * segments the native HLS downloader fetches at once (clamped to ⌊CPUs/2⌋). Network-bound. Default 3.
+   */
   readonly fragmentsPerDownload?: number | undefined
   /** Default 'full'. */
   readonly validation?: ValidationLevel | undefined

@@ -79,7 +79,7 @@ const TRACKING: ReadonlySet<string> = new Set([
 ])
 
 /** Sites whose links carry the post in the path: their query is only tracking (?s=20, ?igsh=, ?_r=1&_t=…, ?share_id=, ?xmt=). */
-const PATH_IDENTIFIED: ReadonlySet<LinkSite> = new Set(['tiktok', 'instagram', 'x', 'snapchat', 'threads'])
+const PATH_IDENTIFIED: ReadonlySet<LinkSite> = new Set(['tiktok', 'instagram', 'x', 'snapchat', 'threads', 'bluesky'])
 
 /**
  * What makes two links the same link, without asking the site: scheme, a

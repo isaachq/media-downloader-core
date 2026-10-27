@@ -421,6 +421,53 @@
         "https://www.threads.com/@instagram",
         "https://www.threads.net/@zuck/media"
       ]
+    },
+    {
+      "id": "BS-01",
+      "category": "Bluesky post with a picture",
+      "expect": "photo",
+      "urls": [
+        "https://bsky.app/profile/bsky.app/post/3mxu3hsnebc2v",
+        "https://bsky.app/profile/jay.bsky.team/post/3mxzuw4zxds2y",
+        "https://bsky.app/profile/theverge.com/post/3mys7szjqw22u",
+        "https://bsky.app/profile/nytimes.com/post/3myt2zk5mz722",
+        "https://bsky.app/profile/jay.bsky.team/post/3mwkwqqs5322e"
+      ]
+    },
+    {
+      "id": "BS-02",
+      "category": "Bluesky gallery (2 to 10 pictures, images or gallery embed)",
+      "expect": "carousel",
+      "urls": [
+        "https://bsky.app/profile/bsky.app/post/3mnslrkd6ok2g",
+        "https://bsky.app/profile/jay.bsky.team/post/3mp5hivvpi227",
+        "https://bsky.app/profile/theverge.com/post/3mx5ifetqzs2w",
+        "https://bsky.app/profile/jay.bsky.team/post/3mwhqanugyc2z",
+        "https://bsky.app/profile/theverge.com/post/3mycvcabsw22p"
+      ]
+    },
+    {
+      "id": "BS-03",
+      "category": "Bluesky video post",
+      "expect": "video",
+      "urls": [
+        "https://bsky.app/profile/nytimes.com/post/3mytan74flu22",
+        "https://bsky.app/profile/theverge.com/post/3mxxhikx5wc2k",
+        "https://bsky.app/profile/nytimes.com/post/3mysmjozofc24",
+        "https://bsky.app/profile/jay.bsky.team/post/3mvorbgjaks24",
+        "https://bsky.app/profile/did:plc:eclio37ymobqex2ncko63h4r/post/3myrzk4rwv32r"
+      ]
+    },
+    {
+      "id": "BS-04",
+      "category": "Bluesky public profile",
+      "expect": "playlist",
+      "urls": [
+        "https://bsky.app/profile/bsky.app",
+        "https://bsky.app/profile/jay.bsky.team",
+        "https://bsky.app/profile/theverge.com/media",
+        "https://bsky.app/profile/did:plc:z72i7hdynmk6r22z27h6tvur"
+      ]
     }
   ]
 }

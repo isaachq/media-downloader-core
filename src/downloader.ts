@@ -47,6 +47,7 @@ import {utf8Env} from './core/process.js'
 import {PendingJournal} from './core/queue-store.js'
 import {TraceLog} from './core/trace-log.js'
 import {ffprobe, ProbeError, summarizeProbe, validateBundle, validateFile} from './core/validate.js'
+import {BlueskySource} from './sources/bluesky/source.js'
 import {DirectFileSource} from './sources/direct/source.js'
 import {FacebookSource} from './sources/facebook/source.js'
 import {InstagramSource} from './sources/instagram/source.js'
@@ -301,6 +302,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       ...(options.threads === false
         ? []
         : [new ThreadsSource({log, cookies: () => this.#siteCookies(['threads.com']), ...options.threads})]),
+      ...(options.bluesky === false ? [] : [new BlueskySource({log, ...options.bluesky})]),
       ...(options.sources ?? []),
       // a link straight to a media file, on any other site: last, after every site's own source
       ...(options.direct === false ? [] : [new DirectFileSource(options.direct)]),

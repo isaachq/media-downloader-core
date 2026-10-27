@@ -89,12 +89,10 @@ export async function fetchMedia(
         callback(null, chunk)
       },
     })
-    await streams.pipeline(
-      Readable.fromWeb(response.body as WebReadableStream<Uint8Array>),
-      meter,
-      (await fs.open(file, resumed ? 'a' : 'w')).createWriteStream(),
-      {signal},
-    )
+    // the file is opened before the body becomes a stream: a connection that drops while the open is
+    // awaited would otherwise error a stream nothing listens to yet (an uncaught error, the process gone)
+    const output = (await fs.open(file, resumed ? 'a' : 'w')).createWriteStream()
+    await streams.pipeline(Readable.fromWeb(response.body as WebReadableStream<Uint8Array>), meter, output, {signal})
     if (total !== undefined && done !== total) {
       throw new DownloadError('network', `Incomplete ${opts.site} download: ${done} of ${total} bytes.`)
     }

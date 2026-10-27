@@ -56,6 +56,15 @@ describe('detectLink: the site of a pasted or shared link', () => {
     assert.equal(site('https://notthreads.net/@zuck'), 'web')
   })
 
+  it('names Bluesky on bsky.app', () => {
+    assert.equal(site('https://bsky.app/profile/bsky.app/post/3mnslrkd6ok2g'), 'bluesky')
+    assert.equal(site('https://bsky.app/profile/did:plc:z72i7hdynmk6r22z27h6tvur'), 'bluesky')
+    assert.equal(site('Look: https://www.bsky.app/profile/jay.bsky.team/post/3mwhqanugyc2z!'), 'bluesky')
+    assert.equal(detectLink('https://bsky.app/profile/theverge.com')?.host, 'bsky.app')
+    assert.equal(site('https://bsky.app.evil.example/profile/bsky.app'), 'web')
+    assert.equal(site('https://notbsky.app/profile/bsky.app'), 'web')
+  })
+
   it('any other site is "web", and a link straight to a file says so', () => {
     const page = detectLink('https://www.trannyvideosx.com/video/81455/ts-havenna-sofia-solo-1')
     assert.deepEqual(page, {

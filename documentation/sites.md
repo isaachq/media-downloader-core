@@ -229,6 +229,50 @@ quotes as links of their own; spoiler-blurred media; the phone's network.
 `threads: false` hands Threads urls to yt-dlp, whose generic extractor
 reads none of them.
 
+## Bluesky (built-in extractor)
+
+Posts and public profiles are read by the library itself from Bluesky's
+public AppView (no session), and every file is the author's **original
+blob** from their own server (PDS), streamed to disk. yt-dlp's Bluesky
+extractor reads the same API and the same blobs, for posts only (no
+galleries, no profiles), so nothing is handed to it: every failure says its
+own reason.
+
+```ts
+scheduler.schedule({url: 'https://bsky.app/profile/bsky.app/post/3mnslrkd6ok2g', profile: {kind: 'video', container: 'mp4'}, outDir, slideshow: {mode: 'images', secondsPerImage: 3}})
+scheduler.schedule({url: 'https://bsky.app/profile/jay.bsky.team', profile: {kind: 'video', container: 'mp4'}, outDir})
+```
+
+| | How |
+| --- | --- |
+| Links | `/profile/<actor>/post/<rkey>` (and its `/quotes`, `/likes`, `/reposted-by` pages): one post; `/profile/<actor>`, `/media`, `/video`, `/posts`, `/replies`: a profile, always listed as its media posts. The actor is a handle (`jay.bsky.team`) or a DID (`did:plc:…`, `did:web:…`, also percent-encoded). On `bsky.app`, `www.bsky.app`, `main.bsky.dev`, `staging.bsky.app`, and `at://<actor>/app.bsky.feed.post/<rkey>`. Feeds, lists and starter packs are not read. |
+| How it is read | A post is **one request**: `app.bsky.feed.getPostThread?uri=at://<actor>/app.bsky.feed.post/<rkey>&depth=0&parentHeight=0` on `public.api.bsky.app` (a handle works in the at-uri). Checks of posts not read yet go **25 at a time** through `app.bsky.feed.getPosts`, which takes DIDs only (a handle in an at-uri is a 500): each handle is resolved once (`com.atproto.identity.resolveHandle`, or learned from any post or profile read). |
+| Media | Read from the post's own record by its embed's `$type`: `app.bsky.embed.images` (up to 4) and the new `app.bsky.embed.gallery` (2026-06, up to 10 in the app) are pictures, a `slideshow` exactly as Instagram's (one picture is a one-image photo post); `app.bsky.embed.video` is one video; `recordWithMedia` is its own media only (the quoted post is someone else's: its own link downloads it). A pure quote, a link card or a text post: `unavailable` / `format-unavailable`. Any other embed type: `unavailable` / `retry-later` naming the type. Each file: `com.atproto.sync.getBlob?did=&cid=` on the author's PDS, the bytes the author uploaded (a JPEG stays the JPEG; a video is the progressive H.264 MP4 Bluesky's video service made, up to 1080p, where its HLS stops at 720p). A picture falls back to the CDN's `feed_fullsize` (a WebP re-encode) when the PDS refuses or fails. HLS is not used (a later fallback for videos, once the core has an HLS module). |
+| PDS | From the DID document: `plc.directory/<did>` or `https://<host>/.well-known/did.json` for `did:web`, its `#atproto_pds` service; once per account (2,000 kept), read again on a retry (`fresh`) in case the account moved. |
+| Listing | One `app.bsky.actor.getProfile`, then `app.bsky.feed.getAuthorFeed?actor=<did>&filter=posts_with_media&includePins=true&limit=100` by its ISO cursor (no `cursor` on the last page). The pinned post comes first (`reasonPin`, whatever its date) and is listed once (de-duplicated where its date puts it again), never counted towards `known`; reposts (`reasonRepost`) and anyone else's posts are left out; the author's own replies with media are in (what the filter gives). Map by rkey, a cursor seen twice or 3 pages with nothing new end the walk (`walkCursor`), `maxEntries` (default 500, `bluesky.maxProfileItems`), `known` (an incremental sync stops after 20 known posts in a row), chunks of 500 kept as they come. Every listed post is whole in the page: checks and downloads ask the AppView for nothing more. |
+| Cache | Posts by rkey for 1 h (blobs never change), 5,000 kept; handles → DIDs 1 h (2,000); profiles 30 min (500); listings 15 min (100). Reads of one post, one handle, one DID document or one profile at the same time share one request (`Coalescer`). |
+| Errors | A deleted post (a 400 `NotFound`, or a thread entry `notFoundPost` / `blockedPost`), an unknown handle or account (`Profile not found`, `Unable to resolve handle`): `removed`. An account labelled `!no-unauthenticated` (it asks to be hidden from signed-out visitors, and the web app honours it): `needs-sign-in`, post and profile. 429 / 5xx from the AppView back every request off together (Pacer) and are retried. |
+| Pace | The AppView: 3 in flight, 0.3 to 0.5 s apart (`bluesky.pacing`; it sends no rate limit headers). Each PDS host: its own pacer, 2 in flight 0.1 s apart (`bluesky.pdsPacing`), 10 a second at most, its documented 3,000 per 5 minutes per IP. Its `ratelimit-remaining` / `ratelimit-reset` are read on every blob: under 50 left, pictures come from the CDN first until the window resets; a 429 holds that host's blob requests until the reset. The CDN is not paced. |
+| Resume | A PDS ignores `Range` (a 200 with the whole body): a blob download that breaks is started over once (`fetchMedia` writes a 200 from byte 0), then the engine's own retries. |
+| Endpoints | The AppView, the PLC directory, the did:web document, the image CDN and the feed filter live in `src/sources/bluesky/endpoints.ts`; `bluesky.endpoints` overrides them without a release. |
+
+**What was verified, and what wasn't.** Verified live on 2026-10-26
+(anonymous, from Mexico; `npm run live:matrix -- --platform bluesky`, with
+and without `--native`, 19 of 19 links): single-picture posts, a quote with
+a picture, galleries of 2, 3, 5, 7 and 10 pictures (`images` and `gallery`
+embeds), videos, links by handle and by DID, profiles by handle, by DID and
+as `/media`; downloaded natively (`--native --download`, 15 of 15): every
+picture the original JPEG or PNG byte for byte (the record's sizes, no
+WebP), videos H.264 1080 × 1920 / 720 × 1280 + AAC (the blob, above HLS's
+720p). getBlob ignores `Range`, sends `ratelimit-*`; the AppView sends
+none; getPosts with a handle is a 500. Bluesky gives no video length: the
+file says it. **Not verified**: a `!no-unauthenticated` account (none
+found: the fake serves the label as the AppView documents it), a `did:web`
+account and a third-party PDS (the fake serves both), a PDS that answers
+429, a video still processing or a deleted blob, Tenor GIF link cards, the
+razr 50. `bluesky: false` hands Bluesky urls to yt-dlp's Bluesky extractor
+(posts only).
+
 ## TikTok sync (Sync Up)
 
 A **subscription** keeps a TikTok account in step with a folder. A sync

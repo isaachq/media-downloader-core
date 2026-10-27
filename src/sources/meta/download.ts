@@ -2,11 +2,11 @@ import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import {type MediaTags, runFfmpeg} from '../../core/convert.js'
 import type {DownloadedInfo} from '../../core/download.js'
+import type {HttpSession} from '../http.js'
 import {fetchMedia} from '../media-fetch.js'
 import {type Rendition, rankRenditions} from '../renditions.js'
 import type {SourceDownload, SourceFile} from '../source.js'
 import {buildSlideshowVideo, slideshowFrame} from '../tiktok/slideshow.js'
-import type {MetaClient} from './client.js'
 import {MetaError} from './errors.js'
 import {imagesOf, type MetaImage, type MetaPost, type MetaVideo, shapeOf, titleOf, videosOf} from './post.js'
 
@@ -21,8 +21,11 @@ import {imagesOf, type MetaImage, type MetaPost, type MetaVideo, shapeOf, titleO
  */
 const PARALLEL_FILES = 4
 
+/** What the download needs of a site's client: its HTTP session (cookies, user agent). */
+export type MediaClient = {readonly session: HttpSession}
+
 export type PostDownload = {
-  readonly client: MetaClient
+  readonly client: MediaClient
   readonly post: MetaPost
   readonly task: SourceDownload
   /** The site, for messages and the `extractor` field. */
@@ -127,7 +130,7 @@ export async function downloadPost({client, post, task, site, referer}: PostDown
 
 /** Try encodings best first, every mirror of each. */
 async function fetchBest(
-  client: MetaClient,
+  client: MediaClient,
   video: MetaVideo,
   postId: string,
   task: SourceDownload,
@@ -169,7 +172,7 @@ async function fetchBest(
  * constant memory whatever the size). The parts are removed either way.
  */
 async function fetchDash(
-  client: MetaClient,
+  client: MediaClient,
   videoUrl: string,
   audioUrls: readonly string[],
   file: string,
@@ -222,7 +225,7 @@ async function fetchDash(
 
 /** Images into `folder` as 01.jpg, 02.jpg…, PARALLEL_FILES at a time, each from its first mirror that answers. */
 async function fetchImages(
-  client: MetaClient,
+  client: MediaClient,
   images: readonly MetaImage[],
   folder: string,
   task: SourceDownload,
@@ -238,7 +241,7 @@ async function fetchImages(
 
 /** A carousel's items in order (01, 02…): videos as their best encoding, images as they are. */
 async function fetchAll(
-  client: MetaClient,
+  client: MediaClient,
   post: MetaPost,
   folder: string,
   task: SourceDownload,
@@ -269,7 +272,7 @@ async function inParallel(count: number, work: (index: number) => Promise<void>)
 }
 
 async function fetchOneOf(
-  client: MetaClient,
+  client: MediaClient,
   urls: readonly string[],
   folder: string,
   name: string,

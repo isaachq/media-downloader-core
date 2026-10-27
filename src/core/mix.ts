@@ -1,4 +1,5 @@
 import * as fs from 'node:fs/promises'
+import {isBlueskyListing} from '../sources/bluesky/links.js'
 import {isFacebookListing} from '../sources/facebook/links.js'
 import {isInstagramListing} from '../sources/instagram/links.js'
 import {type MixLink, planMix} from '../sources/mix-plan.js'
@@ -60,7 +61,8 @@ export function isListingLink(url: string, engine: Pick<MixEngine, 'defaultListS
     isVkListing(url) ||
     isXProfile(url) ||
     isSnapchatListing(url) ||
-    isThreadsListing(url)
+    isThreadsListing(url) ||
+    isBlueskyListing(url)
   )
 }
 

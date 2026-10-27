@@ -7,7 +7,17 @@
  */
 
 /** The sites the engine reads natively or through yt-dlp; "web" is any other site. */
-export type LinkSite = 'youtube' | 'tiktok' | 'instagram' | 'facebook' | 'vk' | 'x' | 'snapchat' | 'threads' | 'web'
+export type LinkSite =
+  | 'youtube'
+  | 'tiktok'
+  | 'instagram'
+  | 'facebook'
+  | 'vk'
+  | 'x'
+  | 'snapchat'
+  | 'threads'
+  | 'bluesky'
+  | 'web'
 export const LINK_SITES: readonly LinkSite[] = [
   'youtube',
   'tiktok',
@@ -17,6 +27,7 @@ export const LINK_SITES: readonly LinkSite[] = [
   'x',
   'snapchat',
   'threads',
+  'bluesky',
   'web',
 ]
 
@@ -43,6 +54,8 @@ const DOMAINS: ReadonlyArray<readonly [Exclude<LinkSite, 'web'>, readonly string
   ['snapchat', ['snapchat.com']],
   // threads.net is the old host (a 301 to threads.com)
   ['threads', ['threads.com', 'threads.net']],
+  // the web app (bsky.app); the AT Protocol API hosts are never pasted
+  ['bluesky', ['bsky.app']],
 ]
 
 /** The first http(s) link in a text; its end is the first space or quote. */

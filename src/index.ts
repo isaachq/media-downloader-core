@@ -123,6 +123,9 @@ export {
   retryDelay,
 } from './downloader.js'
 export {BatchScheduler} from './scheduler.js'
+export type {BlueskyEndpoints} from './sources/bluesky/endpoints.js'
+export {type BlueskyLink, isBlueskyListing, parseBlueskyLink} from './sources/bluesky/links.js'
+export {BLUESKY_PROFILE_DEFAULT_ITEMS, type BlueskyOptions, BlueskySource} from './sources/bluesky/source.js'
 export type {BrowserAssist, BrowserPage, MediaResolver, PlayerMedia} from './sources/browser.js'
 export {type DetectedLink, detectLink, LINK_SITES, type LinkSite} from './sources/detect.js'
 export {DIRECT_NAME, DirectFileSource, type DirectOptions, directFile} from './sources/direct/source.js'

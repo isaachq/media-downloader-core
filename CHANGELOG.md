@@ -12,7 +12,7 @@ away when the beta closes.
 - [x] 1 `source(threads)` · done · verified locally: `typecheck` and `lint` clean, `test:fast` 519 pass / 0 fail (16 Threads tests against the fake, Threads detection), `test:heavy` 75 pass, `perf --quick` within 10% of the baseline (no regression); live `live:matrix --platform threads` 17 of 17 links pass, `--native` 17 of 17, `--native --download` 13 of 13 single posts (H.264 720x1280 + AAC, JPEG / WebP pictures, carousel folders); CDN Range answers 206, no rate limit seen. Not verified: a private profile and a signed-in session (no account), GIFs, reposts and quotes as links, the razr 50
 - [ ] 2 `core(hls)` · not done (Isaac reviews the API before code)
 - [ ] 3 `source(twitch)` · not done
-- [ ] 4 `source(bluesky)` · not done
+- [x] 4 `source(bluesky)` · done · verified locally: `typecheck` and `lint` clean, `test:fast` 540 pass / 0 fail (20 Bluesky tests against the fake, Bluesky detection), `test:heavy` 75 pass, `perf --quick` within 10% of the baseline (no regression); live `live:matrix --platform bluesky` 19 of 19 links pass, `--native` 19 of 19, `--native --download` 15 of 15 single posts (original JPEG / PNG blobs byte for byte, no WebP; H.264 1080x1920 and 720x1280 + AAC); getBlob ignores Range, no rate limit hit. yt-dlp 2026.10.21 has a Bluesky extractor (posts only, the same API and blobs): nothing handed to it. Not verified: a `!no-unauthenticated` account, did:web and third-party PDS live, a PDS 429, the HLS fallback (waits for `core(hls)`), the razr 50
 - [ ] 5 `source(soundcloud)` · not done
 - [x] 6 `source(snapchat)` · done · verified locally: `typecheck` and `lint` clean, `test:fast` 502 pass / 0 fail (18 Snapchat tests against the fake, Snapchat detection), `test:heavy` 75 pass, `perf --quick` within 10% of the baseline; live `live:matrix --platform snapchat` 15 of 15 links pass, `--native` 15 of 15, `--native --download` 8 of 8 single items (spotlights H.264 540x960 + AAC, a story snap 480x846, highlight JPEGs). Not verified: short links (no live code), a private profile page, a picture in a live story, the razr 50
 - [ ] 7 `release: library x.y.z` · not done
@@ -24,6 +24,34 @@ away when the beta closes.
 - [ ] Android `feature/beta-11` (phone repo) · not done
 
 **Library**
+
+- **Bluesky, natively.** Posts (`bsky.app/profile/<handle|did>/post/<rkey>`, its `/quotes`,
+  `/likes` and `/reposted-by` pages, `at://` uris) with pictures (`images`, up to 4, and the new
+  `gallery` embed, up to 10), a video, or a quote with media of its own, and public profiles
+  (`/profile/<actor>`, its `/media`, `/video`, `/posts`, `/replies` tabs read as its media
+  posts), all from the public AppView without a session. A post is one `getPostThread`; checks of
+  posts not read yet go 25 at a time through `getPosts` (handles resolved once each); a profile is
+  one `getProfile` and one `getAuthorFeed` (`posts_with_media`, `includePins`) per 100 posts, every
+  post whole in the page. The pinned post comes first and once, never counted in `known`; reposts
+  and others' posts are left out. Every file is the author's **original blob** from their own PDS
+  (`com.atproto.sync.getBlob`; the PDS found once per account in its DID document, plc.directory
+  or did:web), paced per PDS host and read for its `ratelimit-*` headers; a picture falls back to the
+  CDN's WebP re-encode when the PDS refuses or limits; a video is the blob's progressive MP4 (one
+  stream, started over once if it breaks: a PDS ignores Range), never HLS. A pure quote, a link
+  card or a text post is `format-unavailable`; a deleted post or account is `removed`; an account
+  labelled `!no-unauthenticated` is `needs-sign-in`. yt-dlp's Bluesky extractor reads the same API
+  for posts only: nothing is handed to it. New `LinkSite` `'bluesky'`, option `bluesky`
+  (`endpoints`, `pacing`, `pdsPacing`), fake and tests, live matrix scenarios BS-01..04. Cost: one
+  AppView request per post (⌈n / 25⌉ for n checks, plus one resolveHandle per handle), O(media) to
+  read it; a profile costs 1 + ⌈n / 100⌉ requests for n posts, O(1) per post to list (Map by rkey,
+  cursor Set), memory O(n) summaries; one DID document per account per session; one blob GET per
+  file, streamed, constant memory; posts kept in a 5,000-entry LRU, handles and PDSs 2,000, concurrent
+  reads of one thing shared.
+
+- **A download whose connection drops while its file is being opened no longer takes the process
+  down.** `fetchMedia` opened the file after turning the response body into a stream: a socket that
+  closed in between errored a stream nothing listened to yet (an uncaught error). The file is opened
+  first now. Cost: none (the same open, earlier).
 
 - **Threads, natively.** Posts (`/@u/post/<code>`, `/@u/post/<code>/media`, `/t/<code>`, on
   threads.com and threads.net) with a video, a photo or a carousel of both, and public profiles

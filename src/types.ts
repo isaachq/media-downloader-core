@@ -1,5 +1,6 @@
 import type {YtDlpPolicy} from './binaries/manager.js'
 import type {FileNameStyle} from './core/files.js'
+import type {BlueskyOptions} from './sources/bluesky/source.js'
 import type {LinkSite} from './sources/detect.js'
 import type {DirectOptions} from './sources/direct/source.js'
 import type {FacebookOptions} from './sources/facebook/source.js'
@@ -888,6 +889,14 @@ export type DownloaderOptions = {
    * `false` hands Threads urls to its generic extractor, which reads none.
    */
   readonly threads?: false | ThreadsOptions | undefined
+  /**
+   * Bluesky through the built-in extractor (the public AppView, anonymous;
+   * every file the author's original blob from their own PDS, paced per
+   * host): posts (pictures, galleries, video, quotes with media) and public
+   * profiles. `false` hands Bluesky urls to yt-dlp's Bluesky extractor,
+   * which reads posts only (no galleries, no profiles).
+   */
+  readonly bluesky?: false | BlueskyOptions | undefined
   /**
    * Links straight to a media file (`…/clip.mp4`, `…/song.mp3`) on any other
    * site, read natively (one ranged request, then the file): extractor "Web".

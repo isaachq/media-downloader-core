@@ -62,11 +62,14 @@ export function positionOf(record: Pick<HistoryRecord, 'title' | 'mediaId' | 'fi
  * retried as images, not as the batch's default MP4); the downloads folder
  * and the given format when the job is no longer known. O(1).
  */
+/** A target with its folder named: every record and failed job has one. */
+export type PlacedTarget = BatchTarget & {readonly outDir: string}
+
 export function retryTarget(
   index: number,
   known: Pick<JobRequest, 'outDir' | 'profile' | 'playlist' | 'slideshow' | 'photoPost'> | undefined,
   fallback: {readonly outDir: string; readonly profile: FormatProfile},
-): BatchTarget {
+): PlacedTarget {
   return {
     index,
     outDir: known?.outDir ?? fallback.outDir,
@@ -92,7 +95,7 @@ export function isLiveRecord(record: Pick<HistoryRecord, 'mediaId' | 'extractor'
 
 export function redownloadRequest(records: readonly HistoryRecord[], title: string) {
   const entries = []
-  const targets: BatchTarget[] = []
+  const targets: PlacedTarget[] = []
   for (const record of records) {
     if (isLiveRecord(record)) continue
     const profile = profileFromKey(record.profile)

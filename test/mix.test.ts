@@ -483,6 +483,50 @@ describe('BatchScheduler.scheduleMix: one batch', () => {
     )
   })
 
+  it('a song in a list of videos is kept as M4A, not left out; a format of its own still wins', async () => {
+    const {engine, scheduler, out} = setup('mix-song')
+    const video = {kind: 'video', container: 'mp4'} as const
+    const mix = await engine.analyzeMix('https://fake.test/v1\nhttps://fake.test/song-s1\nhttps://fake.test/song-s2', {
+      profile: video,
+    })
+    assert.equal(mix.skipped.length, 0, JSON.stringify(mix.skipped))
+    assert.deepEqual(
+      mix.valid.map(item => [item.url, item.format?.container]),
+      [
+        ['https://fake.test/v1', undefined],
+        ['https://fake.test/song-s1', 'm4a'],
+        ['https://fake.test/song-s2', 'm4a'],
+      ],
+    )
+    const counted = countPreflight(engine)
+    const batch = scheduler.scheduleMix(mix, {
+      profile: video,
+      outDir: out,
+      formats: {'https://fake.test/song-s2': {kind: 'audio', container: 'mp3'}},
+    })
+    await scheduler.whenIdle()
+    const done = scheduler.batch(batch.id)!
+    assert.equal(done.status, 'completed', JSON.stringify(done.error))
+    assert.equal(done.jobs.succeeded, 3)
+    assert.deepEqual(counted(), {calls: 0, items: 0}, 'nothing checked twice')
+    const jobs = engine.jobs().filter(job => job.batchId === batch.id)
+    assert.deepEqual(jobs.map(job => [job.url, job.profile.kind, job.profile.container]).sort(), [
+      ['https://fake.test/song-s1', 'audio', 'm4a'],
+      ['https://fake.test/song-s2', 'audio', 'mp3'],
+      ['https://fake.test/v1', 'video', 'mp4'],
+    ])
+  })
+
+  it('a song already downloaded as M4A is marked archived in a list of videos', async () => {
+    const {engine, scheduler, out} = setup('mix-song-archived')
+    const video = {kind: 'video', container: 'mp4'} as const
+    const first = await engine.analyzeMix('https://fake.test/song-a1', {profile: video})
+    scheduler.scheduleMix(first, {profile: video, outDir: out})
+    await scheduler.whenIdle()
+    const again = await engine.analyzeMix('https://fake.test/song-a1', {profile: video})
+    assert.equal(again.valid[0]?.archived, true)
+  })
+
   it('refuses a mix list with nothing to download', async () => {
     const {engine, scheduler, out} = setup('nothing')
     const mix = await engine.analyzeMix('https://fake.test/unavailable-n1\nnothing here')

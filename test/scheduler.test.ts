@@ -53,6 +53,7 @@ function setup(
 }
 
 const audio = {kind: 'audio', container: 'm4a'} as const
+const video = {kind: 'video', container: 'mp4'} as const
 
 /** How many items the scheduler hands to the engine's network check from now on. */
 function countPreflight(engine: MediaDownloader): () => number {
@@ -342,6 +343,80 @@ describe('BatchScheduler', () => {
       'already archived items are skipped',
     )
     assert.equal(checked(), 0, 'a restored batch was checked before the app closed: no second network check')
+  })
+
+  it('a song (no picture) asked as a video downloads as M4A instead of failing', async () => {
+    const {engine, scheduler, out} = setup('song-single')
+    const batch = scheduler.schedule({url: 'https://fake.test/song-1', profile: video, outDir: out})
+    await scheduler.whenIdle()
+    const done = scheduler.batch(batch.id)!
+    assert.equal(done.status, 'completed', JSON.stringify(done.error))
+    const [job] = engine.jobs().filter(j => j.batchId === batch.id)
+    assert.deepEqual([job?.profile.kind, job?.profile.container], ['audio', 'm4a'])
+    assert.deepEqual(
+      (await fs.readdir(out)).map(name => path.extname(name)),
+      ['.m4a'],
+    )
+  })
+
+  it("a list's songs download as M4A into audioOutDir, in the list's folder and position; its videos stay", async () => {
+    const {engine, scheduler, out} = setup('song-list')
+    const music = path.join(out, 'Music')
+    const batch = scheduler.schedule({
+      url: 'https://fake.test/list-songs',
+      profile: video,
+      outDir: out,
+      audioOutDir: music,
+    })
+    await scheduler.whenIdle()
+    const done = scheduler.batch(batch.id)!
+    assert.equal(done.status, 'completed', JSON.stringify(done.error))
+    assert.equal(done.jobs.succeeded, 2)
+    const jobs = engine.jobs().filter(j => j.batchId === batch.id)
+    assert.deepEqual(jobs.map(j => [j.url, j.profile.kind]).sort(), [
+      ['https://fake.test/e1', 'video'],
+      ['https://fake.test/song-e2', 'audio'],
+    ])
+    const song = jobs.find(j => j.profile.kind === 'audio')!
+    const clip = jobs.find(j => j.profile.kind === 'video')!
+    assert.equal(path.dirname(song.filepath!), engine.folderFor(music, 'Fake List'))
+    assert.equal(path.dirname(clip.filepath!), engine.folderFor(out, 'Fake List'))
+    assert.match(path.basename(song.filepath!), /^002-.*\.m4a$/, 'its position in the list, as its videos')
+    assert.throws(
+      () =>
+        scheduler.schedule({url: 'https://fake.test/list-songs', profile: video, outDir: out, audioOutDir: 'Music'}),
+      {
+        code: 'invalid-request',
+      },
+    )
+  })
+
+  it('a song kept as M4A is still a song after a restore', async () => {
+    const first = setup('song-restore')
+    first.engine.pause() // checked, nothing downloaded before the "crash"
+    first.scheduler.schedule({url: 'https://fake.test/list-songs', profile: video, outDir: first.out})
+    await new Promise(resolve => setTimeout(resolve, 300))
+    await first.scheduler.dispose()
+    await first.engine.dispose()
+
+    const engine = new MediaDownloader({
+      dataDir: first.dataDir,
+      binaries: fakes,
+      validation: 'none',
+      progressIntervalMs: 0,
+    })
+    const scheduler = new BatchScheduler(engine)
+    cleanups.push(async () => {
+      await scheduler.dispose()
+      await engine.dispose()
+    })
+    const [restored] = await scheduler.restore()
+    await scheduler.whenIdle()
+    const done = scheduler.batch(restored!.id)!
+    assert.equal(done.status, 'completed', JSON.stringify(done.error))
+    assert.equal(done.jobs.succeeded, 2)
+    const song = engine.jobs().find(j => j.url === 'https://fake.test/song-e2')
+    assert.deepEqual([song?.profile.kind, song?.profile.container], ['audio', 'm4a'])
   })
 
   it('a restored batch downloads what was left without checking its items again', async () => {

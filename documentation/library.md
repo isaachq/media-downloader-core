@@ -113,7 +113,16 @@ const mix = await engine.analyzeMix(pastedText, {profile, onProgress: p => bar(p
 // mix.skipped: what was left out, each with its line and reason; mix.summary: counts by site and reason
 scheduler.scheduleMix(mix, {profile, outDir, title: 'Mix list'})   // one batch, not one per link
 // a link in a format of its own (the rest in `profile`): formats: {[url]: {kind: 'audio', container: 'mp3'}}
+// a link in a folder of its own: outDirs: {[url]: '/storage/emulated/0/Music/Media Download Core'}
 ```
+
+**A song among videos.** An item with no picture at all (a SoundCloud track) in a
+batch, a list or a mix list of videos downloads as **M4A** instead of failing as
+unavailable: the check keeps it with that format (`MixItem.format` in a mix list's
+preview, so the apps can say so), and the batch remembers it in its `targets`, so a
+`restore()` keeps it a song. It goes to `audioOutDir` when the request names one
+(in the list's folder and position for a list), else where the batch's files go. A
+video in a batch of songs always has its sound, so nothing changes there.
 
 A **mix list** is a pasted list of independent links of any sites, downloaded as
 **one batch**. Nothing new downloads it: `scheduleMix` hands the scheduler a normal

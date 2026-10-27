@@ -68,6 +68,12 @@ const DOWNLOAD_ATTEMPTS = 2
 const RATE_RESERVE = 50
 /** A 429 longer than this is not waited out by the pacer (the window is 5 minutes). */
 const MAX_RATE_WAIT_MS = 5 * 60_000 + 5_000
+/**
+ * A limited PDS that does not say when its window resets: pictures come from the CDN first at
+ * least this long (the CDN serves the same pictures; the PDS's window is 5 minutes), not only for
+ * the pacer's cool-down, which may be a few milliseconds.
+ */
+const UNKNOWN_RESET_MS = 60_000
 /** The AppView sends no rate limit headers and serves the whole network: a brisk, polite pace. */
 const DEFAULT_PACING: PacerOptions = {concurrency: 3, spacingMs: 300, jitterMs: 200}
 /** 10 requests a second at most: 3000 per 5 minutes, the PDS's own limit. */
@@ -516,7 +522,7 @@ export class BlueskySource implements MediaSource {
       if (until !== undefined && until - now <= MAX_RATE_WAIT_MS) pacer.pause(until - now)
       else pacer.refused()
     }
-    this.#limited.set(origin, until ?? now + pacer.coolingDownMs)
+    this.#limited.set(origin, until ?? now + Math.max(pacer.coolingDownMs, UNKNOWN_RESET_MS))
     this.#log(
       'warn',
       `Bluesky: ${new URL(origin).host} is rate limiting this network (${remaining ?? 0} left); pictures from the CDN meanwhile`,

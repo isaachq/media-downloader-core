@@ -406,6 +406,9 @@ describe('Bluesky, end to end (local fake)', () => {
     )
     const blobs = limited.site.hits.blob
     assert.ok(blobs >= 1 && blobs <= 3, String(blobs))
+    // past the pacer's cool-down (50 ms here): the PDS said no reset, so the CDN stays first
+    // (a slow macOS runner once got here after the cool-down and asked the PDS again)
+    await new Promise(resolve => setTimeout(resolve, 120))
     const second = await limited.source.download(task(post(RKEYS.image), limited.work))
     assert.deepEqual(
       (await sizes(second.filepath)).map(([name]) => name),

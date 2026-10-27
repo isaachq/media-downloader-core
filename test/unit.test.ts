@@ -17,6 +17,7 @@ import {
   folderName,
   mediaFileStem,
   moveIntoPlace,
+  partialPath,
   portableName,
   renameRetrying,
   sanitizeFilename,
@@ -574,6 +575,26 @@ describe('files', () => {
     }
     await assert.rejects(fs.stat(source), /ENOENT/, 'the source is gone')
     assert.deepEqual(await fs.readdir(out), ['made', 'post'], 'no .partial left behind')
+    await fs.rm(dir, {recursive: true})
+  })
+
+  it('a copy across volumes is written with its extension last, as Android shared folders require', async () => {
+    assert.equal(partialPath(path.join('out', 'clip.mp4')), path.join('out', 'clip.partial.mp4'))
+    assert.equal(partialPath(path.join('out', 'song.m4a')), path.join('out', 'song.partial.m4a'))
+    assert.equal(partialPath(path.join('out', 'post')), path.join('out', 'post.partial'), 'a folder: at the end')
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdc-'))
+    const source = path.join(dir, 'work.mp4')
+    await fs.writeFile(source, 'video')
+    const swaps: string[] = []
+    const crossVolume = async (from: string, to: string) => {
+      if (swaps.push(path.basename(from)) === 1) throw Object.assign(new Error('cross-device link'), {code: 'EXDEV'})
+      await fs.rename(from, to)
+    }
+    const moved = await moveIntoPlace(source, path.join(dir, 'out', 'clip.mp4'), {rename: crossVolume})
+    assert.equal(moved, path.join(dir, 'out', 'clip.mp4'))
+    assert.deepEqual(swaps, ['work.mp4', 'clip.partial.mp4'], 'the copy was clip.partial.mp4, never clip.mp4.partial')
+    assert.deepEqual(await fs.readdir(path.join(dir, 'out')), ['clip.mp4'])
+    assert.equal(await fs.readFile(moved, 'utf8'), 'video')
     await fs.rm(dir, {recursive: true})
   })
 

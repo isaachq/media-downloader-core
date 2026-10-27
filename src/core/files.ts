@@ -227,7 +227,7 @@ export async function moveIntoPlace(
     if ((error as NodeJS.ErrnoException).code !== 'EXDEV') throw error
   }
 
-  const partial = `${target}.partial`
+  const partial = partialPath(target)
   if ((await fs.stat(source)).isDirectory()) {
     // a folder of files (a slideshow's images) on another volume: copy it whole, then swap it in
     try {
@@ -249,6 +249,17 @@ export async function moveIntoPlace(
   }
   await fs.rm(source, {force: true})
   return target
+}
+
+/**
+ * Where a copy is written before its swap: `clip.partial.mp4` beside `clip.mp4`. The
+ * extension stays last because Android's shared folders (Movies, Music…) accept only
+ * files whose extension is a media type of theirs: `clip.mp4.partial` is refused (EPERM).
+ * A folder has no extension and gets `.partial` at the end. O(1).
+ */
+export function partialPath(target: string): string {
+  const extension = path.extname(target)
+  return `${target.slice(0, target.length - extension.length)}.partial${extension}`
 }
 
 /**

@@ -5,13 +5,20 @@ import {cancelledError, DownloadError} from '../../core/errors.js'
 import {genericChoices} from '../../core/formats.js'
 import {
   chooseVariant,
+  DEFAULT_MAX_RECORDING,
   downloadHls,
   HlsError,
   type HlsMasterPlaylist,
+  type HlsMediaPlaylist,
+  type HlsRecordEvent,
+  type HlsSegment,
+  type HlsVariant,
   type ParseOptions,
   parsePlaylist,
   pathOf,
+  type RefreshLive,
   type RefreshPlaylist,
+  recordHls,
   variantChoices,
 } from '../../core/hls/index.js'
 import type {AnalysisResult, MediaSummary, PlaylistAnalysis, VideoAnalysis} from '../../types.js'
@@ -23,11 +30,12 @@ import {walkCursor} from '../meta/listing.js'
 import {choicesOf, summaryOf} from '../meta/post.js'
 import {dig, text} from '../meta/relay.js'
 import {Pacer, type PacerOptions} from '../pacer.js'
-import type {ListingProgress, MediaSource, SourceDownload, SourceFile} from '../source.js'
+import {type ListingProgress, type MediaSource, needsFallback, type SourceDownload, type SourceFile} from '../source.js'
 import {
   type ClipsPage,
   readClipAnswer,
   readClipsPage,
+  readLive,
   readLiveStream,
   readVideosPage,
   readVodAnswer,
@@ -53,6 +61,8 @@ import {
   clipsQuery,
   DEFAULT_CLIENT_ID,
   DEFAULT_ENDPOINTS,
+  liveQuery,
+  liveUsherUrl,
   TWITCH_ORIGIN,
   type TwitchEndpoints,
   usherUrl,
@@ -90,8 +100,25 @@ export type TwitchOptions = {
   readonly pacing?: PacerOptions | undefined
   /** The GraphQL endpoint and the clip fields read (endpoints.ts), overridable without a release. */
   readonly endpoints?: Partial<TwitchEndpoints> | undefined
+  /** How a channel on the air is recorded (its link: twitch.tv/<channel>). */
+  readonly live?: TwitchLiveOptions | undefined
   readonly fetch?: Fetch | undefined
   readonly log?: ((level: 'info' | 'warn', message: string) => void) | undefined
+}
+
+/** Recording a live channel (recorder.md §7: Isaac's defaults). */
+export type TwitchLiveOptions = {
+  /** Leave Twitch's stitched ads out of the recording (a new period where they were). Default true. */
+  readonly skipAds?: boolean | undefined
+  /** Cap of a recording, seconds of media or of wall clock. Default 12 h. */
+  readonly maxDuration?: number | undefined
+  /** 'window' (default): from the oldest segment Twitch still lists; 'now': from the live edge. */
+  readonly from?: 'window' | 'now' | undefined
+  /** Reloads in a row with nothing new before the channel counts as offline. Default 10. */
+  readonly emptyReloads?: number | undefined
+  /** A simulated clock for tests (the recorder's waits and elapsed time). */
+  readonly now?: (() => number) | undefined
+  readonly sleep?: ((ms: number, signal: AbortSignal) => Promise<void>) | undefined
 }
 
 export const TWITCH_LIST_DEFAULT_ITEMS = 500
@@ -120,6 +147,11 @@ const VOD_CACHE_LIMIT = 2000
 const VOD_FRESH_MS = 6 * 60 * 60_000
 /** A VOD still recording is looked at again this soon: its broadcast may have ended meanwhile. */
 const RECORDING_FRESH_MS = 60_000
+/** A live read (the stream, its token, its masters) feeds the recording that follows it this long. */
+const LIVE_FRESH_MS = 60_000
+const LIVE_CACHE_LIMIT = 20
+/** Twitch's class for the ads it stitches into a live stream (EXT-X-DATERANGE). */
+const STITCHED_AD = 'twitch-stitched-ad'
 /** Playback tokens (and the master playlists they signed) kept by VOD id; a master is ~1 KB. */
 const PLAYBACK_CACHE_LIMIT = 100
 /**
@@ -165,6 +197,12 @@ type KeptVideos = {
 }
 /** A VOD's token, and the master playlists usher gave for it by `supported_codecs`. */
 type Playback = {readonly token: VodToken; readonly masters: Map<string, HlsMasterPlaylist>}
+/** A channel on the air: its stream, the token that signs its usher request, the masters it gave. */
+type Live = {
+  readonly stream: TwitchLiveStream
+  readonly token: VodToken
+  readonly masters: Map<string, HlsMasterPlaylist>
+}
 
 /**
  * Twitch clips, natively: a clip is one plain GraphQL query on
@@ -207,6 +245,9 @@ export class TwitchSource implements MediaSource {
   readonly #videoListings = new Map<string, KeptVideos>()
   readonly #vodReading = new Coalescer<string, TwitchVod>()
   readonly #tokenReading = new Coalescer<string, Playback>()
+  /** login → its last live read, for the recording right after an analysis. */
+  readonly #lives = new Map<string, Timed<Live>>()
+  readonly #liveOptions: TwitchLiveOptions
   #blockedUntil = 0
 
   constructor(options: TwitchOptions = {}) {
@@ -216,6 +257,7 @@ export class TwitchSource implements MediaSource {
     this.#pacer = new Pacer(options.pacing ?? DEFAULT_PACING, 'Twitch')
     this.#maxListItems = Math.max(1, Math.floor(options.maxListItems ?? TWITCH_LIST_DEFAULT_ITEMS))
     this.#log = options.log ?? (() => {})
+    this.#liveOptions = options.live ?? {}
   }
 
   /**
@@ -257,7 +299,7 @@ export class TwitchSource implements MediaSource {
         return await this.#videoListing(link, opts.maxEntries, opts.known, opts.signal, opts.onProgress)
       }
       if (link.kind === 'vod') return await this.#vodAnalysis(link, opts.signal)
-      if (link.kind === 'channel') return await this.#onAir(link, opts.signal)
+      if (link.kind === 'channel') return await this.#liveAnalysis(link, opts.signal)
       return this.#videoAnalysis(usable(await this.#clip(link, opts.signal)))
     } catch (error) {
       throw this.#toDownloadError(error, opts.signal)
@@ -362,7 +404,8 @@ export class TwitchSource implements MediaSource {
         const native = this.#link(task.url)
         // a VOD's segments re-sign themselves (core/hls refresh) and resume: no second attempt here
         if (native.kind === 'vod') return await this.#downloadVod(native, task)
-        if (native.kind === 'channel') await this.#onAir(native, task.signal)
+        // a channel on the air is recorded (never handed to yt-dlp); offline it has nothing to get
+        if (native.kind === 'channel') return await this.#recordLive(native, task)
         link = this.#clipLink(task.url)
         const clip = usable(await this.#clip(link, task.signal, task.fresh || attempt > 1))
         return await downloadPost({
@@ -437,18 +480,198 @@ export class TwitchSource implements MediaSource {
   }
 
   /**
-   * A channel, which this source does not download: on the air it is
-   * `live-now` here, never handed to yt-dlp (which would record the live
-   * stream: only what is already available is downloaded); offline it has
-   * nothing to download. One GraphQL request.
+   * A channel in a batch's checks: on the air it is `live-now` (a recording
+   * is its own job, from the channel link; a batch never records), offline
+   * it has nothing to download. One GraphQL request.
    */
   async #onAir(link: ChannelLink, signal?: AbortSignal): Promise<never> {
     const stream = await this.liveStream(link.channel, signal)
-    if (stream) throw liveNow(`${stream.login} is live on Twitch right now`)
-    throw new DownloadError(
-      'unavailable',
-      `${link.channel} is not live: a channel page has nothing else to download (its broadcasts are at /${link.channel}/videos, its clips at /${link.channel}/clips).`,
-    )
+    if (stream) {
+      throw liveNow(
+        `${stream.login} is live on Twitch right now: a live stream is recorded from its channel link on its own, not in a list`,
+      )
+    }
+    throw offline(link)
+  }
+
+  // ─── live channels ───────────────────────────────────────────────────────
+
+  /**
+   * A channel's stream and its usher token: from the read an analysis just
+   * made (a minute), else one GraphQL query for both. Offline: undefined.
+   */
+  async #live(login: string, signal: AbortSignal | undefined, fresh: boolean): Promise<Live | undefined> {
+    const kept = this.#lives.get(login)
+    if (!fresh && kept && Date.now() < kept.until) return kept.value
+    const {stream, token} = await this.#gql(liveQuery(), {login: login.toLowerCase()}, readLive, signal)
+    if (!stream) {
+      this.#lives.delete(login)
+      return undefined
+    }
+    if (token instanceof MetaError) throw token
+    const live: Live = {stream, token, masters: new Map()}
+    bounded(this.#lives, login, {value: live, until: Date.now() + LIVE_FRESH_MS}, LIVE_CACHE_LIMIT)
+    return live
+  }
+
+  /** The stream's master for `codecs`: kept, else one usher request (not paced). Offline (404): undefined. */
+  async #liveMaster(
+    live: Live,
+    codecs: string,
+    signal: AbortSignal | undefined,
+  ): Promise<HlsMasterPlaylist | undefined> {
+    const kept = live.masters.get(codecs)
+    if (kept) return kept
+    const p = Math.floor(Math.random() * 10_000_000)
+    const url = liveUsherUrl(this.#endpoints.usher, live.stream.login, live.token, codecs, p)
+    const response = await this.#session.get(url, {
+      signal,
+      headers: {Origin: TWITCH_ORIGIN, Referer: `${TWITCH_ORIGIN}/`},
+    })
+    const status = response.status
+    if (status === 404) {
+      // usher has no transcode for a channel that just went offline
+      await response.body?.cancel().catch(() => {})
+      return undefined
+    }
+    if (status === 429 || status >= 500) {
+      await response.body?.cancel().catch(() => {})
+      throw new MetaError('refused', `Twitch: usher answered HTTP ${status}.`, status)
+    }
+    if (!response.ok) throw usherProblem(await response.json().catch(() => undefined), status)
+    const master = parsePlaylist(await response.text(), response.url || url)
+    if (master.kind !== 'master') {
+      throw new MetaError('format-changed', 'Twitch: usher answered a media playlist where a master was expected.')
+    }
+    const variants = master.variants.filter(v => v.codecs.length === 0 || v.codecs.some(c => AUDIO_CODEC.test(c)))
+    const usable: HlsMasterPlaylist = {...master, variants}
+    live.masters.set(codecs, usable)
+    return usable
+  }
+
+  /**
+   * A channel link: on the air, the stream as one item to record (its
+   * qualities from usher's master: 1 query + 1 usher request, kept a minute
+   * for the recording); offline, nothing to download.
+   */
+  async #liveAnalysis(link: ChannelLink, signal?: AbortSignal): Promise<VideoAnalysis> {
+    const live = await this.#live(link.channel, signal, false)
+    const master = live && (await this.#liveMaster(live, CODECS_BEST, signal))
+    if (!live || !master) throw offline(link)
+    return {kind: 'video', media: liveSummary(live.stream, this.name), choices: variantChoices(master, undefined)}
+  }
+
+  /**
+   * Record a channel on the air through core/hls (recordHls): the variant
+   * for the profile from usher's channel master, from the oldest segment the
+   * window holds, Twitch's stitched ads left out (skipAds), until the user
+   * stops it (kept), the broadcast ends, or 12 h. A refused playlist re-signs
+   * through a fresh token (1 query + 1 usher request); a stream that ended or
+   * restarted under another id ends the recording. Never handed to yt-dlp,
+   * whatever fails. Before the first segment: 1 query and 1 usher request (0
+   * of each right after an analysis), then 1 request per reload and per segment.
+   */
+  async #recordLive(link: ChannelLink, task: SourceDownload): Promise<SourceFile> {
+    try {
+      const profile = task.profile
+      const codecs = profile.kind === 'video' && profile.container === 'mp4' ? CODECS_COMPAT : CODECS_BEST
+      const live = await this.#live(link.channel, task.signal, task.fresh)
+      const master = live && (await this.#liveMaster(live, codecs, task.signal))
+      if (!live || !master) throw offline(link)
+      const {stream} = live
+      const variant = chooseVariant(master, profile).variant
+      const startedAt = Date.now()
+      const title = liveTitle(stream, startedAt)
+      const info: DownloadedInfo = {
+        id: liveMediaId(stream, startedAt),
+        title,
+        extractor: this.name,
+        duration: null,
+        publishedAt: stream.startedAt ?? Math.floor(startedAt / 1000),
+      }
+      task.onInfo(info)
+      const refreshUrl: RefreshLive = async (_why, signal) => {
+        const next = await this.#live(link.channel, signal, true)
+        // offline, or a new broadcast: this recording is over
+        if (!next || next.stream.id !== stream.id) return undefined
+        const fresh = await this.#liveMaster(next, codecs, signal)
+        if (!fresh) return undefined
+        const same = sameVariant(fresh, variant)
+        if (!same) {
+          throw new HlsError('changed', 'Twitch: the re-signed master no longer has the quality being recorded.')
+        }
+        return same.uri
+      }
+      const options = this.#liveOptions
+      const result = await recordHls({
+        session: this.#session,
+        site: this.name,
+        headers: {Origin: TWITCH_ORIGIN, Referer: `${TWITCH_ORIGIN}/`},
+        playlist: variant.uri,
+        kind: profile.kind,
+        codecs: variant.codecs,
+        workDir: task.workDir,
+        ffmpeg: task.ffmpeg,
+        signal: task.signal,
+        stop: task.stop,
+        from: options.from ?? 'window',
+        maxDuration: options.maxDuration ?? DEFAULT_MAX_RECORDING,
+        refreshUrl,
+        skip: (options.skipAds ?? true) ? isTwitchAd : undefined,
+        emptyReloads: options.emptyReloads,
+        onProgress: task.onProgress,
+        onEvent: event => this.#liveEvent(stream.login, event),
+        now: options.now,
+        sleep: options.sleep,
+      })
+      this.#log(
+        'info',
+        `Twitch: recorded ${stream.login} for ${Math.round(result.duration)} s (${result.ended}); ` +
+          `${Math.round(result.skippedSeconds)} s of ads left out, ${result.gaps} gap(s), ${result.refreshes} refresh(es)`,
+      )
+      return {
+        filepath: result.filepath,
+        info: {
+          ...info,
+          duration: result.duration,
+          vcodec: profile.kind === 'audio' ? 'none' : videoCodecOf(variant.codecs),
+          acodec: 'mp4a',
+          filesize: result.bytes,
+        },
+        tags: {
+          title,
+          artist: stream.channelName ?? stream.login,
+          date: new Date(startedAt).toISOString().slice(0, 10),
+          comment: `${TWITCH_ORIGIN}/${stream.login}`,
+        },
+        recording: {
+          ended: result.ended,
+          seconds: result.duration,
+          segments: result.segments,
+          gaps: result.gaps,
+          lostSegments: result.lostSegments,
+          skippedSeconds: result.skippedSeconds,
+          refreshes: result.refreshes,
+        },
+      }
+    } catch (error) {
+      this.#lives.delete(link.channel)
+      const failure = this.#toDownloadError(error, task.signal)
+      // a live stream is never handed to yt-dlp (it would record it): the source's own reason stands
+      if (!needsFallback(failure.details)) throw failure
+      throw new DownloadError(failure.code, failure.message, undefined, failure.params, failure.hint)
+    }
+  }
+
+  /** The recorder's notable events, into the source's log. O(1). */
+  #liveEvent(login: string, event: HlsRecordEvent): void {
+    if (event.type === 'gap') this.#log('warn', `Twitch: ${login}: ${event.segments} segment(s) lost (a gap)`)
+    else if (event.type === 'segment-lost')
+      this.#log('warn', `Twitch: ${login}: segment ${event.sequence} lost (${event.code})`)
+    else if (event.type === 'reload-failed')
+      this.#log('warn', `Twitch: ${login}: playlist reload failed (${event.message})`)
+    else if (event.type === 'refreshed') this.#log('info', `Twitch: ${login}: playlist re-signed (${event.status})`)
+    else if (event.type === 'rebased') this.#log('info', `Twitch: ${login}: numbering restarted, re-anchored by date`)
   }
 
   // ─── VODs ────────────────────────────────────────────────────────────────
@@ -985,20 +1208,89 @@ function blocked(): MetaError {
   )
 }
 
-/** On the air: nothing to download until it ends (and never handed to yt-dlp, which would record it). */
+/** On the air, where nothing is recorded (a VOD still recording, a batch's check); never handed to yt-dlp. */
 function liveNow(what: string): DownloadError {
-  return new DownloadError(
-    'unavailable',
-    `${what}: live streams are not downloaded, only what is already available (its VOD, once the broadcast ends).`,
-    undefined,
-    undefined,
-    'live-now',
+  return new DownloadError('unavailable', `${what}.`, undefined, undefined, 'live-now')
+}
+
+/** A VOD whose broadcast is still on the air: live-now, never handed to yt-dlp; its channel link records it. */
+function recordingError(vod: TwitchVod): DownloadError {
+  return liveNow(
+    `This Twitch broadcast${vod.channel ? ` of ${vod.channel}` : ''} is still on the air: its VOD can be downloaded once it ends` +
+      (vod.channel ? `, and the broadcast is recorded from its channel link (${TWITCH_ORIGIN}/${vod.channel})` : ''),
   )
 }
 
-/** A VOD whose broadcast is still on the air: live-now, never handed to yt-dlp. */
-function recordingError(vod: TwitchVod): DownloadError {
-  return liveNow(`This Twitch broadcast${vod.channel ? ` of ${vod.channel}` : ''} is still on the air`)
+/** A channel that is not on the air: nothing to record, and a channel page has nothing else. */
+function offline(link: ChannelLink): DownloadError {
+  return new DownloadError(
+    'unavailable',
+    `${link.channel} is not live: a channel page has nothing else to download (its broadcasts are at /${link.channel}/videos, its clips at /${link.channel}/clips).`,
+  )
+}
+
+/**
+ * A segment Twitch stitched in as an ad: titled other than "live" (Twitch titles ads "Amazon|…"), or
+ * dated inside an EXT-X-DATERANGE of CLASS twitch-stitched-ad. O(1) for the title, O(r) for the few
+ * date ranges a window lists.
+ */
+export function isTwitchAd(segment: HlsSegment, playlist: HlsMediaPlaylist): boolean {
+  if (segment.title !== undefined && segment.title !== 'live') return true
+  const date = segment.programDateTime
+  if (date === undefined) return false
+  for (const range of playlist.dateRanges) {
+    if (range.class !== STITCHED_AD && !range.id.startsWith('stitched-ad')) continue
+    const seconds = range.duration ?? range.plannedDuration
+    const end = range.endDate ?? (seconds !== undefined ? range.startDate + seconds * 1000 : undefined)
+    if (end !== undefined && date >= range.startDate && date < end) return true
+  }
+  return false
+}
+
+/** The same quality in a re-signed master: by its name ("1080p60 (source)"), else size, rate and codec. O(v). */
+function sameVariant(master: HlsMasterPlaylist, variant: HlsVariant): HlsVariant | undefined {
+  if (variant.name) {
+    const named = master.variants.find(v => v.name === variant.name)
+    if (named) return named
+  }
+  const family = (codecs: readonly string[]) => (codecs[0] ?? '').split('.')[0]
+  return master.variants.find(
+    v =>
+      v.height === variant.height && v.frameRate === variant.frameRate && family(v.codecs) === family(variant.codecs),
+  )
+}
+
+/** "2026-10-27 18-05", local time: a file name's start time (no colons). */
+function stamp(ms: number): string {
+  const d = new Date(ms)
+  const two = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}-${two(d.getMinutes())}`
+}
+
+/** A recording's title (and file name): `<channel> <started-at> <title>`, the broadcast's start. */
+export function liveTitle(stream: TwitchLiveStream, recordingStart: number): string {
+  const start = stream.startedAt !== undefined ? stream.startedAt * 1000 : recordingStart
+  return `${stream.channelName ?? stream.login} ${stamp(start)} ${stream.title || 'live'}`
+}
+
+/**
+ * A recording's archive id: the broadcast and when this recording began, so recording the same
+ * broadcast again later makes a new file instead of "already archived".
+ */
+export function liveMediaId(stream: TwitchLiveStream, recordingStart: number): string {
+  return `live-${stream.id}-${Math.floor(recordingStart / 1000)}`
+}
+
+function liveSummary(stream: TwitchLiveStream, site: string): MediaSummary {
+  return {
+    id: `live-${stream.id}`,
+    url: `${TWITCH_ORIGIN}/${stream.login}`,
+    title: liveTitle(stream, Date.now()),
+    uploader: stream.channelName ?? stream.login,
+    publishedAt: stream.startedAt,
+    extractor: site,
+    isLive: true,
+  }
 }
 
 /** A VOD that can be downloaded now; else live-now. O(1). */

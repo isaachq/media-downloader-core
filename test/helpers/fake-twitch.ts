@@ -23,8 +23,15 @@
 // master playlist whose variants live on a fake HLS origin
 // (test/helpers/fake-hls.ts): a `chunked` source, a video-only "high", 720p60
 // and audio_only.
+//
+// Live channels (the recorder): `user(login).stream` and
+// `streamPlaybackAccessToken(channelName)` in one query (`LiveStream`), and
+// usher's `GET /api/channel/hls/<login>.m3u8?…&sig&token` (the token's
+// signature checked; 404 once the channel is offline, as usher answers a
+// channel with no transcode) giving a master whose variants are sliding
+// windows on the fake live origin (startFakeLive), minted anew per master.
 import * as http from 'node:http'
-import type {FakeHls, FakeTrack} from './fake-hls.js'
+import type {FakeHls, FakeLive, FakeLiveTrack, FakeTrack} from './fake-hls.js'
 import {listenLocal} from './listen.js'
 
 export const WEB_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko'
@@ -97,6 +104,48 @@ export const CHANNELS = {
   live: 'liveonair',
 } as const
 
+/**
+ * Channels on the air whose streams play from the fake live origin (start it with LIVE_TRACKS). Each
+ * channel's source variant is the track named after it; liveonair also has 720p60 and audio_only.
+ */
+export const LIVE = {
+  /** 1080p60 source, 720p60, audio only; never ends. */
+  onAir: CHANNELS.live,
+  /** An ad break titled "Amazon|…" (segments 8–10) and one told only by its date range (14–15). */
+  ads: 'adbreaker',
+  /** Its usher token signs 6 requests, then 403: refreshed through a new query and usher. */
+  expiring: 'shorttoken',
+  /** The broadcast ends: ENDLIST after 10 segments. */
+  ending: 'endingsoon',
+  /** Its usher answers a web page, not a playlist. */
+  broken: 'brokenusher',
+} as const
+
+export const LIVE_TRACKS: Readonly<Record<string, FakeLiveTrack>> = {
+  [LIVE.onAir]: {made: 6},
+  [`${LIVE.onAir}~720`]: {made: 6, bytes: 188 * 8},
+  [`${LIVE.onAir}~audio`]: {made: 6, bytes: 188 * 2},
+  [LIVE.ads]: {
+    made: 6,
+    endAfter: 20,
+    ads: [
+      {from: 8, to: 11},
+      {from: 14, to: 16, titled: false},
+    ],
+  },
+  [LIVE.expiring]: {made: 6, endAfter: 20, signed: {validFor: 6}},
+  [LIVE.ending]: {made: 6, endAfter: 10},
+}
+
+/** Stream ids of the live channels. */
+const STREAM_IDS: Readonly<Record<string, string>> = {
+  [LIVE.onAir]: '320926770780',
+  [LIVE.ads]: '320926770781',
+  [LIVE.expiring]: '320926770782',
+  [LIVE.ending]: '320926770783',
+  [LIVE.broken]: '320926770784',
+}
+
 const VIDEO_BYTES = 48 * 1024
 const PAGE = 100
 const LIMIT = 1000
@@ -126,6 +175,10 @@ export type FakeTwitch = {
     vodBatch: number
     videoPage: number
     usher: number
+    /** `LiveStream` queries (stream + token). */
+    live: number
+    /** Live usher requests (`/api/channel/hls/`). */
+    liveUsher: number
   }
   /** Variables of every listing page asked. */
   readonly pages: Array<Record<string, unknown>>
@@ -140,6 +193,10 @@ export type FakeTwitch = {
   /** Range headers the CDN saw (undefined: none). */
   readonly ranges: Array<string | undefined>
   readonly usher: string
+  /** `supported_codecs` of every live usher request. */
+  readonly liveUshers: Array<string | null>
+  /** Take a channel off the air (or back on). */
+  setOnAir(login: string, on: boolean): void
   close(): Promise<void>
 }
 
@@ -148,6 +205,8 @@ export type FakeTwitchConfig = {
   readonly refusals?: number | undefined
   /** The HLS origin usher's variants point at (started with VOD_TRACKS). */
   readonly hls?: FakeHls | undefined
+  /** The live origin live usher's variants point at (started with LIVE_TRACKS). */
+  readonly live?: FakeLive | undefined
 }
 
 /** Videos per channel listing (all types). */
@@ -170,6 +229,8 @@ export async function startFakeTwitch(config: FakeTwitchConfig = {}): Promise<Fa
     vodBatch: 0,
     videoPage: 0,
     usher: 0,
+    live: 0,
+    liveUsher: 0,
   }
   const pages: Array<Record<string, unknown>> = []
   const videoPages: Array<Record<string, unknown>> = []
@@ -182,6 +243,11 @@ export async function startFakeTwitch(config: FakeTwitchConfig = {}): Promise<Fa
   /** slug → reads so far (each read signs anew: sig-<slug>-<n>). */
   const reads = new Map<string, number>()
   let refusalsLeft = config.refusals ?? 0
+  /** Live channels on the air (every one of LIVE at the start). */
+  const onAir = new Set<string>(Object.values(LIVE))
+  /** login → stream tokens signed so far (ssig-<login>-<n>). */
+  const streamSigned = new Map<string, number>()
+  const liveUshers: Array<string | null> = []
   let origin = ''
 
   const media = (uuid: string, path: string) => `${origin}/media/${uuid}/${path}/index.mp4`
@@ -360,6 +426,76 @@ export async function startFakeTwitch(config: FakeTwitchConfig = {}): Promise<Fa
       '',
     ].join('\n')
   }
+  const streamOf = (login: string) =>
+    onAir.has(login)
+      ? {
+          id: STREAM_IDS[login] ?? '320926770799',
+          type: 'live',
+          title: login === CHANNELS.live ? 'On the air' : `Live on ${login}`,
+          createdAt: '2026-10-26T20:59:27Z',
+        }
+      : null
+  const streamToken = (login: string) => {
+    const n = (streamSigned.get(login) ?? 0) + 1
+    streamSigned.set(login, n)
+    return {
+      signature: `ssig-${login}-${n}`,
+      value: JSON.stringify({
+        adblock: false,
+        authorization: {forbidden: false, reason: ''},
+        channel: login,
+        expires: Math.floor(Date.now() / 1000) + 20 * 60,
+        version: 2,
+      }),
+    }
+  }
+  /** `GET /api/channel/hls/<login>.m3u8`: signature checked; 404 offline; the master on the live origin. */
+  const liveUsher = (res: http.ServerResponse, url: URL) => {
+    hits.liveUsher++
+    const login = /^\/api\/channel\/hls\/([^/]+)\.m3u8$/.exec(url.pathname)?.[1] ?? ''
+    liveUshers.push(url.searchParams.get('supported_codecs'))
+    const sig = url.searchParams.get('sig') ?? ''
+    const n = Number(sig.slice(`ssig-${login}-`.length))
+    if (!sig.startsWith(`ssig-${login}-`) || !(n >= 1 && n <= (streamSigned.get(login) ?? 0))) {
+      return json(res, 403, [{error: 'invalid token signature', error_code: 'nauth_sig_invalid', type: 'error'}])
+    }
+    if (!onAir.has(login)) {
+      return json(res, 404, [
+        {error: 'twirp error not_found: transcode does not exist', error_code: 'transcode_does_not_exist'},
+      ])
+    }
+    if (login === LIVE.broken) {
+      res.writeHead(200, {'content-type': 'text/html; charset=utf-8'})
+      return res.end('<!doctype html><title>Twitch</title>')
+    }
+    const live = config.live
+    if (!live) throw new Error('the fake live usher needs the fake live origin (config.live)')
+    const lines = ['#EXTM3U', '#EXT-X-TWITCH-INFO:NODE="video-edge-fake",SERVING-ID="x",CLUSTER="fake",B="false"']
+    const variant = (attrs: string, group: string, name: string, track: string) =>
+      lines.push(
+        `#EXT-X-MEDIA:TYPE=VIDEO,GROUP-ID="${group}",NAME="${name}",AUTOSELECT=YES,DEFAULT=YES`,
+        `#EXT-X-STREAM-INF:${attrs},VIDEO="${group}"`,
+        live.playlistUrl(track),
+      )
+    variant(
+      'BANDWIDTH=7712738,CODECS="avc1.64002A,mp4a.40.2",RESOLUTION=1920x1080,FRAME-RATE=60.000',
+      'chunked',
+      '1080p60 (source)',
+      login,
+    )
+    if (login === LIVE.onAir) {
+      variant(
+        'BANDWIDTH=3249811,CODECS="avc1.4D4020,mp4a.40.2",RESOLUTION=1280x720,FRAME-RATE=60.000',
+        '720p60',
+        '720p60',
+        `${login}~720`,
+      )
+      variant('BANDWIDTH=203877,CODECS="mp4a.40.2"', 'audio_only', 'audio_only', `${login}~audio`)
+    }
+    res.writeHead(200, {'content-type': 'application/vnd.apple.mpegurl'})
+    return res.end(`${lines.join('\n')}\n`)
+  }
+
   /** `GET /vod/<id>.m3u8`: the token's signature checked, then the master (or how usher refuses). */
   const usher = (res: http.ServerResponse, url: URL) => {
     hits.usher++
@@ -417,12 +553,22 @@ export async function startFakeTwitch(config: FakeTwitchConfig = {}): Promise<Fa
     if (query.startsWith('query ChannelStream(')) {
       hits.stream++
       const login = String(variables['login'])
-      if (login !== CHANNELS.live && totals[login] === undefined) return json(res, 200, {data: {user: null}})
-      const stream =
-        login === CHANNELS.live
-          ? {id: '320926770780', type: 'live', title: 'On the air', createdAt: '2026-10-26T20:59:27Z'}
-          : null
+      if (!STREAM_IDS[login] && totals[login] === undefined) return json(res, 200, {data: {user: null}})
+      const stream = streamOf(login)
       return json(res, 200, {data: {user: {id: '71092938', login, displayName: login.toUpperCase(), stream}}})
+    }
+    if (query.startsWith('query LiveStream(')) {
+      hits.live++
+      const login = String(variables['login'])
+      if (!STREAM_IDS[login] && totals[login] === undefined) {
+        return json(res, 200, {data: {user: null, streamPlaybackAccessToken: null}})
+      }
+      return json(res, 200, {
+        data: {
+          user: {id: '71092938', login, displayName: login.toUpperCase(), stream: streamOf(login)},
+          streamPlaybackAccessToken: streamToken(login),
+        },
+      })
     }
     if (query.startsWith('query Vod(')) {
       hits.vod++
@@ -542,6 +688,7 @@ export async function startFakeTwitch(config: FakeTwitchConfig = {}): Promise<Fa
       return
     }
     if (req.method === 'GET' && url.pathname.startsWith('/vod/')) return usher(res, url)
+    if (req.method === 'GET' && url.pathname.startsWith('/api/channel/hls/')) return liveUsher(res, url)
     if (req.method === 'GET' && url.pathname.startsWith('/media/')) {
       hits.media++
       const uuid = url.pathname.split('/')[2] ?? ''
@@ -591,6 +738,11 @@ export async function startFakeTwitch(config: FakeTwitchConfig = {}): Promise<Fa
     ushers,
     ranges,
     usher: origin,
+    liveUshers,
+    setOnAir: (login, on) => {
+      if (on) onAir.add(login)
+      else onAir.delete(login)
+    },
     close: () =>
       new Promise<void>(resolve => {
         server.closeAllConnections()

@@ -192,7 +192,13 @@ export {
   WEB_CLIENT_ID as TWITCH_WEB_CLIENT_ID,
 } from './sources/twitch/endpoints.js'
 export {isTwitchListing, parseTwitchLink, type TwitchLink} from './sources/twitch/links.js'
-export {TWITCH_LIST_DEFAULT_ITEMS, type TwitchOptions, TwitchSource} from './sources/twitch/source.js'
+export {
+  isTwitchAd,
+  TWITCH_LIST_DEFAULT_ITEMS,
+  type TwitchLiveOptions,
+  type TwitchOptions,
+  TwitchSource,
+} from './sources/twitch/source.js'
 export {VkError, type VkProblem} from './sources/vk/data.js'
 export {isVkListing, parseVkLink, type VkLink} from './sources/vk/links.js'
 export {VK_LIST_DEFAULT_ITEMS, type VkOptions, VkSource} from './sources/vk/source.js'

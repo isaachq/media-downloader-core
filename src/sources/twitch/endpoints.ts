@@ -44,6 +44,17 @@
  *    `"<videoId>|<n>|<publishedAt>|<n>"`, the same on every edge of a page and
  *    null on the last; `totalCount` counts them all (2,667 on one channel,
  *    read past page 3 on the default client id).
+ *
+ * Live channels (verified live 2026-10-27, anonymous, from Mexico, on the
+ * default client id): `user(login).stream` and
+ * `streamPlaybackAccessToken(channelName, params)` in one raw query (a token
+ * comes for an offline channel too); `usher.ttvnw.net/api/channel/hls/<login>.m3u8`
+ * (and `/api/v2/…`, which answers the same master with its info as
+ * EXT-X-SESSION-DATA) gives H.264 + AAC variants on weaver; the media
+ * playlist is MPEG-TS, 2 s segments titled `live`, EXT-X-TARGETDURATION 6,
+ * a window of about 30 s, a program date-time per segment, and date ranges
+ * of their own CLASS (`twitch-session`, `twitch-stream-source`, ads as
+ * `twitch-stitched-ad`).
  */
 
 /**
@@ -150,6 +161,43 @@ export function clipsPageQuery(fields: string): string {
  */
 export function channelStreamQuery(): string {
   return 'query ChannelStream($login: String!) { user(login: $login) { id login displayName stream { id type title createdAt } } }'
+}
+
+/**
+ * A channel's stream and the token that signs its usher request, in one query (a recording and each
+ * of its refreshes ask it once). Offline, `stream` is null (a token comes anyway). O(1).
+ */
+export function liveQuery(): string {
+  return (
+    'query LiveStream($login: String!) { user(login: $login) { id login displayName stream { id type title createdAt } } ' +
+    `streamPlaybackAccessToken(channelName: $login, params: {${ACCESS_PARAMS}}) { value signature } }`
+  )
+}
+
+/**
+ * A channel's live master playlist at usher (`<usher>/api/channel/hls/<login>.m3u8`), signed with its
+ * stream token, with the parameters the web player sends. O(L).
+ */
+export function liveUsherUrl(
+  origin: string,
+  login: string,
+  token: {readonly signature: string; readonly value: string},
+  codecs: string,
+  p: number,
+): string {
+  const query = new URLSearchParams({
+    allow_source: 'true',
+    allow_audio_only: 'true',
+    fast_bread: 'true',
+    platform: 'web',
+    player: 'twitchweb',
+    supported_codecs: codecs,
+    playlist_include_framerate: 'true',
+    p: String(p),
+    sig: token.signature,
+    token: token.value,
+  })
+  return `${origin}/api/channel/hls/${encodeURIComponent(login)}.m3u8?${query}`
 }
 
 /** The token that signs a VOD's usher request, asked as the web player asks it. */

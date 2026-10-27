@@ -290,6 +290,8 @@ function toRendition(quality: unknown, source: string, token: Token | undefined)
 export type TwitchLiveStream = {
   readonly id: string
   readonly login: string
+  /** The display name ("Shroud"), for file names. */
+  readonly channelName: string | undefined
   readonly title: string | undefined
   /** Unix seconds. */
   readonly startedAt: number | undefined
@@ -320,9 +322,47 @@ export function readLiveStream(body: unknown): TwitchLiveStream | undefined {
   return {
     id,
     login,
+    channelName: text(dig(user, 'displayName')),
     title: text(dig(stream, 'title')),
     startedAt: Number.isFinite(started) ? Math.floor(started / 1000) : undefined,
     type: text(dig(stream, 'type')),
+  }
+}
+
+/**
+ * A `liveQuery` answer: the channel's stream (undefined offline) and the token that signs its usher
+ * request (`streamPlaybackAccessToken`), or why there is none. O(size).
+ */
+export function readLive(body: unknown): {
+  readonly stream: TwitchLiveStream | undefined
+  readonly token: VodToken | MetaError
+} {
+  const stream = readLiveStream(body)
+  return {stream, token: readStreamToken(body)}
+}
+
+/** A `streamPlaybackAccessToken`: the token, or why not (a forbidden one: some viewers only). O(size). */
+export function readStreamToken(body: unknown): VodToken | MetaError {
+  const raw = dig(gqlData(body), 'streamPlaybackAccessToken')
+  const token = readToken(raw)
+  if (!token) {
+    return (
+      gqlProblem(body, 'streamPlaybackAccessToken') ??
+      new MetaError('format-changed', 'Twitch: the live stream came without its playback token.')
+    )
+  }
+  if (token.forbidden) {
+    return new MetaError(
+      'login-required',
+      `Twitch keeps this live stream for some viewers only${token.reason ? ` (${token.reason})` : ''}: it needs a signed-in account that may watch it.`,
+    )
+  }
+  return {
+    signature: token.signature,
+    value: token.value,
+    forbidden: false,
+    reason: token.reason,
+    expiresAt: token.expires !== undefined ? token.expires * 1000 - TOKEN_MARGIN_MS : undefined,
   }
 }
 

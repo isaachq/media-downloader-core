@@ -916,10 +916,12 @@ export type DownloaderOptions = {
    * gql.twitch.tv, anonymous): clips (each a signed progressive MP4), a
    * channel's clips (`/<channel>/clips?range=…`), VODs (archives, highlights,
    * uploads: HLS, downloaded by the core) and a channel's videos
-   * (`/<channel>/videos?filter=…&sort=…`). A channel on the air or a VOD still
-   * recording fails as `live-now` and is never handed to yt-dlp (live streams
-   * are not downloaded). `false` hands every Twitch url to yt-dlp, live ones
-   * included.
+   * (`/<channel>/videos?filter=…&sort=…`). A channel on the air (its link,
+   * `twitch.tv/<channel>`) is recorded by the core's live recorder until
+   * `stop` (kept) or `cancel` (discarded), ads left out, 12 h at most
+   * (`twitch.live`); a VOD still recording fails as `live-now`. Nothing live
+   * is ever handed to yt-dlp. `false` hands every Twitch url to yt-dlp, live
+   * ones included.
    */
   readonly twitch?: false | TwitchOptions | undefined
   /**

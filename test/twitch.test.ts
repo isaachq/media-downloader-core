@@ -3,16 +3,18 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import {after, before, describe, it} from 'node:test'
+import {setImmediate as tick} from 'node:timers/promises'
 import {type Executable, toExecutable} from '../src/binaries/executable.js'
+import {archiveKey} from '../src/core/archive.js'
 import type {DownloadError} from '../src/core/errors.js'
 import {isListingLink} from '../src/core/mix.js'
 import {MediaDownloader} from '../src/downloader.js'
 import {SOURCE_BLOCKED, SOURCE_FORMAT_CHANGED, type SourceDownload} from '../src/sources/source.js'
 import {isTwitchListing, parseTwitchLink} from '../src/sources/twitch/links.js'
-import {type TwitchOptions, TwitchSource} from '../src/sources/twitch/source.js'
-import type {AnalysisResult, PlaylistAnalysis, VideoAnalysis} from '../src/types.js'
-import {type FakeHls, startFakeHls, writeCopyFfmpeg} from './helpers/fake-hls.js'
-import {CHANNELS, SLUGS, startFakeTwitch, VOD_TRACKS, VODS, WEB_ID} from './helpers/fake-twitch.js'
+import {isTwitchAd, liveTitle, type TwitchOptions, TwitchSource} from '../src/sources/twitch/source.js'
+import type {AnalysisResult, JobProgress, PlaylistAnalysis, VideoAnalysis} from '../src/types.js'
+import {type FakeHls, LIVE_T0, startFakeHls, startFakeLive, writeCopyFfmpeg} from './helpers/fake-hls.js'
+import {CHANNELS, LIVE, LIVE_TRACKS, SLUGS, startFakeTwitch, VOD_TRACKS, VODS, WEB_ID} from './helpers/fake-twitch.js'
 import {type FakeBinaries, writeFakes} from './helpers/fakes.js'
 
 const mp4 = {kind: 'video', container: 'mp4'} as const
@@ -106,8 +108,23 @@ after(async () => {
 
 async function setup(name: string, config: Parameters<typeof startFakeTwitch>[0] = {}, extra: TwitchOptions = {}) {
   const hls: FakeHls = await startFakeHls({tracks: VOD_TRACKS})
-  const site = await startFakeTwitch({...config, hls})
-  const options: TwitchOptions = {endpoints: {gql: site.gql, usher: site.usher}, pacing: fast, ...extra}
+  const live = await startFakeLive({tracks: LIVE_TRACKS})
+  const site = await startFakeTwitch({...config, hls, live})
+  // live recordings run on the live origin's simulated clock: each wait moves it, nothing waits in real time
+  const options: TwitchOptions = {
+    endpoints: {gql: site.gql, usher: site.usher},
+    pacing: fast,
+    live: {
+      emptyReloads: 3,
+      now: () => LIVE_T0 + live.clock.now(),
+      sleep: async (ms, signal) => {
+        if (signal.aborted) return
+        live.clock.advance(ms)
+        await tick()
+      },
+    },
+    ...extra,
+  }
   const engine = new MediaDownloader({
     dataDir: path.join(root, name),
     binaries: bins,
@@ -129,13 +146,14 @@ async function setup(name: string, config: Parameters<typeof startFakeTwitch>[0]
     await engine.dispose()
     await site.close()
     await hls.close()
+    await live.close()
   })
   const work = path.join(root, name, 'work')
   await fs.mkdir(work, {recursive: true})
   let jobs = 0
   /** A fresh work folder per VOD download (core/hls resumes from what a folder holds). */
   const workDir = () => path.join(work, `job-${++jobs}`)
-  return {site, hls, engine, options, source: new TwitchSource(options), work, workDir}
+  return {site, hls, live, engine, options, source: new TwitchSource(options), work, workDir}
 }
 
 const asVideo = (analysis: AnalysisResult): VideoAnalysis => {
@@ -260,30 +278,26 @@ describe('Twitch, end to end (local fake)', () => {
     assert.equal(site.hits.usher, 0, 'usher is never asked for a broadcast on the air')
   })
 
-  it('a channel streaming now is live-now, natively: never handed to yt-dlp (it would record it)', {
+  it('a channel streaming now: checked as live-now in a batch (a list never records); offline says so', {
     timeout: 5_000,
   }, async () => {
-    const {source, engine, work} = await setup('channel-live')
+    const {source, engine} = await setup('channel-live')
     const url = `https://www.twitch.tv/${CHANNELS.live}`
-    const isLive = (e: DownloadError) => {
-      assert.equal(e.hint, 'live-now')
-      assert.equal(e.details, undefined)
-      assert.match(e.message, /live on Twitch right now/)
-      return true
-    }
-    await assert.rejects(source.analyze(url), isLive)
-    await assert.rejects(engine.analyze(url), isLive)
-    await assert.rejects(source.download(task(url, work)), isLive)
-    // an offline channel page has nothing to download either, and says so itself
+    const check = (await source.preflight([{url}], {})).get(url)
+    assert.equal(check?.ok === false && check.error.hint, 'live-now')
+    assert.equal(check?.ok === false && check.error.details, undefined, 'nothing for the engine to hand to yt-dlp')
+    assert.match(check?.ok === false ? check.error.message : '', /recorded from its channel link/)
+    // an offline channel page has nothing to download, and says so itself
     await assert.rejects(engine.analyze(`https://www.twitch.tv/${CHANNELS.mid}`), (e: DownloadError) => {
       assert.equal(e.code, 'unavailable')
       assert.match(e.message, /not live/)
       return true
     })
-    // live detection on its own, for the recorder to come
+    // live detection on its own
     assert.deepEqual(await source.liveStream('LiveOnAir'), {
       id: '320926770780',
       login: CHANNELS.live,
+      channelName: CHANNELS.live.toUpperCase(),
       title: 'On the air',
       startedAt: Date.parse('2026-10-26T20:59:27Z') / 1000,
       type: 'live',
@@ -367,11 +381,10 @@ describe('Twitch, end to end (local fake)', () => {
     })
     const fallback = await engine.analyze(clips(CHANNELS.gated))
     assert.equal(fallback.kind === 'video' ? fallback.media.extractor : fallback.extractor, 'Fake')
-    // while clips go to yt-dlp, a live channel is still checked here, never handed over
-    await assert.rejects(engine.analyze(`https://www.twitch.tv/${CHANNELS.live}`), (e: DownloadError) => {
-      assert.equal(e.hint, 'live-now')
-      return true
-    })
+    // while clips go to yt-dlp, a live channel is still read here, never handed over
+    const live = asVideo(await engine.analyze(`https://www.twitch.tv/${CHANNELS.live}`))
+    assert.equal(live.media.extractor, 'Twitch')
+    assert.equal(live.media.isLive, true)
   })
 
   it('checks of clips not read yet: 15 a request, deleted ones removed, a listing link is no item', {
@@ -691,5 +704,269 @@ describe('Twitch VODs and video listings, end to end (local fake + fake HLS orig
     assert.equal(gone?.ok === false && gone.error.hint, 'removed')
     assert.equal(results.get(videos(CHANNELS.mid))?.ok, false, 'a listing link is no item')
     assert.equal(site.hits.usher, 0, 'checks never ask usher')
+  })
+})
+
+describe('Twitch live channels, recorded (fake GraphQL + usher + live origin on a simulated clock)', () => {
+  const channel = (login: string) => `https://www.twitch.tv/${login}`
+  /** A stop that fires once `n` segments are in. */
+  const stopAfter = (n: number) => {
+    const stop = new AbortController()
+    const progress: JobProgress[] = []
+    return {
+      stop,
+      progress,
+      onProgress: (p: JobProgress) => {
+        progress.push(p)
+        if ((p.fragmentIndex ?? 0) >= n) stop.abort()
+      },
+    }
+  }
+
+  it('a channel on the air: one live item (1 query, 1 usher request); recorded from the window, then stop keeps it', {
+    timeout: 5_000,
+  }, async () => {
+    const {site, live, source, workDir} = await setup('live-record')
+    const analysis = asVideo(await source.analyze(channel(LIVE.onAir)))
+    assert.equal(analysis.media.isLive, true)
+    assert.equal(analysis.media.id, 'live-320926770780')
+    assert.equal(analysis.media.url, channel(LIVE.onAir))
+    assert.match(analysis.media.title, /^LIVEONAIR \d{4}-\d\d-\d\d \d\d-\d\d On the air$/)
+    const labels = analysis.choices.map(choice => choice.label)
+    assert.ok(labels.includes('1080p · MP4'), labels.join(', '))
+    assert.deepEqual([site.hits.live, site.hits.liveUsher], [1, 1])
+
+    const {stop, progress, onProgress} = stopAfter(9)
+    let info: unknown
+    const file = await source.download(
+      task(channel(LIVE.onAir), workDir(), {
+        profile: {kind: 'video', container: 'mkv'},
+        ffmpeg: copy,
+        stop: stop.signal,
+        onProgress,
+        onInfo: next => {
+          info = next
+        },
+      }),
+    )
+    assert.deepEqual(
+      [site.hits.live, site.hits.liveUsher],
+      [1, 1],
+      'the analysis read (stream, token, master) feeds the recording',
+    )
+    assert.deepEqual(await fs.readFile(file.filepath), live.expected(LIVE.onAir, 0, 9), 'the window, then what came')
+    assert.equal(file.recording?.ended, 'stopped')
+    assert.equal(file.recording?.seconds, 18)
+    assert.equal(file.info.duration, 18, 'the duration the file is checked against')
+    assert.equal(file.info.vcodec, 'avc1')
+    const stream = {
+      id: '320926770780',
+      login: CHANNELS.live,
+      channelName: CHANNELS.live.toUpperCase(),
+      title: 'On the air',
+      startedAt: Date.parse('2026-10-26T20:59:27Z') / 1000,
+      type: 'live',
+    }
+    assert.equal(file.info.title, liveTitle(stream, 0), '<channel> <started-at> <title>')
+    assert.match(String(file.info.id), /^live-320926770780-\d+$/)
+    assert.equal((info as {title?: string}).title, file.info.title, 'named before the first segment')
+    assert.equal(file.tags?.comment, channel(LIVE.onAir))
+    assert.ok(progress.length > 0 && progress.every(p => p.live === true && p.fraction === undefined))
+    assert.equal(site.liveUshers[0], 'av1,h265,h264')
+  })
+
+  it('an mp4 profile asks usher for H.264; audio records the audio_only variant', {timeout: 5_000}, async () => {
+    const {site, live, source, workDir} = await setup('live-codecs')
+    const a = stopAfter(3)
+    await source.download(
+      task(channel(LIVE.onAir), workDir(), {ffmpeg: copy, stop: a.stop.signal, onProgress: a.onProgress}),
+    )
+    assert.equal(site.liveUshers.at(-1), 'h264')
+    const b = stopAfter(3)
+    const sound = await source.download(
+      task(channel(LIVE.onAir), workDir(), {
+        profile: {kind: 'audio', container: 'm4a'},
+        ffmpeg: copy,
+        fresh: true,
+        stop: b.stop.signal,
+        onProgress: b.onProgress,
+      }),
+    )
+    assert.ok(live.segmentRequests(`${LIVE.onAir}~audio`) >= 3, 'the audio_only variant')
+    assert.equal(sound.info.vcodec, 'none')
+  })
+
+  it('ads: segments titled "Amazon|…" and those inside a twitch-stitched-ad date range are left out, their seconds counted', {
+    timeout: 5_000,
+  }, async () => {
+    const {live, source, workDir} = await setup('live-ads')
+    const file = await source.download(task(channel(LIVE.ads), workDir(), {ffmpeg: copy}))
+    assert.equal(file.recording?.ended, 'endlist')
+    assert.equal(file.recording?.skippedSeconds, 10, '3 titled + 2 dated segments of 2 s')
+    const ads = new Set([8, 9, 10, 14, 15])
+    assert.deepEqual(await fs.readFile(file.filepath), live.expected(LIVE.ads, 0, 20, ads))
+    assert.equal(live.count(`/l/${LIVE.ads}/s9.ts`), 0, 'an ad is never asked')
+    assert.equal(file.recording?.gaps, 0, 'an ad is not a gap')
+
+    // skipAds: false keeps them
+    const {options, live: live2, workDir: dir2} = await setup('live-ads-kept')
+    const withAds = new TwitchSource({...options, live: {...options.live, skipAds: false}})
+    const all = await withAds.download(task(channel(LIVE.ads), dir2(), {ffmpeg: copy}))
+    assert.equal(all.recording?.skippedSeconds, 0)
+    assert.equal(all.recording?.seconds, 40)
+    assert.deepEqual(await fs.readFile(all.filepath), live2.expected(LIVE.ads, 0, 20))
+  })
+
+  it('isTwitchAd: a title other than "live", or a date inside a stitched-ad range (end excluded)', () => {
+    const segment = (title: string | undefined, date: number | undefined) =>
+      ({
+        index: 0,
+        sequence: 0,
+        uri: 'x',
+        duration: 2,
+        period: 0,
+        discontinuity: 0,
+        key: -1,
+        gap: false,
+        title,
+        programDateTime: date,
+      }) as const
+    const playlist = {
+      dateRanges: [{id: 'stitched-ad-1', class: 'twitch-stitched-ad', startDate: 1000, duration: 4, attributes: {}}],
+    } as unknown as Parameters<typeof isTwitchAd>[1]
+    assert.equal(isTwitchAd(segment('Amazon|123', undefined), playlist), true)
+    assert.equal(isTwitchAd(segment('live', 999), playlist), false)
+    assert.equal(isTwitchAd(segment('live', 1000), playlist), true)
+    assert.equal(isTwitchAd(segment(undefined, 4999), playlist), true)
+    assert.equal(isTwitchAd(segment('live', 5000), playlist), false)
+  })
+
+  it('a token running out: the 403 re-signs through a new query and usher (the same quality), no gap', {
+    timeout: 5_000,
+  }, async () => {
+    const {site, live, source, workDir} = await setup('live-refresh')
+    const file = await source.download(task(channel(LIVE.expiring), workDir(), {ffmpeg: copy}))
+    assert.equal(file.recording?.ended, 'endlist')
+    assert.ok((file.recording?.refreshes ?? 0) >= 2, `refreshes: ${file.recording?.refreshes}`)
+    assert.equal(file.recording?.gaps, 0)
+    assert.deepEqual(await fs.readFile(file.filepath), live.expected(LIVE.expiring, 0, 20))
+    assert.equal(site.hits.live, 1 + (file.recording?.refreshes ?? 0), 'one query per refresh')
+    assert.equal(site.hits.liveUsher, 1 + (file.recording?.refreshes ?? 0), 'one usher request per refresh')
+  })
+
+  it('the broadcast ends (ENDLIST): the recording ends with it, kept', {timeout: 5_000}, async () => {
+    const {live, source, workDir} = await setup('live-ending')
+    const file = await source.download(task(channel(LIVE.ending), workDir(), {ffmpeg: copy}))
+    assert.equal(file.recording?.ended, 'endlist')
+    assert.deepEqual(await fs.readFile(file.filepath), live.expected(LIVE.ending, 0, 10))
+  })
+
+  it('an offline channel: nothing to record; a channel going offline mid-recording ends it, kept', {
+    timeout: 5_000,
+  }, async () => {
+    const {site, live, source, workDir} = await setup('live-offline')
+    await assert.rejects(
+      source.download(task(channel(CHANNELS.mid), workDir(), {ffmpeg: copy})),
+      (e: DownloadError) => {
+        assert.equal(e.code, 'unavailable')
+        assert.match(e.message, /not live/)
+        assert.equal(e.details, undefined)
+        return true
+      },
+    )
+    assert.equal(site.hits.liveUsher, 0, 'usher is not asked for a channel off the air')
+    // the stream stops growing at segment 9 and the channel leaves the air: three empty reloads end it
+    live.update(LIVE.onAir, {...LIVE_TRACKS[LIVE.onAir], stopAfter: 9})
+    const file = await source.download(
+      task(channel(LIVE.onAir), workDir(), {
+        ffmpeg: copy,
+        onProgress: p => {
+          if ((p.fragmentIndex ?? 0) >= 9) site.setOnAir(LIVE.onAir, false)
+        },
+      }),
+    )
+    assert.equal(file.recording?.ended, 'offline')
+    assert.deepEqual(await fs.readFile(file.filepath), live.expected(LIVE.onAir, 0, 9))
+  })
+
+  it('a token refused after the channel left the air: the refresh finds it offline and the recording ends, kept', {
+    timeout: 5_000,
+  }, async () => {
+    const {site, live, source, workDir} = await setup('live-offline-refresh')
+    const file = await source.download(
+      task(channel(LIVE.expiring), workDir(), {
+        ffmpeg: copy,
+        onProgress: p => {
+          if ((p.fragmentIndex ?? 0) >= 3) site.setOnAir(LIVE.expiring, false)
+        },
+      }),
+    )
+    assert.equal(file.recording?.ended, 'offline')
+    assert.equal(file.recording?.refreshes, 1)
+    assert.ok((file.recording?.segments ?? 0) >= 3)
+    assert.deepEqual(await fs.readFile(file.filepath), live.expected(LIVE.expiring, 0, file.recording?.segments ?? 0))
+  })
+
+  it('a native failure on a live channel is never handed to yt-dlp (it would record the stream itself)', {
+    timeout: 5_000,
+  }, async () => {
+    const {source, engine, work} = await setup('live-broken')
+    await assert.rejects(
+      source.download(task(channel(LIVE.broken), path.join(work, 'b'), {ffmpeg: copy})),
+      (e: DownloadError) => {
+        assert.equal(e.details, undefined, 'no source:format-changed: the engine keeps it native')
+        return true
+      },
+    )
+    const out = path.join(root, 'live-broken', 'out')
+    const job = engine.add({url: channel(LIVE.broken), profile: mp4, outDir: out})
+    await engine.whenIdle()
+    const done = engine.job(job.id)!
+    assert.equal(done.status, 'failed')
+    assert.ok(
+      done.attempts.every(a => a.strategy !== 'extractor-fallback'),
+      `never yt-dlp: ${done.attempts.map(a => a.strategy)}`,
+    )
+  })
+
+  it('through the engine: Stop finalizes, validates and archives the recording; Cancel discards another', {
+    timeout: 5_000,
+  }, async () => {
+    const {engine, work} = await setup('live-engine')
+    const out = path.join(root, 'live-engine', 'out')
+    const job = engine.add({url: channel(LIVE.onAir), profile: mp4, outDir: out})
+    let stopped = false
+    let sawLive: JobProgress | undefined
+    engine.on('job', snapshot => {
+      if (snapshot.id !== job.id || !snapshot.progress.live) return
+      sawLive = snapshot.progress
+      if (!stopped && (snapshot.progress.fragmentIndex ?? 0) >= 7) stopped = engine.stop(job.id)
+    })
+    await engine.whenIdle()
+    const done = engine.job(job.id)!
+    assert.equal(done.status, 'completed', JSON.stringify(done.error))
+    assert.equal(stopped, true, 'stop() took')
+    assert.equal(sawLive?.live, true)
+    assert.equal(sawLive?.fraction, undefined)
+    assert.ok((sawLive?.elapsedSec ?? 0) > 0 && (sawLive?.bytes ?? 0) > 0)
+    const files = await fs.readdir(out)
+    assert.equal(files.length, 1, files.join(', '))
+    assert.match(files[0] ?? '', /^LIVEONAIR-\d{4}-\d\d-\d\d-\d\d-\d\d-On-the-air-live-320926770780-\d+\.mp4$/)
+    const steps = new Map(done.steps.map(step => [step.name, step.state]))
+    assert.equal(steps.get('finalize'), 'success')
+    const archived = await engine.archive.find(archiveKey('Twitch', done.mediaId ?? '', mp4))
+    assert.ok(archived, 'archived under the recording’s own id')
+    assert.equal(engine.stop(job.id), false, 'a finished job does not stop again')
+
+    const out2 = path.join(root, 'live-engine', 'out2')
+    const second = engine.add({url: channel(LIVE.ads), profile: mp4, outDir: out2})
+    engine.on('job', snapshot => {
+      if (snapshot.id === second.id && (snapshot.progress.fragmentIndex ?? 0) >= 3) engine.cancel(second.id)
+    })
+    await engine.whenIdle()
+    assert.equal(engine.job(second.id)?.status, 'cancelled')
+    assert.deepEqual(await fs.readdir(out2).catch(() => []), [], 'nothing kept')
+    const left = (await fs.readdir(work, {recursive: true})).filter(name => String(name).includes('hls'))
+    assert.deepEqual(left, [], 'the cancelled recording’s folder is gone')
   })
 })

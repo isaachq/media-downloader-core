@@ -91,6 +91,8 @@ if (args.includes('--dump-json')) {
       {format_id: '140', ext: 'm4a', vcodec: 'none', acodec: 'mp4a.40.2', abr: 128, filesize: size ?? 1000},
       {format_id: '137', ext: 'mp4', vcodec: 'avc1.640028', acodec: 'none', height: 1080, tbr: 4000, filesize: size ?? 5000},
     ]
+    // a song: no picture at all (a SoundCloud track)
+    if (u.includes('song')) formats.pop()
     console.log(JSON.stringify({id: uid, title: 'Title ' + uid, extractor_key: 'Fake', duration, webpage_url: u, original_url: u, formats}))
   }
   // exitCode + return, not process.exit(): exit() truncates large stdout writes on a pipe
@@ -110,6 +112,7 @@ if (args.includes('--dump-single-json')) {
     const ids = big
       ? Array.from({length: Number(big[1])}, (_, i) => (params.get('p') || 'b') + (i + 1))
       : url.includes('mixed') ? ['e1', 'e2', 'unavailable-e3', 'e4']
+      : url.includes('songs') ? ['e1', 'song-e2']
       : url.includes('gone') ? ['ok-' + tag, 'gone-' + tag]
       : url.includes('broken') ? ['ok-' + tag, 'broken-' + tag, 'fine-' + tag]
       : ['e1', 'e2', 'e3']
@@ -119,7 +122,7 @@ if (args.includes('--dump-single-json')) {
     console.log(JSON.stringify({_type: 'playlist', id: 'PL1', title: 'Fake List', extractor_key: 'Fake', entries}))
   } else {
     const video = {format_id: '137', ext: 'mp4', vcodec: 'avc1.640028', acodec: 'none', height: 1080, tbr: 4000, filesize: 5000}
-    console.log(JSON.stringify({id, title: 'Title ' + id, extractor_key: 'Fake', duration: DURATION, webpage_url: url, formats: [audio, video]}))
+    console.log(JSON.stringify({id, title: 'Title ' + id, extractor_key: 'Fake', duration: DURATION, webpage_url: url, formats: url.includes('song') ? [audio] : [audio, video]}))
   }
   return
 }

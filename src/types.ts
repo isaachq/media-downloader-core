@@ -640,6 +640,12 @@ export type BatchRequest = {
    */
   readonly targets?: readonly BatchTarget[] | undefined
   /**
+   * Where a song this batch keeps as M4A goes: an item with no picture (a SoundCloud
+   * track) in a batch of videos downloads as audio instead of failing. Default: the
+   * batch's own folder. The phone sets Music (Android's Movies refuses audio files).
+   */
+  readonly audioOutDir?: string | undefined
+  /**
    * How hard the batch tries before an item counts as failed. 'fast' (default):
    * each item is checked once before it downloads (its download still retries).
    * 'thorough': an item whose check fails in a way that may pass is checked up to
@@ -658,8 +664,11 @@ export type BatchRequest = {
 export type BatchTarget = {
   /** The selection entry's index. */
   readonly index: number
-  /** Absolute folder the file goes to (as is: no sub-folder is added). */
-  readonly outDir: string
+  /**
+   * Absolute folder the file goes to (as is: no sub-folder is added). Absent: the
+   * batch's own folder and list position (a format of its own only).
+   */
+  readonly outDir?: string | undefined
   readonly profile: FormatProfile
   /** Its list and position, for the file name ("NNN - title"). */
   readonly playlist?: PlaylistRef | undefined
@@ -741,8 +750,14 @@ export type MixItem = {
    * the link is checked when it downloads, as in any batch.
    */
   readonly analysis?: VideoAnalysis | undefined
-  /** Already downloaded with `MixAnalyzeOptions.profile` and still there: the batch skips it at no cost. */
+  /** Already downloaded with `MixAnalyzeOptions.profile` (or its own `format`) and still there: the batch skips it at no cost. */
   readonly archived?: boolean | undefined
+  /**
+   * A format of its own the check gave it: a song (a SoundCloud track) in a list of
+   * videos has no picture, so it downloads as M4A instead of being left out.
+   * `MixRequest.formats` still wins for its url.
+   */
+  readonly format?: FormatProfile | undefined
 }
 
 export type MixSkipped = {
@@ -816,6 +831,8 @@ export type MixRequest = {
    * batch (each such link is a `BatchTarget`); the rest go to `outDir`.
    */
   readonly outDirs?: Readonly<Record<string, string>> | undefined
+  /** Where a song the check kept as M4A in a list of videos goes (`BatchRequest.audioOutDir`); `outDirs` wins. */
+  readonly audioOutDir?: string | undefined
 }
 
 // ─── Options ────────────────────────────────────────────────────────────────

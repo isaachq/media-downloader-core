@@ -1246,12 +1246,18 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     for (const id of this.#jobs.keys()) this.cancel(id)
   }
 
-  /** Re-queue a failed or cancelled job as a new job. */
-  retry(id: JobId): JobSnapshot | undefined {
+  /**
+   * Re-queue a failed or cancelled job as a new job; `changes` sets another format,
+   * folder or list position for it (a song of a batch of videos becomes an M4A).
+   */
+  retry(
+    id: JobId,
+    changes: Partial<Pick<JobRequest, 'profile' | 'outDir' | 'playlist'>> = {},
+  ): JobSnapshot | undefined {
     const job = this.#jobs.get(id)
     if (!job || (job.status !== 'failed' && job.status !== 'cancelled')) return undefined
     this.#forget(id)
-    return this.add({...job.request, infoJsonPath: undefined})
+    return this.add({...job.request, infoJsonPath: undefined, ...changes})
   }
 
   /** Move a queued job to the front of the line. */

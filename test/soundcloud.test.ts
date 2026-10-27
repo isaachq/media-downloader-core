@@ -6,6 +6,7 @@ import {after, before, describe, it} from 'node:test'
 import type {DownloadError} from '../src/core/errors.js'
 import {isListingLink} from '../src/core/mix.js'
 import {MediaDownloader} from '../src/downloader.js'
+import {BatchScheduler} from '../src/scheduler.js'
 import {isSoundcloudListing, parseSoundcloudLink} from '../src/sources/soundcloud/links.js'
 import {type SoundcloudOptions, SoundcloudSource} from '../src/sources/soundcloud/source.js'
 import {needsFallback, SOURCE_BLOCKED, SOURCE_FORMAT_CHANGED, type SourceDownload} from '../src/sources/source.js'
@@ -202,6 +203,7 @@ describe('SoundCloud, end to end (local fake)', () => {
     )
     assert.equal(error.code, 'invalid-request')
     assert.equal(error.hint, 'format-unavailable')
+    assert.equal(error.params?.['audioOnly'], 1, 'a batch of videos takes it as a song')
     assert.deepEqual(site.hits, {})
   })
 
@@ -486,5 +488,62 @@ describe('SoundCloud, end to end (local fake)', () => {
     })
     assert.equal(done.status, 'completed', JSON.stringify(done.error))
     assert.equal(path.extname(done.filepath ?? ''), '.m4a')
+  })
+
+  it('a set asked as MP4, restored before its check: each track comes back as M4A, none fails', T, async () => {
+    const site = await startFakeSoundcloud({hydrationId: HYDRATION_ID})
+    cleanups.push(() => site.close())
+    const dataDir = path.join(root, 'restored-set')
+    const out = path.join(root, 'restored-set-out')
+    await fs.mkdir(dataDir, {recursive: true})
+    // what a scheduler saved before the app closed: the batch, never checked
+    await fs.writeFile(
+      path.join(dataDir, 'schedule.json'),
+      JSON.stringify({
+        version: 1,
+        requests: [{url: BIG_SET, profile: {kind: 'video', container: 'mp4'}, outDir: out, maxItems: 3}],
+      }),
+    )
+    const engine = new MediaDownloader({
+      dataDir,
+      binaries: bins,
+      validation: 'none',
+      maxRetries: 1,
+      retryDelayMaxMs: 20,
+      progressIntervalMs: 0,
+      tiktok: false,
+      instagram: false,
+      facebook: false,
+      x: false,
+      vk: false,
+      snapchat: false,
+      threads: false,
+      bluesky: false,
+      twitch: false,
+      soundcloud: {
+        endpoints: {api: site.api, web: site.origin, short: `${site.origin}/short`, assetHost: `${site.origin}/assets`},
+        pacing: fast,
+      },
+    })
+    const scheduler = new BatchScheduler(engine)
+    cleanups.push(async () => {
+      await scheduler.dispose()
+      await engine.dispose()
+    })
+    const [restored] = await scheduler.restore()
+    await scheduler.whenIdle()
+    const done = scheduler.batch(restored!.id)!
+    assert.equal(done.status, 'completed', JSON.stringify(done.error))
+    assert.equal(done.jobs.succeeded, 3)
+    assert.equal(done.jobs.failed, 0)
+    const finished = engine.jobs().filter(job => job.batchId === restored!.id && job.status === 'completed')
+    assert.deepEqual(
+      finished.map(job => [job.profile.kind, path.extname(job.filepath ?? '')]),
+      [
+        ['audio', '.m4a'],
+        ['audio', '.m4a'],
+        ['audio', '.m4a'],
+      ],
+    )
   })
 })

@@ -1,5 +1,20 @@
 # Changelog
 
+## Library 1.21.2
+
+- **A song among videos downloads as M4A.** An item with no picture at all (a
+  SoundCloud track) asked as a video, alone, in a set or a profile, or in a mix list,
+  was refused as unavailable ("No video formats", or SoundCloud's "choose an audio
+  format"). The batch now keeps it as M4A: `MixItem.format` says so in a mix list's
+  preview, the batch remembers it in its `targets` (a `restore()` keeps it a song,
+  `BatchTarget.outDir` may now be left out: the batch's own folder and position), and
+  `BatchRequest.audioOutDir` / `MixRequest.audioOutDir` say where such songs go (the
+  phone: Music, since Android's Movies refuses audio). A batch restored before its check
+  takes such an item as a video once: SoundCloud refuses it as sound only (`audioOnly`),
+  and the batch queues it again as M4A (`engine.retry(id, changes)` takes another format,
+  folder or list position), never a failure. Cost: O(choices) per item, once, at its
+  check; O(targets) per save of the pending batches; O(items) once per song refused.
+
 ## Library 1.21.1
 
 - **Files land in Android's shared folders**: a copy to another volume is written as

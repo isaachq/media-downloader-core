@@ -86,6 +86,9 @@ export function skipReasonOf(error: JobError): MixSkipReason {
 const offers = (analysis: VideoAnalysis, profile: FormatProfile): boolean =>
   analysis.choices.some(choice => choice.profile.kind === profile.kind)
 
+/** What a song (no picture at all) downloads as in a list or batch of videos: AAC as is. */
+export const SONG_IN_VIDEOS: FormatProfile = {kind: 'audio', container: 'm4a'}
+
 /** A photo post (made into an MP4 or a folder by `SlideshowOptions.mode`), not a carousel with videos. */
 const isPhotoPost = (analysis: VideoAnalysis): boolean =>
   analysis.media.slideshow !== undefined && analysis.media.slideshow.videos !== true
@@ -184,6 +187,17 @@ export async function analyzeMix(
     }
     if (identity !== undefined) firstOf.set(identity, link.line)
     if (profile && !offers(analysis, profile)) {
+      // a song in a list of videos: kept, as M4A (a video in a list of songs always has its sound)
+      if (profile.kind === 'video' && offers(analysis, SONG_IN_VIDEOS)) {
+        valid.push({
+          line: link.line,
+          url: analysis.media.url || link.url,
+          site: link.site,
+          analysis,
+          format: SONG_IN_VIDEOS,
+        })
+        continue
+      }
       unused.push(result)
       skipped.push({
         line: link.line,
@@ -226,7 +240,7 @@ async function screen(
         const archived = await engine.isArchived(
           media.extractor,
           media.id,
-          options.profile,
+          item.format ?? options.profile,
           isPhotoPost(item.analysis!) ? mode : undefined,
         )
         return {damaged, archived}

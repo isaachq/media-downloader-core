@@ -9,7 +9,7 @@ import {freeSpace} from './core/files.js'
 import {profileKey, profileProblem} from './core/formats.js'
 import {newId} from './core/ids.js'
 import {isTerminal} from './core/job.js'
-import {isListingLink} from './core/mix.js'
+import {isListingLink, SONG_IN_VIDEOS as SONG} from './core/mix.js'
 import {QueueStore} from './core/queue-store.js'
 import {ANALYZE_ATTEMPTS, type MediaDownloader} from './downloader.js'
 import {planMix} from './sources/mix-plan.js'
@@ -45,6 +45,7 @@ import type {
 import {formatBytes} from './util/units.js'
 
 /** Jobs created per event-loop turn while enqueuing a batch. */
+
 const ENQUEUE_SLICE = 250
 
 /** Items checked against the archive concurrently while forecasting. */
@@ -124,7 +125,8 @@ type Batch = {
   /** The check after the downloads (`validationTiming: 'after-batch'`), while it runs. */
   checking: {done: number; total: number} | undefined
   /** Single items' own folder / profile / list position, by index (a batch gathering items of several). */
-  readonly targets: ReadonlyMap<number, BatchTarget>
+  /** Grows when a check keeps a song of a batch of videos as M4A (#resolveItem); saved with the request. */
+  readonly targets: Map<number, BatchTarget>
   /** Brought back by restore(): its items were checked before the app closed, so they are not checked again. */
   readonly restored: boolean
   /** A mix list's checks, by url, until its items take them (scheduleMix): not checked twice. */
@@ -184,7 +186,12 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
     this.#diskCheck = options.diskCheck ?? 'block'
     this.#longMinutes = engine.longVideoMinutes
     this.#store = new QueueStore(path.join(engine.dataDir, 'schedule.json'), () =>
-      [...this.#batches.values()].filter(batch => !TERMINAL.has(batch.status)).map(batch => batch.request),
+      [...this.#batches.values()]
+        .filter(batch => !TERMINAL.has(batch.status))
+        // the targets as they are now (songs kept as M4A included): O(targets) per save
+        .map(batch =>
+          batch.targets.size > 0 ? {...batch.request, targets: [...batch.targets.values()]} : batch.request,
+        ),
     )
     engine.on('job', this.#onJob)
   }
@@ -206,13 +213,19 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
    * left. O(n): one pass, a Set and a Map.
    */
   scheduleMix(mix: MixAnalysis | string | readonly string[], request: MixRequest): BatchSnapshot {
-    const links: ReadonlyArray<{readonly url: string; readonly analysis?: VideoAnalysis | undefined}> =
+    const links: ReadonlyArray<{
+      readonly url: string
+      readonly analysis?: VideoAnalysis | undefined
+      readonly format?: FormatProfile | undefined
+    }> =
       typeof mix === 'string' || Array.isArray(mix)
         ? planMix(mix).links.filter(link => !isListingLink(link.url, this.#engine))
         : (mix as MixAnalysis).valid
     const entries: PlaylistEntry[] = []
     const known = new Map<string, VideoAnalysis>()
     const urls = new Set<string>()
+    // a link's format of its own from the check (a song in a list of videos), by url
+    const checkedFormats = new Map<string, FormatProfile>()
     for (const link of links) {
       // two links the check found to be one media url: the batch keeps its items by url
       if (urls.has(link.url)) continue
@@ -224,16 +237,19 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
         index: entries.length + 1,
       })
       if (link.analysis) known.set(link.url, link.analysis)
+      if (link.format) checkedFormats.set(link.url, link.format)
     }
     if (entries.length === 0) throw new DownloadError('invalid-request', 'No link of this mix list can be downloaded.')
     // a link with a format or a folder of its own (one song in MP3 among videos): a target of the same batch. O(n)
     const targets: BatchTarget[] = []
     for (const entry of entries) {
-      const own = request.formats?.[entry.url]
+      const own = request.formats?.[entry.url] ?? checkedFormats.get(entry.url)
       const profile = own && profileKey(own) !== profileKey(request.profile) ? own : undefined
-      const folder = request.outDirs?.[entry.url]
+      // a song the check kept as M4A goes to the songs' folder unless the link has a folder of its own
+      const song = !request.formats?.[entry.url] && checkedFormats.has(entry.url) ? request.audioOutDir : undefined
+      const folder = request.outDirs?.[entry.url] ?? song
       if (folder !== undefined && !path.isAbsolute(folder)) {
-        throw new DownloadError('invalid-request', 'outDirs must be absolute paths.')
+        throw new DownloadError('invalid-request', 'outDirs and audioOutDir must be absolute paths.')
       }
       const outDir = folder !== undefined && folder !== request.outDir ? folder : undefined
       if (profile || outDir) {
@@ -251,6 +267,7 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
         mix: true,
         ...(request.slideshow !== undefined && {slideshow: request.slideshow}),
         ...(request.retries !== undefined && {retries: request.retries}),
+        ...(request.audioOutDir !== undefined && {audioOutDir: request.audioOutDir}),
       },
       false,
       known.size > 0 ? known : undefined,
@@ -269,19 +286,23 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
       throw new DownloadError('invalid-request', 'analysis must be the analysis of a single video.')
     }
     const {maxItems} = request
+    if (request.audioOutDir !== undefined && !path.isAbsolute(request.audioOutDir)) {
+      throw new DownloadError('invalid-request', 'audioOutDir must be an absolute path.')
+    }
     if (maxItems !== undefined && !(Number.isInteger(maxItems) && maxItems >= 1 && maxItems <= MAX_REQUESTED_ITEMS)) {
       throw new DownloadError('invalid-request', `maxItems must be an integer from 1 to ${MAX_REQUESTED_ITEMS}.`)
     }
     const targets = new Map<number, BatchTarget>()
     for (const target of request.targets ?? []) {
       const issue =
-        !Number.isInteger(target?.index) || typeof target.outDir !== 'string' || !path.isAbsolute(target.outDir)
-          ? 'Every target needs an entry index and an absolute outDir.'
+        !Number.isInteger(target?.index) ||
+        (target.outDir !== undefined && (typeof target.outDir !== 'string' || !path.isAbsolute(target.outDir)))
+          ? 'Every target needs an entry index, and an absolute outDir when it names one.'
           : profileProblem(target.profile)
       if (issue) throw new DownloadError('invalid-request', issue)
       targets.set(target.index, {
         ...target,
-        outDir: path.resolve(target.outDir),
+        ...(target.outDir !== undefined && {outDir: path.resolve(target.outDir)}),
         ...(target.slideshow !== undefined && {slideshow: slideshowOptions(target.slideshow)}),
       })
     }
@@ -407,8 +428,42 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
     return this.#retry(batch!, [jobId])[0]
   }
 
-  /** The new jobs, one per job that could be retried. */
-  #retry(batch: Batch, jobIds: readonly JobId[]): JobSnapshot[] {
+  /**
+   * A job the source refused as sound only (`audioOnly`) with a video profile:
+   * its item becomes a song target and the job is queued again as M4A, after this
+   * event (the engine is emitting it). False when it is not such a job. O(items), once per song.
+   */
+  #asSong(batch: Batch, job: JobSnapshot): boolean {
+    if (job.profile.kind !== 'video' || job.error?.hint !== 'format-unavailable' || !job.error.params?.['audioOnly']) {
+      return false
+    }
+    const item = batch.items.find(entry => entry.jobId === job.id)
+    if (!item) return false
+    const place = this.#songPlace(batch, item.index)
+    batch.targets.set(item.index, {...batch.targets.get(item.index), ...place, index: item.index, profile: SONG})
+    this.#store.touch()
+    this.#engine.log('info', `${job.url}: no picture, downloaded as M4A`, {batchId: batch.id, jobId: job.id})
+    queueMicrotask(() => {
+      const changes = {
+        profile: SONG,
+        ...(place.outDir !== undefined && {outDir: place.outDir}),
+        ...(place.playlist !== undefined && {playlist: place.playlist}),
+      }
+      this.#retry(batch, [job.id], changes, false)
+    })
+    return true
+  }
+
+  /**
+   * The new jobs, one per job that could be retried. `changes`: another format or
+   * folder for them; `counted` false for a job never counted as failed (#asSong).
+   */
+  #retry(
+    batch: Batch,
+    jobIds: readonly JobId[],
+    changes: Partial<Pick<JobRequest, 'profile' | 'outDir' | 'playlist'>> = {},
+    counted = true,
+  ): JobSnapshot[] {
     // while its files are being checked a batch takes nothing new: try again once it has closed
     if (batch.status === 'validating') return []
     const reopen = TERMINAL.has(batch.status)
@@ -419,13 +474,13 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
       if (item.jobId) itemOf.set(item.jobId, position)
     })
     for (const oldId of jobIds) {
-      const job = this.#engine.retry(oldId)
+      const job = this.#engine.retry(oldId, changes)
       if (!job) continue
       retried.push(job)
       batch.jobs.delete(oldId)
       this.#byJob.delete(oldId)
       // a cancelled item comes back into the batch; a failed one is no longer a failure
-      if (!batch.cancelledJobs.delete(oldId)) {
+      if (!batch.cancelledJobs.delete(oldId) && counted) {
         batch.failed--
         const cause = batch.failedCause.get(oldId)
         batch.failedCause.delete(oldId)
@@ -724,11 +779,39 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
     return this.#isPhotoPost(batch, item) ? this.#slideshowOf(batch, item.index)?.mode : undefined
   }
 
+  /**
+   * Where a song kept as M4A goes: its own target's folder, else the batch's
+   * `audioOutDir` (in the list's folder and position for a list), else nothing
+   * (the batch's own folder and position). O(1).
+   */
+  #songPlace(batch: Batch, index: number): Pick<BatchTarget, 'outDir' | 'playlist'> {
+    const own = batch.targets.get(index)
+    if (own?.outDir !== undefined) return {outDir: own.outDir, playlist: own.playlist}
+    const songs = batch.request.audioOutDir
+    if (songs === undefined) return {}
+    if (batch.kind !== 'playlist' || batch.request.flat === true) return {outDir: path.resolve(songs)}
+    const title = batch.title ?? 'Playlist'
+    return {
+      outDir: this.#engine.folderFor(path.resolve(songs), title),
+      playlist: {id: batch.playlistId ?? batch.id, title, index},
+    }
+  }
+
   /** A checked item: downloadable if the source offers the requested kind of stream; sized and classified. */
   #resolveItem(batch: Batch, position: number, analysis: VideoAnalysis): void {
-    const profile = this.#profileOf(batch, batch.items[position]?.index ?? 0)
-    const choice =
+    const index = batch.items[position]?.index ?? 0
+    let profile = this.#profileOf(batch, index)
+    let choice =
       matchingChoice(profile, analysis.choices) ?? analysis.choices.find(c => c.profile.kind === profile.kind)
+    // no picture at all (a SoundCloud track) in a batch of videos: kept as M4A, not unavailable
+    const song =
+      !choice && profile.kind === 'video' ? analysis.choices.find(c => c.profile.kind === 'audio') : undefined
+    if (song) {
+      profile = SONG
+      choice = matchingChoice(SONG, analysis.choices) ?? song
+      batch.targets.set(index, {...batch.targets.get(index), ...this.#songPlace(batch, index), index, profile: SONG})
+      this.#store.touch()
+    }
     const duration = analysis.media.duration ?? batch.items[position]?.duration
     const requiresConversion = choice?.requiresConversion ?? false
     // what the check found is what the job and the archive go by (an entry's own may be a guess)
@@ -901,11 +984,12 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
         estimatedBytes: item.estimatedBytes,
         requiresConversion: item.requiresConversion,
         // a flat batch names files without a position: they join a folder that has its own order
-        playlist: target
-          ? target.playlist
-          : batch.kind === 'playlist' && !flat
-            ? {id: batch.playlistId ?? batch.id, title: batch.title ?? 'Playlist', index: item.index}
-            : undefined,
+        playlist:
+          target?.outDir !== undefined
+            ? target.playlist
+            : batch.kind === 'playlist' && !flat
+              ? {id: batch.playlistId ?? batch.id, title: batch.title ?? 'Playlist', index: item.index}
+              : undefined,
         infoJsonPath: item.infoJsonPath,
         slideshow: this.#slideshowOf(batch, item.index),
         photoPost: this.#isPhotoPost(batch, item),
@@ -930,6 +1014,8 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
     if (!batch || TERMINAL.has(batch.status)) return
     const before = batch.jobs.get(job.id)
     if (before === undefined) return
+    // a song refused as a video (an item not checked before a restore): it comes back as M4A, never a failure
+    if (job.outcome === 'failed' && before !== 'failed' && this.#asSong(batch, job)) return
     const isRunning = !isTerminal(job.status) && job.status !== 'queued'
     const wasRunning = batch.running.has(job.id)
     if (isRunning !== wasRunning) {

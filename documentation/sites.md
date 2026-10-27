@@ -242,6 +242,7 @@ copies the AAC as it is; MP3, Opus, FLAC and WAV are encoded from it).
 ```ts
 scheduler.schedule({url: 'https://soundcloud.com/forss/flickermood', profile: {kind: 'audio', container: 'm4a'}, outDir})
 scheduler.schedule({url: 'https://soundcloud.com/lofi_chill/sets/lofi-study', profile: {kind: 'audio', container: 'mp3'}, outDir})
+// a video format is no error: a track has no picture, so the batch downloads it as M4A (since 1.21.2)
 ```
 
 | | How |

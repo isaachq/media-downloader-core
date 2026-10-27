@@ -4,7 +4,9 @@ import * as http from 'node:http'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import {type ElectronApplication, _electron as electron, expect, type Page, test} from '@playwright/test'
+import {startFakeHls} from '../../test/helpers/fake-hls'
 import {startFakeTikTok} from '../../test/helpers/fake-tiktok'
+import {startFakeTwitch, VOD_TRACKS, VODS, WEB_ID} from '../../test/helpers/fake-twitch'
 import {writeFakes} from '../../test/helpers/fakes'
 import {listenLocal} from '../../test/helpers/listen'
 
@@ -742,4 +744,43 @@ test('a mix list: links added one by one, checked at once, one in a format of it
   const files = (await fs.readdir(outDir)).sort()
   expect(files.map(name => path.extname(name))).toEqual(['.m4a', '.mp4'])
   await close(app)
+})
+
+test('a subscriber-only Twitch VOD downloads once a browser session is chosen', {tag: '@full'}, async () => {
+  const hls = await startFakeHls({tracks: VOD_TRACKS})
+  const site = await startFakeTwitch({hls})
+  try {
+    const {app, page, outDir} = await launch('twitch-signin', {}, {MDC_TWITCH_ORIGIN: site.origin})
+    const link = `https://www.twitch.tv/videos/${VODS.subsOnly}`
+    // signed out: the app says to sign in, and nothing is downloaded
+    await download(page, link)
+    await expect(page.getByText(/Sign-in required/).first()).toBeVisible({timeout: 30_000})
+    expect(site.requests.every(request => request.auth === undefined)).toBe(true)
+
+    // the sign-in modal names what a Twitch session opens
+    await page.getByRole('button', {name: /settings/i}).click()
+    await page.getByRole('button', {name: /how to sign in/i}).click()
+    const help = page.getByTestId('signin-sites')
+    await expect(help.locator('[data-site="twitch"]')).toContainText('Twitch: subscriber-only videos and streams')
+    await expect(help.locator('[data-site="threads"]')).toContainText('Threads: private accounts')
+    await page.keyboard.press('Escape')
+
+    // a browser's session: the fake jar carries a subscriber's .twitch.tv auth-token
+    await page.getByLabel('Cookies from browser').click()
+    await page.locator('.ant-select-item-option[title="firefox"]').click()
+    await page.locator('.ant-drawer-close').click()
+    await expect(page.locator('.ant-drawer-open')).toHaveCount(0)
+    await download(page, link)
+    const card = page.getByTestId('batch-card').first()
+    await expect(card).toHaveAttribute('data-status', 'completed', {timeout: 60_000})
+    expect((await fs.readdir(outDir)).length).toBe(1)
+    // the session went only on the reads that mint a playback token, with the web player's id
+    const signed = site.requests.filter(request => request.auth !== undefined)
+    expect(signed.length).toBeGreaterThan(0)
+    expect(signed.every(request => request.auth === 'OAuth fake-ok' && request.clientId === WEB_ID)).toBe(true)
+    await close(app)
+  } finally {
+    await site.close()
+    await hls.close()
+  }
 })

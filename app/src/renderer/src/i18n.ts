@@ -338,7 +338,7 @@ const en = {
   'hint.private': 'Private video',
   'hint.removed': 'Removed or unavailable',
   'hint.geo-blocked': 'Blocked in your country',
-  'hint.members-only': 'Members only. Needs cookies from a member account.',
+  'hint.members-only': 'Members or subscribers only. Needs the session of an account that has access.',
   'hint.not-started': 'Live or premiere has not started',
   'hint.unsupported-url': 'Site or link not supported',
   'hint.format-unavailable': 'The chosen format is not offered',
@@ -508,7 +508,7 @@ const en = {
   'hint.cookies-unreadable':
     "Couldn't read the browser's cookies. Safari needs Full Disk Access, or choose another browser in Settings.",
   'settings.cookiesHelp':
-    "Your signed-in session, for private, members-only or age-restricted videos, and for when YouTube asks to confirm you're not a bot. Applies right away.",
+    'Your signed-in session, for private, members-only or age-restricted videos, Instagram stories, private Threads profiles, Twitch subscriber-only videos, and for when YouTube asks to confirm you’re not a bot. Applies right away.',
   'about.star':
     "If Media Download Core helped you, give it a star on GitHub: it's free, takes a second and helps other people find it.",
   'about.starButton': 'Star it on GitHub',
@@ -688,9 +688,9 @@ const en = {
   'signin.open': 'How to sign in',
   'signin.title': 'Use your signed-in session',
   'signin.intro':
-    'Some downloads need your own account’s session: private or members-only videos, age-restricted ones, Instagram profiles and stories, a Facebook page’s videos, and YouTube when it asks to confirm you’re not a bot. The app reads the session from your browser, so there’s nothing to copy or paste.',
+    'Some downloads need your own account’s session; the list below says which. The app reads the session from your browser, so there’s nothing to copy or paste.',
   'signin.step1':
-    'Open your usual browser (Chrome, Edge, Firefox, Safari, Brave…) and sign in there as always: to Google / YouTube, Instagram or Facebook.',
+    'Open your usual browser (Chrome, Edge, Firefox, Safari, Brave…) and sign in there as always: to Google / YouTube, Instagram, Facebook, Threads or Twitch.',
   'signin.step2': 'Here, in Settings → Cookies from browser, choose that same browser.',
   'signin.step3': 'The first time, your system asks for a permission (see below). Allow it. It only asks once.',
   'signin.step4':
@@ -703,6 +703,8 @@ const en = {
     'Linux (Fedora, Ubuntu…): your keyring (GNOME Keyring / KWallet) may ask to allow access to the browser’s saved data: allow it. Firefox needs no permission.',
   'signin.privacy':
     'Your cookies stay on your computer. They’re read once into a private copy the app uses only to download, and they’re never sent anywhere else.',
+  'signin.sites': 'What a session opens',
+  'signin.twitchNote': 'Twitch’s session is only used to get the video: never to chat, follow or subscribe.',
 } as const
 
 export type MessageKey = keyof typeof en
@@ -1036,7 +1038,7 @@ const es: Record<MessageKey, string> = {
   'hint.private': 'Video privado',
   'hint.removed': 'Eliminado o no disponible',
   'hint.geo-blocked': 'Bloqueado en tu país',
-  'hint.members-only': 'Solo para miembros. Necesita cookies de una cuenta de miembro.',
+  'hint.members-only': 'Solo para miembros o suscriptores. Necesita la sesión de una cuenta con acceso.',
   'hint.not-started': 'El en vivo o estreno no ha comenzado',
   'hint.unsupported-url': 'Sitio o enlace no compatible',
   'hint.format-unavailable': 'El formato elegido no está disponible',
@@ -1206,7 +1208,7 @@ const es: Record<MessageKey, string> = {
   'hint.cookies-unreadable':
     'No se pudieron leer las cookies del navegador. Safari necesita Acceso total al disco, o elige otro navegador en Configuración.',
   'settings.cookiesHelp':
-    'Tu sesión iniciada, para videos privados, de miembros o con restricción de edad, y para cuando YouTube pide confirmar que no eres un bot. Se aplica al instante.',
+    'Tu sesión iniciada, para videos privados, de miembros o con restricción de edad, historias de Instagram, perfiles privados de Threads, videos de Twitch solo para suscriptores, y para cuando YouTube pide confirmar que no eres un bot. Se aplica al instante.',
   'about.star':
     'Si Media Download Core te sirvió, regálanos una estrella en GitHub: es gratis, toma un segundo y ayuda a que más gente lo encuentre.',
   'about.starButton': 'Dar una estrella en GitHub',
@@ -1390,9 +1392,9 @@ const es: Record<MessageKey, string> = {
   'signin.open': 'Cómo iniciar sesión',
   'signin.title': 'Usa tu sesión iniciada',
   'signin.intro':
-    'Algunas descargas necesitan la sesión de tu propia cuenta: videos privados o de miembros, los que tienen restricción de edad, perfiles e historias de Instagram, los videos de una página de Facebook, y YouTube cuando pide confirmar que no eres un bot. La app toma la sesión de tu navegador, así que no hay que copiar ni pegar nada.',
+    'Algunas descargas necesitan la sesión de tu propia cuenta; la lista de abajo dice cuáles. La app toma la sesión de tu navegador, así que no hay que copiar ni pegar nada.',
   'signin.step1':
-    'Abre tu navegador de siempre (Chrome, Edge, Firefox, Safari, Brave…) e inicia sesión ahí como siempre: en Google / YouTube, Instagram o Facebook.',
+    'Abre tu navegador de siempre (Chrome, Edge, Firefox, Safari, Brave…) e inicia sesión ahí como siempre: en Google / YouTube, Instagram, Facebook, Threads o Twitch.',
   'signin.step2': 'Aquí, en Configuración → Cookies del navegador, elige ese mismo navegador.',
   'signin.step3': 'La primera vez, tu sistema pide un permiso (ver abajo). Dalo. Solo se pide una vez.',
   'signin.step4':
@@ -1405,6 +1407,9 @@ const es: Record<MessageKey, string> = {
     'Linux (Fedora, Ubuntu…): tu llavero (GNOME Keyring / KWallet) puede pedir permiso para acceder a los datos guardados del navegador: permítelo. Firefox no pide permiso.',
   'signin.privacy':
     'Tus cookies se quedan en tu computadora. Se leen una vez a una copia privada que la app usa solo para descargar, y nunca se envían a ningún otro lado.',
+  'signin.sites': 'Qué abre una sesión',
+  'signin.twitchNote':
+    'La sesión de Twitch solo se usa para obtener el video: nunca para chatear, seguir ni suscribirse.',
 }
 
 export const MESSAGES: Readonly<Record<Language, Readonly<Record<MessageKey, string>>>> = {

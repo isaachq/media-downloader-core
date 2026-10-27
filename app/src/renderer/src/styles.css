@@ -408,6 +408,11 @@ h5.ant-typography.preview-heading {
 .signin-steps li + li {
   margin-top: 6px;
 }
+/* what a session opens, site by site */
+.signin-sites {
+  margin: 6px 0 8px;
+  padding-inline-start: 22px;
+}
 
 /* About: the brand mark beside the name and the tagline */
 .about-brand {

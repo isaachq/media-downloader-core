@@ -319,7 +319,7 @@ export const vi: Readonly<Record<MessageKey, string>> = {
   'hint.private': 'Video riêng tư',
   'hint.removed': 'Đã bị gỡ hoặc không khả dụng',
   'hint.geo-blocked': 'Bị chặn ở quốc gia của bạn',
-  'hint.members-only': 'Chỉ dành cho hội viên. Cần cookie của một tài khoản hội viên',
+  'hint.members-only': 'Chỉ dành cho hội viên hoặc người đăng ký. Cần phiên của một tài khoản có quyền xem.',
   'hint.not-started': 'Buổi phát trực tiếp hoặc công chiếu chưa bắt đầu',
   'hint.unsupported-url': 'Trang web hoặc liên kết không được hỗ trợ',
   'hint.format-unavailable': 'Không có định dạng đã chọn',
@@ -484,7 +484,7 @@ export const vi: Readonly<Record<MessageKey, string>> = {
   'hint.cookies-unreadable':
     'Không đọc được cookie của trình duyệt. Safari cần quyền Truy cập toàn bộ ổ đĩa; hoặc hãy chọn trình duyệt khác trong Cài đặt',
   'settings.cookiesHelp':
-    'Phiên đăng nhập của bạn, dùng cho video riêng tư, chỉ dành cho hội viên hoặc giới hạn độ tuổi, và khi YouTube yêu cầu xác nhận bạn không phải bot. Áp dụng ngay.',
+    'Phiên đăng nhập của bạn, cho video riêng tư, dành cho hội viên hoặc giới hạn độ tuổi, tin Instagram, trang Threads riêng tư, video Twitch chỉ dành cho người đăng ký, và khi YouTube yêu cầu xác nhận bạn không phải bot. Áp dụng ngay.',
   'about.star':
     'Nếu Media Download Core có ích cho bạn, hãy tặng một sao trên GitHub: miễn phí, chỉ mất một giây và giúp nhiều người khác tìm thấy ứng dụng.',
   'about.starButton': 'Tặng sao trên GitHub',
@@ -664,9 +664,9 @@ export const vi: Readonly<Record<MessageKey, string>> = {
   'signin.open': 'Cách đăng nhập',
   'signin.title': 'Dùng phiên đã đăng nhập của bạn',
   'signin.intro':
-    'Video riêng tư hoặc chỉ dành cho hội viên, video giới hạn độ tuổi, trang cá nhân và tin trên Instagram, video của một trang Facebook, và cả YouTube khi yêu cầu xác nhận bạn không phải bot, đều cần phiên tài khoản của chính bạn. Ứng dụng đọc phiên từ trình duyệt: không cần sao chép hay dán gì cả.',
+    'Một số lượt tải cần phiên đăng nhập của chính tài khoản bạn; danh sách bên dưới cho biết lượt nào. Ứng dụng đọc phiên từ trình duyệt của bạn, nên không cần sao chép hay dán gì cả.',
   'signin.step1':
-    'Mở trình duyệt bạn hay dùng (Chrome, Edge, Firefox, Safari, Brave…) và đăng nhập ở đó như mọi khi: vào Google / YouTube, Instagram hoặc Facebook.',
+    'Mở trình duyệt bạn hay dùng (Chrome, Edge, Firefox, Safari, Brave…) và đăng nhập ở đó như mọi khi: vào Google / YouTube, Instagram, Facebook, Threads hoặc Twitch.',
   'signin.step2': 'Tại đây, trong Cài đặt → Cookie từ trình duyệt, chọn đúng trình duyệt đó.',
   'signin.step3': 'Cho phép quyền mà hệ thống hỏi trong lần đầu (xem bên dưới). Hệ thống chỉ hỏi một lần.',
   'signin.step4':
@@ -679,4 +679,6 @@ export const vi: Readonly<Record<MessageKey, string>> = {
     'Linux (Fedora, Ubuntu…): keyring của bạn (GNOME Keyring / KWallet) có thể hỏi quyền truy cập dữ liệu đã lưu của trình duyệt: hãy cho phép. Firefox không cần cấp quyền.',
   'signin.privacy':
     'Cookie của bạn ở lại trên máy tính: chúng được đọc một lần vào một bản sao riêng mà ứng dụng chỉ dùng để tải xuống, và không bao giờ được gửi đi nơi khác.',
+  'signin.sites': 'Phiên đăng nhập mở được gì',
+  'signin.twitchNote': 'Phiên Twitch chỉ được dùng để lấy video: không bao giờ để trò chuyện, theo dõi hay đăng ký.',
 }

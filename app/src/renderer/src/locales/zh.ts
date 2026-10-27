@@ -316,7 +316,7 @@ export const zh: Readonly<Record<MessageKey, string>> = {
   'hint.private': '私密视频',
   'hint.removed': '已删除或不可用',
   'hint.geo-blocked': '在你所在地区被屏蔽',
-  'hint.members-only': '仅限会员。需要会员账号的 Cookie',
+  'hint.members-only': '仅限会员或订阅者。需要有访问权限的账号的登录会话。',
   'hint.not-started': '直播或首映尚未开始',
   'hint.unsupported-url': '不支持该网站或链接',
   'hint.format-unavailable': '未提供所选格式',
@@ -474,7 +474,7 @@ export const zh: Readonly<Record<MessageKey, string>> = {
   'hint.bot-check': 'YouTube 要求确认你不是机器人。应用会自动重试，你也可以使用浏览器的会话',
   'hint.cookies-unreadable': '无法读取浏览器的 Cookie。Safari 需要“完全磁盘访问权限”，或在设置中选择其他浏览器',
   'settings.cookiesHelp':
-    '你的登录会话，用于私密、仅限会员或有年龄限制的视频，以及 YouTube 要求确认你不是机器人时。立即生效。',
+    '你的登录会话，用于私享、会员专属或有年龄限制的视频、Instagram 快拍、私密的 Threads 主页、Twitch 订阅者专属视频，以及 YouTube 要求确认你不是机器人时。立即生效。',
   'about.star': '如果 Media Download Core 帮到了你，请在 GitHub 上给它点个星：免费，只需一秒，还能帮助更多人发现它。',
   'about.starButton': '在 GitHub 上点星',
   'about.coffee':
@@ -643,9 +643,9 @@ export const zh: Readonly<Record<MessageKey, string>> = {
   'signin.open': '如何登录',
   'signin.title': '使用已登录的会话',
   'signin.intro':
-    '私密或仅限会员的视频、有年龄限制的视频、Instagram 主页和快拍，以及 Facebook 公共主页的视频，都需要你自己账号的会话。YouTube 要求确认你不是机器人时也需要。应用会从你的浏览器读取会话，无需复制粘贴任何内容。',
+    '有些下载需要你自己账号的登录会话；下面的列表说明是哪些。应用从你的浏览器读取会话，无需复制或粘贴任何内容。',
   'signin.step1':
-    '打开你常用的浏览器（Chrome、Edge、Firefox、Safari、Brave…），像平常一样登录 Google / YouTube、Instagram 或 Facebook。',
+    '打开你常用的浏览器（Chrome、Edge、Firefox、Safari、Brave…），像平常一样登录 Google / YouTube、Instagram、Facebook、Threads 或 Twitch。',
   'signin.step2': '在这里的“设置 → 浏览器 Cookie”中，选择同一个浏览器。',
   'signin.step3': '首次使用时，请允许系统请求的权限（见下文）。只会询问一次。',
   'signin.step4': '再次粘贴链接：会使用你的会话下载。在浏览器中退出登录了？请在那里重新登录。',
@@ -656,4 +656,6 @@ export const zh: Readonly<Record<MessageKey, string>> = {
   'signin.linux':
     'Linux（Fedora、Ubuntu…）：密钥环（GNOME Keyring / KWallet）可能会请求允许访问浏览器保存的数据，请允许。Firefox 不需要权限。',
   'signin.privacy': '你的 Cookie 留在你的电脑上：只读取一次，存入应用仅用于下载的私有副本，绝不会发送到其他任何地方。',
+  'signin.sites': '登录会话能打开什么',
+  'signin.twitchNote': 'Twitch 的会话只用于获取视频：从不用于聊天、关注或订阅。',
 }

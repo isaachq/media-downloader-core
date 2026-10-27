@@ -320,7 +320,7 @@ export const pt: Readonly<Record<MessageKey, string>> = {
   'hint.private': 'Vídeo privado',
   'hint.removed': 'Removido ou indisponível',
   'hint.geo-blocked': 'Bloqueado no seu país',
-  'hint.members-only': 'Só para membros. Precisa de cookies de uma conta de membro',
+  'hint.members-only': 'Só para membros ou inscritos. Precisa da sessão de uma conta com acesso.',
   'hint.not-started': 'A live ou estreia ainda não começou',
   'hint.unsupported-url': 'Site ou link não compatível',
   'hint.format-unavailable': 'O formato escolhido não é oferecido',
@@ -485,7 +485,7 @@ export const pt: Readonly<Record<MessageKey, string>> = {
   'hint.cookies-unreadable':
     'Não foi possível ler os cookies do navegador. O Safari precisa de Acesso Total ao Disco; ou escolha outro navegador em Ajustes',
   'settings.cookiesHelp':
-    'Sua sessão iniciada, para vídeos privados, só para membros ou com restrição de idade, e para quando o YouTube pede para confirmar que você não é um robô. Vale na hora.',
+    'Sua sessão conectada, para vídeos privados, para membros ou com restrição de idade, stories do Instagram, perfis privados do Threads, vídeos da Twitch só para inscritos, e para quando o YouTube pede para confirmar que você não é um robô. Vale na hora.',
   'about.star':
     'Se o Media Download Core ajudou você, dê uma estrela no GitHub: é grátis, leva um segundo e ajuda outras pessoas a encontrá-lo.',
   'about.starButton': 'Dar uma estrela no GitHub',
@@ -667,9 +667,9 @@ export const pt: Readonly<Record<MessageKey, string>> = {
   'signin.open': 'Como entrar',
   'signin.title': 'Use sua sessão conectada',
   'signin.intro':
-    'Vídeos privados ou só para membros, vídeos com restrição de idade, perfis e stories do Instagram e os vídeos de uma página do Facebook (e o YouTube, quando pede para confirmar que você não é um robô) precisam da sessão da sua própria conta. O app lê a sessão do seu navegador: não há nada para copiar ou colar.',
+    'Alguns downloads precisam da sessão da sua própria conta; a lista abaixo diz quais. O app lê a sessão do seu navegador, então não há nada para copiar nem colar.',
   'signin.step1':
-    'Abra o navegador de sempre (Chrome, Edge, Firefox, Safari, Brave…) e entre nele como sempre: no Google / YouTube, Instagram ou Facebook.',
+    'Abra o navegador de sempre (Chrome, Edge, Firefox, Safari, Brave…) e entre nele como sempre: no Google / YouTube, Instagram, Facebook, Threads ou Twitch.',
   'signin.step2': 'Aqui, em Ajustes → Cookies do navegador, escolha esse mesmo navegador.',
   'signin.step3': 'Na primeira vez, o sistema pede uma permissão (veja abaixo): conceda. Ele só pede uma vez.',
   'signin.step4': 'Cole o link de novo: ele é baixado com a sua sessão. Saiu da conta no navegador? Entre de novo lá.',
@@ -681,4 +681,7 @@ export const pt: Readonly<Record<MessageKey, string>> = {
     'Linux (Fedora, Ubuntu…): o seu chaveiro (GNOME Keyring / KWallet) pode pedir para permitir o acesso aos dados salvos do navegador: permita. O Firefox não precisa de permissão.',
   'signin.privacy':
     'Seus cookies ficam no seu computador: são lidos uma vez para uma cópia privada que o app usa só para baixar, e nunca são enviados para nenhum outro lugar.',
+  'signin.sites': 'O que uma sessão libera',
+  'signin.twitchNote':
+    'A sessão da Twitch só é usada para obter o vídeo: nunca para conversar no chat, seguir ou se inscrever.',
 }

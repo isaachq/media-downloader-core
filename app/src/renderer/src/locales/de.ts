@@ -320,7 +320,7 @@ export const de: Readonly<Record<MessageKey, string>> = {
   'hint.private': 'Privates Video',
   'hint.removed': 'Entfernt oder nicht verfügbar',
   'hint.geo-blocked': 'In deinem Land gesperrt',
-  'hint.members-only': 'Nur für Mitglieder. Braucht Cookies eines Mitgliedskontos',
+  'hint.members-only': 'Nur für Mitglieder oder Abonnenten. Braucht die Sitzung eines Kontos mit Zugang.',
   'hint.not-started': 'Livestream oder Premiere hat noch nicht begonnen',
   'hint.unsupported-url': 'Website oder Link nicht unterstützt',
   'hint.format-unavailable': 'Das gewählte Format wird nicht angeboten',
@@ -488,7 +488,7 @@ export const de: Readonly<Record<MessageKey, string>> = {
   'hint.cookies-unreadable':
     'Die Cookies des Browsers konnten nicht gelesen werden. Safari braucht Festplattenvollzugriff, oder wähle in den Einstellungen einen anderen Browser',
   'settings.cookiesHelp':
-    'Deine angemeldete Sitzung, für private, Mitglieder- oder altersbeschränkte Videos und für den Fall, dass YouTube eine Bestätigung verlangt, dass du kein Bot bist. Gilt sofort.',
+    'Deine angemeldete Sitzung, für private, Mitglieder- oder altersbeschränkte Videos, Instagram-Storys, private Threads-Profile, Twitch-Videos nur für Abonnenten und wenn YouTube bestätigt haben will, dass du kein Bot bist. Gilt sofort.',
   'about.star':
     'Wenn dir Media Download Core geholfen hat, gib ihm einen Stern auf GitHub: Das ist kostenlos, dauert eine Sekunde und hilft anderen, es zu finden.',
   'about.starButton': 'Stern auf GitHub geben',
@@ -670,9 +670,9 @@ export const de: Readonly<Record<MessageKey, string>> = {
   'signin.open': 'So meldest du dich an',
   'signin.title': 'Deine angemeldete Sitzung nutzen',
   'signin.intro':
-    'Private Videos oder Videos nur für Mitglieder, altersbeschränkte Videos, Instagram-Profile und -Storys sowie die Videos einer Facebook-Seite brauchen die Sitzung deines eigenen Kontos. YouTube ebenfalls, wenn es eine Bestätigung will, dass du kein Bot bist. Die App liest die Sitzung aus deinem Browser, du musst also nichts kopieren oder einfügen.',
+    'Manche Downloads brauchen die Sitzung deines eigenen Kontos; die Liste unten sagt, welche. Die App liest die Sitzung aus deinem Browser, du musst nichts kopieren oder einfügen.',
   'signin.step1':
-    'Öffne deinen gewohnten Browser (Chrome, Edge, Firefox, Safari, Brave…) und melde dich dort wie immer an: bei Google / YouTube, Instagram oder Facebook.',
+    'Öffne deinen gewohnten Browser (Chrome, Edge, Firefox, Safari, Brave…) und melde dich dort wie immer an: bei Google / YouTube, Instagram, Facebook, Threads oder Twitch.',
   'signin.step2': 'Wähle hier unter Einstellungen → Cookies aus dem Browser genau diesen Browser.',
   'signin.step3':
     'Beim ersten Mal fragt dein System nach einer Berechtigung (siehe unten). Erlaube sie. Es fragt nur einmal.',
@@ -686,4 +686,7 @@ export const de: Readonly<Record<MessageKey, string>> = {
     'Linux (Fedora, Ubuntu…): Dein Schlüsselbund (GNOME Keyring / KWallet) fragt eventuell nach Zugriff auf die gespeicherten Daten des Browsers: Erlaube ihn. Firefox braucht keine Berechtigung.',
   'signin.privacy':
     'Deine Cookies bleiben auf deinem Computer: Sie werden einmal in eine private Kopie gelesen, die die App nur zum Herunterladen nutzt, und nie anderswohin gesendet.',
+  'signin.sites': 'Was eine Sitzung öffnet',
+  'signin.twitchNote':
+    'Die Twitch-Sitzung dient nur dazu, das Video zu holen: nie zum Chatten, Folgen oder Abonnieren.',
 }

@@ -319,7 +319,7 @@ export const id: Readonly<Record<MessageKey, string>> = {
   'hint.private': 'Video privat',
   'hint.removed': 'Dihapus atau tidak tersedia',
   'hint.geo-blocked': 'Diblokir di negara Anda',
-  'hint.members-only': 'Khusus anggota. Perlu cookie dari akun anggota',
+  'hint.members-only': 'Khusus anggota atau pelanggan. Perlu sesi akun yang punya akses.',
   'hint.not-started': 'Siaran langsung atau tayang perdana belum dimulai',
   'hint.unsupported-url': 'Situs atau tautan tidak didukung',
   'hint.format-unavailable': 'Format yang dipilih tidak tersedia',
@@ -483,7 +483,7 @@ export const id: Readonly<Record<MessageKey, string>> = {
   'hint.cookies-unreadable':
     'Tidak dapat membaca cookie browser. Safari memerlukan Akses Disk Penuh, atau pilih browser lain di Pengaturan',
   'settings.cookiesHelp':
-    'Sesi masuk Anda, untuk video privat, khusus anggota, atau yang dibatasi usia, dan untuk saat YouTube meminta konfirmasi bahwa Anda bukan bot. Langsung berlaku.',
+    'Sesi akun Anda yang sudah masuk, untuk video pribadi, khusus anggota, atau dibatasi usia, story Instagram, profil Threads pribadi, video Twitch khusus pelanggan, dan saat YouTube meminta konfirmasi bahwa Anda bukan bot. Langsung berlaku.',
   'about.star':
     'Jika Media Download Core bermanfaat, beri bintang di GitHub: gratis, hanya sedetik, dan membantu orang lain menemukannya.',
   'about.starButton': 'Beri bintang di GitHub',
@@ -666,9 +666,9 @@ export const id: Readonly<Record<MessageKey, string>> = {
   'signin.open': 'Cara masuk',
   'signin.title': 'Gunakan sesi Anda yang sudah masuk',
   'signin.intro':
-    'Video privat atau khusus anggota, video dengan batasan usia, profil dan story Instagram, video dari halaman Facebook, serta YouTube saat meminta konfirmasi bahwa Anda bukan bot, memerlukan sesi akun Anda sendiri. Aplikasi membacanya dari browser Anda: tidak ada yang perlu disalin atau ditempel.',
+    'Beberapa unduhan memerlukan sesi akun Anda sendiri; daftar di bawah menyebutkan yang mana. Aplikasi membaca sesi dari browser Anda, jadi tidak ada yang perlu disalin atau ditempel.',
   'signin.step1':
-    'Buka browser yang biasa Anda pakai (Chrome, Edge, Firefox, Safari, Brave…) dan masuk di sana seperti biasa: ke Google / YouTube, Instagram, atau Facebook.',
+    'Buka browser yang biasa Anda pakai (Chrome, Edge, Firefox, Safari, Brave…) dan masuk di sana seperti biasa: ke Google / YouTube, Instagram, Facebook, Threads, atau Twitch.',
   'signin.step2': 'Di sini, di Pengaturan → Cookie dari browser, pilih browser yang sama.',
   'signin.step3':
     'Pertama kali, sistem Anda meminta izin (lihat di bawah). Izinkan. Permintaan ini hanya muncul sekali.',
@@ -682,4 +682,7 @@ export const id: Readonly<Record<MessageKey, string>> = {
     'Linux (Fedora, Ubuntu…): keyring Anda (GNOME Keyring / KWallet) mungkin meminta izin akses ke data tersimpan browser: izinkan. Firefox tidak memerlukan izin.',
   'signin.privacy':
     'Cookie Anda tetap di komputer Anda: cookie dibaca sekali ke salinan pribadi yang hanya dipakai aplikasi untuk mengunduh, dan tidak pernah dikirim ke tempat lain.',
+  'signin.sites': 'Yang dibuka oleh sesi',
+  'signin.twitchNote':
+    'Sesi Twitch hanya dipakai untuk mengambil video: tidak pernah untuk chat, mengikuti, atau berlangganan.',
 }

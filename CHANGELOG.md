@@ -23,7 +23,7 @@ away when the beta closes.
 - [x] 7b `fix(sync): idle before a run is announced as ended` · done · found by CI on PR #55 (windows-latest, `test:fast`: "is already syncing" right after `whenDone`) · verified locally on Windows: the new assertion fails without the fix and passes with it, `test/sync.test.ts` 10 of 10 five runs in a row, `check` (typecheck, lint), `test:fast` 684 tests / 682 pass / 0 fail / 2 skipped
 - [x] 8 `app: site tags and icons` · done (icons and colours approved by Isaac) · verified locally: `npm --prefix app run typecheck` clean (closes the failure noted in 7), `lint` clean (289 files), `site:check` 14 languages up to date, app unit 14 files / 204 pass (every locale has every key), `test:e2e:smoke` 3 pass in 14 s; the tag smoke test now pastes one link per new site and checks its `data-site`, its name and that its icon draws (computed classes `ant-tag-default`, `-blue`, `-purple`, `-orange`, `-gold`; the screenshot waits 400 ms for the colour to ease in)
 - [x] 9 `app: supported sites` · done · verified locally: `npm --prefix app run typecheck` clean, `lint` clean (293 files), `site:check` 14 languages and the README up to date, app unit 15 files / 207 pass (`shared/sites.test.ts`: every `LinkSite` and a file link listed once, yt-dlp sites are desktop only, every language has every site's words and a sign-in reason exactly where `signIn`; the label and the line under a pasted link in English and Spanish), `test:e2e:smoke` 3 pass (the tag test opens the list: 13 rows, Twitch's sign-in reason, YouTube desktop only; the line under a Snapchat and a YouTube link); the website's Spanish page checked at 672 px wide: 13 rows, no sideways scroll. Cost: O(sites) once per dictionary and per page, O(1) per pasted link (`SITE_BY_LABEL`)
-- [ ] 10 `app: sign-in for threads and twitch` · not done
+- [x] 10 `app: sign-in for threads and twitch` · done · verified locally: `npm --prefix app run typecheck` clean, `lint` clean, app unit 15 files / 207 pass (How to sign in lists YouTube, Instagram, Facebook, Twitch, Threads and VK with the supported-sites words and says Twitch's session never chats, follows or subscribes), `test:fast` 684 / 682 pass / 0 fail / 2 skipped (the fake yt-dlp's jar now carries a Twitch subscriber's auth-token and a Threads session; the fake ffmpeg concatenates a concat list), `test:e2e` 18 of 18 in 1.2 min including the new @full 'a subscriber-only Twitch VOD downloads once a browser session is chosen' (fake GraphQL + usher + HLS: signed out the analysis says Sign-in required with no Authorization sent; with Firefox's session the VOD completes, one file, and every signed request is OAuth fake-ok on the web player's id). Found by that test and fixed: a refusal worded 'signed-in account' (Twitch, Threads, Bluesky) or 'watched signed in' (VK) did not get the how-to-sign-in line. Not verified: a real twitch.tv auth-token (no account), a real private Threads profile
 - [ ] 10b `app: twitch live` · not done (Record on a live link, a live player with hls.js, elapsed time, Stop and Cancel, 14 locales)
 - [ ] 11 `app: beta 11 e2e` · not done
 - [ ] 12 `release: app 0.2.0-beta.22` · not done
@@ -343,6 +343,13 @@ away when the beta closes.
 
 **Desktop app**
 
+- **Sign-in for Threads and Twitch**: the browser session chosen in Settings now also reads
+  private Threads profiles the user follows and Twitch's subscriber-only videos, clips and
+  streams (the engine passes threads.com and twitch.tv cookies; Twitch's only on the reads
+  that mint a playback token). How to sign in lists, site by site, what a session opens,
+  in the supported-sites list's own words, and says Twitch's session never chats, follows
+  or subscribes. An analysis refused for want of a session now says how to sign in for
+  Twitch, Threads, Bluesky and VK too, not only YouTube, Instagram and Facebook.
 - **Supported sites, in one list**: `app/src/shared/sites.ts` says for each site what it
   downloads, whether some of it needs the user's sign-in, whether yt-dlp reads it and whether
   the Android app has it, with its words in all 14 languages (`site-words.ts`). The label of

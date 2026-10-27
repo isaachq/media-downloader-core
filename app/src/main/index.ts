@@ -357,6 +357,14 @@ function siteSources() {
     },
     instagram: {browser: metaBrowser('instagram-reader', ['instagram.com']), ...metaOrigin('MDC_INSTAGRAM_ORIGIN')},
     facebook: {browser: metaBrowser('facebook-reader', ['facebook.com']), ...metaOrigin('MDC_FACEBOOK_ORIGIN')},
+    // e2e runs read twitch.tv links from a local fake GraphQL + usher, Threads from a local fake site
+    ...(process.env['MDC_TWITCH_ORIGIN'] && {
+      twitch: {
+        endpoints: {gql: `${process.env['MDC_TWITCH_ORIGIN']}/gql`, usher: process.env['MDC_TWITCH_ORIGIN']},
+        pacing: {spacingMs: 0, jitterMs: 0},
+      },
+    }),
+    ...(process.env['MDC_THREADS_ORIGIN'] && {threads: metaOrigin('MDC_THREADS_ORIGIN')}),
     // player-page sites (configured, or tried by host);
     // the engine's log isn't there yet: messages wait for it
     sources: playerSources((level, message) => queueMicrotask(() => engine.log(level, message))),
@@ -911,6 +919,7 @@ const SITE_ALIASES: Readonly<Record<string, LinkSite>> = Object.fromEntries(
       ['MDC_TIKTOK_ORIGIN', 'tiktok'],
       ['MDC_INSTAGRAM_ORIGIN', 'instagram'],
       ['MDC_FACEBOOK_ORIGIN', 'facebook'],
+      ['MDC_THREADS_ORIGIN', 'threads'],
     ] as const
   ).flatMap(([variable, site]) => {
     try {

@@ -62,12 +62,18 @@ shared with the `mdc` command line.
 
 Some content needs your own account: private or members-only videos,
 age-restricted ones, Instagram profiles, stories and highlights, a Facebook
-page's list of videos — and YouTube when it asks to confirm you're not a bot.
+page's list of videos, private Threads profiles you follow, Twitch's
+subscriber-only videos, clips and streams — and YouTube when it asks to
+confirm you're not a bot. The README's [supported sites](../README.md#supported-sites)
+table says it site by site (*How to sign in* lists it in the app). Twitch's
+session is only sent on the reads that get a video's playback token: never
+to chat, follow or subscribe.
 The app never asks for a password: it uses the session of the browser you
 already sign in with.
 
 1. Open your usual browser (Chrome, Edge, Firefox, Safari, Brave…) and **sign
-   in there as always** — to Google / YouTube, Instagram or Facebook.
+   in there as always** — to Google / YouTube, Instagram, Facebook, Threads or
+   Twitch.
 2. In the app: **Settings → Cookies from browser → choose that browser**
    (Settings → Cookies → *How to sign in* shows these steps in the app).
 3. **Allow the permission your system asks for**, once:

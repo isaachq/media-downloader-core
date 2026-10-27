@@ -81,7 +81,10 @@ export function DownloadBar() {
     // YouTube's bot check: one line here; the banner above says when it goes on, and how to go on now
     if (/not a (?:ro)?bot/i.test(text)) void message.error(t('hint.bot-check'))
     // a site that keeps this for signed-in accounts: say how to sign in (the browser's session)
-    else if (/asks to sign in|sign-in required|login required/i.test(text))
+    // (Twitch, Threads, Bluesky and VK say "signed-in account / session" or "watched signed in")
+    else if (
+      /asks to sign in|sign-in required|login required|signed-in (?:account|session)|watched signed in/i.test(text)
+    )
       void message.error(`${text} ${t('hint.needs-sign-in')}`)
     else void message.error(text)
   }

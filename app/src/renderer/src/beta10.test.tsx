@@ -149,7 +149,21 @@ describe('signing in', () => {
     await user.click(screen.getByRole('button', {name: /settings/i}))
     await user.click(await screen.findByTestId('open-signin-help'))
     const help = await screen.findByTestId('signin-help')
-    expect(help).toHaveTextContent('sign in there as always: to Google / YouTube, Instagram or Facebook')
+    expect(help).toHaveTextContent(
+      'sign in there as always: to Google / YouTube, Instagram, Facebook, Threads or Twitch',
+    )
+    // what a session opens, site by site: the supported-sites list's own words
+    const sites = within(help).getByTestId('signin-sites')
+    expect([...sites.querySelectorAll('li')].map(item => item.dataset['site'])).toEqual([
+      'youtube',
+      'instagram',
+      'facebook',
+      'twitch',
+      'threads',
+      'vk',
+    ])
+    expect(sites.querySelector('[data-site="twitch"]')).toHaveTextContent('Twitch: subscriber-only videos and streams')
+    expect(help).toHaveTextContent('never to chat, follow or subscribe')
     expect(help).toHaveTextContent('choose that same browser')
     expect(within(help).getByTestId('signin-system')).toHaveTextContent('Always Allow')
     expect(help).toHaveTextContent('never sent anywhere else')

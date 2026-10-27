@@ -320,7 +320,7 @@ export const tr: Readonly<Record<MessageKey, string>> = {
   'hint.private': 'Gizli video',
   'hint.removed': 'Kaldırılmış veya kullanılamıyor',
   'hint.geo-blocked': 'Ülkende engellenmiş',
-  'hint.members-only': 'Yalnızca üyelere açık. Üye bir hesabın çerezleri gerekir',
+  'hint.members-only': 'Yalnızca üyeler veya aboneler. Erişimi olan bir hesabın oturumu gerekir.',
   'hint.not-started': 'Canlı yayın veya prömiyer henüz başlamadı',
   'hint.unsupported-url': 'Site veya bağlantı desteklenmiyor',
   'hint.format-unavailable': 'Seçilen biçim sunulmuyor',
@@ -486,7 +486,7 @@ export const tr: Readonly<Record<MessageKey, string>> = {
   'hint.cookies-unreadable':
     "Tarayıcının çerezleri okunamadı. Safari için Tam Disk Erişimi gerekir ya da Ayarlar'dan başka bir tarayıcı seç",
   'settings.cookiesHelp':
-    'Giriş yapılmış oturumun: gizli, yalnızca üyelere açık veya yaş sınırlı videolar için ve YouTube bot olmadığını doğrulamanı istediğinde kullanılır. Hemen geçerli olur.',
+    'Oturum açmış hesabın: gizli, yalnızca üyelere açık veya yaş sınırlı videolar, Instagram hikâyeleri, gizli Threads profilleri, Twitch’te yalnızca abonelere açık videolar için ve YouTube bot olmadığını doğrulamanı istediğinde. Hemen uygulanır.',
   'about.star':
     "Media Download Core işine yaradıysa GitHub'da ona bir yıldız ver: ücretsizdir, bir saniye sürer ve başkalarının da onu bulmasına yardımcı olur.",
   'about.starButton': "GitHub'da yıldız ver",
@@ -665,9 +665,9 @@ export const tr: Readonly<Record<MessageKey, string>> = {
   'signin.open': 'Nasıl giriş yapılır',
   'signin.title': 'Giriş yapılmış oturumunu kullan',
   'signin.intro':
-    'Gizli veya yalnızca üyelere açık videolar, yaş sınırlı videolar, Instagram profilleri ve hikayeleri ile bir Facebook sayfasının videoları kendi hesabının oturumunu gerektirir. YouTube bot olmadığını doğrulamanı istediğinde de öyle. Uygulama oturumu tarayıcından okur, yani kopyalayıp yapıştıracak bir şey yok.',
+    'Bazı indirmeler kendi hesabının oturumunu ister; aşağıdaki liste hangilerinin istediğini söyler. Uygulama oturumu tarayıcından okur, kopyalayıp yapıştıracak bir şey yok.',
   'signin.step1':
-    'Her zamanki tarayıcını (Chrome, Edge, Firefox, Safari, Brave…) aç ve orada her zamanki gibi Google / YouTube, Instagram veya Facebook hesabına giriş yap.',
+    'Her zamanki tarayıcını (Chrome, Edge, Firefox, Safari, Brave…) aç ve orada her zamanki gibi Google / YouTube, Instagram, Facebook, Threads veya Twitch hesabına giriş yap.',
   'signin.step2': 'Burada, Ayarlar → Tarayıcı çerezleri bölümünde aynı tarayıcıyı seç.',
   'signin.step3': 'İlk seferde sistemin bir izin ister (aşağıya bak). İzin ver. Yalnızca bir kez sorar.',
   'signin.step4':
@@ -680,4 +680,7 @@ export const tr: Readonly<Record<MessageKey, string>> = {
     'Linux (Fedora, Ubuntu…): Anahtarlığın (GNOME Keyring / KWallet), tarayıcının kayıtlı verilerine erişim izni isteyebilir: izin ver. Firefox izin gerektirmez.',
   'signin.privacy':
     'Çerezlerin bilgisayarında kalır: uygulamanın yalnızca indirmek için kullandığı özel bir kopyaya bir kez okunur ve başka hiçbir yere gönderilmez.',
+  'signin.sites': 'Bir oturum neleri açar',
+  'signin.twitchNote':
+    'Twitch oturumu yalnızca videoyu almak için kullanılır: asla sohbet, takip ya da abonelik için değil.',
 }

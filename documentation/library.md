@@ -33,6 +33,13 @@ events: 'job' (any change, throttled) · 'completed' · 'failed' · 'idle' · 'l
 
 Job lifecycle: `queued → downloading → processing → converting → validating → finalizing → completed`, or `skipped` (already archived), `failed`, `cancelled`.
 
+Each job works in `<dataDir>/work/<16 hex digits>`, a name fixed by its url and profile, so a retry or
+the next launch resumes its partial files. `dl.restoreQueue()` (the scheduler's `restore()` calls it) is
+the start-up step: its first call also removes the work folders nothing will resume (a crash or a killed
+process leaves them behind, and a job that failed on the network keeps its folder for a retry in the
+same run), keeping the folder of every request still pending, including the batch jobs a scheduler
+restores itself, and of every job the engine already has. Jobs wait for it before touching their folder.
+
 A live recording (a Twitch channel on the air) is a job like the others whose download step lasts until
 `dl.stop(id)` (or the stream ends, or 12 h): its progress is `{live: true, elapsedSec, bytes}` with no
 `fraction`, `totalBytes` or `eta`, so a host shows the time recorded instead of a bar. Once the

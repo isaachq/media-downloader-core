@@ -137,6 +137,19 @@ export type LaterCheck = {
 }
 
 /** What a photo post of this request is made into (an MP4 unless asked otherwise). O(1). */
+/** What a work folder's name looks like (`workFolderName`): anything else in `work/` is never swept. */
+const WORK_FOLDER = /^[0-9a-f]{16}$/
+
+/**
+ * A job's work folder name: deterministic per url + profile (+ the folder a photo post becomes), so a
+ * retry or an app restart resumes the .part files, and a folder of images never picks up another
+ * mode's leftovers. O(url length).
+ */
+export function workFolderName(request: JobRequest): string {
+  const kept = request.photoPost === false ? undefined : archiveSlideshow(request.profile, slideshowMode(request))
+  return shortHash(`${request.url}|${profileKey(request.profile)}${kept ? `|${kept}` : ''}`)
+}
+
 function slideshowMode(request: JobRequest): SlideshowOptions['mode'] {
   return (request.slideshow ?? DEFAULT_SLIDESHOW).mode
 }
@@ -247,6 +260,8 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
   /** Identifies this engine instance (one app launch / CLI run) in every log entry. */
   readonly sessionId: TraceId = newId()
   #disposing = false
+  /** The start-up sweep of stale work folders (restoreQueue), once per engine: jobs wait for it. */
+  #sweeping: Promise<void> | undefined
 
   /** Upper bound of `concurrency` on this machine: ⌊logical CPUs / 2⌋, or ⌊CPUs × share⌋ (share 0.5–0.6). */
   static maxConcurrency(share?: number): number {
@@ -1156,10 +1171,17 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
   /**
    * Re-queue whatever was pending when the app last closed (or crashed).
    * Partial files resume. `filter` lets a scheduler keep the jobs it restores itself.
+   * The first call also clears the work folders a crash or a killed process left behind
+   * (`#clearStaleWork`): every pending request's folder is kept, the filtered-out ones too.
    */
   async restoreQueue(filter: (request: JobRequest) => boolean = () => true): Promise<JobSnapshot[]> {
     const restored: JobSnapshot[] = []
-    for (const request of await this.#queue.load()) {
+    const pending = await this.#queue.load()
+    if (!this.#sweeping) {
+      this.#sweeping = this.#clearStaleWork(pending)
+      await this.#sweeping
+    }
+    for (const request of pending) {
       if (!filter(request)) continue
       try {
         restored.push(this.add({...request, infoJsonPath: undefined}))
@@ -1487,13 +1509,9 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     job.startedAt = Date.now()
     const {signal} = job.controller
     const {request} = job
-    // deterministic per url + profile (+ the folder a photo post becomes): a retry or an app restart
-    // resumes the .part files, and a folder of images never picks up another mode's leftovers
-    const kept = request.photoPost === false ? undefined : archiveSlideshow(request.profile, slideshowMode(request))
-    const workDir = path.join(
-      this.#workRoot,
-      shortHash(`${request.url}|${profileKey(request.profile)}${kept ? `|${kept}` : ''}`),
-    )
+    const workDir = path.join(this.#workRoot, workFolderName(request))
+    // the start-up sweep of stale work folders never runs under a job's feet
+    if (this.#sweeping) await this.#sweeping
     let infoJsonPath = await this.#freshMetadata(job)
     let profile = request.profile
     let strategy: AttemptStrategy = 'primary'
@@ -2149,6 +2167,38 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       }, wait)
       job.emitTimer.unref()
     }
+  }
+
+  /**
+   * Remove the work folders nothing will resume: those of jobs that ended while the process was
+   * killed or crashed, or failed with a network error (kept for an in-session retry) in a past run.
+   * Kept: the folder of every request the journal still holds (`pending`, whoever restores it:
+   * a scheduler re-adds its batches' jobs under the same url and profile, so the same folder) and of
+   * every job this engine already has. Only names a work folder can have (16 hex digits) are touched.
+   * Jobs wait for it before using their folder (`#run`). One readdir, O(p) to hash the p pending
+   * requests, O(1) per entry to decide, once per engine.
+   */
+  async #clearStaleWork(pending: readonly JobRequest[]): Promise<void> {
+    const keep = new Set<string>()
+    for (const request of pending) keep.add(workFolderName(request))
+    for (const job of this.#jobs.values()) if (!job.terminal) keep.add(workFolderName(job.request))
+    let entries: string[]
+    try {
+      entries = await fs.readdir(this.#workRoot)
+    } catch {
+      return // no work folder yet: a first launch
+    }
+    let cleared = 0
+    for (const name of entries) {
+      if (!WORK_FOLDER.test(name) || keep.has(name)) continue
+      try {
+        await fs.rm(path.join(this.#workRoot, name), {recursive: true, force: true})
+        cleared++
+      } catch (error) {
+        this.#log('warn', `a stale work folder could not be removed (${name}): ${toJobError(error).message}`)
+      }
+    }
+    if (cleared > 0) this.#log('info', `cleared ${cleared} stale work folder(s) left by an earlier run`)
   }
 
   #pendingEntries(): Array<readonly [string, JobRequest]> {

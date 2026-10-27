@@ -7,8 +7,8 @@ import * as path from 'node:path'
 import {after, before, describe, it} from 'node:test'
 import {publishedSeconds} from '../src/core/files.js'
 import {ID_PATTERN} from '../src/core/ids.js'
-import {MediaDownloader, retryDelay} from '../src/downloader.js'
-import type {JobSnapshot, JobStatus, LogEntry, StepName} from '../src/types.js'
+import {MediaDownloader, retryDelay, workFolderName} from '../src/downloader.js'
+import type {BatchId, JobRequest, JobSnapshot, JobStatus, LogEntry, StepName} from '../src/types.js'
 import {type FakeBinaries, writeFakes} from './helpers/fakes.js'
 
 let root = ''
@@ -142,6 +142,75 @@ describe('MediaDownloader orchestration', () => {
     )
     await next.whenIdle()
     assert.equal(next.jobs().filter(j => j.status === 'completed').length, 3)
+  })
+
+  it('on restore, clears the work folders a crash left behind and keeps every one a pending job may resume', {
+    timeout: 20_000,
+  }, async () => {
+    const sub = 'stale-work'
+    const outDir = path.join(root, 'out-stale-work')
+    const loose: JobRequest = {url: 'https://fake/sw1', profile: audio, outDir, title: 'sw1'}
+    // a batch's job: the engine does not re-add it (the scheduler does), but its folder is kept
+    const batched: JobRequest = {...loose, url: 'https://fake/sw2', title: 'sw2', batchId: 'b-1' as BatchId}
+    const first = await makeDownloader(sub, {concurrency: 1})
+    first.pause()
+    first.add(loose)
+    first.add(batched)
+    await first.dispose()
+
+    const work = path.join(root, sub, 'work')
+    const later: JobRequest = {...loose, url: 'https://fake/sw3', title: 'sw3'}
+    const folder = (request: JobRequest) => path.join(work, workFolderName(request))
+    const partial = async (dir: string) => {
+      await fs.mkdir(dir, {recursive: true})
+      await fs.writeFile(path.join(dir, 'media.part'), 'partial bytes')
+    }
+    await partial(folder(loose))
+    await partial(folder(batched))
+    await partial(folder(later))
+    // left by a crash: a job that ended mid-way, and one that failed on the network in an earlier run
+    await partial(path.join(work, '0123456789abcdef'))
+    await partial(path.join(work, 'fedcba9876543210'))
+    // not a work folder's name: never touched
+    await partial(path.join(work, 'host-notes'))
+
+    const next = await makeDownloader(sub, {concurrency: 1})
+    const logs: string[] = []
+    next.on('log', (entry: LogEntry) => logs.push(entry.message))
+    next.pause()
+    // a job the host added before restoring: its folder is in use
+    next.add(later)
+    const restored = await next.restoreQueue(request => request.batchId === undefined)
+    assert.deepEqual(
+      restored.map(j => j.title),
+      ['sw1'],
+    )
+    const left = new Set(await fs.readdir(work))
+    for (const kept of [workFolderName(loose), workFolderName(batched), workFolderName(later), 'host-notes']) {
+      assert.ok(left.has(kept), `${kept} kept (${[...left].join(', ')})`)
+    }
+    assert.ok(!left.has('0123456789abcdef') && !left.has('fedcba9876543210'), `stale ones cleared: ${[...left]}`)
+    assert.equal(await fs.readFile(path.join(folder(loose), 'media.part'), 'utf8'), 'partial bytes', 'untouched')
+    assert.ok(
+      logs.some(m => /cleared 2 stale work folder/.test(m)),
+      logs.join('\n'),
+    )
+
+    next.resume()
+    await next.whenIdle()
+    const done = next
+      .jobs()
+      .filter(j => j.status === 'completed')
+      .map(j => j.url)
+    assert.deepEqual(done.sort(), [loose.url, later.url], 'the restored job and the added one complete')
+  })
+
+  it('a first launch has no work folder: restoring sweeps nothing and says nothing', {timeout: 10_000}, async () => {
+    const dl = await makeDownloader('stale-work-none')
+    const logs: string[] = []
+    dl.on('log', (entry: LogEntry) => logs.push(entry.message))
+    assert.deepEqual(await dl.restoreQueue(), [])
+    assert.ok(!logs.some(m => /stale work folder/.test(m)), logs.join('\n'))
   })
 
   it('puts playlist items in a numbered sub-folder', async () => {

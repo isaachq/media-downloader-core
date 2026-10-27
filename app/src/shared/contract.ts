@@ -257,6 +257,8 @@ export type MixPreviewItem = {
   readonly archived?: boolean | undefined
   /** Not checked yet (the site asked to confirm this is not a bot): checked as it downloads. */
   readonly unchecked?: boolean | undefined
+  /** No picture at all (a SoundCloud track) in a list of videos: it downloads as M4A, its own format to start with. */
+  readonly song?: boolean | undefined
 }
 
 /** Links of any sites pasted together, checked: what downloads and what was left out (and why). */

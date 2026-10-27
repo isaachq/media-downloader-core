@@ -101,6 +101,9 @@ const OWN_CHOICES: readonly Choice[] = [
   ...(['1080', '720', '480'] as const).map(quality => ({format: 'mp4' as const, quality})),
   ...AUDIO_FORMATS.map(format => ({format, quality: 'best' as const})),
 ]
+/** What a song (no picture) becomes in a list of videos: AAC as it is. */
+const SONG: Choice = {format: 'm4a', quality: 'best'}
+
 const choiceKey = (choice: Choice): string => `${choice.format}:${choice.quality}`
 
 /** Links by site, in the order the sites first appear. O(n). */
@@ -192,6 +195,11 @@ export function MixListModal({
         const result = await api().analyzeMix(list.map(entry => entry.url).join('\n'), all.format, all.quality)
         setPreview(result)
         setRemoved(new Set())
+        // a song in a list of videos: M4A, said on its card (the core keeps it so). O(n)
+        const songs = result.valid.filter(item => item.song)
+        if (songs.length > 0) {
+          setOwn(current => ({...current, ...Object.fromEntries(songs.map(item => [item.url, SONG]))}))
+        }
       } catch (error) {
         if (!stopped.current) void message.error(errorText(error))
       } finally {

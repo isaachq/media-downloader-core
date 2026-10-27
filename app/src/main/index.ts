@@ -312,6 +312,7 @@ function mixPreview(id: string, analysis: MixAnalysis): MixPreview {
         photoPost: media?.slideshow !== undefined && media.slideshow.videos !== true,
         archived: item.archived,
         unchecked: item.analysis === undefined,
+        ...(item.format?.kind === 'audio' && {song: true}),
       }
     }),
     skipped: analysis.skipped,

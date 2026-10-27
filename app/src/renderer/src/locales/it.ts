@@ -691,7 +691,7 @@ export const it: Readonly<Record<MessageKey, string>> = {
   'live.title': 'In diretta su Twitch',
   'live.intro':
     'La registrazione parte dall’ultimo mezzo minuto che Twitch conserva ancora e continua finché non la fermi, la diretta finisce o passano 12 ore. Le pubblicità restano fuori.',
-  'live.startedAt': 'In onda dalle {time}',
+  'live.startedAt': 'In onda dal {time}',
   'live.record': 'Registra',
   'live.watch': 'Guarda',
   'live.stop': 'Ferma e salva',

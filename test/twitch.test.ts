@@ -6,15 +6,28 @@ import {after, before, describe, it} from 'node:test'
 import {setImmediate as tick} from 'node:timers/promises'
 import {type Executable, toExecutable} from '../src/binaries/executable.js'
 import {archiveKey} from '../src/core/archive.js'
+import type {CookieRecord} from '../src/core/cookies.js'
 import type {DownloadError} from '../src/core/errors.js'
 import {isListingLink} from '../src/core/mix.js'
 import {MediaDownloader} from '../src/downloader.js'
+import {SESSION_REFUSED_MS} from '../src/sources/meta/client.js'
 import {SOURCE_BLOCKED, SOURCE_FORMAT_CHANGED, type SourceDownload} from '../src/sources/source.js'
+import {DEFAULT_CLIENT_ID} from '../src/sources/twitch/endpoints.js'
 import {isTwitchListing, parseTwitchLink} from '../src/sources/twitch/links.js'
 import {isTwitchAd, liveTitle, type TwitchOptions, TwitchSource} from '../src/sources/twitch/source.js'
-import type {AnalysisResult, JobProgress, PlaylistAnalysis, VideoAnalysis} from '../src/types.js'
+import type {AnalysisResult, JobProgress, JobSnapshot, PlaylistAnalysis, VideoAnalysis} from '../src/types.js'
 import {type FakeHls, LIVE_T0, startFakeHls, startFakeLive, writeCopyFfmpeg} from './helpers/fake-hls.js'
-import {CHANNELS, LIVE, LIVE_TRACKS, SLUGS, startFakeTwitch, VOD_TRACKS, VODS, WEB_ID} from './helpers/fake-twitch.js'
+import {
+  AUTH,
+  CHANNELS,
+  LIVE,
+  LIVE_TRACKS,
+  SLUGS,
+  startFakeTwitch,
+  VOD_TRACKS,
+  VODS,
+  WEB_ID,
+} from './helpers/fake-twitch.js'
 import {type FakeBinaries, writeFakes} from './helpers/fakes.js'
 
 const mp4 = {kind: 'video', container: 'mp4'} as const
@@ -114,6 +127,7 @@ async function setup(name: string, config: Parameters<typeof startFakeTwitch>[0]
   const options: TwitchOptions = {
     endpoints: {gql: site.gql, usher: site.usher},
     pacing: fast,
+    ...extra,
     live: {
       emptyReloads: 3,
       now: () => LIVE_T0 + live.clock.now(),
@@ -122,8 +136,8 @@ async function setup(name: string, config: Parameters<typeof startFakeTwitch>[0]
         live.clock.advance(ms)
         await tick()
       },
+      ...extra.live,
     },
-    ...extra,
   }
   const engine = new MediaDownloader({
     dataDir: path.join(root, name),
@@ -968,5 +982,294 @@ describe('Twitch live channels, recorded (fake GraphQL + usher + live origin on 
     assert.deepEqual(await fs.readdir(out2).catch(() => []), [], 'nothing kept')
     const left = (await fs.readdir(work, {recursive: true})).filter(name => String(name).includes('hls'))
     assert.deepEqual(left, [], 'the cancelled recording’s folder is gone')
+  })
+})
+
+describe('Twitch sign-in, live playback and how a recording ended (local fake)', () => {
+  const vod = (id: string) => `https://www.twitch.tv/videos/${id}`
+  const channel = (login: string) => `https://www.twitch.tv/${login}`
+  const listedVod = 'https://www.twitch.tv/videos/3000000100'
+  const TOKEN_OPS = new Set(['Clip', 'Vod', 'VodToken', 'LiveStream'])
+  const refusals = (warnings: readonly string[]) => warnings.filter(w => /signed-in session was refused/.test(w)).length
+
+  /** A source whose host session holds the .twitch.tv auth-token `token()` (none while undefined). */
+  const withSession = async (name: string, token: () => string | undefined, extra: TwitchOptions = {}) => {
+    const asked = {count: 0}
+    const warnings: string[] = []
+    const made = await setup(name, {}, extra)
+    const source = new TwitchSource({
+      ...made.options,
+      cookies: async (): Promise<readonly CookieRecord[] | undefined> => {
+        asked.count++
+        const value = token()
+        return value === undefined ? undefined : [{name: 'auth-token', value, domain: '.twitch.tv'}]
+      },
+      log: (level, message) => {
+        if (level === 'warn') warnings.push(message)
+      },
+    })
+    return {...made, source, asked, warnings}
+  }
+
+  it('the auth-token goes only on the reads that mint a playback token, on the web player’s id; listings and checks stay anonymous', {
+    timeout: 10_000,
+  }, async () => {
+    const {site, source, asked, workDir} = await withSession('auth-scope', () => AUTH.sub)
+    asList(await source.analyze(clips(CHANNELS.mid), {maxEntries: 150}))
+    asList(await source.analyze(`https://www.twitch.tv/${CHANNELS.mid}/videos`, {maxEntries: 120}))
+    await source.preflight(
+      [{url: clip(SLUGS.old)}, {url: vod(VODS.highlight)}, {url: channel(CHANNELS.mid)}, {url: listedVod}],
+      {},
+    )
+    asVideo(await source.analyze(clip(SLUGS.good)))
+    asVideo(await source.analyze(vod(VODS.recorded)))
+    // a listed VOD: only its token is read at download
+    await source.download(task(listedVod, workDir(), {ffmpeg: copy}))
+    asVideo(await source.analyze(channel(LIVE.onAir)))
+
+    const ops = new Set(site.requests.map(r => r.op))
+    const every = ['ChannelClips', 'ChannelVideos', 'Clips', 'Vods', 'ChannelStream', ...TOKEN_OPS]
+    for (const op of every) assert.ok(ops.has(op), `${op} was asked (${[...ops].join(', ')})`)
+    for (const r of site.requests) {
+      if (TOKEN_OPS.has(r.op)) {
+        assert.equal(r.auth, `OAuth ${AUTH.sub}`, `${r.op} is signed`)
+        assert.equal(r.clientId, WEB_ID, `${r.op} on the web player’s id`)
+      } else {
+        assert.equal(r.auth, undefined, `${r.op} is anonymous`)
+        assert.equal(r.clientId, DEFAULT_CLIENT_ID, `${r.op} on yt-dlp’s id`)
+      }
+    }
+    assert.equal(site.hits.unauthorized, 0)
+    assert.equal(asked.count, 1, 'the host’s cookies are read once (then every 6 h)')
+  })
+
+  it('subscribed: a subscriber-only VOD (usher’s 403, a forbidden token) and a forbidden clip download', {
+    timeout: 10_000,
+  }, async () => {
+    const {source, work, workDir} = await withSession('auth-sub', () => AUTH.sub)
+    assert.ok(asVideo(await source.analyze(vod(VODS.subsOnly))).choices.length > 0)
+    const file = await source.download(task(vod(VODS.subsOnly), workDir(), {ffmpeg: copy}))
+    assert.ok((await fs.stat(file.filepath)).size > 0)
+    asVideo(await source.analyze(vod(VODS.locked)))
+    const clipped = await source.download(task(clip(SLUGS.forbidden), work))
+    assert.ok((await fs.stat(clipped.filepath)).size > 0)
+  })
+
+  it('signing in after a visitor’s read: a forbidden clip passes its check and downloads; a subscriber-only VOD is signed once more', {
+    timeout: 10_000,
+  }, async () => {
+    let token: string | undefined
+    const {site, source, work, workDir} = await withSession('auth-later', () => token)
+    await assert.rejects(source.analyze(clip(SLUGS.forbidden)), (e: DownloadError) => e.hint === 'needs-sign-in')
+    await assert.rejects(source.analyze(vod(VODS.subsOnly)), (e: DownloadError) => e.hint === 'needs-sign-in')
+    assert.equal(site.hits.signed, 0, 'nothing signed without a session')
+    const before = {clip: site.hits.clip, token: site.hits.token}
+    token = AUTH.sub
+    const checks = await source.preflight([{url: clip(SLUGS.forbidden)}], {})
+    assert.equal(checks.get(clip(SLUGS.forbidden))?.ok, true, 'signed in, the check lets it through')
+    await source.download(task(clip(SLUGS.forbidden), work))
+    assert.equal(site.hits.clip, before.clip + 1, 'one signed read of the clip')
+    await source.download(task(vod(VODS.subsOnly), workDir(), {ffmpeg: copy}))
+    assert.equal(site.hits.token, before.token + 1, 'one signed token for the VOD')
+  })
+
+  it('signed in without access: members-only (not needs-sign-in), and yt-dlp is not asked', {
+    timeout: 10_000,
+  }, async () => {
+    const {source, workDir} = await withSession('auth-free', () => AUTH.free)
+    const membersOnly = (e: DownloadError) => {
+      assert.equal(e.code, 'unavailable')
+      assert.equal(e.hint, 'members-only', e.message)
+      assert.equal(e.details, undefined)
+      assert.match(e.message, /signed-in Twitch account has no access/)
+      return true
+    }
+    await assert.rejects(source.analyze(vod(VODS.locked)), membersOnly)
+    await assert.rejects(source.analyze(vod(VODS.subsOnly)), membersOnly)
+    await assert.rejects(source.download(task(vod(VODS.subsOnly), workDir(), {ffmpeg: copy})), membersOnly)
+    await assert.rejects(source.analyze(clip(SLUGS.forbidden)), membersOnly)
+  })
+
+  it('a refused session (401): dropped, told once, the read retried anonymously; anonymous for the window, asked again after it', {
+    timeout: 10_000,
+  }, async () => {
+    let now = 1_000_000
+    const {site, source, asked, warnings} = await withSession('auth-stale', () => AUTH.stale, {now: () => now})
+    asVideo(await source.analyze(clip(SLUGS.good)))
+    assert.deepEqual(
+      site.requests.map(r => [r.op, r.auth !== undefined]),
+      [
+        ['Clip', true],
+        ['Clip', false],
+      ],
+      'one signed try, then the same read anonymously',
+    )
+    assert.equal(site.hits.unauthorized, 1)
+    assert.equal(refusals(warnings), 1, warnings.join('\n'))
+    // inside the window: anonymous, the host is not asked, nothing refused again
+    asVideo(await source.analyze(vod(VODS.recorded)))
+    await assert.rejects(source.analyze(vod(VODS.subsOnly)), (e: DownloadError) => e.hint === 'needs-sign-in')
+    assert.equal(site.hits.signed, 1, 'no signed read inside the window')
+    assert.equal(asked.count, 1)
+    // the window is over: the host's cookies are asked for again (refused again, told again)
+    now += SESSION_REFUSED_MS + 1
+    asVideo(await source.analyze(vod(VODS.highlight)))
+    assert.equal(asked.count, 2)
+    assert.equal(site.hits.unauthorized, 2)
+    assert.equal(refusals(warnings), 2)
+  })
+
+  it('reads refused at the same time are told once, each retried once', {timeout: 10_000}, async () => {
+    const {site, source, warnings} = await withSession('auth-stale-many', () => AUTH.stale)
+    const ids = [VODS.recorded, VODS.highlight, VODS.upload]
+    await Promise.all(ids.map(id => source.analyze(vod(id))))
+    assert.equal(site.hits.unauthorized, site.hits.signed)
+    assert.ok(site.hits.signed <= ids.length, `at most one signed try per read in flight (${site.hits.signed})`)
+    assert.equal(site.hits.vod, ids.length, 'each read answered once, anonymously')
+    assert.equal(refusals(warnings), 1)
+  })
+
+  it('livePlayback: the signed H.264 master url from the analysis’ read (no extra query, no usher request); undefined off the air', {
+    timeout: 10_000,
+  }, async () => {
+    const {site, source, engine, workDir} = await withSession('live-playback', () => AUTH.sub)
+    asVideo(await source.analyze(channel(LIVE.onAir)))
+    assert.deepEqual([site.hits.live, site.hits.liveUsher], [1, 1])
+    const playback = await source.livePlayback(channel(LIVE.onAir))
+    assert.ok(playback, 'on the air')
+    assert.deepEqual([site.hits.live, site.hits.liveUsher], [1, 1], 'the kept read; usher is not asked')
+    const url = new URL(playback.url)
+    assert.equal(url.origin + url.pathname, `${site.usher}/api/channel/hls/${LIVE.onAir}.m3u8`)
+    assert.equal(url.searchParams.get('supported_codecs'), 'h264')
+    assert.match(url.searchParams.get('sig') ?? '', /^ssig-/)
+    assert.equal(playback.media.isLive, true)
+    assert.equal(playback.media.id, 'live-320926770780')
+    assert.ok((playback.expiresAt ?? 0) > Date.now())
+    const master = await fetch(playback.url, {signal: AbortSignal.timeout(2_000)})
+    assert.equal(master.status, 200, 'the url is signed')
+    assert.match(await master.text(), /^#EXTM3U/)
+    // a recording right after shares the same read
+    const stop = new AbortController()
+    await source.download(
+      task(channel(LIVE.onAir), workDir(), {
+        ffmpeg: copy,
+        stop: stop.signal,
+        onProgress: p => {
+          if ((p.fragmentIndex ?? 0) >= 2) stop.abort()
+        },
+      }),
+    )
+    assert.equal(site.hits.live, 1, 'one query served the analysis, the player and the recording')
+    await source.livePlayback(channel(LIVE.onAir), {fresh: true})
+    assert.equal(site.hits.live, 2, 'fresh reads again')
+    assert.ok(site.requests.filter(r => r.op === 'LiveStream').every(r => r.auth === `OAuth ${AUTH.sub}`))
+
+    assert.equal(await source.livePlayback(channel(CHANNELS.mid)), undefined, 'off the air')
+    assert.equal(await source.livePlayback(clip(SLUGS.good)), undefined, 'not a channel')
+    assert.ok(await engine.livePlayback(channel(LIVE.onAir)), 'through the engine')
+    assert.equal(await engine.livePlayback('https://example.com/live'), undefined, 'no source plays it live')
+  })
+
+  it('JobSnapshot.recording says how a recording ended (stopped, max-duration, offline, endlist), its gaps and the ads left out', {
+    timeout: 10_000,
+  }, async () => {
+    /** One recording through the engine; `during` may stop it or take the channel off the air. */
+    const record = async (
+      name: string,
+      login: string,
+      extra: TwitchOptions = {},
+      during?: (made: Awaited<ReturnType<typeof setup>>, snapshot: JobSnapshot) => void,
+      prepare?: (made: Awaited<ReturnType<typeof setup>>) => void,
+    ) => {
+      const made = await setup(name, {}, extra)
+      prepare?.(made)
+      const job = made.engine.add({url: channel(login), profile: mp4, outDir: path.join(root, name, 'out')})
+      /** Download-step states of the snapshots that carried a recording. */
+      const told: string[] = []
+      let recording = 0
+      made.engine.on('job', snapshot => {
+        if (snapshot.id !== job.id) return
+        if (snapshot.progress.live && snapshot.recording === undefined) recording++
+        if (snapshot.recording) told.push(snapshot.steps.find(step => step.name === 'download')?.state ?? '')
+        during?.(made, snapshot)
+      })
+      await made.engine.whenIdle()
+      const done = made.engine.job(job.id)!
+      assert.equal(done.status, 'completed', JSON.stringify(done.error))
+      assert.ok(recording > 0, 'snapshots while recording say nothing yet')
+      assert.ok(told.length > 0 && told.every(state => state === 'success'), `told once it ended: ${told}`)
+      return done
+    }
+
+    const stopped = await record('rec-stop', LIVE.onAir, {}, (made, snapshot) => {
+      if ((snapshot.progress.fragmentIndex ?? 0) >= 6) made.engine.stop(snapshot.id)
+    })
+    assert.equal(stopped.recording?.ended, 'stopped')
+    assert.ok((stopped.recording?.seconds ?? 0) >= 12, JSON.stringify(stopped.recording))
+    assert.equal(stopped.recording?.gaps, 0)
+    assert.equal(stopped.recording?.skippedSeconds, 0)
+
+    const capped = await record('rec-cap', LIVE.onAir, {live: {maxDuration: 10}})
+    assert.equal(capped.recording?.ended, 'max-duration')
+    assert.ok((capped.recording?.seconds ?? 0) >= 10, JSON.stringify(capped.recording))
+
+    // the stream stops growing at segment 9 and the channel leaves the air
+    const offline = await record(
+      'rec-offline',
+      LIVE.onAir,
+      {},
+      (made, snapshot) => {
+        if ((snapshot.progress.fragmentIndex ?? 0) >= 9) made.site.setOnAir(LIVE.onAir, false)
+      },
+      made => made.live.update(LIVE.onAir, {...LIVE_TRACKS[LIVE.onAir], stopAfter: 9}),
+    )
+    assert.equal(offline.recording?.ended, 'offline')
+
+    const ads = await record('rec-ads', LIVE.ads)
+    assert.equal(ads.recording?.ended, 'endlist')
+    assert.equal(ads.recording?.skippedSeconds, 10, 'the ads left out')
+
+    // a download that records nothing says nothing
+    const made = await setup('rec-none')
+    const plain = made.engine.add({url: vod(VODS.recorded), profile: mp4, outDir: path.join(root, 'rec-none', 'out')})
+    await made.engine.whenIdle()
+    assert.equal(made.engine.job(plain.id)?.status, 'completed')
+    assert.equal(made.engine.job(plain.id)?.recording, undefined)
+  })
+
+  it('through the engine: the .twitch.tv auth-token of its cookies (a browser’s, or a cookies file) signs the token reads', {
+    timeout: 10_000,
+  }, async () => {
+    const {site, options} = await setup('auth-engine')
+    const dir = path.join(root, 'auth-engine-signed')
+    const jar = path.join(dir, 'cookies.txt')
+    await fs.mkdir(dir, {recursive: true})
+    await fs.writeFile(
+      jar,
+      '# Netscape HTTP Cookie File\n' +
+        `.twitch.tv\tTRUE\t/\tTRUE\t0\tauth-token\t${AUTH.sub}\n` +
+        '.youtube.com\tTRUE\t/\tTRUE\t0\tSID\tx\n',
+    )
+    const engine = new MediaDownloader({
+      dataDir: dir,
+      binaries: bins,
+      validation: 'none',
+      cookiesFile: jar,
+      tiktok: false,
+      instagram: false,
+      facebook: false,
+      x: false,
+      vk: false,
+      snapchat: false,
+      threads: false,
+      bluesky: false,
+      twitch: options,
+    })
+    cleanups.push(() => engine.dispose())
+    asVideo(await engine.analyze(vod(VODS.subsOnly)))
+    assert.deepEqual(
+      site.requests.filter(r => r.auth !== undefined).map(r => [r.op, r.auth, r.clientId]),
+      [['Vod', `OAuth ${AUTH.sub}`, WEB_ID]],
+    )
   })
 })

@@ -24,13 +24,22 @@ import {
 import type {AnalysisResult, MediaSummary, PlaylistAnalysis, VideoAnalysis} from '../../types.js'
 import {Coalescer} from '../coalesce.js'
 import {type Fetch, HttpSession} from '../http.js'
+import {SESSION_REFUSED_MS} from '../meta/client.js'
 import {downloadPost} from '../meta/download.js'
 import {MetaError, toDownloadError} from '../meta/errors.js'
 import {walkCursor} from '../meta/listing.js'
 import {choicesOf, summaryOf} from '../meta/post.js'
 import {dig, text} from '../meta/relay.js'
 import {Pacer, type PacerOptions} from '../pacer.js'
-import {type ListingProgress, type MediaSource, needsFallback, type SourceDownload, type SourceFile} from '../source.js'
+import {HostSession, type SessionProvider} from '../session.js'
+import {
+  type ListingProgress,
+  type LivePlayback,
+  type MediaSource,
+  needsFallback,
+  type SourceDownload,
+  type SourceFile,
+} from '../source.js'
 import {
   type ClipsPage,
   readClipAnswer,
@@ -50,6 +59,8 @@ import {
 } from './data.js'
 import {
   ALIAS_LIMIT,
+  AUTH_CLIENT_ID,
+  AUTH_COOKIE,
   CLIP_LISTING_LIMIT,
   CLIP_PERIODS,
   type ClipPeriod,
@@ -96,6 +107,21 @@ export type TwitchOptions = {
    * integrity check on every listing page after the first (endpoints.ts).
    */
   readonly clientId?: string | undefined
+  /**
+   * The user's Twitch sign-in: the `auth-token` cookie of .twitch.tv (the engine passes the browser
+   * cookies it reads for yt-dlp). Sent as `Authorization: OAuth <auth-token>` only on the single
+   * reads that mint a playback token (a clip, a VOD, a live stream): subscriber-only VODs, clips and
+   * streams. Listings and batched checks stay anonymous. A token Twitch refuses (401) is dropped
+   * and reads go anonymous for 30 minutes (SESSION_REFUSED_MS).
+   */
+  readonly cookies?: SessionProvider | undefined
+  /**
+   * The `Client-ID` of signed-in reads. Default the web player's (`kimne78kx3ncx6brgo4mv6wki5h1ko`):
+   * twitch.tv mints `auth-token` for it (endpoints.ts, AUTH_CLIENT_ID).
+   */
+  readonly authClientId?: string | undefined
+  /** A clock for tests: the signed-in session's refusal window. */
+  readonly now?: (() => number) | undefined
   /** Pace of GraphQL requests. Media downloads aren't paced. */
   readonly pacing?: PacerOptions | undefined
   /** The GraphQL endpoint and the clip fields read (endpoints.ts), overridable without a release. */
@@ -154,6 +180,8 @@ const LIVE_CACHE_LIMIT = 20
 const STITCHED_AD = 'twitch-stitched-ad'
 /** Playback tokens (and the master playlists they signed) kept by VOD id; a master is ~1 KB. */
 const PLAYBACK_CACHE_LIMIT = 100
+/** What an `auth-token` looks like (30 alphanumerics today): anything else is never put in a header. */
+const AUTH_TOKEN = /^[A-Za-z0-9_-]{1,200}$/
 /**
  * Twitch's muted parts: a part listed `-unmuted` answers 403, the same part as
  * `-muted` 200 (Twitch lists `<n>-muted.ts` itself today, checked live
@@ -195,8 +223,17 @@ type KeptVideos = {
   readonly total: number | undefined
   readonly at: number
 }
-/** A VOD's token, and the master playlists usher gave for it by `supported_codecs`. */
-type Playback = {readonly token: VodToken; readonly masters: Map<string, HlsMasterPlaylist>}
+/**
+ * A VOD's token, the master playlists usher gave for it by `supported_codecs`, and whether a
+ * signed-in read minted it (a refusal then is the account's, not a missing sign-in).
+ */
+type Playback = {
+  readonly token: VodToken
+  readonly masters: Map<string, HlsMasterPlaylist>
+  readonly signed: boolean
+}
+/** A read that mints a playback token, and whether it went signed in. */
+type Signed<T> = {readonly value: T; readonly signed: boolean}
 /** A channel on the air: its stream, the token that signs its usher request, the masters it gave. */
 type Live = {
   readonly stream: TwitchLiveStream
@@ -223,6 +260,12 @@ type Live = {
  * `live-now` and never handed to yt-dlp (which would record the stream).
  * Anything else that stops looking as expected, or an integrity check, hands
  * the url to yt-dlp, whose Twitch extractor reads clips and VODs too.
+ *
+ * Signed in (`cookies`: the `auth-token` of .twitch.tv), the reads that mint
+ * a playback token (a clip, a VOD, a live stream) carry `Authorization: OAuth`
+ * on the web player's client id, so subscriber-only media plays; listings and
+ * batched checks stay anonymous on yt-dlp's id. A refused token (401) costs
+ * one anonymous retry and 30 minutes of anonymous reads, never one per link.
  */
 export class TwitchSource implements MediaSource {
   readonly name = 'Twitch'
@@ -249,15 +292,32 @@ export class TwitchSource implements MediaSource {
   readonly #lives = new Map<string, Timed<Live>>()
   readonly #liveOptions: TwitchLiveOptions
   #blockedUntil = 0
+  readonly #authClientId: string
+  /** Holds the host's Twitch cookies (never sent as cookies: only auth-token is read, into a header). */
+  readonly #jar: HttpSession
+  readonly #host: HostSession
+  readonly #now: () => number
+  /** While in the future, Twitch refused the signed-in session lately: every read goes anonymous. */
+  #sessionRefusedUntil = 0
 
   constructor(options: TwitchOptions = {}) {
     this.#endpoints = {...DEFAULT_ENDPOINTS, ...options.endpoints}
     this.#clientId = options.clientId ?? DEFAULT_CLIENT_ID
+    this.#authClientId = options.authClientId ?? AUTH_CLIENT_ID
     this.#session = new HttpSession({fetch: options.fetch})
     this.#pacer = new Pacer(options.pacing ?? DEFAULT_PACING, 'Twitch')
     this.#maxListItems = Math.max(1, Math.floor(options.maxListItems ?? TWITCH_LIST_DEFAULT_ITEMS))
     this.#log = options.log ?? (() => {})
     this.#liveOptions = options.live ?? {}
+    this.#now = options.now ?? Date.now
+    this.#jar = new HttpSession()
+    this.#host = new HostSession({
+      site: this.name,
+      provider: options.cookies,
+      session: this.#jar,
+      log: this.#log,
+      now: this.#now,
+    })
   }
 
   /**
@@ -329,6 +389,14 @@ export class TwitchSource implements MediaSource {
     const vods = new Map<string, string[]>()
     /** Channels: one status request each (rare in a batch), through the pacer. */
     const onAir: Array<Promise<void>> = []
+    // a clip forbidden to a visitor passes its check when the user is signed in: its download reads
+    // it signed (the session is loaded once, only when such a clip comes up)
+    let session: Promise<boolean> | undefined
+    const forbiddenOk = async (clip: TwitchClip): Promise<boolean> => {
+      if (!isForbidden(clip.problem)) return false
+      session ??= this.#authToken().then(token => token !== undefined)
+      return session
+    }
     for (const {url} of items) {
       try {
         const native = this.#link(url)
@@ -349,7 +417,7 @@ export class TwitchSource implements MediaSource {
         const link = this.#clipLink(url)
         const cached = this.#cached(link.slug)
         if (cached) {
-          settle(url, this.#check(cached))
+          settle(url, this.#check(cached, await forbiddenOk(cached)))
           continue
         }
         const urls = wanted.get(link.slug)
@@ -381,14 +449,15 @@ export class TwitchSource implements MediaSource {
             body => chunk.map((_, i) => readClipAnswer(body, `c${i}`)),
             opts.signal,
           )
-          chunk.forEach((slug, i) => {
+          for (const [i, slug] of chunk.entries()) {
             const answer = answers[i]!
             if (!(answer instanceof MetaError)) this.#remember(answer)
+            const signedOk = !(answer instanceof MetaError) && (await forbiddenOk(answer))
             for (const url of wanted.get(slug) ?? []) {
               if (answer instanceof MetaError) fail(url, answer)
-              else settle(url, this.#check(answer))
+              else settle(url, this.#check(answer, signedOk))
             }
-          })
+          }
         } catch (error) {
           for (const slug of chunk) for (const url of wanted.get(slug) ?? []) fail(url, error)
         }
@@ -464,6 +533,90 @@ export class TwitchSource implements MediaSource {
     if (Date.now() < this.#blockedUntil) throw blocked()
   }
 
+  // ─── sign-in ─────────────────────────────────────────────────────────────
+
+  /**
+   * The user's `auth-token`, when the host has a Twitch session and Twitch has not refused it
+   * lately. The host's cookies are read once and again every 6 h (HostSession). O(1) after that.
+   */
+  async #authToken(): Promise<string | undefined> {
+    if (this.#now() < this.#sessionRefusedUntil) return undefined
+    await this.#host.load()
+    const token = this.#jar.cookie('www.twitch.tv', AUTH_COOKIE)
+    return token !== undefined && AUTH_TOKEN.test(token) ? token : undefined
+  }
+
+  /**
+   * A read that mints a playback token (a clip, a VOD, a live stream): signed in when the user is
+   * (`Authorization: OAuth`, on the web player's client id), else anonymous as before. Twitch
+   * refusing the session (401: the token is invalid or revoked; or an integrity check) → the same
+   * read once more anonymously, and every read anonymous for SESSION_REFUSED_MS: one extra
+   * request per window, never per link. O(1) on top of the read.
+   */
+  async #tokenGql<T>(
+    query: string,
+    variables: Record<string, unknown>,
+    read: (body: unknown) => T,
+    signal: AbortSignal | undefined,
+  ): Promise<Signed<T>> {
+    const auth = await this.#authToken()
+    if (auth !== undefined) {
+      try {
+        return {value: await this.#gql(query, variables, read, signal, auth), signed: true}
+      } catch (error) {
+        if (signal?.aborted || !(error instanceof MetaError)) throw error
+        if (error.status !== 401 && error.problem !== 'challenge') throw error
+        this.#refuseSession(error)
+      }
+    }
+    return {value: await this.#gql(query, variables, read, signal), signed: false}
+  }
+
+  /**
+   * Twitch refused the signed-in session: its cookies are dropped, asked for again once
+   * SESSION_REFUSED_MS is up, and the user is told once (reads in flight that were refused too
+   * add nothing). O(1).
+   */
+  #refuseSession(refusal: MetaError): void {
+    const now = this.#now()
+    if (now < this.#sessionRefusedUntil) return
+    this.#sessionRefusedUntil = now + SESSION_REFUSED_MS
+    this.#host.forget()
+    this.#jar.reset()
+    this.#log(
+      'warn',
+      `Twitch: the signed-in session was refused (${refusal.message}); reading anonymously for ` +
+        `${SESSION_REFUSED_MS / 60_000} min — sign in to twitch.tv again in the browser if it goes on`,
+    )
+  }
+
+  /**
+   * A live channel's signed master playlist for a host's player (MediaDownloader.livePlayback):
+   * H.264 variants (what a browser's MSE plays), built and never fetched. The stream and its token
+   * come from the read an analysis or a recording made within a minute, else one GraphQL query
+   * (signed in when the user is); `fresh` reads again (a signature that ran out). Undefined for a
+   * link that is not a channel, or a channel off the air. 0 or 1 request, no usher request.
+   */
+  async livePlayback(
+    url: string,
+    opts: {readonly signal?: AbortSignal | undefined; readonly fresh?: boolean | undefined} = {},
+  ): Promise<LivePlayback | undefined> {
+    const link = parseTwitchLink(url)
+    if (link?.kind !== 'channel') return undefined
+    try {
+      const live = await this.#live(link.channel, opts.signal, opts.fresh ?? false)
+      if (!live) return undefined
+      const p = Math.floor(Math.random() * 10_000_000)
+      return {
+        url: liveUsherUrl(this.#endpoints.usher, live.stream.login, live.token, CODECS_COMPAT, p),
+        expiresAt: live.token.expiresAt,
+        media: liveSummary(live.stream, this.name),
+      }
+    } catch (error) {
+      throw this.#toDownloadError(error, opts.signal)
+    }
+  }
+
   // ─── on the air ──────────────────────────────────────────────────────────
 
   /**
@@ -503,12 +656,13 @@ export class TwitchSource implements MediaSource {
   async #live(login: string, signal: AbortSignal | undefined, fresh: boolean): Promise<Live | undefined> {
     const kept = this.#lives.get(login)
     if (!fresh && kept && Date.now() < kept.until) return kept.value
-    const {stream, token} = await this.#gql(liveQuery(), {login: login.toLowerCase()}, readLive, signal)
+    const {value, signed} = await this.#tokenGql(liveQuery(), {login: login.toLowerCase()}, readLive, signal)
+    const {stream, token} = value
     if (!stream) {
       this.#lives.delete(login)
       return undefined
     }
-    if (token instanceof MetaError) throw token
+    if (token instanceof MetaError) throw signed && isForbidden(token) ? membersOnly('live stream') : token
     const live: Live = {stream, token, masters: new Map()}
     bounded(this.#lives, login, {value: live, until: Date.now() + LIVE_FRESH_MS}, LIVE_CACHE_LIMIT)
     return live
@@ -697,25 +851,26 @@ export class TwitchSource implements MediaSource {
     const cached = this.#cachedVod(id)
     if (cached) return cached
     return this.#vodReading.run(id, signal, async shared => {
-      const {vod, token} = await this.#gql(
+      const {value, signed} = await this.#tokenGql(
         vodQuery(this.#endpoints.videoFields),
         {id},
         body => ({vod: readVodAnswer(body), token: readVodToken(body)}),
         shared,
       )
+      const {vod, token} = value
       if (vod instanceof MetaError) throw vod
       this.#rememberVod(vod)
       if (!vod.recording) {
-        if (token instanceof MetaError) throw token
-        this.#keepPlayback(id, token)
+        if (token instanceof MetaError) throw signed && isForbidden(token) ? membersOnly('video') : token
+        this.#keepPlayback(id, token, signed)
       }
       return vod
     })
   }
 
   /** A playback token and its masters, kept until the token runs out (6 h at most). O(1). */
-  #keepPlayback(id: string, token: VodToken): Playback {
-    const playback: Playback = {token, masters: new Map()}
+  #keepPlayback(id: string, token: VodToken, signed: boolean): Playback {
+    const playback: Playback = {token, masters: new Map(), signed}
     const until = Math.min(Date.now() + VOD_FRESH_MS, token.expiresAt ?? Number.POSITIVE_INFINITY)
     bounded(this.#playbacks, id, {value: playback, until}, PLAYBACK_CACHE_LIMIT)
     return playback
@@ -726,9 +881,9 @@ export class TwitchSource implements MediaSource {
     const kept = this.#playbacks.get(id)
     if (!fresh && kept && Date.now() < kept.until) return kept.value
     return this.#tokenReading.run(id, signal, async shared => {
-      const token = await this.#gql(vodTokenQuery(), {id}, readVodToken, shared)
-      if (token instanceof MetaError) throw token
-      return this.#keepPlayback(id, token)
+      const {value: token, signed} = await this.#tokenGql(vodTokenQuery(), {id}, readVodToken, shared)
+      if (token instanceof MetaError) throw signed && isForbidden(token) ? membersOnly('video') : token
+      return this.#keepPlayback(id, token, signed)
     })
   }
 
@@ -755,9 +910,15 @@ export class TwitchSource implements MediaSource {
       playback.masters.set(codecs, master)
       return master
     } catch (error) {
-      if (fresh || !(error instanceof MetaError) || error.status !== 403 || error.problem !== 'format-changed') {
-        throw error
+      if (!(error instanceof MetaError)) throw error
+      if (isForbidden(error)) {
+        // subscribers only: the signed-in account has no access; a visitor's token is signed once more
+        // when the user has a session now (a VOD listed or read before signing in)
+        if (playback.signed) throw membersOnly('video')
+        if (fresh || (await this.#authToken()) === undefined) throw error
+        return this.#master(vod, codecs, signal, true)
       }
+      if (fresh || error.status !== 403 || error.problem !== 'format-changed') throw error
       return this.#master(vod, codecs, signal, true)
     }
   }
@@ -1026,20 +1187,24 @@ export class TwitchSource implements MediaSource {
     variables: Record<string, unknown>,
     read: (body: unknown) => T,
     signal?: AbortSignal,
+    /** The user's auth-token: a signed-in read (`#tokenGql`), on the web player's client id. */
+    auth?: string,
   ): Promise<T> {
+    const headers: Record<string, string> = {
+      'Client-ID': auth === undefined ? this.#clientId : this.#authClientId,
+      'Content-Type': 'text/plain;charset=UTF-8',
+      Accept: 'application/json',
+      Origin: TWITCH_ORIGIN,
+      Referer: `${TWITCH_ORIGIN}/`,
+    }
+    if (auth !== undefined) headers['Authorization'] = `OAuth ${auth}`
     for (let attempt = 1; ; attempt++) {
       try {
         return await this.#pacer.run(async () => {
           const response = await this.#session.request(this.#endpoints.gql, {
             method: 'POST',
             body: JSON.stringify({query, variables}),
-            headers: {
-              'Client-ID': this.#clientId,
-              'Content-Type': 'text/plain;charset=UTF-8',
-              Accept: 'application/json',
-              Origin: TWITCH_ORIGIN,
-              Referer: `${TWITCH_ORIGIN}/`,
-            },
+            headers,
             signal,
           })
           const body: unknown = await response.json().catch(() => undefined)
@@ -1061,8 +1226,9 @@ export class TwitchSource implements MediaSource {
         }, signal)
       } catch (error) {
         if (!(error instanceof MetaError) || signal?.aborted) throw error
-        // a verification is not waited out here: yt-dlp takes Twitch urls for a while
-        if (error.problem === 'challenge') this.#blockedUntil = Date.now() + BLOCKED_MS
+        // a verification is not waited out here: yt-dlp takes Twitch urls for a while (a signed-in
+        // read's is the session's: it is read again anonymously, see #tokenGql)
+        if (error.problem === 'challenge' && auth === undefined) this.#blockedUntil = Date.now() + BLOCKED_MS
         if (error.problem !== 'refused' || attempt >= READ_ATTEMPTS) throw error
         this.#log('info', `Twitch: ${error.message} (try ${attempt} of ${READ_ATTEMPTS})`)
       }
@@ -1080,11 +1246,21 @@ export class TwitchSource implements MediaSource {
   /** One clip: from memory, else one query, shared by callers at the same time. */
   async #clip(link: ClipLink, signal?: AbortSignal, fresh = false): Promise<TwitchClip> {
     const cached = fresh ? undefined : this.#cached(link.slug)
-    if (cached) return cached
+    // a clip a listing (or a visitor) found forbidden is read once more, signed, when the user is
+    if (cached && !(isForbidden(cached.problem) && (await this.#authToken()) !== undefined)) return cached
     this.#notBlocked()
     return this.#reading.run(link.slug, signal, async shared => {
-      const answer = await this.#gql(clipQuery(this.#endpoints.clipFields), {slug: link.slug}, readClipAnswer, shared)
+      const {value: answer, signed} = await this.#tokenGql(
+        clipQuery(this.#endpoints.clipFields),
+        {slug: link.slug},
+        readClipAnswer,
+        shared,
+      )
       if (answer instanceof MetaError) throw answer
+      if (signed && isForbidden(answer.problem)) {
+        this.#clips.delete(link.slug)
+        throw membersOnly('clip')
+      }
       this.#remember(answer)
       return answer
     })
@@ -1096,8 +1272,11 @@ export class TwitchSource implements MediaSource {
     bounded(this.#clips, clip.slug, {value: clip, until}, CLIP_CACHE_LIMIT)
   }
 
-  #check(clip: TwitchClip): ExtractResult {
-    if (clip.problem) return {ok: false, error: this.#toDownloadError(clip.problem).toJSON()}
+  /** A clip's check; `signedIn` lets a clip forbidden to a visitor through (its download reads it signed). */
+  #check(clip: TwitchClip, signedIn = false): ExtractResult {
+    if (clip.problem && !(signedIn && isForbidden(clip.problem))) {
+      return {ok: false, error: this.#toDownloadError(clip.problem).toJSON()}
+    }
     return {ok: true, analysis: this.#videoAnalysis(clip)}
   }
 
@@ -1205,6 +1384,22 @@ function blocked(): MetaError {
   return new MetaError(
     'challenge',
     'Twitch asked this network for an integrity check a few minutes ago: clips are read by yt-dlp meanwhile.',
+  )
+}
+
+/** A token Twitch keeps for some viewers (subscribers): `authorization.forbidden`, or usher's restriction. O(1). */
+function isForbidden(problem: MetaError | undefined): boolean {
+  return problem?.problem === 'login-required'
+}
+
+/** Forbidden to the signed-in account itself: no sign-in changes that (hint members-only). */
+function membersOnly(what: 'clip' | 'video' | 'live stream'): DownloadError {
+  return new DownloadError(
+    'unavailable',
+    `Twitch keeps this ${what} for some viewers only (subscribers): the signed-in Twitch account has no access to it.`,
+    undefined,
+    undefined,
+    'members-only',
   )
 }
 

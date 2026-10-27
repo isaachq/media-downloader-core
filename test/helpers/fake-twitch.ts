@@ -30,11 +30,30 @@
 // signature checked; 404 once the channel is offline, as usher answers a
 // channel with no transcode) giving a master whose variants are sliding
 // windows on the fake live origin (startFakeLive), minted anew per master.
+//
+// Signed-in reads (as yt-dlp and streamlink describe them; not checked live:
+// no account): `Authorization: OAuth <auth-token>` on the web player's
+// client id. `OAuth fake-ok` is a subscriber (the locked VOD and the forbidden
+// clip get allowed tokens, usher serves the subscriber-only VOD to its token),
+// `OAuth fake-nosub` an account without access (tokens stay forbidden); any
+// other token, or a token on another client id, is a 401 for the whole query,
+// as Twitch answers an invalid one (checked live, anonymous).
 import * as http from 'node:http'
 import type {FakeHls, FakeLive, FakeLiveTrack, FakeTrack} from './fake-hls.js'
 import {listenLocal} from './listen.js'
 
 export const WEB_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko'
+
+/** auth-token values the fake knows (anything else is a 401). */
+export const AUTH = {
+  /** Subscribed: subscriber-only VODs and clips play. */
+  sub: 'fake-ok',
+  /** Signed in, not subscribed: still forbidden. */
+  free: 'fake-nosub',
+  /** Revoked (signed out elsewhere): 401. */
+  stale: 'stale',
+} as const
+type Account = 'sub' | 'free' | undefined
 
 export const SLUGS = {
   /** A 2026 clip: H.264 1080/720/480/360, a portrait asset, HEVC 1440 in its token. */
@@ -179,7 +198,13 @@ export type FakeTwitch = {
     live: number
     /** Live usher requests (`/api/channel/hls/`). */
     liveUsher: number
+    /** GraphQL requests that carried `Authorization` (refused ones included). */
+    signed: number
+    /** Of those, the ones answered 401. */
+    unauthorized: number
   }
+  /** Every GraphQL request: its operation, client id and Authorization header (undefined: none). */
+  readonly requests: Array<{readonly op: string; readonly clientId: string; readonly auth: string | undefined}>
   /** Variables of every listing page asked. */
   readonly pages: Array<Record<string, unknown>>
   /** Variables of every videos page asked. */
@@ -231,7 +256,10 @@ export async function startFakeTwitch(config: FakeTwitchConfig = {}): Promise<Fa
     usher: 0,
     live: 0,
     liveUsher: 0,
+    signed: 0,
+    unauthorized: 0,
   }
+  const requests: Array<{readonly op: string; readonly clientId: string; readonly auth: string | undefined}> = []
   const pages: Array<Record<string, unknown>> = []
   const videoPages: Array<Record<string, unknown>> = []
   const vodBatches: string[][] = []
@@ -264,7 +292,8 @@ export async function startFakeTwitch(config: FakeTwitchConfig = {}): Promise<Fa
       sourceURL: media(uuid, `${orientation}/${codec}/${q}`),
     }
   }
-  const token = (slug: string, uuid: string, forbidden = false) => {
+  const userId = (account: Account) => (account === 'sub' ? 'fake-sub' : account === 'free' ? 'fake-free' : '')
+  const token = (slug: string, uuid: string, forbidden = false, account?: Account) => {
     const n = (reads.get(slug) ?? 0) + 1
     reads.set(slug, n)
     return {
@@ -275,7 +304,7 @@ export async function startFakeTwitch(config: FakeTwitchConfig = {}): Promise<Fa
         clip_slug: slug,
         device_id: null,
         expires: Math.floor(Date.now() / 1000) + 20 * 3600,
-        user_id: '',
+        user_id: userId(account),
         version: 3,
       }),
     }
@@ -305,7 +334,7 @@ export async function startFakeTwitch(config: FakeTwitchConfig = {}): Promise<Fa
       ...extra,
     }
   }
-  const node = (slug: string): unknown => {
+  const node = (slug: string, account?: Account): unknown => {
     switch (slug) {
       case SLUGS.good:
       case SLUGS.stale:
@@ -326,7 +355,9 @@ export async function startFakeTwitch(config: FakeTwitchConfig = {}): Promise<Fa
         })
       }
       case SLUGS.forbidden:
-        return clip(slug, '888', 'subsonly', {playbackAccessToken: token(slug, 'uuid-forbidden', true)})
+        return clip(slug, '888', 'subsonly', {
+          playbackAccessToken: token(slug, `uuid-${slug.toLowerCase()}`, account !== 'sub', account),
+        })
       case SLUGS.empty:
         return clip(slug, '999', 'shroud', {videoQualities: [], assets: []})
       default:
@@ -382,10 +413,10 @@ export async function startFakeTwitch(config: FakeTwitchConfig = {}): Promise<Fa
       previewThumbnailURL: `${origin}/thumb/vod-${id}.jpg`,
     }
   }
-  const vodToken = (id: string) => {
+  const vodToken = (id: string, account?: Account) => {
     const n = (signed.get(id) ?? 0) + 1
     signed.set(id, n)
-    const forbidden = id === VODS.locked
+    const forbidden = id === VODS.locked && account !== 'sub'
     return {
       signature: `vsig-${id}-${n}`,
       value: JSON.stringify({
@@ -393,6 +424,7 @@ export async function startFakeTwitch(config: FakeTwitchConfig = {}): Promise<Fa
         chansub: {restricted_bitrates: []},
         expires: Math.floor(Date.now() / 1000) + 20 * 3600,
         maximum_resolution: 'FULL_HD',
+        user_id: userId(account),
         vod_id: Number(id),
         version: 3,
       }),
@@ -507,7 +539,9 @@ export async function startFakeTwitch(config: FakeTwitchConfig = {}): Promise<Fa
     if (!sig.startsWith(`vsig-${id}-`) || !(n >= 1 && n <= (signed.get(id) ?? 0)) || !value) {
       return json(res, 403, [{error: 'invalid token signature', error_code: 'nauth_sig_invalid', type: 'error'}])
     }
-    if (id === VODS.subsOnly) {
+    // a subscriber's token opens the subscriber-only VOD (the token's value says who asked)
+    const subscriber = /"user_id":"fake-sub"/.test(value)
+    if (id === VODS.subsOnly && !subscriber) {
       return json(res, 403, [
         {error: 'You must be subscribed to watch this video', error_code: 'vod_manifest_restricted', type: 'error'},
       ])
@@ -526,7 +560,13 @@ export async function startFakeTwitch(config: FakeTwitchConfig = {}): Promise<Fa
     res.end(JSON.stringify(body))
   }
 
-  const answer = (res: http.ServerResponse, clientId: string, query: string, variables: Record<string, unknown>) => {
+  const answer = (
+    res: http.ServerResponse,
+    clientId: string,
+    query: string,
+    variables: Record<string, unknown>,
+    account: Account,
+  ) => {
     if (query.startsWith('query Clip(')) {
       hits.clip++
       const slug = String(variables['slug'])
@@ -535,7 +575,7 @@ export async function startFakeTwitch(config: FakeTwitchConfig = {}): Promise<Fa
           errors: [{message: 'Cannot query field "videoQualities" on type "Clip".', path: ['query', 'clip']}],
         })
       }
-      return json(res, 200, {data: {clip: node(slug)}})
+      return json(res, 200, {data: {clip: node(slug, account)}})
     }
     if (query.startsWith('query Clips(')) {
       hits.batch++
@@ -574,12 +614,12 @@ export async function startFakeTwitch(config: FakeTwitchConfig = {}): Promise<Fa
       hits.vod++
       const id = String(variables['id'])
       const video = vodNode(id)
-      return json(res, 200, {data: {video, videoPlaybackAccessToken: video ? vodToken(id) : null}})
+      return json(res, 200, {data: {video, videoPlaybackAccessToken: video ? vodToken(id, account) : null}})
     }
     if (query.startsWith('query VodToken(')) {
       hits.token++
       const id = String(variables['id'])
-      return json(res, 200, {data: {videoPlaybackAccessToken: vodNode(id) ? vodToken(id) : null}})
+      return json(res, 200, {data: {videoPlaybackAccessToken: vodNode(id) ? vodToken(id, account) : null}})
     }
     if (query.startsWith('query Vods(')) {
       hits.vodBatch++
@@ -683,7 +723,30 @@ export async function startFakeTwitch(config: FakeTwitchConfig = {}): Promise<Fa
         } catch {
           return json(res, 400, {error: 'Bad Request', message: 'invalid JSON'})
         }
-        return answer(res, clientId, String(body.query ?? ''), (body.variables ?? {}) as Record<string, unknown>)
+        const query = String(body.query ?? '')
+        const auth = req.headers.authorization
+        requests.push({op: /^query (\w+)/.exec(query)?.[1] ?? '?', clientId, auth})
+        let account: Account
+        if (auth !== undefined) {
+          hits.signed++
+          account =
+            clientId !== WEB_ID
+              ? undefined
+              : auth === `OAuth ${AUTH.sub}`
+                ? 'sub'
+                : auth === `OAuth ${AUTH.free}`
+                  ? 'free'
+                  : undefined
+          if (!account) {
+            hits.unauthorized++
+            return json(res, 401, {
+              error: 'Unauthorized',
+              status: 401,
+              message: 'The "Authorization" token is invalid.',
+            })
+          }
+        }
+        return answer(res, clientId, query, (body.variables ?? {}) as Record<string, unknown>, account)
       })
       return
     }
@@ -731,6 +794,7 @@ export async function startFakeTwitch(config: FakeTwitchConfig = {}): Promise<Fa
     origin,
     gql: `${origin}/gql`,
     hits,
+    requests,
     pages,
     videoPages,
     batches,

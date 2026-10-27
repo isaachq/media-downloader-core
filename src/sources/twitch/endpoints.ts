@@ -73,6 +73,20 @@ export const WEB_CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko'
 export const ALT_CLIENT_ID = 'ue6666qo983tsx6so1t0vnawi233wa'
 export const DEFAULT_CLIENT_ID = ALT_CLIENT_ID
 
+/**
+ * Signed-in reads (research 2026-10-27, from yt-dlp's and streamlink's Twitch code; not checked live:
+ * no account): twitch.tv keeps the session in the `auth-token` cookie of .twitch.tv, an OAuth token
+ * it mints for the web player's client id. Sent as `Authorization: OAuth <auth-token>` on the
+ * queries that mint a playback token (a clip, a VOD, a live stream), the token's `value` says what
+ * the account may watch (subscriber-only VODs, clips and streams); usher and the CDN need nothing
+ * else. streamlink sends it with the web id, yt-dlp with its own: the web id is the default
+ * (`TwitchOptions.authClientId`) until a live check shows yt-dlp's takes it. An invalid or revoked
+ * token answers HTTP 401 for the whole query (checked live, anonymous), on both ids.
+ */
+export const AUTH_CLIENT_ID = WEB_CLIENT_ID
+/** The cookie twitch.tv keeps its sign-in in. */
+export const AUTH_COOKIE = 'auth-token'
+
 export type TwitchEndpoints = {
   /** The GraphQL endpoint. */
   readonly gql: string

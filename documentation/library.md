@@ -22,6 +22,7 @@ dl.analyze(url, {signal?, maxEntries?})  → VideoAnalysis | PlaylistAnalysis
 dl.add(request) · dl.addVideo(analysis, profile, outDir) · dl.addPlaylist(analysis, profile, outDir, {indexes?})
 dl.cancel(id) · dl.cancelAll() · dl.retry(id) · dl.prioritize(id) · dl.clearFinished()
 dl.stop(id)                   // a live recording: stop and keep it (finalized, validated, archived); cancel discards
+dl.livePlayback(url, {signal?, fresh?})  → {url, expiresAt?, media} | undefined  // a live channel's signed master, for a player
 dl.pause() · dl.resume() · dl.setConcurrency(n) · dl.setValidation(level)
 dl.jobs() · dl.job(id) · dl.stats · dl.whenIdle()
 dl.restoreQueue() · dl.verifyArchive(onProgress?, signal?) · dl.updateYtDlp() · dl.resolveBinaries()
@@ -34,7 +35,20 @@ Job lifecycle: `queued → downloading → processing → converting → validat
 
 A live recording (a Twitch channel on the air) is a job like the others whose download step lasts until
 `dl.stop(id)` (or the stream ends, or 12 h): its progress is `{live: true, elapsedSec, bytes}` with no
-`fraction`, `totalBytes` or `eta`, so a host shows the time recorded instead of a bar.
+`fraction`, `totalBytes` or `eta`, so a host shows the time recorded instead of a bar. Once the
+recording is handed over, the job's snapshot says how it ended in `recording`: `ended` (`'stopped'`,
+`'endlist'` the broadcast ended, `'offline'`, `'max-duration'`, `'refused'`), the seconds recorded, the
+gaps and segments lost, and the seconds of ads left out (`skippedSeconds`); a retry clears it.
+
+To watch a channel without recording it, `dl.livePlayback(url)` gives the signed master playlist url
+(H.264 variants), built and not fetched, the token's expiry and the broadcast's summary; `undefined` off
+the air or for a link no source plays live. It shares the one-minute read of the channel's analysis and
+recording (0 or 1 request; `fresh: true` reads again).
+
+Signed-in sites take the user's session from the same browser cookies the engine reads for yt-dlp
+(`cookiesFromBrowser`, else `cookiesFile`): Instagram, Facebook, Threads, and Twitch (its `auth-token`,
+sent only on the reads that mint a playback token, for subscriber-only VODs, clips and streams). A
+host's own `<site>.cookies` provider wins.
 
 ## Scheduling: schedule → batch → jobs
 

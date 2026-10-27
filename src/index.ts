@@ -180,7 +180,14 @@ export {SNAPCHAT_LIST_DEFAULT_ITEMS, type SnapchatOptions, SnapchatSource} from 
 export type {SoundcloudEndpoints} from './sources/soundcloud/endpoints.js'
 export {isSoundcloudListing, parseSoundcloudLink, type SoundcloudLink} from './sources/soundcloud/links.js'
 export {SOUNDCLOUD_LIST_DEFAULT_ITEMS, type SoundcloudOptions, SoundcloudSource} from './sources/soundcloud/source.js'
-export type {ListingProgress, MediaSource, RecordingSummary, SourceDownload, SourceFile} from './sources/source.js'
+export type {
+  ListingProgress,
+  LivePlayback,
+  MediaSource,
+  RecordingSummary,
+  SourceDownload,
+  SourceFile,
+} from './sources/source.js'
 export type {ThreadsQueries} from './sources/threads/endpoints.js'
 export {isThreadsListing, parseThreadsLink, type ThreadsLink} from './sources/threads/links.js'
 export {THREADS_PROFILE_DEFAULT_ITEMS, type ThreadsOptions, ThreadsSource} from './sources/threads/source.js'

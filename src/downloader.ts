@@ -54,7 +54,7 @@ import {InstagramSource} from './sources/instagram/source.js'
 import {COOLING_DOWN, withPatience} from './sources/pacer.js'
 import {SnapchatSource} from './sources/snapchat/source.js'
 import {SoundcloudSource} from './sources/soundcloud/source.js'
-import {type ListingProgress, type MediaSource, needsFallback} from './sources/source.js'
+import {type ListingProgress, type LivePlayback, type MediaSource, needsFallback} from './sources/source.js'
 import {ThreadsSource} from './sources/threads/source.js'
 import {DEFAULT_SLIDESHOW, slideshowOptions} from './sources/tiktok/slideshow.js'
 import {TikTokSource} from './sources/tiktok/source.js'
@@ -306,7 +306,10 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
         : [new ThreadsSource({log, cookies: () => this.#siteCookies(['threads.com']), ...options.threads})]),
       ...(options.soundcloud === false ? [] : [new SoundcloudSource({log, ...options.soundcloud})]),
       ...(options.bluesky === false ? [] : [new BlueskySource({log, ...options.bluesky})]),
-      ...(options.twitch === false ? [] : [new TwitchSource({log, ...options.twitch})]),
+      // Twitch's sign-in is the auth-token cookie of .twitch.tv (subscriber-only VODs, clips, streams)
+      ...(options.twitch === false
+        ? []
+        : [new TwitchSource({log, cookies: () => this.#siteCookies(['twitch.tv']), ...options.twitch})]),
       ...(options.sources ?? []),
       // a link straight to a media file, on any other site: last, after every site's own source
       ...(options.direct === false ? [] : [new DirectFileSource(options.direct)]),
@@ -1202,6 +1205,21 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     return true
   }
 
+  /**
+   * A live channel's signed master playlist, for the host's own player (watching without
+   * recording): the url, never fetched here, and the broadcast as an analysis describes it.
+   * Undefined off the air, or for a link no source plays live (only Twitch channels today). The
+   * read is shared with the channel's analysis and its recording for a minute (`fresh` asks
+   * again: a signature that ran out). 0 or 1 request; throws a DownloadError as analyze does.
+   */
+  async livePlayback(
+    url: string,
+    opts: {readonly signal?: AbortSignal | undefined; readonly fresh?: boolean | undefined} = {},
+  ): Promise<LivePlayback | undefined> {
+    const source = this.#sources.find(source => source.livePlayback !== undefined && source.handles(url))
+    return source?.livePlayback?.(url, opts)
+  }
+
   cancelAll(): void {
     for (const id of this.#jobs.keys()) this.cancel(id)
   }
@@ -1740,6 +1758,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     if (source && 'tags' in downloaded && downloaded.tags && this.#settings.embedMetadata) tags = downloaded.tags
     if (source && 'recording' in downloaded && downloaded.recording) {
       const r = downloaded.recording
+      job.recorded(r)
       this.#log(
         'info',
         `recorded ${Math.round(r.seconds)} s live (${r.ended}): ${r.segments} segments, ` +

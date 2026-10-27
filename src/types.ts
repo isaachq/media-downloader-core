@@ -410,9 +410,33 @@ export type JobSnapshot = {
    */
   readonly validationPending?: boolean | undefined
   readonly error?: JobError | undefined
+  /**
+   * A live recording's download step finished (a Twitch channel): how it ended and what it left out,
+   * so a host can say "stopped", "the broadcast ended", "12 h reached" without reading the log. Set
+   * once the recording is handed over (before convert / validate), cleared when a retry starts.
+   */
+  readonly recording?: RecordingSummary | undefined
   readonly createdAt: number
   readonly startedAt?: number | undefined
   readonly finishedAt?: number | undefined
+}
+
+/**
+ * How a live recording ended and what it left out. `ended`: 'stopped' (MediaDownloader.stop),
+ * 'endlist' (the broadcast ended), 'offline' (the channel left the air), 'max-duration' (the cap,
+ * 12 h by default), 'refused' (the playlist stopped answering and could not be re-signed).
+ */
+export type RecordingSummary = {
+  readonly ended: 'endlist' | 'stopped' | 'max-duration' | 'offline' | 'refused'
+  /** Seconds of media in the file. */
+  readonly seconds: number
+  readonly segments: number
+  /** Places where segments were lost, and how many. */
+  readonly gaps: number
+  readonly lostSegments: number
+  /** Seconds left out on purpose (Twitch's stitched ads). */
+  readonly skippedSeconds: number
+  readonly refreshes: number
 }
 
 export type JobRequest = {

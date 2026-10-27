@@ -4,9 +4,17 @@ import * as http from 'node:http'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import {type ElectronApplication, _electron as electron, expect, type Page, test} from '@playwright/test'
+import {HANDLES as BLUESKY_HANDLES, RKEYS as BLUESKY_RKEYS, startFakeBluesky} from '../../test/helpers/fake-bluesky'
 import {startFakeHls, startFakeLive} from '../../test/helpers/fake-hls'
+import {startFakeSnapchat} from '../../test/helpers/fake-snapchat'
+import {
+  HYDRATION_ID as SOUNDCLOUD_HYDRATION_ID,
+  trackUrl as soundcloudTrackUrl,
+  startFakeSoundcloud,
+} from '../../test/helpers/fake-soundcloud'
+import {startFakeThreads} from '../../test/helpers/fake-threads'
 import {startFakeTikTok} from '../../test/helpers/fake-tiktok'
-import {LIVE, LIVE_TRACKS, startFakeTwitch, VOD_TRACKS, VODS, WEB_ID} from '../../test/helpers/fake-twitch'
+import {LIVE, LIVE_TRACKS, SLUGS, startFakeTwitch, VOD_TRACKS, VODS, WEB_ID} from '../../test/helpers/fake-twitch'
 import {writeFakes} from '../../test/helpers/fakes'
 import {listenLocal} from '../../test/helpers/listen'
 
@@ -848,5 +856,68 @@ test('records a live Twitch channel, stops and keeps the file; a discarded one l
     clearInterval(tick)
     await site.close()
     await live.close()
+  }
+})
+
+test('beta 11: a mix list of the five new sites is checked at once and downloads as one batch', {
+  tag: '@full',
+}, async () => {
+  // every site from its local fake: no network
+  const hls = await startFakeHls({tracks: VOD_TRACKS})
+  const twitch = await startFakeTwitch({hls})
+  const threads = await startFakeThreads()
+  const bluesky = await startFakeBluesky()
+  const snapchat = await startFakeSnapchat()
+  const soundcloud = await startFakeSoundcloud({hydrationId: SOUNDCLOUD_HYDRATION_ID})
+  try {
+    // the list as M4A (SoundCloud is sound only), the Twitch clip as a video of its own
+    const {app, page, outDir} = await launch(
+      'beta11-mix',
+      {},
+      {
+        MDC_TWITCH_ORIGIN: twitch.origin,
+        MDC_THREADS_ORIGIN: threads.origin,
+        MDC_BLUESKY_ORIGIN: bluesky.origin,
+        MDC_SNAPCHAT_ORIGIN: snapchat.origin,
+        MDC_SOUNDCLOUD_ORIGIN: soundcloud.origin,
+      },
+    )
+    const links = {
+      threads: `https://www.threads.com/@zuck/post/${threads.codes.video}`,
+      bluesky: `https://bsky.app/profile/${BLUESKY_HANDLES.alice}/post/${BLUESKY_RKEYS.video}`,
+      twitch: `https://clips.twitch.tv/${SLUGS.good}`,
+      snapchat: `https://www.snapchat.com/spotlight/${snapchat.ids.spotlight}`,
+      soundcloud: soundcloudTrackUrl('clear-track'),
+    }
+    await page.getByTestId('open-mix').click()
+    const dialog = page.getByRole('dialog')
+    const field = dialog.getByLabel('Paste or type a link')
+    for (const link of Object.values(links)) {
+      await field.fill(link)
+      await field.press('Enter')
+    }
+    await expect(dialog.getByTestId('mix-sites')).toContainText('5 links')
+    // each link tagged with its own site
+    for (const site of Object.keys(links)) await expect(dialog.locator(`[data-site="${site}"]`).first()).toBeVisible()
+    await dialog.getByTestId('mix-check').click()
+    await expect(dialog.getByTestId('mix-summary')).toContainText('5 ready', {timeout: 60_000})
+    const clip = dialog.locator('.rows-item', {hasText: 'twitch.tv'})
+    await clip.getByRole('combobox', {name: 'Format'}).click()
+    await page.locator('.ant-select-item-option-content', {hasText: 'Video · MP4 · Best available'}).first().click()
+    await page.screenshot({path: path.join(APP_DIR, 'test-results', 'beta11-mix.png')})
+    await dialog.getByTestId('mix-schedule').click()
+    const card = page.getByTestId('batch-card').first()
+    await expect(card).toHaveAttribute('data-status', 'completed', {timeout: 90_000})
+    await expect(card).toContainText('5/5 done')
+    const files = (await fs.readdir(outDir, {recursive: true})).map(String).filter(name => /\.(mp4|m4a)$/.test(name))
+    expect(files.filter(name => name.endsWith('.m4a'))).toHaveLength(4)
+    expect(files.filter(name => name.endsWith('.mp4'))).toHaveLength(1)
+    // the Finished tab names every site
+    await page.getByRole('tab', {name: /^Finished/}).click()
+    for (const site of Object.keys(links))
+      await expect(page.locator(`.finished-site[data-site="${site}"]`).first()).toBeVisible()
+    await close(app)
+  } finally {
+    for (const fake of [twitch, threads, bluesky, snapchat, soundcloud, hls]) await fake.close()
   }
 })

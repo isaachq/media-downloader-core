@@ -423,10 +423,45 @@ function siteSources() {
       },
     }),
     ...(process.env['MDC_THREADS_ORIGIN'] && {threads: metaOrigin('MDC_THREADS_ORIGIN')}),
+    // and Bluesky (AppView, PLC directory, did:web documents), Snapchat and SoundCloud from theirs
+    ...fakeSites(),
     // player-page sites (configured, or tried by host);
     // the engine's log isn't there yet: messages wait for it
     sources: playerSources((level, message) => queueMicrotask(() => engine.log(level, message))),
     unsupportedUrlSource: (url: URL) => hostSource(url, (level, message) => engine.log(level, message)),
+  }
+}
+
+/** Test hooks: Bluesky, Snapchat and SoundCloud read from local fakes, without pacing delays. */
+function fakeSites() {
+  const fast = {spacingMs: 0, jitterMs: 0}
+  const bluesky = process.env['MDC_BLUESKY_ORIGIN']
+  const snapchat = process.env['MDC_SNAPCHAT_ORIGIN']
+  const soundcloud = process.env['MDC_SOUNDCLOUD_ORIGIN']
+  return {
+    ...(bluesky && {
+      bluesky: {
+        endpoints: {
+          appView: bluesky,
+          plc: `${bluesky}/plc`,
+          didWebDocument: (host: string) => `${bluesky}/did-web/${host}/did.json`,
+        },
+        pacing: fast,
+        pdsPacing: fast,
+      },
+    }),
+    ...(snapchat && {snapchat: {endpoints: {origin: snapchat}, pacing: fast}}),
+    ...(soundcloud && {
+      soundcloud: {
+        endpoints: {
+          api: `${soundcloud}/api`,
+          web: soundcloud,
+          short: `${soundcloud}/short`,
+          assetHost: `${soundcloud}/assets`,
+        },
+        pacing: fast,
+      },
+    }),
   }
 }
 

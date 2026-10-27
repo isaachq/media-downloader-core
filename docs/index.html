@@ -191,6 +191,13 @@ section .intro { color: var(--muted); margin: 0 0 32px; max-width: 46em; font-si
 .feature .icon { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent-ink); margin-bottom: 12px; }
 .feature h3 { margin: 0 0 6px; font-size: 18px; }
 .feature p { margin: 0; color: var(--muted); font-size: 15px; }
+.sites-table { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.sites-table table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.sites-table th, .sites-table td { text-align: start; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.sites-table tbody tr:last-child > * { border-bottom: 0; }
+.sites-table thead th { font-size: 13px; color: var(--muted); font-weight: 600; white-space: nowrap; }
+.sites-table tbody th { white-space: nowrap; }
+.sites-table .muted { color: var(--muted); }
 
 .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; counter-reset: step; }
 @media (max-width: 800px) { .steps { grid-template-columns: 1fr; } }
@@ -264,6 +271,7 @@ footer a { color: var(--muted); }
     <div class="links">
       <a href="#new" data-i18n="nav.new">New</a>
       <a href="#features" data-i18n="nav.features">Features</a>
+      <a href="#sites" data-i18n="nav.sites">Sites</a>
       <a href="#how" data-i18n="nav.how">How it works</a>
       <a href="#signin" data-i18n="nav.signin">Sign in</a>
       <a href="#versions" data-i18n="nav.versions">Versions</a>
@@ -359,7 +367,7 @@ footer a { color: var(--muted); }
       <article class="feature">
         <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div>
         <h3 data-i18n="f1.title">Whole playlists and profiles</h3>
-        <p data-i18n="f1.text">YouTube playlists, channels and Mixes; TikTok, Instagram and Facebook videos, slideshows and carousels (as a video, or as images with their sound) and entire profiles; VK videos and playlists; X posts — with “Load all” for the thousands of posts of a veteran account.</p>
+        <p data-i18n="f1.text">YouTube playlists, channels and Mixes; whole profiles of TikTok, Instagram, Facebook, Threads, Bluesky, Snapchat and SoundCloud, carousels included (as a video, or as images with their sound); Twitch videos and live channels; X and VK — with “Load all” for the thousands of posts of a veteran account.</p>
       </article>
       <article class="feature">
         <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 12 5 5L20 6"/></svg></div>
@@ -420,12 +428,39 @@ footer a { color: var(--muted); }
   </div>
 </section>
 
+<section id="sites">
+  <div class="wrap"><!-- sites:start -->
+    <h2>Supported sites</h2>
+    <p class="intro">What each site downloads, whether it needs your sign-in, and whether the Android app has it.</p>
+    <div class="sites-table">
+      <table>
+        <thead><tr><th scope="col">Site</th><th scope="col">What it downloads</th><th scope="col">Sign-in</th><th scope="col">Android app</th></tr></thead>
+        <tbody>
+        <tr data-site="youtube"><th scope="row">YouTube</th><td>Videos, Shorts, playlists, channels and Mixes</td><td><a href="#signin">For private, members-only and age-restricted videos</a></td><td class="muted">Desktop only</td></tr>
+        <tr data-site="tiktok"><th scope="row">TikTok</th><td>Videos, photo posts and whole profiles</td><td class="muted">Not needed</td><td>Yes</td></tr>
+        <tr data-site="instagram"><th scope="row">Instagram</th><td>Posts, reels, carousels, profiles, stories and highlights</td><td><a href="#signin">For stories, highlights and private accounts</a></td><td>Yes</td></tr>
+        <tr data-site="facebook"><th scope="row">Facebook</th><td>Videos, reels and the videos of a page</td><td><a href="#signin">For most videos and stories</a></td><td>Yes</td></tr>
+        <tr data-site="twitch"><th scope="row">Twitch</th><td>Clips, past broadcasts, highlights, channels and live recording</td><td><a href="#signin">For subscriber-only videos and streams</a></td><td>Yes</td></tr>
+        <tr data-site="soundcloud"><th scope="row">SoundCloud</th><td>Tracks, sets and public profiles</td><td class="muted">Not needed</td><td>Yes</td></tr>
+        <tr data-site="x"><th scope="row">X</th><td>Posts with videos, GIFs or photos</td><td class="muted">Not needed</td><td>Yes</td></tr>
+        <tr data-site="threads"><th scope="row">Threads</th><td>Posts, carousels and public profiles</td><td><a href="#signin">For private accounts</a></td><td>Yes</td></tr>
+        <tr data-site="bluesky"><th scope="row">Bluesky</th><td>Posts, galleries, videos and public profiles</td><td class="muted">Not needed</td><td>Yes</td></tr>
+        <tr data-site="snapchat"><th scope="row">Snapchat</th><td>Spotlights, stories, highlights and public profiles</td><td class="muted">Not needed</td><td>Yes</td></tr>
+        <tr data-site="vk"><th scope="row">VK</th><td>Videos and playlists</td><td><a href="#signin">For private and restricted videos</a></td><td>Yes</td></tr>
+        <tr data-site="web"><th scope="row">Other websites</th><td>Videos from the other sites yt-dlp knows</td><td><a href="#signin">For the sites that ask for it</a></td><td class="muted">Desktop only</td></tr>
+        <tr data-site="file"><th scope="row">Link to a file</th><td>A link straight to a video, audio or picture file</td><td class="muted">Not needed</td><td>Yes</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <!-- sites:end --></div>
+</section>
+
 <section id="how">
   <div class="wrap">
     <h2 data-i18n="how.title">Three steps</h2>
     <p class="intro" data-i18n="how.intro">No command line, no settings to learn first — the first time, a short guide shows you around. In fourteen languages, light or dark.</p>
     <div class="steps">
-      <div class="step"><h3 data-i18n="s1.title">Paste a link</h3><p data-i18n="s1.text">A video, a playlist, a channel, a TikTok, Instagram or Facebook profile, a VK or X post — or a whole list of links of any sites.</p></div>
+      <div class="step"><h3 data-i18n="s1.title">Paste a link</h3><p data-i18n="s1.text">A video, a playlist, a channel, a profile of any supported site, a live Twitch channel — or a whole list of links of any sites.</p></div>
       <div class="step"><h3 data-i18n="s2.title">Pick what you want</h3><p data-i18n="s2.text">Everything it holds is listed first. Choose MP4 or MP3, the quality and the folder.</p></div>
       <div class="step"><h3 data-i18n="s3.title">Let it work</h3><p data-i18n="s3.text">Several downloads at once, each one verified. Watch the report, or come back later.</p></div>
     </div>

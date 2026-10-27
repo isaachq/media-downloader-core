@@ -526,6 +526,26 @@ test('one link box for every site: an old settings.json with a mode loads, Sync 
     // the tag eases from one site's colour to the next: the picture waits for it
     await page.waitForTimeout(400)
     await page.screenshot({path: path.join(APP_DIR, 'test-results', 'every-site.png')})
+    // under the tag: what the link downloads, whether it asks for a sign-in, whether yt-dlp reads it
+    const line = page.getByTestId('site-line')
+    await expect(line).toHaveText('Spotlights, stories, highlights and public profiles')
+    await field.fill('https://www.youtube.com/watch?v=x')
+    await expect(line).toHaveText(
+      'Videos, Shorts, playlists, channels and Mixes · Sign-in needed for private, members-only and age-restricted videos · Read by yt-dlp',
+    )
+    // the label counts the sites and opens their list
+    await expect(page.getByText('or any of the 13 supported sites')).toBeVisible()
+    await page.getByTestId('open-sites').click()
+    const sites = page.getByTestId('supported-sites')
+    await expect(sites.locator('.ant-table-row')).toHaveCount(13)
+    await expect(sites.locator('.ant-table-row').filter({hasText: 'Twitch'})).toContainText(
+      'For subscriber-only videos and streams',
+    )
+    await expect(sites.locator('.ant-table-row').filter({hasText: 'YouTube'})).toContainText('Desktop only')
+    await page.waitForTimeout(400)
+    await page.screenshot({path: path.join(APP_DIR, 'test-results', 'supported-sites.png')})
+    await page.keyboard.press('Escape')
+    await expect(sites).toHaveCount(0)
     await page.getByRole('button', {name: /settings/i}).click()
     await expect(page.getByRole('switch', {name: 'Run scheduled syncs (Sync Up)'})).toBeChecked()
     await expect(page.getByTestId('settings-mode')).toHaveCount(0)

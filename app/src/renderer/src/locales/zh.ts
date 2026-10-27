@@ -1,8 +1,10 @@
 // The desktop interface in Simplified Chinese: every key of ../i18n.ts, translated from the English
 // (and kept in line with the Android app). Placeholders ({name}) stay as they are; no long dashes.
+import {siteMessages} from '../../../shared/site-words'
 import type {MessageKey} from '../i18n'
 
 export const zh: Readonly<Record<MessageKey, string>> = {
+  ...siteMessages('zh'),
   'app.tagline': '大批量下载，逐个文件验证',
   'header.logs': '日志',
   'header.settings': '设置',
@@ -40,7 +42,7 @@ export const zh: Readonly<Record<MessageKey, string>> = {
   'site.soundcloud': 'SoundCloud',
   'site.web': '网站',
   'site.file': '文件',
-  'download.urlLabel': '粘贴来自 YouTube、TikTok、Instagram、Facebook、VK、X 或任意网站的链接',
+  'download.urlLabel': '粘贴 YouTube、TikTok、Instagram、Twitch 或 {count} 个支持网站中任意一个的链接',
   'download.invalidUrl': '请输入有效的 http(s) 链接',
   'download.paste': '粘贴',
   'download.format': '格式',

@@ -1,5 +1,6 @@
 import {createContext, useContext} from 'react'
 import type {Language} from '../../shared/contract'
+import {siteMessages} from '../../shared/site-words'
 import {ar} from './locales/ar'
 import {de} from './locales/de'
 import {fr} from './locales/fr'
@@ -14,6 +15,7 @@ import {vi} from './locales/vi'
 import {zh} from './locales/zh'
 
 const en = {
+  ...siteMessages('en'),
   'app.tagline': 'Heavy-duty batch downloads, verified file by file',
   'header.logs': 'Logs',
   'header.settings': 'Settings',
@@ -52,7 +54,7 @@ const en = {
   'site.soundcloud': 'SoundCloud',
   'site.web': 'Website',
   'site.file': 'File',
-  'download.urlLabel': 'Paste a link from YouTube, TikTok, Instagram, Facebook, VK, X or any website',
+  'download.urlLabel': 'Paste a link from YouTube, TikTok, Instagram, Twitch or any of the {count} supported sites',
   'download.invalidUrl': 'Enter a valid http(s) link',
   'download.paste': 'Paste',
   'download.format': 'Format',
@@ -707,6 +709,7 @@ export type MessageKey = keyof typeof en
 
 /** Spanish: the type forces every key to exist — a missing translation is a compile error. */
 const es: Record<MessageKey, string> = {
+  ...siteMessages('es'),
   'app.tagline': 'Descargas masivas por lotes, verificadas archivo por archivo',
   'header.logs': 'Registros',
   'header.settings': 'Configuración',
@@ -747,7 +750,8 @@ const es: Record<MessageKey, string> = {
   'site.soundcloud': 'SoundCloud',
   'site.web': 'Sitio web',
   'site.file': 'Archivo',
-  'download.urlLabel': 'Pega un enlace de YouTube, TikTok, Instagram, Facebook, VK, X o de cualquier sitio web',
+  'download.urlLabel':
+    'Pega un enlace de YouTube, TikTok, Instagram, Twitch o de cualquiera de los {count} sitios compatibles',
   'download.invalidUrl': 'Ingresa un enlace http(s) válido',
   'download.paste': 'Pegar',
   'download.format': 'Formato',

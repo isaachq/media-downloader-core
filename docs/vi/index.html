@@ -191,6 +191,13 @@ section .intro { color: var(--muted); margin: 0 0 32px; max-width: 46em; font-si
 .feature .icon { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent-ink); margin-bottom: 12px; }
 .feature h3 { margin: 0 0 6px; font-size: 18px; }
 .feature p { margin: 0; color: var(--muted); font-size: 15px; }
+.sites-table { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.sites-table table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.sites-table th, .sites-table td { text-align: start; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.sites-table tbody tr:last-child > * { border-bottom: 0; }
+.sites-table thead th { font-size: 13px; color: var(--muted); font-weight: 600; white-space: nowrap; }
+.sites-table tbody th { white-space: nowrap; }
+.sites-table .muted { color: var(--muted); }
 
 .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; counter-reset: step; }
 @media (max-width: 800px) { .steps { grid-template-columns: 1fr; } }
@@ -264,6 +271,7 @@ footer a { color: var(--muted); }
     <div class="links">
       <a href="#new" data-i18n="nav.new">Mới</a>
       <a href="#features" data-i18n="nav.features">Tính năng</a>
+      <a href="#sites" data-i18n="nav.sites">Trang web</a>
       <a href="#how" data-i18n="nav.how">Cách hoạt động</a>
       <a href="#signin" data-i18n="nav.signin">Đăng nhập</a>
       <a href="#versions" data-i18n="nav.versions">Phiên bản</a>
@@ -359,7 +367,7 @@ footer a { color: var(--muted); }
       <article class="feature">
         <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div>
         <h3 data-i18n="f1.title">Toàn bộ danh sách phát và hồ sơ</h3>
-        <p data-i18n="f1.text">Danh sách phát, kênh và Mix YouTube; video, trình chiếu và băng chuyền TikTok, Instagram và Facebook (dưới dạng video, hoặc dạng ảnh kèm âm thanh) và toàn bộ hồ sơ; video và danh sách phát VK; bài đăng X — với “Tải tất cả” cho hàng nghìn bài đăng của một tài khoản lâu năm.</p>
+        <p data-i18n="f1.text">Danh sách phát, kênh và Mix của YouTube; toàn bộ trang cá nhân TikTok, Instagram, Facebook, Threads, Bluesky, Snapchat và SoundCloud, kể cả băng chuyền (thành video, hoặc thành ảnh kèm âm thanh); video và kênh trực tiếp của Twitch; X và VK — với “Tải tất cả” cho hàng nghìn bài đăng của một tài khoản lâu năm.</p>
       </article>
       <article class="feature">
         <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 12 5 5L20 6"/></svg></div>
@@ -420,12 +428,39 @@ footer a { color: var(--muted); }
   </div>
 </section>
 
+<section id="sites">
+  <div class="wrap"><!-- sites:start -->
+    <h2>Trang được hỗ trợ</h2>
+    <p class="intro">Mỗi trang tải được gì, có cần đăng nhập không, và ứng dụng Android có hỗ trợ không.</p>
+    <div class="sites-table">
+      <table>
+        <thead><tr><th scope="col">Trang</th><th scope="col">Tải được gì</th><th scope="col">Đăng nhập</th><th scope="col">Ứng dụng Android</th></tr></thead>
+        <tbody>
+        <tr data-site="youtube"><th scope="row">YouTube</th><td>Video, Shorts, danh sách phát, kênh và Mix</td><td><a href="#signin">Cho video riêng tư, dành cho hội viên và giới hạn độ tuổi</a></td><td class="muted">Chỉ trên máy tính</td></tr>
+        <tr data-site="tiktok"><th scope="row">TikTok</th><td>Video, bài đăng ảnh và toàn bộ trang cá nhân</td><td class="muted">Không cần</td><td>Có</td></tr>
+        <tr data-site="instagram"><th scope="row">Instagram</th><td>Bài đăng, reels, băng chuyền, trang cá nhân, tin và tin nổi bật</td><td><a href="#signin">Cho tin, tin nổi bật và tài khoản riêng tư</a></td><td>Có</td></tr>
+        <tr data-site="facebook"><th scope="row">Facebook</th><td>Video, reels và video của một trang</td><td><a href="#signin">Cho phần lớn video và tin</a></td><td>Có</td></tr>
+        <tr data-site="twitch"><th scope="row">Twitch</th><td>Clip, buổi phát đã qua, highlight, kênh và ghi hình trực tiếp</td><td><a href="#signin">Cho video và buổi phát chỉ dành cho người đăng ký</a></td><td>Có</td></tr>
+        <tr data-site="soundcloud"><th scope="row">SoundCloud</th><td>Bài hát, set và trang cá nhân công khai</td><td class="muted">Không cần</td><td>Có</td></tr>
+        <tr data-site="x"><th scope="row">X</th><td>Bài đăng có video, GIF hoặc ảnh</td><td class="muted">Không cần</td><td>Có</td></tr>
+        <tr data-site="threads"><th scope="row">Threads</th><td>Bài đăng, băng chuyền và trang cá nhân công khai</td><td><a href="#signin">Cho tài khoản riêng tư</a></td><td>Có</td></tr>
+        <tr data-site="bluesky"><th scope="row">Bluesky</th><td>Bài đăng, thư viện ảnh, video và trang cá nhân công khai</td><td class="muted">Không cần</td><td>Có</td></tr>
+        <tr data-site="snapchat"><th scope="row">Snapchat</th><td>Spotlight, tin, tin nổi bật và trang cá nhân công khai</td><td class="muted">Không cần</td><td>Có</td></tr>
+        <tr data-site="vk"><th scope="row">VK</th><td>Video và danh sách phát</td><td><a href="#signin">Cho video riêng tư và bị giới hạn</a></td><td>Có</td></tr>
+        <tr data-site="web"><th scope="row">Các trang web khác</th><td>Video từ các trang khác mà yt-dlp biết</td><td><a href="#signin">Cho các trang yêu cầu</a></td><td class="muted">Chỉ trên máy tính</td></tr>
+        <tr data-site="file"><th scope="row">Liên kết tới tệp</th><td>Liên kết thẳng đến tệp video, âm thanh hoặc ảnh</td><td class="muted">Không cần</td><td>Có</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <!-- sites:end --></div>
+</section>
+
 <section id="how">
   <div class="wrap">
     <h2 data-i18n="how.title">Ba bước</h2>
     <p class="intro" data-i18n="how.intro">Không dòng lệnh, không cài đặt phải học trước — lần đầu, một hướng dẫn ngắn sẽ dẫn bạn đi một vòng. Bằng mười bốn ngôn ngữ, sáng hoặc tối.</p>
     <div class="steps">
-      <div class="step"><h3 data-i18n="s1.title">Dán liên kết</h3><p data-i18n="s1.text">Một video, danh sách phát, kênh, hồ sơ TikTok, Instagram hoặc Facebook, bài đăng VK hoặc X — hoặc cả danh sách liên kết từ mọi trang.</p></div>
+      <div class="step"><h3 data-i18n="s1.title">Dán liên kết</h3><p data-i18n="s1.text">Một video, một danh sách phát, một kênh, trang cá nhân của bất kỳ trang được hỗ trợ nào, một kênh Twitch đang phát trực tiếp — hoặc cả một danh sách liên kết từ bất kỳ trang nào.</p></div>
       <div class="step"><h3 data-i18n="s2.title">Chọn thứ bạn muốn</h3><p data-i18n="s2.text">Mọi thứ bên trong được liệt kê trước. Chọn MP4 hoặc MP3, chất lượng và thư mục.</p></div>
       <div class="step"><h3 data-i18n="s3.title">Để nó làm việc</h3><p data-i18n="s3.text">Nhiều lượt tải cùng lúc, mỗi lượt đều được xác minh. Theo dõi báo cáo, hoặc quay lại sau.</p></div>
     </div>

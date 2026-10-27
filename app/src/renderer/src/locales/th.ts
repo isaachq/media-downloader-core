@@ -1,8 +1,10 @@
 // The desktop interface in Thai: every key of ../i18n.ts, translated from the English
 // (and kept in line with the Android app). Placeholders ({name}) stay as they are; no long dashes.
+import {siteMessages} from '../../../shared/site-words'
 import type {MessageKey} from '../i18n'
 
 export const th: Readonly<Record<MessageKey, string>> = {
+  ...siteMessages('th'),
   'app.tagline': 'ดาวน์โหลดเป็นชุดได้ทีละมาก ๆ ตรวจสอบทีละไฟล์',
   'header.logs': 'บันทึก',
   'header.settings': 'การตั้งค่า',
@@ -40,7 +42,7 @@ export const th: Readonly<Record<MessageKey, string>> = {
   'site.soundcloud': 'SoundCloud',
   'site.web': 'เว็บไซต์',
   'site.file': 'ไฟล์',
-  'download.urlLabel': 'วางลิงก์จาก YouTube, TikTok, Instagram, Facebook, VK, X หรือเว็บไซต์ใดก็ได้',
+  'download.urlLabel': 'วางลิงก์จาก YouTube, TikTok, Instagram, Twitch หรือเว็บใดก็ได้จาก {count} เว็บที่รองรับ',
   'download.invalidUrl': 'ใส่ลิงก์ http(s) ที่ถูกต้อง',
   'download.paste': 'วาง',
   'download.format': 'รูปแบบ',

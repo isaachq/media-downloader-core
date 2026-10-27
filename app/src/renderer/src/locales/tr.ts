@@ -1,8 +1,10 @@
 // The desktop interface in Turkish: every key of ../i18n.ts, translated from the English
 // (and kept in line with the Android app). Placeholders ({name}) stay as they are; no long dashes.
+import {siteMessages} from '../../../shared/site-words'
 import type {MessageKey} from '../i18n'
 
 export const tr: Readonly<Record<MessageKey, string>> = {
+  ...siteMessages('tr'),
   'app.tagline': 'Güçlü toplu indirme, her dosya tek tek doğrulanır',
   'header.logs': 'Kayıtlar',
   'header.settings': 'Ayarlar',
@@ -43,7 +45,7 @@ export const tr: Readonly<Record<MessageKey, string>> = {
   'site.web': 'Web sitesi',
   'site.file': 'Dosya',
   'download.urlLabel':
-    'YouTube, TikTok, Instagram, Facebook, VK, X veya herhangi bir web sitesinden bir bağlantı yapıştır',
+    'YouTube, TikTok, Instagram, Twitch veya desteklenen {count} siteden birinden bir bağlantı yapıştır',
   'download.invalidUrl': 'Geçerli bir http(s) bağlantısı gir',
   'download.paste': 'Yapıştır',
   'download.format': 'Biçim',

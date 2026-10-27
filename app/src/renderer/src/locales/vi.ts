@@ -1,8 +1,10 @@
 // The desktop interface in Vietnamese: every key of ../i18n.ts, translated from the English
 // (and kept in line with the Android app). Placeholders ({name}) stay as they are; no long dashes.
+import {siteMessages} from '../../../shared/site-words'
 import type {MessageKey} from '../i18n'
 
 export const vi: Readonly<Record<MessageKey, string>> = {
+  ...siteMessages('vi'),
   'app.tagline': 'Tải hàng loạt mạnh mẽ, xác minh từng tệp',
   'header.logs': 'Nhật ký',
   'header.settings': 'Cài đặt',
@@ -41,7 +43,8 @@ export const vi: Readonly<Record<MessageKey, string>> = {
   'site.soundcloud': 'SoundCloud',
   'site.web': 'Trang web',
   'site.file': 'Tệp',
-  'download.urlLabel': 'Dán liên kết từ YouTube, TikTok, Instagram, Facebook, VK, X hoặc bất kỳ trang web nào',
+  'download.urlLabel':
+    'Dán liên kết từ YouTube, TikTok, Instagram, Twitch hoặc bất kỳ trang nào trong {count} trang được hỗ trợ',
   'download.invalidUrl': 'Nhập một liên kết http(s) hợp lệ',
   'download.paste': 'Dán',
   'download.format': 'Định dạng',

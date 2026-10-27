@@ -191,6 +191,13 @@ section .intro { color: var(--muted); margin: 0 0 32px; max-width: 46em; font-si
 .feature .icon { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent-ink); margin-bottom: 12px; }
 .feature h3 { margin: 0 0 6px; font-size: 18px; }
 .feature p { margin: 0; color: var(--muted); font-size: 15px; }
+.sites-table { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.sites-table table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.sites-table th, .sites-table td { text-align: start; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.sites-table tbody tr:last-child > * { border-bottom: 0; }
+.sites-table thead th { font-size: 13px; color: var(--muted); font-weight: 600; white-space: nowrap; }
+.sites-table tbody th { white-space: nowrap; }
+.sites-table .muted { color: var(--muted); }
 
 .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; counter-reset: step; }
 @media (max-width: 800px) { .steps { grid-template-columns: 1fr; } }
@@ -264,6 +271,7 @@ footer a { color: var(--muted); }
     <div class="links">
       <a href="#new" data-i18n="nav.new">नया</a>
       <a href="#features" data-i18n="nav.features">सुविधाएँ</a>
+      <a href="#sites" data-i18n="nav.sites">साइटें</a>
       <a href="#how" data-i18n="nav.how">यह कैसे काम करता है</a>
       <a href="#signin" data-i18n="nav.signin">साइन इन</a>
       <a href="#versions" data-i18n="nav.versions">संस्करण</a>
@@ -359,7 +367,7 @@ footer a { color: var(--muted); }
       <article class="feature">
         <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div>
         <h3 data-i18n="f1.title">पूरी प्लेलिस्ट और प्रोफ़ाइल</h3>
-        <p data-i18n="f1.text">YouTube प्लेलिस्ट, चैनल और मिक्स; TikTok, Instagram और Facebook वीडियो, स्लाइडशो और कैरोसेल (वीडियो के रूप में, या आवाज़ सहित तस्वीरों के रूप में) और पूरी प्रोफ़ाइल; VK वीडियो और प्लेलिस्ट; X पोस्ट — पुराने खाते की हज़ारों पोस्ट के लिए “सब लोड करें” के साथ।</p>
+        <p data-i18n="f1.text">YouTube की प्लेलिस्ट, चैनल और Mix; TikTok, Instagram, Facebook, Threads, Bluesky, Snapchat और SoundCloud की पूरी प्रोफ़ाइल, कैरोसेल समेत (वीडियो के रूप में, या आवाज़ के साथ तस्वीरों के रूप में); Twitch के वीडियो और लाइव चैनल; X और VK — किसी पुराने अकाउंट की हज़ारों पोस्ट के लिए “सब लोड करें” के साथ।</p>
       </article>
       <article class="feature">
         <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 12 5 5L20 6"/></svg></div>
@@ -420,12 +428,39 @@ footer a { color: var(--muted); }
   </div>
 </section>
 
+<section id="sites">
+  <div class="wrap"><!-- sites:start -->
+    <h2>समर्थित साइटें</h2>
+    <p class="intro">हर साइट से क्या डाउनलोड होता है, क्या साइन-इन चाहिए, और क्या Android ऐप में यह है।</p>
+    <div class="sites-table">
+      <table>
+        <thead><tr><th scope="col">साइट</th><th scope="col">क्या डाउनलोड होता है</th><th scope="col">साइन-इन</th><th scope="col">Android ऐप</th></tr></thead>
+        <tbody>
+        <tr data-site="youtube"><th scope="row">YouTube</th><td>वीडियो, Shorts, प्लेलिस्ट, चैनल और Mix</td><td><a href="#signin">निजी, सिर्फ़ सदस्यों वाले और उम्र-प्रतिबंधित वीडियो के लिए</a></td><td class="muted">सिर्फ़ डेस्कटॉप</td></tr>
+        <tr data-site="tiktok"><th scope="row">TikTok</th><td>वीडियो, फ़ोटो पोस्ट और पूरी प्रोफ़ाइल</td><td class="muted">ज़रूरी नहीं</td><td>हाँ</td></tr>
+        <tr data-site="instagram"><th scope="row">Instagram</th><td>पोस्ट, रील, कैरोसेल, प्रोफ़ाइल, स्टोरी और हाइलाइट</td><td><a href="#signin">स्टोरी, हाइलाइट और निजी अकाउंट के लिए</a></td><td>हाँ</td></tr>
+        <tr data-site="facebook"><th scope="row">Facebook</th><td>वीडियो, रील और किसी पेज के वीडियो</td><td><a href="#signin">ज़्यादातर वीडियो और स्टोरी के लिए</a></td><td>हाँ</td></tr>
+        <tr data-site="twitch"><th scope="row">Twitch</th><td>क्लिप, पिछले प्रसारण, हाइलाइट, चैनल और लाइव रिकॉर्डिंग</td><td><a href="#signin">सिर्फ़ सब्सक्राइबर वाले वीडियो और स्ट्रीम के लिए</a></td><td>हाँ</td></tr>
+        <tr data-site="soundcloud"><th scope="row">SoundCloud</th><td>ट्रैक, सेट और सार्वजनिक प्रोफ़ाइल</td><td class="muted">ज़रूरी नहीं</td><td>हाँ</td></tr>
+        <tr data-site="x"><th scope="row">X</th><td>वीडियो, GIF या फ़ोटो वाली पोस्ट</td><td class="muted">ज़रूरी नहीं</td><td>हाँ</td></tr>
+        <tr data-site="threads"><th scope="row">Threads</th><td>पोस्ट, कैरोसेल और सार्वजनिक प्रोफ़ाइल</td><td><a href="#signin">निजी अकाउंट के लिए</a></td><td>हाँ</td></tr>
+        <tr data-site="bluesky"><th scope="row">Bluesky</th><td>पोस्ट, गैलरी, वीडियो और सार्वजनिक प्रोफ़ाइल</td><td class="muted">ज़रूरी नहीं</td><td>हाँ</td></tr>
+        <tr data-site="snapchat"><th scope="row">Snapchat</th><td>Spotlight, स्टोरी, हाइलाइट और सार्वजनिक प्रोफ़ाइल</td><td class="muted">ज़रूरी नहीं</td><td>हाँ</td></tr>
+        <tr data-site="vk"><th scope="row">VK</th><td>वीडियो और प्लेलिस्ट</td><td><a href="#signin">निजी और प्रतिबंधित वीडियो के लिए</a></td><td>हाँ</td></tr>
+        <tr data-site="web"><th scope="row">दूसरी वेबसाइटें</th><td>yt-dlp जिन दूसरी साइटों को जानता है, उनके वीडियो</td><td><a href="#signin">जो साइटें इसे मांगती हैं के लिए</a></td><td class="muted">सिर्फ़ डेस्कटॉप</td></tr>
+        <tr data-site="file"><th scope="row">फ़ाइल का लिंक</th><td>वीडियो, ऑडियो या तस्वीर फ़ाइल का सीधा लिंक</td><td class="muted">ज़रूरी नहीं</td><td>हाँ</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <!-- sites:end --></div>
+</section>
+
 <section id="how">
   <div class="wrap">
     <h2 data-i18n="how.title">तीन चरण</h2>
     <p class="intro" data-i18n="how.intro">कोई कमांड लाइन नहीं, पहले सीखने के लिए कोई सेटिंग नहीं — पहली बार एक छोटी गाइड आपको सब दिखाती है। चौदह भाषाओं में, लाइट या डार्क।</p>
     <div class="steps">
-      <div class="step"><h3 data-i18n="s1.title">एक लिंक पेस्ट करें</h3><p data-i18n="s1.text">एक वीडियो, प्लेलिस्ट, चैनल, TikTok, Instagram या Facebook प्रोफ़ाइल, VK या X पोस्ट — या किसी भी साइट के लिंक की पूरी सूची।</p></div>
+      <div class="step"><h3 data-i18n="s1.title">एक लिंक पेस्ट करें</h3><p data-i18n="s1.text">एक वीडियो, एक प्लेलिस्ट, एक चैनल, किसी भी समर्थित साइट की प्रोफ़ाइल, Twitch का लाइव चैनल — या किसी भी साइट के लिंक की पूरी सूची।</p></div>
       <div class="step"><h3 data-i18n="s2.title">जो चाहिए वह चुनें</h3><p data-i18n="s2.text">इसमें जो कुछ भी है, पहले उसकी सूची बनती है। MP4 या MP3, गुणवत्ता और फ़ोल्डर चुनें।</p></div>
       <div class="step"><h3 data-i18n="s3.title">इसे काम करने दें</h3><p data-i18n="s3.text">एक साथ कई डाउनलोड, हर एक सत्यापित। रिपोर्ट देखते रहें, या बाद में लौटें।</p></div>
     </div>

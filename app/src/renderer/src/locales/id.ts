@@ -1,8 +1,10 @@
 // The desktop interface in Indonesian: every key of ../i18n.ts, translated from the English
 // (and kept in line with the Android app). Placeholders ({name}) stay as they are; no long dashes.
+import {siteMessages} from '../../../shared/site-words'
 import type {MessageKey} from '../i18n'
 
 export const id: Readonly<Record<MessageKey, string>> = {
+  ...siteMessages('id'),
   'app.tagline': 'Unduhan batch skala besar, diverifikasi file demi file',
   'header.logs': 'Log',
   'header.settings': 'Pengaturan',
@@ -40,7 +42,8 @@ export const id: Readonly<Record<MessageKey, string>> = {
   'site.soundcloud': 'SoundCloud',
   'site.web': 'Situs web',
   'site.file': 'File',
-  'download.urlLabel': 'Tempel tautan dari YouTube, TikTok, Instagram, Facebook, VK, X, atau situs web apa pun',
+  'download.urlLabel':
+    'Tempel tautan dari YouTube, TikTok, Instagram, Twitch, atau salah satu dari {count} situs yang didukung',
   'download.invalidUrl': 'Masukkan tautan http(s) yang valid',
   'download.paste': 'Tempel',
   'download.format': 'Format',

@@ -5,7 +5,7 @@ import {
   ScheduleOutlined,
   SnippetsOutlined,
 } from '@ant-design/icons'
-import {App as AntApp, Button, Card, Col, Form, Input, Row, Select, Space, Tag, Typography} from 'antd'
+import {App as AntApp, Button, Card, Col, Form, Input, Modal, Row, Select, Space, Tag, Typography} from 'antd'
 import {type DragEvent, useMemo, useRef, useState} from 'react'
 import {
   AUDIO_FORMATS,
@@ -19,6 +19,7 @@ import {
   type ScheduleInput,
   VIDEO_FORMATS,
 } from '../../../shared/contract'
+import {SITES} from '../../../shared/sites'
 import {api} from '../api'
 import {useApp} from '../context'
 import {errorText} from '../format'
@@ -29,6 +30,7 @@ import {MixListModal} from './MixListModal'
 import {type PlaylistPreview, type PreviewChoice, PreviewModal} from './PreviewModal'
 import {SiteTag} from './SiteTag'
 import {SlideshowModal} from './SlideshowChoice'
+import {SiteLine, SupportedSites} from './SupportedSites'
 import {SyncPanel} from './SyncPanel'
 
 const ACTIVE = new Set(['checking', 'running', 'validating'])
@@ -64,6 +66,7 @@ export function DownloadBar() {
   /** A mix list being put together: several links pasted or dropped at once (checked at once), or the button. */
   const [mix, setMix] = useState<{readonly text: string; readonly check: boolean} | undefined>()
   const [dropping, setDropping] = useState(false)
+  const [sitesOpen, setSitesOpen] = useState(false)
   // set when the user stops the reading: its rejection is not an error to show
   const cancelled = useRef(false)
 
@@ -217,7 +220,21 @@ export function DownloadBar() {
     >
       <Form layout="vertical" onFinish={() => void submit()} requiredMark={false}>
         <Form.Item
-          label={t('download.urlLabel')}
+          label={
+            <span>
+              {t('download.urlLabel', {count: SITES.length})}{' '}
+              <Typography.Link
+                data-testid="open-sites"
+                onClick={event => {
+                  // the link sits in the field's label: it opens the list, not the field
+                  event.preventDefault()
+                  setSitesOpen(true)
+                }}
+              >
+                {t('sites.title')}
+              </Typography.Link>
+            </span>
+          }
           validateStatus={touched && !valid ? 'error' : ''}
           help={touched && !valid ? t('download.invalidUrl') : undefined}
         >
@@ -254,6 +271,7 @@ export function DownloadBar() {
             <SiteTag site={detected.file && detected.site === 'web' ? 'file' : detected.site} />
             {/playlist|\/sets\/|\/album\//i.test(detected.url) && <Tag color="gold">{t('download.tag.list')}</Tag>}
             {/@[\w.-]+/.test(detected.url) && <Tag color="lime">{t('download.tag.profile')}</Tag>}
+            <SiteLine site={detected.file && detected.site === 'web' ? 'file' : detected.site} />
           </div>
         ) : null}
         <div style={{marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap'}}>
@@ -366,6 +384,16 @@ export function DownloadBar() {
           onCancel={() => setSlide(undefined)}
         />
       ) : null}
+      <Modal
+        open={sitesOpen}
+        title={t('sites.title')}
+        width={860}
+        footer={null}
+        onCancel={() => setSitesOpen(false)}
+        destroyOnHidden
+      >
+        <SupportedSites />
+      </Modal>
       {mix ? (
         <MixListModal
           text={mix.text}

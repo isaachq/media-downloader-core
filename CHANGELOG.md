@@ -22,7 +22,7 @@ away when the beta closes.
 - [x] 7 `release: library 1.21.0` · done (Isaac tags `lib-v1.21.0`; then `npm view` and a grep of the five new LinkSites in `dist/detect.js`) · verified locally on 41eb91e + the bump: the library half of `test:full` is green: `check` (typecheck, lint, `test:fast` 682 pass / 0 fail / 2 skipped), `test:heavy` 81 pass, `build`, `pack:check` (ESM, CJS, CLI 1.21.0); `perf --quick` on a quiet machine within 7% of the baseline everywhere (on 82f87ec; 3d within 10%, 3e within 5%) (archive loadMs +3.1%: the +22% seen earlier was another run on the machine). The app half (`npm --prefix app run typecheck`) fails until commit 8 gives the five new sites a tag and a name: expected, closed there
 - [x] 7b `fix(sync): idle before a run is announced as ended` · done · found by CI on PR #55 (windows-latest, `test:fast`: "is already syncing" right after `whenDone`) · verified locally on Windows: the new assertion fails without the fix and passes with it, `test/sync.test.ts` 10 of 10 five runs in a row, `check` (typecheck, lint), `test:fast` 684 tests / 682 pass / 0 fail / 2 skipped
 - [x] 8 `app: site tags and icons` · done (icons and colours approved by Isaac) · verified locally: `npm --prefix app run typecheck` clean (closes the failure noted in 7), `lint` clean (289 files), `site:check` 14 languages up to date, app unit 14 files / 204 pass (every locale has every key), `test:e2e:smoke` 3 pass in 14 s; the tag smoke test now pastes one link per new site and checks its `data-site`, its name and that its icon draws (computed classes `ant-tag-default`, `-blue`, `-purple`, `-orange`, `-gold`; the screenshot waits 400 ms for the colour to ease in)
-- [ ] 9 `app: supported sites` · not done
+- [x] 9 `app: supported sites` · done · verified locally: `npm --prefix app run typecheck` clean, `lint` clean (293 files), `site:check` 14 languages and the README up to date, app unit 15 files / 207 pass (`shared/sites.test.ts`: every `LinkSite` and a file link listed once, yt-dlp sites are desktop only, every language has every site's words and a sign-in reason exactly where `signIn`; the label and the line under a pasted link in English and Spanish), `test:e2e:smoke` 3 pass (the tag test opens the list: 13 rows, Twitch's sign-in reason, YouTube desktop only; the line under a Snapchat and a YouTube link); the website's Spanish page checked at 672 px wide: 13 rows, no sideways scroll. Cost: O(sites) once per dictionary and per page, O(1) per pasted link (`SITE_BY_LABEL`)
 - [ ] 10 `app: sign-in for threads and twitch` · not done
 - [ ] 10b `app: twitch live` · not done (Record on a live link, a live player with hls.js, elapsed time, Stop and Cancel, 14 locales)
 - [ ] 11 `app: beta 11 e2e` · not done
@@ -343,6 +343,13 @@ away when the beta closes.
 
 **Desktop app**
 
+- **Supported sites, in one list**: `app/src/shared/sites.ts` says for each site what it
+  downloads, whether some of it needs the user's sign-in, whether yt-dlp reads it and whether
+  the Android app has it, with its words in all 14 languages (`site-words.ts`). The label of
+  the link box counts them and opens the list; About shows it too; under a pasted link a
+  line says what it downloads, what needs a sign-in and when yt-dlp reads it. The README's
+  table and the website's (a new section, in every language) are generated from the same
+  list by `scripts/build-site.mjs`, and `site:check` fails when either drifts.
 - **Five new sites are tagged**: a link from Threads, Bluesky, Twitch, SoundCloud or Snapchat
   shows its site with its own icon and colour (antd's Threads, Twitch and Snapchat icons; drawn
   ones for Bluesky and SoundCloud), named the same in all 14 languages.

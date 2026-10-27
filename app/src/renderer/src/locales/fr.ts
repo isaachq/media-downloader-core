@@ -1,8 +1,10 @@
 // The desktop interface in French: every key of ../i18n.ts, translated from the English
 // (and kept in line with the Android app). Placeholders ({name}) stay as they are; no long dashes.
+import {siteMessages} from '../../../shared/site-words'
 import type {MessageKey} from '../i18n'
 
 export const fr: Readonly<Record<MessageKey, string>> = {
+  ...siteMessages('fr'),
   'app.tagline': 'Téléchargements en lot intensifs, vérifiés fichier par fichier',
   'header.logs': 'Journaux',
   'header.settings': 'Réglages',
@@ -41,7 +43,8 @@ export const fr: Readonly<Record<MessageKey, string>> = {
   'site.soundcloud': 'SoundCloud',
   'site.web': 'Site web',
   'site.file': 'Fichier',
-  'download.urlLabel': 'Colle un lien de YouTube, TikTok, Instagram, Facebook, VK, X ou de n’importe quel site web',
+  'download.urlLabel':
+    'Colle un lien de YouTube, TikTok, Instagram, Twitch ou de l’un des {count} sites pris en charge',
   'download.invalidUrl': 'Saisis un lien http(s) valide',
   'download.paste': 'Coller',
   'download.format': 'Format',

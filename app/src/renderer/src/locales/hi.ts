@@ -1,8 +1,10 @@
 // The desktop interface in Hindi: every key of ../i18n.ts, translated from the English
 // (and kept in line with the Android app). Placeholders ({name}) stay as they are; no long dashes.
+import {siteMessages} from '../../../shared/site-words'
 import type {MessageKey} from '../i18n'
 
 export const hi: Readonly<Record<MessageKey, string>> = {
+  ...siteMessages('hi'),
   'app.tagline': 'भारी-भरकम बैच डाउनलोड, हर फ़ाइल सत्यापित',
   'header.logs': 'लॉग',
   'header.settings': 'सेटिंग्स',
@@ -40,7 +42,7 @@ export const hi: Readonly<Record<MessageKey, string>> = {
   'site.soundcloud': 'SoundCloud',
   'site.web': 'वेबसाइट',
   'site.file': 'फ़ाइल',
-  'download.urlLabel': 'YouTube, TikTok, Instagram, Facebook, VK, X या किसी भी वेबसाइट का लिंक पेस्ट करें',
+  'download.urlLabel': 'YouTube, TikTok, Instagram, Twitch या {count} समर्थित साइटों में से किसी का भी लिंक पेस्ट करें',
   'download.invalidUrl': 'मान्य http(s) लिंक डालें',
   'download.paste': 'पेस्ट करें',
   'download.format': 'फ़ॉर्मेट',

@@ -27,9 +27,10 @@ songs while it checks every single file.
 
 ## Features
 
-- **Whole playlists and profiles** — YouTube playlists, channels and Mixes; TikTok,
-  Instagram and Facebook videos, carousels and entire profiles; VK videos and playlists;
-  X posts; or a link straight to a media file.
+- **Whole playlists and profiles** — YouTube playlists, channels and Mixes; whole profiles
+  of TikTok, Instagram, Facebook, Threads, Bluesky, Snapchat and SoundCloud; Twitch videos
+  and live channels; X and VK; or a link straight to a media file
+  ([every site](#supported-sites)).
 - **Pick before you download** — a preview lists everything a link holds; filter and select
   only what you want.
 - **Mix list** — links of any sites gathered into one batch, with one format for all or a
@@ -49,6 +50,31 @@ songs while it checks every single file.
 | ![Preview of a YouTube Mix: pick what to download](docs/screenshots/preview.png) | ![A checked mix list grouped by site, one link as MP3](docs/screenshots/mix-preview.png) |
 | **Downloading, with the time left** | **Everything finished, in one place** |
 | ![A running batch with its disk forecast and estimated time left](docs/screenshots/batch.png) | ![The Finished tab: play, show in folder and integrity of every file](docs/screenshots/finished.png) |
+
+## Supported sites
+
+What each site downloads, whether it needs your sign-in (the app uses your browser's
+session; it never asks for a password), and whether the Android app has it. The same
+list is in the app (the link above the box you paste into, and About) and on the website;
+how each site is read is in [documentation/sites.md](documentation/sites.md).
+
+<!-- sites:start -->
+| Site | What it downloads | Sign-in | Read by | Android app |
+| --- | --- | --- | --- | --- |
+| YouTube | Videos, Shorts, playlists, channels and Mixes | For private, members-only and age-restricted videos | yt-dlp | Desktop only |
+| TikTok | Videos, photo posts and whole profiles | Not needed | the library | Yes |
+| Instagram | Posts, reels, carousels, profiles, stories and highlights | For stories, highlights and private accounts | the library | Yes |
+| Facebook | Videos, reels and the videos of a page | For most videos and stories | the library | Yes |
+| Twitch | Clips, past broadcasts, highlights, channels and live recording | For subscriber-only videos and streams | the library | Yes |
+| SoundCloud | Tracks, sets and public profiles | Not needed | the library | Yes |
+| X | Posts with videos, GIFs or photos | Not needed | the library | Yes |
+| Threads | Posts, carousels and public profiles | For private accounts | the library | Yes |
+| Bluesky | Posts, galleries, videos and public profiles | Not needed | the library | Yes |
+| Snapchat | Spotlights, stories, highlights and public profiles | Not needed | the library | Yes |
+| VK | Videos and playlists | For private and restricted videos | the library | Yes |
+| Other websites | Videos from the other sites yt-dlp knows | For the sites that ask for it | yt-dlp | Desktop only |
+| Link to a file | A link straight to a video, audio or picture file | Not needed | the library | Yes |
+<!-- sites:end -->
 
 ## Install
 

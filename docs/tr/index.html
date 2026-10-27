@@ -191,6 +191,13 @@ section .intro { color: var(--muted); margin: 0 0 32px; max-width: 46em; font-si
 .feature .icon { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent-ink); margin-bottom: 12px; }
 .feature h3 { margin: 0 0 6px; font-size: 18px; }
 .feature p { margin: 0; color: var(--muted); font-size: 15px; }
+.sites-table { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.sites-table table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.sites-table th, .sites-table td { text-align: start; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.sites-table tbody tr:last-child > * { border-bottom: 0; }
+.sites-table thead th { font-size: 13px; color: var(--muted); font-weight: 600; white-space: nowrap; }
+.sites-table tbody th { white-space: nowrap; }
+.sites-table .muted { color: var(--muted); }
 
 .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; counter-reset: step; }
 @media (max-width: 800px) { .steps { grid-template-columns: 1fr; } }
@@ -264,6 +271,7 @@ footer a { color: var(--muted); }
     <div class="links">
       <a href="#new" data-i18n="nav.new">Yenilikler</a>
       <a href="#features" data-i18n="nav.features">Özellikler</a>
+      <a href="#sites" data-i18n="nav.sites">Siteler</a>
       <a href="#how" data-i18n="nav.how">Nasıl çalışır</a>
       <a href="#signin" data-i18n="nav.signin">Oturum açma</a>
       <a href="#versions" data-i18n="nav.versions">Sürümler</a>
@@ -359,7 +367,7 @@ footer a { color: var(--muted); }
       <article class="feature">
         <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div>
         <h3 data-i18n="f1.title">Oynatma listelerinin ve profillerin tamamı</h3>
-        <p data-i18n="f1.text">YouTube oynatma listeleri, kanalları ve Mix’leri; TikTok, Instagram ve Facebook videoları, slayt gösterileri ve karuselleri (video olarak ya da sesiyle birlikte görseller olarak) ve profillerin tamamı; VK videoları ve oynatma listeleri; X gönderileri — eski bir hesabın binlerce gönderisi için “Tümünü yükle” ile.</p>
+        <p data-i18n="f1.text">YouTube oynatma listeleri, kanalları ve Mix'leri; TikTok, Instagram, Facebook, Threads, Bluesky, Snapchat ve SoundCloud profillerinin tamamı, kaydırmalı gönderiler dahil (video olarak ya da sesiyle birlikte görseller olarak); Twitch videoları ve canlı kanalları; X ve VK — eski bir hesabın binlerce gönderisi için “Tümünü yükle” ile.</p>
       </article>
       <article class="feature">
         <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 12 5 5L20 6"/></svg></div>
@@ -420,12 +428,39 @@ footer a { color: var(--muted); }
   </div>
 </section>
 
+<section id="sites">
+  <div class="wrap"><!-- sites:start -->
+    <h2>Desteklenen siteler</h2>
+    <p class="intro">Her siteden ne indirildiği, oturum açmak gerekip gerekmediği ve Android uygulamasında olup olmadığı.</p>
+    <div class="sites-table">
+      <table>
+        <thead><tr><th scope="col">Site</th><th scope="col">Ne indirir</th><th scope="col">Oturum</th><th scope="col">Android uygulaması</th></tr></thead>
+        <tbody>
+        <tr data-site="youtube"><th scope="row">YouTube</th><td>Videolar, Shorts, oynatma listeleri, kanallar ve Mix'ler</td><td><a href="#signin">gizli, yalnızca üyelere açık ve yaş sınırlı videolar için</a></td><td class="muted">Yalnızca masaüstü</td></tr>
+        <tr data-site="tiktok"><th scope="row">TikTok</th><td>Videolar, fotoğraf gönderileri ve profillerin tamamı</td><td class="muted">Gerekmez</td><td>Evet</td></tr>
+        <tr data-site="instagram"><th scope="row">Instagram</th><td>Gönderiler, reels, kaydırmalı gönderiler, profiller, hikâyeler ve öne çıkanlar</td><td><a href="#signin">hikâyeler, öne çıkanlar ve gizli hesaplar için</a></td><td>Evet</td></tr>
+        <tr data-site="facebook"><th scope="row">Facebook</th><td>Videolar, reels ve bir sayfanın videoları</td><td><a href="#signin">videoların çoğu ve hikâyeler için</a></td><td>Evet</td></tr>
+        <tr data-site="twitch"><th scope="row">Twitch</th><td>Klipler, geçmiş yayınlar, öne çıkanlar, kanallar ve canlı yayın kaydı</td><td><a href="#signin">yalnızca abonelere açık videolar ve yayınlar için</a></td><td>Evet</td></tr>
+        <tr data-site="soundcloud"><th scope="row">SoundCloud</th><td>Parçalar, setler ve herkese açık profiller</td><td class="muted">Gerekmez</td><td>Evet</td></tr>
+        <tr data-site="x"><th scope="row">X</th><td>Video, GIF veya fotoğraf içeren gönderiler</td><td class="muted">Gerekmez</td><td>Evet</td></tr>
+        <tr data-site="threads"><th scope="row">Threads</th><td>Gönderiler, kaydırmalı gönderiler ve herkese açık profiller</td><td><a href="#signin">gizli hesaplar için</a></td><td>Evet</td></tr>
+        <tr data-site="bluesky"><th scope="row">Bluesky</th><td>Gönderiler, galeriler, videolar ve herkese açık profiller</td><td class="muted">Gerekmez</td><td>Evet</td></tr>
+        <tr data-site="snapchat"><th scope="row">Snapchat</th><td>Spotlight'lar, hikâyeler, öne çıkanlar ve herkese açık profiller</td><td class="muted">Gerekmez</td><td>Evet</td></tr>
+        <tr data-site="vk"><th scope="row">VK</th><td>Videolar ve oynatma listeleri</td><td><a href="#signin">gizli ve kısıtlı videolar için</a></td><td>Evet</td></tr>
+        <tr data-site="web"><th scope="row">Diğer web siteleri</th><td>yt-dlp'nin bildiği diğer sitelerden videolar</td><td><a href="#signin">isteyen siteler için</a></td><td class="muted">Yalnızca masaüstü</td></tr>
+        <tr data-site="file"><th scope="row">Dosya bağlantısı</th><td>Bir video, ses veya resim dosyasına doğrudan bağlantı</td><td class="muted">Gerekmez</td><td>Evet</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <!-- sites:end --></div>
+</section>
+
 <section id="how">
   <div class="wrap">
     <h2 data-i18n="how.title">Üç adım</h2>
     <p class="intro" data-i18n="how.intro">Komut satırı yok, önce öğrenilecek ayar yok — ilk seferde kısa bir rehber size her şeyi gösterir. On dört dilde, açık ya da koyu.</p>
     <div class="steps">
-      <div class="step"><h3 data-i18n="s1.title">Bir bağlantı yapıştırın</h3><p data-i18n="s1.text">Bir video, bir oynatma listesi, bir kanal, bir TikTok, Instagram ya da Facebook profili, bir VK ya da X gönderisi — veya herhangi bir siteden bütün bir bağlantı listesi.</p></div>
+      <div class="step"><h3 data-i18n="s1.title">Bir bağlantı yapıştırın</h3><p data-i18n="s1.text">Bir video, bir oynatma listesi, bir kanal, desteklenen herhangi bir sitenin profili, canlı bir Twitch kanalı — ya da herhangi sitelerden bağlantıların tam bir listesi.</p></div>
       <div class="step"><h3 data-i18n="s2.title">Ne istediğinizi seçin</h3><p data-i18n="s2.text">İçindeki her şey önce listelenir. MP4 ya da MP3, kaliteyi ve klasörü seçin.</p></div>
       <div class="step"><h3 data-i18n="s3.title">Çalışmasına izin verin</h3><p data-i18n="s3.text">Aynı anda birkaç indirme, her biri doğrulanır. Raporu izleyin ya da daha sonra dönün.</p></div>
     </div>

@@ -1,8 +1,10 @@
 // The desktop interface in Russian: every key of ../i18n.ts, translated from the English
 // (and kept in line with the Android app). Placeholders ({name}) stay as they are; no long dashes.
+import {siteMessages} from '../../../shared/site-words'
 import type {MessageKey} from '../i18n'
 
 export const ru: Readonly<Record<MessageKey, string>> = {
+  ...siteMessages('ru'),
   'app.tagline': 'Мощные пакетные загрузки с проверкой каждого файла',
   'header.logs': 'Журнал',
   'header.settings': 'Настройки',
@@ -40,7 +42,8 @@ export const ru: Readonly<Record<MessageKey, string>> = {
   'site.soundcloud': 'SoundCloud',
   'site.web': 'Сайт',
   'site.file': 'Файл',
-  'download.urlLabel': 'Вставьте ссылку с YouTube, TikTok, Instagram, Facebook, VK, X или любого сайта',
+  'download.urlLabel':
+    'Вставьте ссылку с YouTube, TikTok, Instagram, Twitch или любого из {count} поддерживаемых сайтов',
   'download.invalidUrl': 'Введите корректную ссылку http(s)',
   'download.paste': 'Вставить',
   'download.format': 'Формат',

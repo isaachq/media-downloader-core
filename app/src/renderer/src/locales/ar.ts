@@ -1,8 +1,10 @@
 // The desktop interface in Arabic (right to left): every key of ../i18n.ts, translated from the English
 // (and kept in line with the Android app). Placeholders ({name}) stay as they are; no long dashes.
+import {siteMessages} from '../../../shared/site-words'
 import type {MessageKey} from '../i18n'
 
 export const ar: Readonly<Record<MessageKey, string>> = {
+  ...siteMessages('ar'),
   'app.tagline': 'تنزيلات بالدفعات لأحمال كبيرة، مع التحقق من كل ملف على حدة',
   'header.logs': 'السجلات',
   'header.settings': 'الإعدادات',
@@ -40,7 +42,8 @@ export const ar: Readonly<Record<MessageKey, string>> = {
   'site.soundcloud': 'SoundCloud',
   'site.web': 'موقع ويب',
   'site.file': 'ملف',
-  'download.urlLabel': 'الصق رابطًا من YouTube أو TikTok أو Instagram أو Facebook أو VK أو X أو أي موقع ويب',
+  'download.urlLabel':
+    'الصق رابطًا من YouTube أو TikTok أو Instagram أو Twitch أو من أي موقع من المواقع المدعومة الـ{count}',
   'download.invalidUrl': 'أدخل رابط http(s) صالحًا',
   'download.paste': 'لصق',
   'download.format': 'الصيغة',

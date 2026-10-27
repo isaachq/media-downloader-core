@@ -191,6 +191,13 @@ section .intro { color: var(--muted); margin: 0 0 32px; max-width: 46em; font-si
 .feature .icon { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent-ink); margin-bottom: 12px; }
 .feature h3 { margin: 0 0 6px; font-size: 18px; }
 .feature p { margin: 0; color: var(--muted); font-size: 15px; }
+.sites-table { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.sites-table table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.sites-table th, .sites-table td { text-align: start; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.sites-table tbody tr:last-child > * { border-bottom: 0; }
+.sites-table thead th { font-size: 13px; color: var(--muted); font-weight: 600; white-space: nowrap; }
+.sites-table tbody th { white-space: nowrap; }
+.sites-table .muted { color: var(--muted); }
 
 .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; counter-reset: step; }
 @media (max-width: 800px) { .steps { grid-template-columns: 1fr; } }
@@ -264,6 +271,7 @@ footer a { color: var(--muted); }
     <div class="links">
       <a href="#new" data-i18n="nav.new">新功能</a>
       <a href="#features" data-i18n="nav.features">功能</a>
+      <a href="#sites" data-i18n="nav.sites">网站</a>
       <a href="#how" data-i18n="nav.how">使用方法</a>
       <a href="#signin" data-i18n="nav.signin">登录</a>
       <a href="#versions" data-i18n="nav.versions">版本</a>
@@ -359,7 +367,7 @@ footer a { color: var(--muted); }
       <article class="feature">
         <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div>
         <h3 data-i18n="f1.title">整个播放列表和主页</h3>
-        <p data-i18n="f1.text">YouTube 播放列表、频道和合辑；TikTok、Instagram 和 Facebook 的视频、幻灯片和轮播（作为视频，或作为带声音的图片）以及整个主页；VK 视频和播放列表；X 帖子——老账号的数千条帖子可用“全部加载”。</p>
+        <p data-i18n="f1.text">YouTube 的播放列表、频道和合辑；TikTok、Instagram、Facebook、Threads、Bluesky、Snapchat 和 SoundCloud 的整个主页，包括轮播（作为视频，或作为带声音的图片）；Twitch 的视频和直播频道；X 和 VK —— 对老账号的成千上万条帖子，还有“全部加载”。</p>
       </article>
       <article class="feature">
         <div class="icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 12 5 5L20 6"/></svg></div>
@@ -420,12 +428,39 @@ footer a { color: var(--muted); }
   </div>
 </section>
 
+<section id="sites">
+  <div class="wrap"><!-- sites:start -->
+    <h2>支持的网站</h2>
+    <p class="intro">每个网站能下载什么、是否需要登录，以及 Android 应用是否支持。</p>
+    <div class="sites-table">
+      <table>
+        <thead><tr><th scope="col">网站</th><th scope="col">可下载内容</th><th scope="col">登录</th><th scope="col">Android 应用</th></tr></thead>
+        <tbody>
+        <tr data-site="youtube"><th scope="row">YouTube</th><td>视频、Shorts、播放列表、频道和合辑</td><td><a href="#signin">用于私享、会员专属和有年龄限制的视频</a></td><td class="muted">仅桌面版</td></tr>
+        <tr data-site="tiktok"><th scope="row">TikTok</th><td>视频、图文作品和整个主页</td><td class="muted">不需要</td><td>支持</td></tr>
+        <tr data-site="instagram"><th scope="row">Instagram</th><td>帖子、Reels、轮播、主页、快拍和精选</td><td><a href="#signin">用于快拍、精选和私密账号</a></td><td>支持</td></tr>
+        <tr data-site="facebook"><th scope="row">Facebook</th><td>视频、Reels 和主页的视频</td><td><a href="#signin">用于大部分视频和快拍</a></td><td>支持</td></tr>
+        <tr data-site="twitch"><th scope="row">Twitch</th><td>剪辑、往期直播、精彩片段、频道和直播录制</td><td><a href="#signin">用于订阅者专属的视频和直播</a></td><td>支持</td></tr>
+        <tr data-site="soundcloud"><th scope="row">SoundCloud</th><td>曲目、歌单和公开主页</td><td class="muted">不需要</td><td>支持</td></tr>
+        <tr data-site="x"><th scope="row">X</th><td>带视频、GIF 或图片的帖子</td><td class="muted">不需要</td><td>支持</td></tr>
+        <tr data-site="threads"><th scope="row">Threads</th><td>帖子、轮播和公开主页</td><td><a href="#signin">用于私密账号</a></td><td>支持</td></tr>
+        <tr data-site="bluesky"><th scope="row">Bluesky</th><td>帖子、图集、视频和公开主页</td><td class="muted">不需要</td><td>支持</td></tr>
+        <tr data-site="snapchat"><th scope="row">Snapchat</th><td>Spotlight、快拍、精选和公开主页</td><td class="muted">不需要</td><td>支持</td></tr>
+        <tr data-site="vk"><th scope="row">VK</th><td>视频和播放列表</td><td><a href="#signin">用于私密和受限的视频</a></td><td>支持</td></tr>
+        <tr data-site="web"><th scope="row">其他网站</th><td>yt-dlp 支持的其他网站的视频</td><td><a href="#signin">用于要求登录的网站</a></td><td class="muted">仅桌面版</td></tr>
+        <tr data-site="file"><th scope="row">文件链接</th><td>直接指向视频、音频或图片文件的链接</td><td class="muted">不需要</td><td>支持</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <!-- sites:end --></div>
+</section>
+
 <section id="how">
   <div class="wrap">
     <h2 data-i18n="how.title">三个步骤</h2>
     <p class="intro" data-i18n="how.intro">无需命令行，也不用先学习设置——第一次使用时，简短的引导会带你熟悉。支持十四种语言，浅色或深色。</p>
     <div class="steps">
-      <div class="step"><h3 data-i18n="s1.title">粘贴链接</h3><p data-i18n="s1.text">一个视频、一个播放列表、一个频道、一个 TikTok、Instagram 或 Facebook 主页、一条 VK 或 X 帖子——或来自任意网站的一整串链接。</p></div>
+      <div class="step"><h3 data-i18n="s1.title">粘贴链接</h3><p data-i18n="s1.text">一个视频、一个播放列表、一个频道、任一支持网站的主页、一个正在直播的 Twitch 频道 —— 或者任意网站的一整串链接。</p></div>
       <div class="step"><h3 data-i18n="s2.title">选择你想要的</h3><p data-i18n="s2.text">先列出其中的所有内容。选择 MP4 或 MP3、画质和文件夹。</p></div>
       <div class="step"><h3 data-i18n="s3.title">让它工作</h3><p data-i18n="s3.text">同时进行多个下载，每个都经过校验。查看报告，或稍后再回来。</p></div>
     </div>

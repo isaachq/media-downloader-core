@@ -358,6 +358,38 @@ describe('a mix list: several links at once, one batch', () => {
     })
   })
 
+  it('a song in a list of videos shows as M4A on its card and is asked as M4A', async () => {
+    const api = new FakeApi()
+    api.mixPreview = {
+      id: 'mix-8',
+      valid: [
+        {line: 1, url: 'https://youtu.be/one', site: 'youtube', title: 'One'},
+        {
+          line: 2,
+          url: 'https://soundcloud.com/forss/flickermood',
+          site: 'soundcloud',
+          title: 'Flickermood',
+          song: true,
+        },
+      ],
+      skipped: [],
+      summary: {total: 2, valid: 2, skipped: 0, bySite: {youtube: 1, soundcloud: 1}, byReason: {}},
+    }
+    const {user} = await mount(api)
+    await user.click(screen.getByLabelText('Video, playlist or profile URL'))
+    await user.paste('https://youtu.be/one\nhttps://soundcloud.com/forss/flickermood')
+    const dialog = await screen.findByRole('dialog')
+    await within(dialog).findByTestId('mix-summary')
+    const song = within(within(dialog).getByTestId('mix-group-soundcloud')).getByRole('combobox', {name: 'Format'})
+    expect(song.closest('.ant-select')).toHaveTextContent('Audio · M4A')
+    await user.click(within(dialog).getByTestId('mix-schedule'))
+    await waitFor(() => expect(api.scheduleMix).toHaveBeenCalledTimes(1))
+    expect(api.scheduleMix.mock.calls[0]![0]).toMatchObject({
+      format: 'mp4',
+      formats: {'https://soundcloud.com/forss/flickermood': {format: 'm4a', quality: 'best'}},
+    })
+  })
+
   it('shows the check going, and stops it on Cancel', async () => {
     const api = new FakeApi()
     let finish: (() => void) | undefined

@@ -1,6 +1,11 @@
 # Changelog
 
-## Library 1.21.2
+## App 0.2.0-beta.23 · library 1.21.2
+
+A song asked as a video downloads as M4A, alone, in a list or in a mix list; Android's shared
+folders take what the phone saves; "on the air since" reads right in Spanish and Italian.
+
+**Library 1.21.2**
 
 - **A song among videos downloads as M4A.** An item with no picture at all (a
   SoundCloud track) asked as a video, alone, in a set or a profile, or in a mix list,
@@ -15,7 +20,7 @@
   folder or list position), never a failure. Cost: O(choices) per item, once, at its
   check; O(targets) per save of the pending batches; O(items) once per song refused.
 
-## Library 1.21.1
+**Library 1.21.1**
 
 - **Files land in Android's shared folders**: a copy to another volume is written as
   `clip.partial.mp4` and renamed to `clip.mp4`, no longer as `clip.mp4.partial`.
@@ -28,6 +33,14 @@
   paths) gives some links a folder of their own, as `formats` gives them a format: the
   phone app sends a song to Music and a video to Movies, the only media each takes. Still
   one batch; each such link is a `BatchTarget`. Cost: O(n) once per mix list, as `formats`.
+
+**Desktop app**
+
+- **A song in a mix list of videos shows as M4A on its card** (the check keeps it so) and
+  downloads as M4A; a SoundCloud link alone with MP4 chosen does too, instead of failing as
+  unavailable. Checked end to end against the local SoundCloud and Threads fakes.
+- **"Al aire desde el {time}" / "In onda dal {time}"**: the time is a date and an hour, so
+  Spanish and Italian no longer read "desde las 27 oct…".
 
 ## App 0.2.0-beta.22 · library 1.21.0
 

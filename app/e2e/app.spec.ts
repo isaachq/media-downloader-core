@@ -859,6 +859,56 @@ test('records a live Twitch channel, stops and keeps the file; a discarded one l
   }
 })
 
+test('beta 23: a SoundCloud track with MP4 chosen downloads as M4A, alone and in a mix list of videos', {
+  tag: '@full',
+}, async () => {
+  const threads = await startFakeThreads()
+  const soundcloud = await startFakeSoundcloud({hydrationId: SOUNDCLOUD_HYDRATION_ID})
+  try {
+    const {app, page, outDir} = await launch(
+      'beta23-song',
+      {format: 'mp4', quality: 'best'},
+      {MDC_THREADS_ORIGIN: threads.origin, MDC_SOUNDCLOUD_ORIGIN: soundcloud.origin},
+    )
+    const song = soundcloudTrackUrl('clear-track')
+    const m4a = async () =>
+      (await fs.readdir(outDir, {recursive: true})).map(String).filter(name => name.endsWith('.m4a'))
+
+    // alone: no picture, so the batch keeps it as M4A instead of failing
+    await download(page, song)
+    const single = page.getByTestId('batch-card').first()
+    await expect(single).toHaveAttribute('data-status', 'completed', {timeout: 60_000})
+    expect(await m4a()).toHaveLength(1)
+
+    // in a mix list of videos: kept (not left out as unavailable), its card says M4A
+    await page.getByTestId('open-mix').click()
+    const dialog = page.getByRole('dialog')
+    const field = dialog.getByLabel('Paste or type a link')
+    for (const link of [
+      `https://www.threads.com/@zuck/post/${threads.codes.video}`,
+      soundcloudTrackUrl('old-upload'),
+    ]) {
+      await field.fill(link)
+      await field.press('Enter')
+    }
+    await dialog.getByTestId('mix-check').click()
+    await expect(dialog.getByTestId('mix-summary')).toContainText('2 ready', {timeout: 60_000})
+    await expect(dialog.locator('.rows-item', {hasText: 'soundcloud.com'})).toContainText('Audio · M4A')
+    await page.screenshot({path: path.join(APP_DIR, 'test-results', 'beta23-song-mix.png')})
+    await dialog.getByTestId('mix-schedule').click()
+    const mix = page.getByTestId('batch-card').first()
+    await expect(mix).toHaveAttribute('data-status', 'completed', {timeout: 90_000})
+    await expect(mix).toContainText('2/2 done')
+    const files = (await fs.readdir(outDir, {recursive: true})).map(String)
+    expect(files.filter(name => name.endsWith('.mp4'))).toHaveLength(1)
+    expect(await m4a()).toHaveLength(2)
+    await close(app)
+  } finally {
+    await threads.close()
+    await soundcloud.close()
+  }
+})
+
 test('beta 11: a mix list of the five new sites is checked at once and downloads as one batch', {
   tag: '@full',
 }, async () => {

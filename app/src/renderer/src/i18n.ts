@@ -1445,7 +1445,7 @@ const es: Record<MessageKey, string> = {
   'live.title': 'En vivo en Twitch',
   'live.intro':
     'La grabación empieza desde el último medio minuto que Twitch aún guarda y sigue hasta que la detengas, termine la transmisión o pasen 12 horas. Los anuncios quedan fuera.',
-  'live.startedAt': 'Al aire desde las {time}',
+  'live.startedAt': 'Al aire desde el {time}',
   'live.record': 'Grabar',
   'live.watch': 'Ver',
   'live.stop': 'Detener y guardar',

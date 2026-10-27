@@ -376,6 +376,51 @@
       "expect": "video",
       "urls": [],
       "note": "share links carry the sharer: they go in compendium.local.json"
+    },
+    {
+      "id": "TH-01",
+      "category": "Threads video post",
+      "expect": "video",
+      "urls": [
+        "https://www.threads.com/@instagram/post/Dd1k17rDPEv",
+        "https://www.threads.com/@instagram/post/Dd7D9nlEuew",
+        "https://www.threads.com/@mosseri/post/DdrY7cAAPhB",
+        "https://www.threads.net/@zuck/post/DeZtrvAEfEr",
+        "https://www.threads.com/t/Dd9UWBbmgf1"
+      ]
+    },
+    {
+      "id": "TH-02",
+      "category": "Threads photo post",
+      "expect": "photo",
+      "urls": [
+        "https://www.threads.com/@zuck/post/DeZgeQhm6RW",
+        "https://www.threads.com/@mosseri/post/Db_AU3kFko7",
+        "https://www.threads.com/@instagram/post/DdHU5MsG2jr",
+        "https://www.threads.com/t/DOuZDXoj2N4"
+      ]
+    },
+    {
+      "id": "TH-03",
+      "category": "Threads carousel (photos, or photos and videos)",
+      "expect": "carousel",
+      "urls": [
+        "https://www.threads.com/@zuck/post/DJDhoQfxb43",
+        "https://www.threads.com/@zuck/post/Ddt7cL5EfUG/media",
+        "https://www.threads.com/@instagram/post/DdowCVvG60h",
+        "https://www.threads.com/@instagram/post/DduMBkoEsjQ"
+      ]
+    },
+    {
+      "id": "TH-04",
+      "category": "Threads public profile",
+      "expect": "playlist",
+      "urls": [
+        "https://www.threads.com/@zuck",
+        "https://www.threads.com/@mosseri",
+        "https://www.threads.com/@instagram",
+        "https://www.threads.net/@zuck/media"
+      ]
     }
   ]
 }

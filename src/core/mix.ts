@@ -3,6 +3,7 @@ import {isFacebookListing} from '../sources/facebook/links.js'
 import {isInstagramListing} from '../sources/instagram/links.js'
 import {type MixLink, planMix} from '../sources/mix-plan.js'
 import {isSnapchatListing} from '../sources/snapchat/links.js'
+import {isThreadsListing} from '../sources/threads/links.js'
 import {isTikTokProfile} from '../sources/tiktok/links.js'
 import {DEFAULT_SLIDESHOW} from '../sources/tiktok/slideshow.js'
 import {isVkListing} from '../sources/vk/links.js'
@@ -58,7 +59,8 @@ export function isListingLink(url: string, engine: Pick<MixEngine, 'defaultListS
     isFacebookListing(url) ||
     isVkListing(url) ||
     isXProfile(url) ||
-    isSnapchatListing(url)
+    isSnapchatListing(url) ||
+    isThreadsListing(url)
   )
 }
 

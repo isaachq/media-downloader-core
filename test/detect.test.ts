@@ -46,6 +46,16 @@ describe('detectLink: the site of a pasted or shared link', () => {
     assert.equal(site('https://notsnapchat.com/@nasa'), 'web')
   })
 
+  it('names Threads on threads.com and the old threads.net', () => {
+    assert.equal(site('https://www.threads.com/@zuck/post/DHV7vTivqWD'), 'threads')
+    assert.equal(site('https://threads.net/@zuck'), 'threads')
+    assert.equal(site('https://www.threads.net/t/Ddt7cL5EfUG?xmt=1'), 'threads')
+    assert.equal(site('See https://www.threads.com/@mosseri.'), 'threads')
+    assert.equal(detectLink('https://www.threads.com/@zuck')?.host, 'threads.com')
+    assert.equal(site('https://threads.com.evil.example/@zuck'), 'web')
+    assert.equal(site('https://notthreads.net/@zuck'), 'web')
+  })
+
   it('any other site is "web", and a link straight to a file says so', () => {
     const page = detectLink('https://www.trannyvideosx.com/video/81455/ts-havenna-sofia-solo-1')
     assert.deepEqual(page, {

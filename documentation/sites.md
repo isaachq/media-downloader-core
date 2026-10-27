@@ -187,6 +187,48 @@ private, and the fake serves a guess of its shape); a picture inside a live
 story (seen only in curated highlights); the phone's network (Android may get
 another `lang` / region). `snapchat: false` sends Snapchat urls to yt-dlp.
 
+## Threads (built-in extractor)
+
+Posts and public profiles are read by the library itself: the web pages'
+own data and the web client's listing query over plain HTTP, media straight
+from Meta's CDN, streamed to disk with resume (Range). yt-dlp has no Threads
+extractor, so there is nothing to fall back to: every failure says its own
+reason.
+
+```ts
+scheduler.schedule({url: 'https://www.threads.com/@zuck/post/DJDhoQfxb43', profile: {kind: 'video', container: 'mp4'}, outDir, slideshow: {mode: 'images', secondsPerImage: 3}})
+scheduler.schedule({url: 'https://www.threads.com/@mosseri', profile: {kind: 'video', container: 'mp4'}, outDir})
+```
+
+| | How |
+| --- | --- |
+| Links | `/@<u>/post/<code>`, `/@<u>/post/<code>/media` (the media viewer), `/t/<code>` (one post); `/@<u>`, `/@<u>/media`, `/@<u>/replies`, `/@<u>/reposts` (a profile, always listed as its threads tab). On `www.threads.com`, `threads.com` and the old `threads.net` (a 301 to threads.com). The share sheet's `?xmt=…&slof=1` is tracking (mix lists drop it). |
+| How it is read | A post is **one page load** (`navigationFetch`: Threads serves a page its data only when the request says `Sec-Fetch-Mode: navigate`, which Node's fetch cannot; anything else gets a gating shell with no data). The page's JSON blocks are found with `indexOf` and walked once (explicit stack, bounded): the post is the `BarcelonaPostPageTargetQuery` preloader's `data.media`, matched by its code, a v1 item read by the same function Instagram's are. |
+| Media | `media_type` 2: the progressive MP4 of `video_versions` (three entries, one file, no sizes: `original_width` / `original_height` give them; the length comes from the DASH manifest's `mediaPresentationDuration`). 1: the best of `image_versions2.candidates` (JPEG or WebP, every size kept as a mirror). 8: a carousel, a `slideshow` exactly as Instagram's (photos only: an MP4 or a folder; photos and videos: a folder of both, in order). 19: a text post (a GIF or a link card included): `unavailable` / `format-unavailable`, nothing to download. The DASH representations are not used (the progressive file was the original size in every post checked). |
+| Listing | One profile page load (the account from `BarcelonaProfilePageDirectQuery`, private or not; the LSD token; the threads tab's `doc_id` and variables as its own client sent them), then `POST /api/graphql` 10 threads a page, from GraphQL's own cursor (the page's base64-wrapped one is ignored by the site). Every post of a thread the owner wrote and that has media is an entry (a self-thread's photo in its third post too); reposts, quotes and text posts are left out; pages of text posts only are read on (at most 10 in a row) so they never count as a stall. Map by id, a cursor seen twice or 3 pages with nothing new end the walk (`walkCursor`), `maxEntries` (default 500, `threads.maxProfileItems`), `known` (an incremental sync stops after 20 known posts in a row), chunks of 500 kept as they come (a refusal half-way loses nothing). Every listed post keeps its media: checks and downloads ask for no page. |
+| Cache | Posts by id until their links' CDN `oe` (less 10 min), 5,000 kept; profile pages 30 min (500); listings 15 min (100). Reads of one post or one profile at the same time share one request (`Coalescer`). `fresh` (a retry) reads again. |
+| Errors | A post Threads won't show (deleted, or a private account's) redirects home with `?error=invalid_post`; an unknown or hidden account redirects to the login page. A visitor can't tell which: `unavailable` / `needs-sign-in` saying both; with a session, `removed`. A private account (`text_post_app_is_private`) without a session: `needs-sign-in`. A page without its data: `unavailable` / `retry-later`, "Threads changed its pages; yt-dlp has no Threads extractor" — never `source:format-changed` (yt-dlp's generic extractor reads nothing there); a rotated listing query lists what the profile page embeds (`complete: false`). A verification page: "try again in a few minutes", not yt-dlp. 403 / 429 / 5xx back every request off together (Pacer) and are retried. |
+| Session | Threads signs in with the Instagram account but keeps its own cookies on `.threads.com` (`sessionid`): the engine passes the browser cookies for `threads.com` (instagram.com's are never sent there). Loaded only when the host has some; without, everything public is read anonymously and no cookie but Threads' own `csrftoken` is sent. |
+| Pace | MetaClient's Pacer for www.threads.com (`threads.pacing`). Media downloads aren't paced. |
+| Endpoints | Query names, the threads tab's fallback `doc_id`, the app id, the page size and the fallback variables live in `src/sources/threads/endpoints.ts`; `threads.queries` overrides them without a release (a host's `threadsTabId` wins over the page's). |
+
+**What was verified, and what wasn't.** Verified live on 2026-10-26
+(anonymous, from Mexico, desktop Chrome user agent; `npm run live:matrix --
+--platform threads`, with and without `--native`, 17 of 17 links): video
+posts, photo posts, carousels of photos and of photos and videos, `/t/` and
+`threads.net` links, the `/media` variants, profiles @zuck, @mosseri and
+@instagram (GraphQL pages 2 and 3 all new and older); downloaded natively
+(`--native --download`, 13 of 13): H.264 720 × 1280 / 1280 × 720 + AAC,
+JPEG / WebP pictures, carousel folders. The CDN answers `Range` with 206,
+with or without a Referer. No rate limit or bot check seen (about 80 site
+requests in an evening, 1 to 3 s apart). **Not verified**: a private profile
+and a signed-in session (no account used: the private paths are what the
+site does to a visitor, and the fake serves a guess of the signed-in
+answer); a deleted post as a signed-in visitor; GIFs (GIPHY), reposts and
+quotes as links of their own; spoiler-blurred media; the phone's network.
+`threads: false` hands Threads urls to yt-dlp, whose generic extractor
+reads none of them.
+
 ## TikTok sync (Sync Up)
 
 A **subscription** keeps a TikTok account in step with a folder. A sync

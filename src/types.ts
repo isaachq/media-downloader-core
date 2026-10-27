@@ -7,6 +7,7 @@ import type {InstagramOptions} from './sources/instagram/source.js'
 import type {MixPlanSkip} from './sources/mix-plan.js'
 import type {SnapchatOptions} from './sources/snapchat/source.js'
 import type {MediaSource} from './sources/source.js'
+import type {ThreadsOptions} from './sources/threads/source.js'
 import type {TikTokOptions} from './sources/tiktok/source.js'
 import type {VkOptions} from './sources/vk/source.js'
 import type {XOptions} from './sources/x/source.js'
@@ -879,6 +880,14 @@ export type DownloaderOptions = {
    * hands Snapchat urls to yt-dlp (which reads spotlights).
    */
   readonly snapchat?: false | SnapchatOptions | undefined
+  /**
+   * Threads through the built-in extractor (the web pages' own data and the
+   * web client's listing query, paced; anonymous, or with the browser's
+   * threads.com session for private accounts it follows): posts (video,
+   * photo, carousel) and public profiles. yt-dlp has no Threads extractor:
+   * `false` hands Threads urls to its generic extractor, which reads none.
+   */
+  readonly threads?: false | ThreadsOptions | undefined
   /**
    * Links straight to a media file (`…/clip.mp4`, `…/song.mp3`) on any other
    * site, read natively (one ranged request, then the file): extractor "Web".

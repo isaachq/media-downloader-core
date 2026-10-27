@@ -53,6 +53,7 @@ import {InstagramSource} from './sources/instagram/source.js'
 import {COOLING_DOWN, withPatience} from './sources/pacer.js'
 import {SnapchatSource} from './sources/snapchat/source.js'
 import {type ListingProgress, type MediaSource, needsFallback} from './sources/source.js'
+import {ThreadsSource} from './sources/threads/source.js'
 import {DEFAULT_SLIDESHOW, slideshowOptions} from './sources/tiktok/slideshow.js'
 import {TikTokSource} from './sources/tiktok/source.js'
 import {VkSource} from './sources/vk/source.js'
@@ -296,6 +297,10 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       ...(options.x === false ? [] : [new XSource({log, ...options.x})]),
       ...(options.vk === false ? [] : [new VkSource({log, ...options.vk})]),
       ...(options.snapchat === false ? [] : [new SnapchatSource({log, ...options.snapchat})]),
+      // Threads' own session cookies live on .threads.com (instagram.com's are never sent there)
+      ...(options.threads === false
+        ? []
+        : [new ThreadsSource({log, cookies: () => this.#siteCookies(['threads.com']), ...options.threads})]),
       ...(options.sources ?? []),
       // a link straight to a media file, on any other site: last, after every site's own source
       ...(options.direct === false ? [] : [new DirectFileSource(options.direct)]),

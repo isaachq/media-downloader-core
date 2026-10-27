@@ -9,7 +9,7 @@ supported sites). One line per planned commit: done, then verified with what. Th
 away when the beta closes.
 
 - [x] 0 `ci: 5-minute budget` · done · verified locally: `test:fast` 483 pass in 58 s, `test:integrity-smoke` 2 pass in 2 s, `test:heavy` 75 pass in 28 s, app unit 204 pass, `test:e2e:smoke` 3 pass in 27 s. Pending: the Actions before/after table on Isaac's first push (before: CI check jobs 15.7 to 16 min, one mix test waited a real 15-minute YouTube pause; app jobs 3.2 to 4.3 min)
-- [ ] 1 `source(threads)` · not done
+- [x] 1 `source(threads)` · done · verified locally: `typecheck` and `lint` clean, `test:fast` 519 pass / 0 fail (16 Threads tests against the fake, Threads detection), `test:heavy` 75 pass, `perf --quick` within 10% of the baseline (no regression); live `live:matrix --platform threads` 17 of 17 links pass, `--native` 17 of 17, `--native --download` 13 of 13 single posts (H.264 720x1280 + AAC, JPEG / WebP pictures, carousel folders); CDN Range answers 206, no rate limit seen. Not verified: a private profile and a signed-in session (no account), GIFs, reposts and quotes as links, the razr 50
 - [ ] 2 `core(hls)` · not done (Isaac reviews the API before code)
 - [ ] 3 `source(twitch)` · not done
 - [ ] 4 `source(bluesky)` · not done
@@ -24,6 +24,25 @@ away when the beta closes.
 - [ ] Android `feature/beta-11` (phone repo) · not done
 
 **Library**
+
+- **Threads, natively.** Posts (`/@u/post/<code>`, `/@u/post/<code>/media`, `/t/<code>`, on
+  threads.com and threads.net) with a video, a photo or a carousel of both, and public profiles
+  (`/@u`, its `/media`, `/replies`, `/reposts` tabs read as its threads). A post is one page
+  load (`navigationFetch`: Threads gives a page its data only to a request that says it is a page
+  load); a profile is one page load and one `POST /api/graphql` per 10 threads, from GraphQL's own
+  cursor, every post's media in the answer, so a listed post is never asked for again. Every post
+  the owner wrote with media is an entry (self-thread photos included; reposts, quotes and text
+  posts out); a carousel is a `slideshow` exactly as Instagram's; a text post is
+  `format-unavailable`. `maxEntries` (default 500), `known`, stalls and resumable chunks through
+  `walkCursor`. A private account or a post Threads hides from visitors is `needs-sign-in`; the
+  browser's threads.com cookies are used when the host has them. yt-dlp has no Threads extractor:
+  a changed page or a wall says so itself (`retry-later`), never handed to yt-dlp. New `LinkSite`
+  `'threads'`, option `threads` (`queries` overrides the query names and the listing's `doc_id`),
+  `ThreadsSource` reuses `MetaClient` (Pacer, session, retries) and Instagram's v1 media reader.
+  Cost: one page request per post, O(size of the page) to walk its JSON once; a profile costs one
+  page plus ⌈n / 10⌉ queries for n threads, O(1) per post to list (Map by id, cursor Set), memory
+  O(n) summaries; one media GET per file (streamed, constant memory); posts kept in a 5,000-entry
+  LRU until their links expire, profile pages 30 min, concurrent reads of one page shared.
 
 - **Snapchat, natively.** Spotlights (`/spotlight/<id>`, `/@u/spotlight/<id>`), public profiles
   (`/@u`, `/add/u`, `story.snapchat.com`): the live story, every curated highlight's snaps and

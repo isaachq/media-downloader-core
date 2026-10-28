@@ -9,7 +9,7 @@ import {freeSpace} from './core/files.js'
 import {profileKey, profileProblem} from './core/formats.js'
 import {newId} from './core/ids.js'
 import {isTerminal} from './core/job.js'
-import {isListingLink, SONG_IN_VIDEOS as SONG} from './core/mix.js'
+import {audioOnlyFormat, audioOnlyProblem, isListingLink, SONG_IN_VIDEOS as SONG} from './core/mix.js'
 import {QueueStore} from './core/queue-store.js'
 import {ANALYZE_ATTEMPTS, type MediaDownloader} from './downloader.js'
 import {planMix} from './sources/mix-plan.js'
@@ -243,10 +243,17 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
     // a link with a format or a folder of its own (one song in MP3 among videos): a target of the same batch. O(n)
     const targets: BatchTarget[] = []
     for (const entry of entries) {
-      const own = request.formats?.[entry.url] ?? checkedFormats.get(entry.url)
+      const asked = request.formats?.[entry.url]
+      const refused = asked && audioOnlyProblem(entry.url, asked)
+      if (refused) throw new DownloadError('invalid-request', refused, undefined, {audioOnly: 1}, 'format-unavailable')
+      // a SoundCloud track in a list of videos (or of FLACs) is M4A from the start: never asked as a video
+      const soundOnly = asked
+        ? undefined
+        : (checkedFormats.get(entry.url) ?? audioOnlyFormat(entry.url, request.profile))
+      const own = asked ?? soundOnly
       const profile = own && profileKey(own) !== profileKey(request.profile) ? own : undefined
       // a song the check kept as M4A goes to the songs' folder unless the link has a folder of its own
-      const song = !request.formats?.[entry.url] && checkedFormats.has(entry.url) ? request.audioOutDir : undefined
+      const song = !asked && soundOnly ? request.audioOutDir : undefined
       const folder = request.outDirs?.[entry.url] ?? song
       if (folder !== undefined && !path.isAbsolute(folder)) {
         throw new DownloadError('invalid-request', 'outDirs and audioOutDir must be absolute paths.')
@@ -279,6 +286,11 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
     const url = assertHttpUrl(request.url)
     const problem = profileProblem(request.profile)
     if (problem) throw new DownloadError('invalid-request', problem)
+    // a SoundCloud track, set or profile asked as a video: refused here, before any request (a restored
+    // batch from before this check still turns its tracks into M4A as it is read)
+    const soundOnly = !restored && !request.mix ? audioOnlyProblem(url, request.profile) : undefined
+    if (soundOnly)
+      throw new DownloadError('invalid-request', soundOnly, undefined, {audioOnly: 1}, 'format-unavailable')
     if (!path.isAbsolute(request.outDir)) throw new DownloadError('invalid-request', 'outDir must be an absolute path.')
     const selectionProblem = request.selection && selectionIssue(request.selection)
     if (selectionProblem) throw new DownloadError('invalid-request', selectionProblem)

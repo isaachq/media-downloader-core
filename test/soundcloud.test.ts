@@ -569,6 +569,76 @@ describe('SoundCloud, end to end (local fake)', () => {
     assert.equal(path.extname(done.filepath ?? ''), '.m4a')
   })
 
+  it('audio only is validated before the site: a SoundCloud batch as a video is refused, no request', T, async () => {
+    const site = await startFakeSoundcloud({hydrationId: HYDRATION_ID})
+    cleanups.push(() => site.close())
+    const engine = soundcloudEngine(site, 'audio-only')
+    const scheduler = new BatchScheduler(engine)
+    cleanups.push(async () => {
+      await scheduler.dispose()
+      await engine.dispose()
+    })
+    const out = path.join(root, 'audio-only-out')
+    for (const url of [trackUrl('clear-track'), BIG_SET, ARTIST, 'https://on.soundcloud.com/AbCdEf123']) {
+      assert.throws(
+        () => scheduler.schedule({url, profile: {kind: 'video', container: 'mp4'}, outDir: out}),
+        (error: DownloadError) =>
+          error.code === 'invalid-request' && error.hint === 'format-unavailable' && /audio only/.test(error.message),
+        url,
+      )
+    }
+    // a mix list: its own format may be MP3 or M4A only
+    assert.throws(
+      () =>
+        scheduler.scheduleMix([trackUrl('clear-track')], {
+          profile: m4a,
+          outDir: out,
+          formats: {[trackUrl('clear-track')]: {kind: 'audio', container: 'flac'}},
+        }),
+      (error: DownloadError) => error.code === 'invalid-request' && /MP3 or M4A/.test(error.message),
+    )
+    assert.deepEqual(site.hits, {}, 'nothing asked of SoundCloud')
+    // the check: MP3 stays MP3; FLAC or a video turns the track into M4A
+    for (const [profile, format] of [
+      [{kind: 'audio', container: 'mp3'}, undefined],
+      [{kind: 'audio', container: 'flac'}, m4a],
+      [{kind: 'video', container: 'mp4'}, m4a],
+    ] as const) {
+      const mix = await engine.analyzeMix([trackUrl('clear-track')], {profile})
+      assert.deepEqual(mix.valid[0]?.format, format, `as ${profile.container}`)
+    }
+  })
+
+  it('a SoundCloud track in a mix list of videos is M4A from its first attempt: no audioOnly retry', T, async () => {
+    const site = await startFakeSoundcloud({hydrationId: HYDRATION_ID})
+    cleanups.push(() => site.close())
+    const engine = soundcloudEngine(site, 'mix-first')
+    const scheduler = new BatchScheduler(engine)
+    cleanups.push(async () => {
+      await scheduler.dispose()
+      await engine.dispose()
+    })
+    const logs: string[] = []
+    engine.on('log', entry => logs.push(entry.message))
+    const out = path.join(root, 'mix-first-out')
+    // from a text: the batch checks the link itself
+    const batch = scheduler.scheduleMix(trackUrl('clear-track'), {
+      profile: {kind: 'video', container: 'mp4'},
+      outDir: out,
+    })
+    await scheduler.whenIdle()
+    const done = scheduler.batch(batch.id)!
+    assert.equal(done.status, 'completed', JSON.stringify(done.error))
+    const jobs = engine.jobs().filter(job => job.batchId === batch.id)
+    assert.deepEqual(
+      jobs.map(job => [job.profile.kind, job.status, path.extname(job.filepath ?? '')]),
+      [['audio', 'completed', '.m4a']],
+      'one job, audio from the start',
+    )
+    assert.ok(!logs.some(line => /no picture, downloaded as M4A/.test(line)), 'never the audioOnly → retry path')
+    assert.ok(!logs.some(line => /audio only/.test(line)), 'never refused by the source')
+  })
+
   it('a set asked as MP4, restored before its check: each track comes back as M4A, none fails', T, async () => {
     const site = await startFakeSoundcloud({hydrationId: HYDRATION_ID})
     cleanups.push(() => site.close())
@@ -626,3 +696,27 @@ describe('SoundCloud, end to end (local fake)', () => {
     )
   })
 })
+
+function soundcloudEngine(site: Awaited<ReturnType<typeof startFakeSoundcloud>>, name: string): MediaDownloader {
+  return new MediaDownloader({
+    dataDir: path.join(root, name),
+    binaries: bins,
+    validation: 'none',
+    maxRetries: 1,
+    retryDelayMaxMs: 20,
+    progressIntervalMs: 0,
+    tiktok: false,
+    instagram: false,
+    facebook: false,
+    x: false,
+    vk: false,
+    snapchat: false,
+    threads: false,
+    bluesky: false,
+    twitch: false,
+    soundcloud: {
+      endpoints: {api: site.api, web: site.origin, short: `${site.origin}/short`, assetHost: `${site.origin}/assets`},
+      pacing: fast,
+    },
+  })
+}

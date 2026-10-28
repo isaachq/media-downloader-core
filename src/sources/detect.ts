@@ -129,3 +129,16 @@ export function detectLink(text: string, aliases?: Readonly<Record<string, LinkS
   }
   return {site: 'web', url, host, file}
 }
+
+/**
+ * The formats a site's links download in when the site has sound only: a
+ * SoundCloud track is AAC (or a legacy MP3), so MP3 and M4A — never a video,
+ * never a lossless file made from a lossy one. Undefined: any format. The
+ * apps' format pickers show only these, and the engine refuses or turns the
+ * rest before any request. O(1).
+ */
+export function audioOnlyFormats(site: LinkSite | undefined): readonly ('mp3' | 'm4a')[] | undefined {
+  return site === 'soundcloud' ? AUDIO_ONLY : undefined
+}
+
+const AUDIO_ONLY: readonly ('mp3' | 'm4a')[] = ['mp3', 'm4a']

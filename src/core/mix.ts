@@ -1,5 +1,6 @@
 import * as fs from 'node:fs/promises'
 import {isBlueskyListing} from '../sources/bluesky/links.js'
+import {audioOnlyFormats, detectLink} from '../sources/detect.js'
 import {isFacebookListing} from '../sources/facebook/links.js'
 import {isInstagramListing} from '../sources/instagram/links.js'
 import {type MixLink, planMix} from '../sources/mix-plan.js'
@@ -88,6 +89,29 @@ const offers = (analysis: VideoAnalysis, profile: FormatProfile): boolean =>
 
 /** What a song (no picture at all) downloads as in a list or batch of videos: AAC as is. */
 export const SONG_IN_VIDEOS: FormatProfile = {kind: 'audio', container: 'm4a'}
+
+/**
+ * The format a link of a sound-only site (SoundCloud: MP3 or M4A, see
+ * `audioOnlyFormats`) takes instead of `profile`: undefined when `profile` is
+ * one of its formats or the site has pictures; else M4A (AAC as it is). Known
+ * from the link alone, so no batch ever asks the site for a video it has not.
+ * O(L) for the link's length.
+ */
+export function audioOnlyFormat(url: string, profile: FormatProfile): FormatProfile | undefined {
+  const allowed = audioOnlyFormats(detectLink(url)?.site)
+  if (!allowed) return undefined
+  return profile.kind === 'audio' && (allowed as readonly string[]).includes(profile.container)
+    ? undefined
+    : SONG_IN_VIDEOS
+}
+
+/** Why `profile` can't be asked of this link (a video of a SoundCloud track), else undefined. O(L). */
+export function audioOnlyProblem(url: string, profile: FormatProfile): string | undefined {
+  const allowed = audioOnlyFormats(detectLink(url)?.site)
+  if (!allowed) return undefined
+  if (profile.kind === 'audio' && (allowed as readonly string[]).includes(profile.container)) return undefined
+  return `SoundCloud tracks are audio only: choose ${allowed.map(f => f.toUpperCase()).join(' or ')} (M4A keeps SoundCloud’s AAC as it is).`
+}
 
 /** A photo post (made into an MP4 or a folder by `SlideshowOptions.mode`), not a carousel with videos. */
 const isPhotoPost = (analysis: VideoAnalysis): boolean =>
@@ -186,6 +210,12 @@ export async function analyzeMix(
       continue
     }
     if (identity !== undefined) firstOf.set(identity, link.line)
+    // a SoundCloud track takes MP3 or M4A only: any other profile makes it M4A, before any download
+    const soundOnly = profile && audioOnlyFormat(analysis.media.url || link.url, profile)
+    if (soundOnly) {
+      valid.push({line: link.line, url: analysis.media.url || link.url, site: link.site, analysis, format: soundOnly})
+      continue
+    }
     if (profile && !offers(analysis, profile)) {
       // a song in a list of videos: kept, as M4A (a video in a list of songs always has its sound)
       if (profile.kind === 'video' && offers(analysis, SONG_IN_VIDEOS)) {

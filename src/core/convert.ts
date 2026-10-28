@@ -52,6 +52,8 @@ export type ConvertOptions = {
   readonly container: VideoContainer
   readonly maxHeight?: number | undefined
   readonly expectAudio: boolean
+  /** False: a file with no picture (a soundtrack named like a video) is left as it is. Default true. */
+  readonly expectVideo?: boolean | undefined
   readonly threads: number
   readonly signal?: AbortSignal | undefined
   /** Called only when a conversion is actually needed. */
@@ -70,6 +72,11 @@ export async function ensureContainer(opts: ConvertOptions): Promise<string> {
   const container = opts.container
   const rules = VIDEO_RULES[container]
   const summary = summarizeProbe(await ffprobe(opts.ffprobe, opts.input, opts.signal))
+  // sound only where a picture is not demanded: there is no video to make, the file stays
+  if (opts.expectVideo === false && summary.video === undefined) {
+    opts.onKind?.('none')
+    return opts.input
+  }
   const mismatch = codecMismatch(summary, rules, opts.expectAudio)
   const rightContainer = summary.container.split(',').some(name => rules.formatNames.includes(name))
   const rightExtension = path.extname(opts.input).slice(1).toLowerCase() === rules.ext
@@ -186,8 +193,10 @@ export async function convertBundle(opts: {
       input,
       container: opts.container,
       maxHeight: opts.maxHeight,
-      // a carousel's clip may well be silent: no stream is demanded, only what is there must comply
+      // a carousel's clip may well be silent, and a soundtrack named by its MIME has no picture:
+      // no stream is demanded, only what is there must comply
       expectAudio: false,
+      expectVideo: false,
       threads: opts.threads,
       signal: opts.signal,
       onProgress: fraction => opts.onProgress?.((index + fraction) / names.length),

@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+**Library 1.21.4**
+
+- **A photo post's song is sound, whatever the CDN calls it.** Instagram serves a post's
+  song as `video/mp4`, so "images + audio" saved it as `sound.mp4` beside the pictures; a
+  `.mp4` in a folder of pictures reads as a carousel's clip, and with WebM (or MKV) chosen the
+  bundle's convert step tried to make a video of it and failed ("Could not convert to WEBM";
+  found on the razr 50 with a signed-in session). The song is now named by its audio
+  (`sound.m4a` for AAC in an MP4 container, `.mp3` for MP3), on Instagram, Facebook, Threads
+  and TikTok, and a bundle's convert step leaves a file with no picture as it is. Cost: O(1)
+  per song; one ffprobe the bundle's clips already paid.
+
 ## App 0.2.0-beta.24 · library 1.21.3
 
 SoundCloud links of every shape read again and are audio only before any request; Instagram asks

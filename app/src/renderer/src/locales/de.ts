@@ -104,6 +104,7 @@ export const de: Readonly<Record<MessageKey, string>> = {
   'finished.unverified': 'Nicht geprüft',
   'finished.checksum': 'Prüfsumme',
   'finished.gone': 'Diese Datei ist nicht mehr dort, wo sie heruntergeladen wurde.',
+  'finished.revealLater': 'Verfügbar, sobald der Stapel fertig ist.',
   'finished.live': 'Aktualisiert sich, sobald Downloads fertig sind',
   'batch.openFolder': 'Ordner öffnen',
   'slides.title': 'TikTok-Diashows: {count}',

@@ -43,6 +43,7 @@ import {api} from '../api'
 import {useApp} from '../context'
 import {bytes, clock, moment} from '../format'
 import {type MessageKey, useT} from '../i18n'
+import {useRevealLater} from '../reveal'
 import {useStoreValue} from '../store'
 import {BatchFilter} from './BatchFilter'
 import {SiteTag} from './SiteTag'
@@ -293,6 +294,8 @@ export function FinishedList({
       void load(true)
     }
   }
+  // the folder of a batch still running opens once the batch ends
+  const revealLater = useRevealLater()
   const copy = async (entry: FinishedEntry) => {
     await navigator.clipboard?.writeText(entry.filepath)
     void message.success(t('common.copied'))
@@ -556,7 +559,7 @@ export function FinishedList({
                     icon={<FolderOpenOutlined />}
                     aria-label={t('finished.reveal')}
                     disabled={entry.file === 'missing'}
-                    onClick={() => void open(entry, 'folder')}
+                    onClick={() => revealLater(entry.batchId, () => void open(entry, 'folder'))}
                   />
                 </Tooltip>
                 <Tooltip title={t('finished.copyPath')}>

@@ -28,6 +28,7 @@ import type {BatchSnapshot, MixProgress, MixSkipped} from 'media-downloader-core
 import {type ClipboardEvent, useCallback, useEffect, useMemo, useRef, useState} from 'react'
 import {
   AUDIO_FORMATS,
+  audioOnlyFormats,
   type Format,
   isAudioFormat,
   type LinkSite,
@@ -591,6 +592,9 @@ function ValidRow({
   readonly onRemove: () => void
 }) {
   const t = useT()
+  // a sound-only site (SoundCloud) takes its two audio formats and nothing else. O(1): 11 choices
+  const only = audioOnlyFormats(item.site)
+  const choices = only ? OWN_CHOICES.filter(choice => (only as readonly Format[]).includes(choice.format)) : OWN_CHOICES
   return (
     <>
       <div className="mix-row-text">
@@ -609,9 +613,9 @@ function ValidRow({
         value={own ? choiceKey(own) : 'same'}
         options={[
           {value: 'same', label: `${t('mix.formatSame')} · ${formatSummary(t, all)}`},
-          ...OWN_CHOICES.map(choice => ({value: choiceKey(choice), label: formatSummary(t, choice)})),
+          ...choices.map(choice => ({value: choiceKey(choice), label: formatSummary(t, choice)})),
         ]}
-        onChange={(value: string) => onChoose(OWN_CHOICES.find(choice => choiceKey(choice) === value))}
+        onChange={(value: string) => onChoose(choices.find(choice => choiceKey(choice) === value))}
         data-testid="mix-item-format"
       />
       {/* checked against the list's format: a link with its own format is not said to be downloaded already */}

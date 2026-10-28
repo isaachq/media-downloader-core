@@ -100,6 +100,7 @@ export const th: Readonly<Record<MessageKey, string>> = {
   'finished.unverified': 'ยังไม่ได้ตรวจสอบ',
   'finished.checksum': 'Checksum',
   'finished.gone': 'ไฟล์นี้ไม่อยู่ในตำแหน่งที่ดาวน์โหลดไว้อีกต่อไป',
+  'finished.revealLater': 'ใช้ได้เมื่อชุดดาวน์โหลดเสร็จ',
   'finished.live': 'อัปเดตเมื่อดาวน์โหลดแต่ละรายการเสร็จ',
   'batch.openFolder': 'เปิดโฟลเดอร์',
   'slides.title': 'สไลด์โชว์ TikTok: {count}',

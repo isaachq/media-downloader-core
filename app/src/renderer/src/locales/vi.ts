@@ -103,6 +103,7 @@ export const vi: Readonly<Record<MessageKey, string>> = {
   'finished.unverified': 'Chưa kiểm tra',
   'finished.checksum': 'Mã kiểm tra',
   'finished.gone': 'Tệp này không còn ở chỗ đã tải xuống.',
+  'finished.revealLater': 'Có sẵn khi lô tải xong.',
   'finished.live': 'Tự cập nhật khi các lượt tải xong',
   'batch.openFolder': 'Mở thư mục',
   'slides.title': 'Trình chiếu TikTok: {count}',

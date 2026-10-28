@@ -28,6 +28,7 @@ import {api} from '../api'
 import {useApp} from '../context'
 import {bytes, clock, finishesAt, timeLeft} from '../format'
 import {type MessageKey, useT} from '../i18n'
+import {useRevealLater} from '../reveal'
 import {BATCH_FINISHED, useAppStore, useStore, useStoreValue} from '../store'
 import {useShowBatch} from './BatchFilter'
 import {Problems} from './Problems'
@@ -157,6 +158,8 @@ const BatchCard = memo(function BatchCard({batch}: {readonly batch: BatchSnapsho
   const {message} = AntApp.useApp()
   const showBatch = useShowBatch()
   const {settings} = useApp()
+  // the folder of a batch still running opens once it ends
+  const revealLater = useRevealLater()
   const [open, setOpen] = useState(false)
   const lang = settings.language
   const {preflight, jobs, estimate} = batch
@@ -302,7 +305,7 @@ const BatchCard = memo(function BatchCard({batch}: {readonly batch: BatchSnapsho
             <Button
               size="small"
               icon={<FolderOpenOutlined />}
-              onClick={() => void api().openFolder({batchId: batch.id})}
+              onClick={() => revealLater(batch.id, () => void api().openFolder({batchId: batch.id}))}
               data-testid="batch-open-folder"
             >
               {t('batch.openFolder')}

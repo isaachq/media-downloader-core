@@ -102,6 +102,7 @@ export const ru: Readonly<Record<MessageKey, string>> = {
   'finished.unverified': 'Не проверено',
   'finished.checksum': 'Контрольная сумма',
   'finished.gone': 'Этого файла больше нет там, куда он был скачан.',
+  'finished.revealLater': 'Будет доступно, когда пакет завершится.',
   'finished.live': 'Обновляется по мере завершения загрузок',
   'batch.openFolder': 'Открыть папку',
   'slides.title': 'Слайд-шоу TikTok: {count}',

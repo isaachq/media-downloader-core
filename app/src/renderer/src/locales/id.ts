@@ -103,6 +103,7 @@ export const id: Readonly<Record<MessageKey, string>> = {
   'finished.unverified': 'Belum diperiksa',
   'finished.checksum': 'Checksum',
   'finished.gone': 'File itu sudah tidak ada di lokasi unduhannya.',
+  'finished.revealLater': 'Tersedia setelah batch selesai.',
   'finished.live': 'Diperbarui setiap kali unduhan selesai',
   'batch.openFolder': 'Buka folder',
   'slides.title': 'Slideshow TikTok: {count}',

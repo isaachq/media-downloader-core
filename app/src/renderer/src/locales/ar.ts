@@ -102,6 +102,7 @@ export const ar: Readonly<Record<MessageKey, string>> = {
   'finished.unverified': 'لم يُفحص',
   'finished.checksum': 'المجموع الاختباري',
   'finished.gone': 'لم يعد هذا الملف في المكان الذي نُزّل فيه.',
+  'finished.revealLater': 'متاح عند انتهاء الدفعة.',
   'finished.live': 'يُحدَّث مع انتهاء كل تنزيل',
   'batch.openFolder': 'فتح المجلد',
   'slides.title': 'عروض شرائح TikTok: {count}',

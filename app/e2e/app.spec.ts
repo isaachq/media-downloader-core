@@ -6,6 +6,7 @@ import * as path from 'node:path'
 import {type ElectronApplication, _electron as electron, expect, type Page, test} from '@playwright/test'
 import {HANDLES as BLUESKY_HANDLES, RKEYS as BLUESKY_RKEYS, startFakeBluesky} from '../../test/helpers/fake-bluesky'
 import {startFakeHls, startFakeLive} from '../../test/helpers/fake-hls'
+import {startFakeInstagram} from '../../test/helpers/fake-instagram'
 import {startFakeSnapchat} from '../../test/helpers/fake-snapchat'
 import {
   HYDRATION_ID as SOUNDCLOUD_HYDRATION_ID,
@@ -969,5 +970,104 @@ test('beta 11: a mix list of the five new sites is checked at once and downloads
     await close(app)
   } finally {
     for (const fake of [twitch, threads, bluesky, snapchat, soundcloud, hls]) await fake.close()
+  }
+})
+
+test('beta 24: SoundCloud limits the picker and resets it, takes MP3 in a mix list; show in folder waits for the batch', {
+  tag: '@full',
+}, async () => {
+  const soundcloud = await startFakeSoundcloud({hydrationId: SOUNDCLOUD_HYDRATION_ID})
+  const instagram = await startFakeInstagram({posts: 2, carousels: [0]})
+  const openLog = path.join(root, 'beta24-open.log')
+  const opened = async () => (await fs.readFile(openLog, 'utf8').catch(() => '')).trim()
+  // the options of the one dropdown open now (closed ones stay in the DOM, hidden)
+  const options = () =>
+    page.locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option-content')
+  let page: Page
+  try {
+    const launched = await launch(
+      'beta24',
+      // MP4 by default; carousels as pictures; one download at a time, so a batch of slow videos stays running
+      {format: 'mp4', quality: 'best', slideshowMode: 'images', concurrency: 1},
+      {MDC_SOUNDCLOUD_ORIGIN: soundcloud.origin, MDC_INSTAGRAM_ORIGIN: instagram.origin, MDC_OPEN_LOG: openLog},
+    )
+    const {app, outDir} = launched
+    page = launched.page
+    const field = page.getByLabel('Video, playlist or profile URL')
+    const picker = page.getByTestId('format-select')
+    const formatBox = page.getByRole('combobox', {name: 'Format'})
+
+    // 1. a SoundCloud link in the field: the picker says M4A and offers MP3 and M4A only
+    await field.fill(soundcloudTrackUrl('clear-track'))
+    await expect(picker).toContainText('M4A')
+    await formatBox.click()
+    await expect(options()).toHaveText(['MP3', 'M4A · AAC (no re-encoding)'])
+    await page.keyboard.press('Escape')
+    await page.screenshot({path: path.join(APP_DIR, 'test-results', 'beta24-picker.png')})
+    await page
+      .getByRole('button', {name: /download/i})
+      .first()
+      .click()
+    await expect(page.getByTestId('batch-card').first()).toHaveAttribute('data-status', 'completed', {timeout: 60_000})
+    // the link is in: the field is empty and the picker is back to MP4, with the whole list
+    await expect(field).toHaveValue('')
+    await expect(picker).toContainText('MP4')
+    await formatBox.click()
+    await expect(options()).toHaveCount(8)
+    await page.keyboard.press('Escape')
+
+    // 2. a mix list: the SoundCloud link's own format can only be MP3 or M4A; MP3 is what it downloads as
+    await page.getByTestId('open-mix').click()
+    const dialog = page.getByRole('dialog')
+    const mixField = dialog.getByLabel('Paste or type a link')
+    for (const link of [soundcloudTrackUrl('old-upload'), 'https://fake.test/mx1']) {
+      await mixField.fill(link)
+      await mixField.press('Enter')
+    }
+    await dialog.getByTestId('mix-check').click()
+    await expect(dialog.getByTestId('mix-summary')).toContainText('2 ready', {timeout: 60_000})
+    await dialog.locator('.rows-item', {hasText: 'soundcloud.com'}).getByRole('combobox', {name: 'Format'}).click()
+    await expect(options()).toHaveText([/^Same as all/, 'Audio · M4A · Best audio', 'Audio · MP3 · Best audio'])
+    await options().filter({hasText: 'Audio · MP3 · Best audio'}).click()
+    await page.screenshot({path: path.join(APP_DIR, 'test-results', 'beta24-mix.png')})
+    await dialog.getByTestId('mix-schedule').click()
+    await expect(page.getByTestId('batch-card').first()).toHaveAttribute('data-status', 'completed', {timeout: 90_000})
+    const files = (await fs.readdir(outDir, {recursive: true})).map(String)
+    expect(files.filter(name => name.endsWith('.m4a'))).toHaveLength(1)
+    expect(files.filter(name => name.endsWith('.mp3'))).toHaveLength(1)
+    expect(files.filter(name => name.endsWith('.mp4'))).toHaveLength(1)
+
+    // 3. an Instagram carousel done while six slow videos of its batch still download: "show in
+    // folder" says it waits, opens nothing, and opens the folder once the batch ends
+    await page.getByTestId('open-mix').click()
+    for (const link of [
+      `https://www.instagram.com/p/${instagram.codes[0]}/`,
+      ...[1, 2, 3, 4, 5, 6].map(n => `https://fake.test/slowest-${n}`),
+    ]) {
+      await mixField.fill(link)
+      await mixField.press('Enter')
+    }
+    await dialog.getByTestId('mix-check').click()
+    await expect(dialog.getByTestId('mix-summary')).toContainText('7 ready', {timeout: 60_000})
+    await dialog.getByTestId('mix-schedule').click()
+    const slow = page.getByTestId('batch-card').first()
+    await expect(slow).toHaveAttribute('data-status', 'running', {timeout: 60_000})
+    await page.getByRole('tab', {name: /^Finished/}).click()
+    const row = page.getByTestId('finished-list').locator('.finished-row', {hasText: 'Instagram'})
+    await expect(row).toHaveCount(1, {timeout: 30_000})
+    await row.getByRole('button', {name: 'Show in folder'}).click()
+    await expect(page.locator('.ant-message-notice-info')).toContainText('Available when the batch finishes.')
+    expect(await opened()).toBe('')
+    await page.screenshot({path: path.join(APP_DIR, 'test-results', 'beta24-reveal-later.png')})
+    await page.getByRole('tab', {name: /^Batches/}).click()
+    await expect(slow).toHaveAttribute('data-status', 'completed', {timeout: 90_000})
+    await expect.poll(opened).toMatch(/^reveal /)
+    const [revealed, ...rest] = (await opened()).split('\n')
+    expect(rest).toEqual([])
+    expect(revealed!.startsWith(`reveal ${outDir}`)).toBe(true)
+    await close(app)
+  } finally {
+    await soundcloud.close()
+    await instagram.close()
   }
 })

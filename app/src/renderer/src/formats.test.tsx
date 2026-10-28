@@ -277,3 +277,53 @@ describe('UI Format & Quality Matrix (All 26 Profiles)', () => {
     })
   })
 })
+
+describe('beta 24: a sound-only site limits the picker to its formats', () => {
+  const SONG = 'https://soundcloud.com/artist/a-track'
+  const options = () =>
+    [...document.querySelectorAll<HTMLElement>('.ant-select-item-option-content')].map(node => node.textContent)
+
+  it('a SoundCloud link shows MP3 and M4A only; with MP4 chosen it schedules M4A; once added, the picker is back to the default', async () => {
+    const api = new FakeApi({settings: {format: 'mp4', quality: '1080'}})
+    const {user} = await mount(api)
+    const input = screen.getByLabelText('Video, playlist or profile URL')
+    await user.type(input, SONG)
+    // the picker says M4A (the video profile is hidden, not disabled) and the quality is audio's
+    const picker = screen.getByTestId('format-select')
+    expect(within(picker).getByText('M4A · AAC (no re-encoding)')).toBeInTheDocument()
+    expect(screen.getByLabelText('Quality').closest('.ant-select')).toHaveClass('ant-select-disabled')
+    await user.click(screen.getByRole('combobox', {name: 'Format'}))
+    await waitFor(() => expect(options()).toEqual(['MP3', 'M4A · AAC (no re-encoding)']))
+    await user.keyboard('{Escape}')
+
+    await user.click(screen.getByRole('button', {name: /download/i}))
+    await waitFor(() => expect(api.schedule).toHaveBeenCalledWith(expect.objectContaining({url: SONG, format: 'm4a'})))
+    // the settings never changed: the next link starts from MP4 again, with the whole list
+    expect(api.setSettings).not.toHaveBeenCalledWith(expect.objectContaining({format: expect.anything()}))
+    await waitFor(() => expect(input).toHaveValue(''))
+    expect(within(picker).getByText('MP4 · H.264/AAC, plays everywhere')).toBeInTheDocument()
+    expect(screen.getByLabelText('Quality').closest('.ant-select')).not.toHaveClass('ant-select-disabled')
+    await user.click(screen.getByRole('combobox', {name: 'Format'}))
+    await waitFor(() => expect(options()).toHaveLength(VIDEO_FORMATS.length + AUDIO_FORMATS.length))
+  })
+
+  it('MP3 picked for the link is what the link downloads as, and the default stays', async () => {
+    const api = new FakeApi({settings: {format: 'webm', quality: 'best'}})
+    const {user} = await mount(api)
+    await user.type(screen.getByLabelText('Video, playlist or profile URL'), SONG)
+    await user.click(screen.getByRole('combobox', {name: 'Format'}))
+    await user.click(await screen.findByText('MP3', {selector: '.ant-select-item-option-content'}))
+    await user.click(screen.getByRole('button', {name: /download/i}))
+    await waitFor(() => expect(api.schedule).toHaveBeenCalledWith(expect.objectContaining({url: SONG, format: 'mp3'})))
+    expect(api.setSettings).not.toHaveBeenCalled()
+  })
+
+  it('a default the site already allows (MP3) is kept for the link as it is', async () => {
+    const api = new FakeApi({settings: {format: 'mp3', quality: 'best'}})
+    const {user} = await mount(api)
+    await user.type(screen.getByLabelText('Video, playlist or profile URL'), SONG)
+    expect(within(screen.getByTestId('format-select')).getByText('MP3')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', {name: /download/i}))
+    await waitFor(() => expect(api.schedule).toHaveBeenCalledWith(expect.objectContaining({url: SONG, format: 'mp3'})))
+  })
+})

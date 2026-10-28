@@ -1,18 +1,10 @@
 # Changelog
 
-## Unreleased
+## App 0.2.0-beta.24 · library 1.21.3
 
-### Status
-
-- [x] 1 fix(soundcloud): every link shape reads again · done · verified: npm run check, npm run perf, live:matrix --platform soundcloud --download --audio-format mp3 (22/22) and --native (22/22)
-- [x] 2 core(soundcloud): audio-only is validated before the site · done · verified: npm run check, perf stress 35.6 vs 35.9 jobs/s
-- [x] 3 fix(instagram): the session is the last resort · done · verified: npm run check, live:matrix --platform instagram --native (24 pass, 3 need a session, 0 fail)
-- [x] 4 release: library 1.21.3 · done · verified: npm run test:full (check, heavy, build, pack:check, app typecheck, app vitest 225/225, e2e 20/21: the beta 23 e2e "a SoundCloud track with MP4 chosen" now meets the library's refusal by design; commit 5 restores it with the picker)
-- [ ] 5 app: soundcloud format selector
-- [ ] 6 app: reveal waits for the batch
-- [ ] 7 app: beta 24 e2e
-- [ ] 8 release: app 0.2.0-beta.24
-- [ ] 9 Android beta 24 (phone repo)
+SoundCloud links of every shape read again and are audio only before any request; Instagram asks
+for the session last; the desktop picker offers MP3 and M4A for a SoundCloud link and "Show in
+folder" waits for the batch.
 
 **Library 1.21.3**
 
@@ -40,6 +32,21 @@
   `needs-sign-in` instead of "this network is limited", and no longer steps the whole site
   aside for 10 minutes. Cost: at most 1 request with the session per post, after the
   anonymous ones; 0 when a public post reads anonymously.
+
+**Desktop app**
+
+- **SoundCloud's picker shows MP3 and M4A only.** With a SoundCloud link in the field the
+  Format select lists its two audio formats (the video profiles are hidden, not disabled)
+  and the quality is audio's; the choice belongs to that link, so once the link is added
+  the picker is back to the default format, waiting for the next one. In a mix list a
+  SoundCloud link takes only MP3 or M4A as a format of its own. Cost: O(1) per render (a
+  two-entry list).
+- **"Show in folder" waits for the batch.** In Finished, in Downloads and on a batch's card,
+  the folder button of a file whose batch is still running stays where it is; a tap says
+  "Available when the batch finishes" (14 languages) and opens nothing, and the folder opens
+  once, by itself, when the batch ends. A file of a finished batch opens at once, as before.
+  The tap is kept by the store, so a tab that unmounts keeps it. Cost: O(1) per tap and per
+  batch update.
 
 ## App 0.2.0-beta.23 · library 1.21.2
 

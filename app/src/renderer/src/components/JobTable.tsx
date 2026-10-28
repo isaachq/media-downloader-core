@@ -13,6 +13,7 @@ import {api} from '../api'
 import {useApp} from '../context'
 import {clock, rate} from '../format'
 import {type MessageKey, useT} from '../i18n'
+import {useRevealLater} from '../reveal'
 import {useStore, WORKING} from '../store'
 import {BatchFilter, useShowBatch} from './BatchFilter'
 import {IntegrityTag, StatusTag, StepTrack} from './JobParts'
@@ -52,6 +53,8 @@ export function JobTable({
   const store = useStore()
   const version = store.version
   const [paused, setPaused] = useState(false)
+  // a file of a batch still running shows in its folder once the batch ends
+  const revealLater = useRevealLater()
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: recompute when the store changes
   const options = useMemo(
@@ -187,7 +190,7 @@ export function JobTable({
                 size="small"
                 icon={<FolderOpenOutlined />}
                 aria-label={t('job.reveal')}
-                onClick={() => void api().reveal(job.filepath!)}
+                onClick={() => revealLater(job.batchId, () => void api().reveal(job.filepath!))}
               />
             </Tooltip>
           ) : null}

@@ -104,6 +104,7 @@ export const fr: Readonly<Record<MessageKey, string>> = {
   'finished.unverified': 'Non contrôlé',
   'finished.checksum': 'Somme de contrôle',
   'finished.gone': 'Ce fichier n’est plus à l’endroit où il a été téléchargé.',
+  'finished.revealLater': 'Disponible quand le lot sera terminé.',
   'finished.live': 'Se met à jour à chaque téléchargement terminé',
   'batch.openFolder': 'Ouvrir le dossier',
   'slides.title': 'Diaporamas TikTok : {count}',

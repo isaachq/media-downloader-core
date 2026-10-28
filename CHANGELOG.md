@@ -1,5 +1,46 @@
 # Changelog
 
+## Unreleased
+
+### Status
+
+- [x] 1 fix(soundcloud): every link shape reads again · done · verified: npm run check, npm run perf, live:matrix --platform soundcloud --download --audio-format mp3 (22/22) and --native (22/22)
+- [x] 2 core(soundcloud): audio-only is validated before the site · done · verified: npm run check, perf stress 35.6 vs 35.9 jobs/s
+- [x] 3 fix(instagram): the session is the last resort · done · verified: npm run check, live:matrix --platform instagram --native (24 pass, 3 need a session, 0 fail)
+- [x] 4 release: library 1.21.3 · done · verified: npm run test:full (check, heavy, build, pack:check, app typecheck, app vitest 225/225, e2e 20/21: the beta 23 e2e "a SoundCloud track with MP4 chosen" now meets the library's refusal by design; commit 5 restores it with the picker)
+- [ ] 5 app: soundcloud format selector
+- [ ] 6 app: reveal waits for the batch
+- [ ] 7 app: beta 24 e2e
+- [ ] 8 release: app 0.2.0-beta.24
+- [ ] 9 Android beta 24 (phone repo)
+
+**Library 1.21.3**
+
+- **SoundCloud: every link shape reads again.** The track and its `on.soundcloud.com`
+  link download as MP3, local and native; a short link to a track shared from a set
+  (`?in=<set>&utm_source=mobi`) and its `m.` page with `?in=` resolve to the track. Short
+  links follow up to 3 hops and read a 200 page's `<meta refresh>` or script `location`;
+  a preset whose playlist will not open falls back to the next one; the bundle's
+  `client_id` pattern takes quoted keys. A DRM-only label release (every transcoding
+  `cbc-`/`ctr-encrypted-hls`, as two of the reported links are) is still refused cleanly as
+  `unavailable` / `format-unavailable`. Cost: at most 3 requests per short link, O(page)
+  for a page redirect; one extra mint per broken preset.
+- **SoundCloud is audio only before any request.** A SoundCloud track, set, profile or
+  short link scheduled as a video is refused by `BatchScheduler.schedule`
+  (`invalid-request` / `format-unavailable`, `params.audioOnly`); in a mix list it is M4A
+  from its first attempt (no `audioOnly → retry`); a mix list's own format for it must be
+  MP3 or M4A, and `analyzeMix` turns any other profile into M4A. `audioOnlyFormats(site)`
+  is exported from `media-downloader-core/detect` for the apps' pickers. Cost: O(L) per
+  link, once, at schedule time.
+- **Instagram: the session is the last resort.** A post is read anonymously, then by the
+  web client as a visitor, and with the user's session only when everything before asked
+  for a sign-in. A photo post's song asked with the session is quiet: a challenge delivers
+  the post without its song (logged), never a verification, and the site keeps its native
+  source. A post Instagram limits to some audiences (oEmbed `gating_type`) is
+  `needs-sign-in` instead of "this network is limited", and no longer steps the whole site
+  aside for 10 minutes. Cost: at most 1 request with the session per post, after the
+  anonymous ones; 0 when a public post reads anonymously.
+
 ## App 0.2.0-beta.23 · library 1.21.2
 
 A song asked as a video downloads as M4A, alone, in a list or in a mix list; Android's shared

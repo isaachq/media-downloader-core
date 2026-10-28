@@ -4,7 +4,7 @@
  *   /<user>/sets/<set>[/s-<token>]                                                     → set
  *   /<user>  /<user>/tracks                                                            → profile: its tracks
  *   /<user>/likes   /<user>/sets   /<user>/albums                                      → profile: that tab
- *   on.soundcloud.com/<code>                                                           → short (one 302)
+ *   on.soundcloud.com/<code>                                                           → short (≤ 3 hops)
  *   w.soundcloud.com/player/?url=<a link above>                                        → that link
  * on soundcloud.com, www. and m. (the API answers 404 to m.: links are read
  * back as soundcloud.com). Reposts, followers, comments, stations, search and
@@ -155,4 +155,31 @@ export function keyOf(user: string, slug: string): string {
 export function isSoundcloudListing(url: string): boolean {
   const kind = parseSoundcloudLink(url)?.kind
   return kind === 'profile' || kind === 'set'
+}
+
+/** `<meta http-equiv="refresh" content="0; url=…">`, either attribute order. */
+const META_REFRESH = /<meta[^>]+http-equiv=["']?refresh["']?[^>]*content=["'][^"']*?url=([^"'>\s]+)/i
+const META_REFRESH_REVERSED = /<meta[^>]+content=["'][^"']*?url=([^"'>\s]+)[^>]*http-equiv=["']?refresh/i
+/** `window.location = "…"`, `location.href='…'`, `location.replace("…")`. */
+const SCRIPT_LOCATION = /location(?:\.href)?\s*(?:=|\.replace\(|\.assign\()\s*["']([^"']+)["']/
+
+/** Characters of a short link's page read for its redirect: the tag sits in its head. */
+export const REDIRECT_PAGE_CHARS = 64 * 1024
+
+/**
+ * Where a short link's page sends the browser when it answers 200 instead of
+ * a 302: its `<meta refresh>`, else a script's `location`. Only http(s), made
+ * absolute against `base`; undefined when the page names neither. O(page),
+ * the page cut at REDIRECT_PAGE_CHARS.
+ */
+export function pageRedirectOf(html: string, base: string): string | undefined {
+  const head = html.slice(0, REDIRECT_PAGE_CHARS)
+  const raw = (META_REFRESH.exec(head) ?? META_REFRESH_REVERSED.exec(head) ?? SCRIPT_LOCATION.exec(head))?.[1]
+  if (!raw) return undefined
+  try {
+    const target = new URL(raw.replace(/&amp;/g, '&').replace(/\\\//g, '/'), base)
+    return target.protocol === 'https:' || target.protocol === 'http:' ? target.href : undefined
+  } catch {
+    return undefined
+  }
 }

@@ -52,8 +52,12 @@ export const IDS_PER_REQUEST = 50
 /** The hydration's api client: free (it comes with the home page), but flagged `isExpiring`. */
 export const HYDRATION_CLIENT_ID =
   /"hydratable"\s*:\s*"apiClient"\s*,\s*"data"\s*:\s*\{\s*"id"\s*:\s*"([0-9A-Za-z]{32})"/
-/** The bundle's: stable (`client_is_expiring:!1`), in the last script. */
-export const BUNDLE_CLIENT_ID = /client_id\s*:\s*"([0-9A-Za-z]{32})"/
+/**
+ * The bundle's: stable (`client_is_expiring:!1`), in the last script. Written
+ * `client_id:"…"` today (2026-10-27, `assets/55-*.js`); a minifier's
+ * `client_id:'…'` or a quoted key (`"client_id":"…"`) is the same id.
+ */
+export const BUNDLE_CLIENT_ID = /["']?client_id["']?\s*:\s*["']([0-9A-Za-z]{32})["']/
 /** The page's scripts, in page order. */
 export const SCRIPT_SRC = /<script[^>]+src="([^"]+)"/g
 /** The longest match of BUNDLE_CLIENT_ID plus slack: what a streamed scan keeps between chunks. */

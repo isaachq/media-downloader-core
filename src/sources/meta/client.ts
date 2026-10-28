@@ -208,19 +208,31 @@ export class MetaClient {
   async page<T>(
     url: string,
     read: (page: PageRead) => T,
-    opts: {readonly signal?: AbortSignal | undefined; readonly headers?: Readonly<Record<string, string>>} = {},
+    opts: {
+      readonly signal?: AbortSignal | undefined
+      readonly headers?: Readonly<Record<string, string>>
+      /** Read as a visitor (no cookies of the host's, no browser): a step before the user's session. */
+      readonly visitor?: boolean | undefined
+      /** A verification page doesn't step the site aside: the caller decides (one step of a longer chain). */
+      readonly keepSource?: boolean | undefined
+    } = {},
   ): Promise<T> {
+    if (opts.visitor) {
+      const visitor = this.#visitor()
+      return this.#quietly(() => this.#pageOnce(url, read, {...opts, session: visitor}), opts.signal)
+    }
+    const aside = !opts.keepSource
     try {
-      return await this.retrying(() => this.#pageOnce(url, read, opts), opts.signal)
+      return await this.retrying(() => this.#pageOnce(url, read, opts), opts.signal, aside)
     } catch (error) {
       if (this.#refusedSession(error)) {
         const visitor = this.#visitor()
         return this.#asVisitor(error, visitor, () =>
-          this.retrying(() => this.#pageOnce(url, read, {...opts, session: visitor}), opts.signal),
+          this.retrying(() => this.#pageOnce(url, read, {...opts, session: visitor}), opts.signal, aside),
         )
       }
       if (!(error instanceof MetaError) || error.problem !== 'challenge' || !this.#browser) throw error
-      return this.inBrowser(url, page => read({html: page.html, url, status: 200}), opts.signal)
+      return this.inBrowser(url, page => read({html: page.html, url, status: 200}), opts.signal, aside)
     }
   }
 
@@ -241,25 +253,41 @@ export class MetaClient {
       readonly body?: string | undefined
       /** A page the browser can open to earn the cookies the API wants. */
       readonly recoverAt?: string | undefined
+      /**
+       * A verification answer is the caller's to handle: no browser, the site is not
+       * stepped aside, the session is not dropped. For reads that are a nicety (a photo
+       * post's song) or a last try, which must never cost the other links their source.
+       */
+      readonly quiet?: boolean | undefined
+      /** Read as a visitor (no cookies of the host's, no browser); implies quiet. */
+      readonly visitor?: boolean | undefined
+      /** A verification answer doesn't step the site aside (the browser may still try): the caller decides. */
+      readonly keepSource?: boolean | undefined
     } = {},
   ): Promise<T> {
+    if (opts.visitor) {
+      const visitor = this.#visitor()
+      return this.#quietly(() => this.#jsonOnce(url, read, {...opts, session: visitor}), opts.signal)
+    }
+    if (opts.quiet) return this.#quietly(() => this.#jsonOnce(url, read, opts), opts.signal)
+    const aside = !opts.keepSource
     try {
-      return await this.retrying(() => this.#jsonOnce(url, read, opts), opts.signal)
+      return await this.retrying(() => this.#jsonOnce(url, read, opts), opts.signal, aside)
     } catch (error) {
       if (this.#refusedSession(error)) {
         const visitor = this.#visitor()
         return this.#asVisitor(error, visitor, () =>
-          this.retrying(() => this.#jsonOnce(url, read, {...opts, session: visitor}), opts.signal),
+          this.retrying(() => this.#jsonOnce(url, read, {...opts, session: visitor}), opts.signal, aside),
         )
       }
       if (!(error instanceof MetaError) || error.problem !== 'challenge' || !this.#browser || !opts.recoverAt)
         throw error
       // the browser's page must be a real one: a captcha or login wall there too means stepping aside
-      await this.inBrowser(opts.recoverAt, page => assertNotWalled(page.html, this.site), opts.signal)
+      await this.inBrowser(opts.recoverAt, page => assertNotWalled(page.html, this.site), opts.signal, aside)
       try {
         return await this.#jsonOnce(url, read, opts)
       } catch (again) {
-        if (again instanceof MetaError && again.problem === 'challenge') this.stepAside(again.message)
+        if (aside && again instanceof MetaError && again.problem === 'challenge') this.stepAside(again.message)
         throw again
       }
     }
@@ -288,20 +316,32 @@ export class MetaClient {
   /**
    * A refusal (429 / 5xx / empty answer) is retried after the shared cool-down.
    * A verification page is not: solving it is out of scope, so the source steps
-   * aside for BLOCKED_MS and the engine uses yt-dlp meanwhile.
+   * aside for BLOCKED_MS and the engine uses yt-dlp meanwhile (unless `aside` is false: the caller decides).
    */
-  async retrying<T>(read: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  async retrying<T>(read: () => Promise<T>, signal?: AbortSignal, aside = true): Promise<T> {
     for (let attempt = 1; ; attempt++) {
       try {
         return await read()
       } catch (error) {
         if (error instanceof MetaError && error.problem === 'challenge') {
           // with a browser at hand the caller tries it before stepping aside
-          if (!this.#browser) this.stepAside(error.message)
+          if (!this.#browser && aside) this.stepAside(error.message)
           throw error
         }
         if (signal?.aborted || !(error instanceof MetaError) || !error.transient || attempt >= READ_ATTEMPTS)
           throw error
+      }
+    }
+  }
+
+  /** As `retrying`, but a verification page is only thrown: no browser, no stepping aside. */
+  async #quietly<T>(read: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await read()
+      } catch (error) {
+        if (signal?.aborted || !(error instanceof MetaError) || error.problem === 'challenge') throw error
+        if (!error.transient || attempt >= READ_ATTEMPTS) throw error
       }
     }
   }
@@ -318,14 +358,20 @@ export class MetaClient {
    * HTTP. A captcha or login wall the browser hits too stays a challenge, and
    * the source steps aside.
    */
-  async inBrowser<T>(url: string, read: (page: {readonly html: string}) => T, signal?: AbortSignal): Promise<T> {
+  async inBrowser<T>(
+    url: string,
+    read: (page: {readonly html: string}) => T,
+    signal?: AbortSignal,
+    aside = true,
+  ): Promise<T> {
     let page: Awaited<ReturnType<BrowserAssist>>
     let result: T
     try {
       page = await this.#browserTurns.run(() => this.#browser!(url, signal), signal)
       result = read(page)
     } catch (error) {
-      if (error instanceof MetaError && error.transient) this.stepAside('even the browser got a verification page')
+      if (aside && error instanceof MetaError && error.transient)
+        this.stepAside('even the browser got a verification page')
       throw error
     }
     this.session.adopt(page)

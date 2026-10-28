@@ -8,6 +8,7 @@
 //   npm run live:matrix -- --only FB-05,TT-02   # some scenarios
 //   npm run live:matrix -- --platform tiktok
 //   npm run live:matrix -- --native             # as the Android app runs it: no yt-dlp
+//   npm run live:matrix -- --download --audio-format mp3   # audio scenarios as MP3 (default M4A)
 //
 // Optional signed-in sessions (Netscape cookie files, e.g. exported from a browser):
 //   MDC_LIVE_COOKIES_FACEBOOK=… MDC_LIVE_COOKIES_INSTAGRAM=… MDC_LIVE_COOKIES_TIKTOK=…
@@ -45,6 +46,11 @@ type Expect =
   | 'playlist'
   /** One audio track (SoundCloud): audio choices only; downloaded as M4A, its length and a full decode checked. */
   | 'audio'
+  /**
+   * A DRM-only track (a label release on SoundCloud): no extractor can download it, so the pass is the clean
+   * refusal — `unavailable` / `format-unavailable` saying DRM — never a crash or another site's fallback.
+   */
+  | 'drm'
 
 type Scenario = {
   readonly id: string
@@ -75,6 +81,8 @@ const {values: args} = parseArgs({
     download: {type: 'boolean', default: false},
     /** As the phone runs it: no yt-dlp, the native sources only (the Android app's engine). */
     native: {type: 'boolean', default: false},
+    /** The container audio scenarios download in: m4a (SoundCloud's AAC as is) or mp3. */
+    'audio-format': {type: 'string', default: 'm4a'},
     only: {type: 'string'},
     platform: {type: 'string'},
     jitter: {type: 'string', default: '1500-4000'},
@@ -159,6 +167,8 @@ function check(expect: Expect, result: AnalysisResult): string | undefined {
   if (result.kind !== 'video') return 'a listing, not one item'
   const show = result.media.slideshow
   switch (expect) {
+    case 'drm':
+      return 'a DRM-only track analyzed as downloadable'
     case 'audio':
       if (show) return 'a photo post, not a track'
       if (result.choices.length === 0) return 'no format to download'
@@ -194,7 +204,10 @@ async function download(url: string, analysis: AnalysisResult, expect: Expect, o
   const media = analysis.kind === 'video' ? analysis.media : undefined
   const job = dl.add({
     url,
-    profile: expect === 'audio' ? {kind: 'audio', container: 'm4a'} : {kind: 'video', container: 'mp4'},
+    profile:
+      expect === 'audio'
+        ? {kind: 'audio', container: args['audio-format'] === 'mp3' ? 'mp3' : 'm4a'}
+        : {kind: 'video', container: 'mp4'},
     outDir,
     slideshow,
     ...(media?.slideshow && {photoPost: true}),
@@ -301,6 +314,17 @@ for (const scenario of scenarios) {
         elapsedMs: elapsed,
         analysis,
       })
+      const drmRefused =
+        scenario.expect === 'drm' &&
+        stage === 'analyze' &&
+        diagnostic.error_code !== 'UNKNOWN' &&
+        /DRM/.test(diagnostic.message)
+      if (drmRefused) {
+        rows.push({scenario: scenario.id, url, outcome: 'pass', analyzeMs: elapsed, got: 'refused: DRM', reason: diagnostic.message})
+        console.log(`  ✓ ${Math.round(elapsed)} ms  ${url}
+      refused cleanly: ${diagnostic.error_code} — ${diagnostic.message}`)
+        continue
+      }
       const needsSession = scenario.session && !signedIn[diagnostic.platform]
       const outcome: Outcome =
         needsSession && diagnostic.error_code === 'LOGIN_WALL_DETECTED' ? 'auth' : ('fail' as Outcome)

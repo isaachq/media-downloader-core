@@ -7,7 +7,12 @@ import type {DownloadError} from '../src/core/errors.js'
 import {isListingLink} from '../src/core/mix.js'
 import {MediaDownloader} from '../src/downloader.js'
 import {BatchScheduler} from '../src/scheduler.js'
-import {isSoundcloudListing, parseSoundcloudLink} from '../src/sources/soundcloud/links.js'
+import {
+  canonicalUrl,
+  isSoundcloudListing,
+  pageRedirectOf,
+  parseSoundcloudLink,
+} from '../src/sources/soundcloud/links.js'
 import {type SoundcloudOptions, SoundcloudSource} from '../src/sources/soundcloud/source.js'
 import {needsFallback, SOURCE_BLOCKED, SOURCE_FORMAT_CHANGED, type SourceDownload} from '../src/sources/source.js'
 import type {AnalysisResult, JobSnapshot, PlaylistAnalysis, VideoAnalysis} from '../src/types.js'
@@ -87,6 +92,39 @@ describe('SoundCloud links', () => {
     ]) {
       assert.equal(parseSoundcloudLink(url), undefined, url)
     }
+  })
+
+  it('m. with ?in= is the track, resolved on soundcloud.com without the query', () => {
+    const link = parseSoundcloudLink(
+      'https://m.soundcloud.com/cainculto-sc/a-plague-a-pestilence?in=soundcloud-scenes%2Fsets%2Fdreams-emerging-indie',
+    )
+    assert.deepEqual(link, {kind: 'track', user: 'cainculto-sc', slug: 'a-plague-a-pestilence'})
+    assert.equal(
+      canonicalUrl('https://soundcloud.com', link as Exclude<typeof link & {}, {kind: 'short'}>),
+      'https://soundcloud.com/cainculto-sc/a-plague-a-pestilence',
+    )
+    assert.deepEqual(parseSoundcloudLink('https://on.soundcloud.com/24FMrwDqDRCSJtmB9X'), {
+      kind: 'short',
+      url: 'https://on.soundcloud.com/24FMrwDqDRCSJtmB9X',
+    })
+  })
+
+  it('a short link page: its meta refresh (either order) or a script location, http(s) only', () => {
+    const base = 'https://on.soundcloud.com/x'
+    assert.equal(
+      pageRedirectOf('<meta http-equiv="refresh" content="0; url=https://soundcloud.com/a/b?x=1&amp;y=2">', base),
+      'https://soundcloud.com/a/b?x=1&y=2',
+    )
+    assert.equal(
+      pageRedirectOf("<meta content='0;URL=/a/b' http-equiv='refresh'>", base),
+      'https://on.soundcloud.com/a/b',
+    )
+    assert.equal(
+      pageRedirectOf('<script>window.location.href = "https://soundcloud.com/a/b"</script>', base),
+      'https://soundcloud.com/a/b',
+    )
+    assert.equal(pageRedirectOf('<script>location.replace("javascript:alert(1)")</script>', base), undefined)
+    assert.equal(pageRedirectOf('<p>nothing</p>', base), undefined)
   })
 
   it('a set or a profile is a list; a track is one item', () => {
@@ -430,6 +468,47 @@ describe('SoundCloud, end to end (local fake)', () => {
     assert.equal(gone.hint, 'removed')
   })
 
+  it(
+    'the 4 shapes of a real link today: a track, its short link, a short link from a set, m. with ?in=',
+    T,
+    async () => {
+      const {site, source} = await setup('shapes')
+      // 1. the page itself, 2. its short link (one 302 with the sharer's utm_*)
+      assert.equal(asTrack(await source.analyze(trackUrl('clear-track'))).media.id, String(IDS.clear))
+      assert.equal(asTrack(await source.analyze('https://on.soundcloud.com/AbCdEf456')).media.id, String(IDS.clear))
+      // 3. a short link to a track shared from a set (?in=…&utm_source=mobi) and 4. its m. page with ?in=: the track,
+      // never the set, resolved without the query — here a DRM-only label release, refused cleanly before any mint
+      for (const url of [
+        'https://on.soundcloud.com/FromSet',
+        'https://m.soundcloud.com/artist/label-release?in=soundcloud-scenes%2Fsets%2Fdreams-emerging-indie',
+      ]) {
+        const error = await refusal(source.analyze(url))
+        assert.equal(error.code, 'unavailable', url)
+        assert.equal(error.hint, 'format-unavailable', url)
+        assert.match(error.message, /DRM/, url)
+      }
+      assert.equal(site.hits.mint, undefined, 'nothing minted for DRM')
+    },
+  )
+
+  it('a short link of 2 hops, or a 200 page with a meta refresh or a script location, is followed', T, async () => {
+    const {site, source} = await setup('hops')
+    assert.equal(asTrack(await source.analyze('https://on.soundcloud.com/MetaPage')).media.id, String(IDS.clear))
+    for (const code of ['TwoHop', 'ScriptPage']) {
+      const error = await refusal(source.analyze(`https://on.soundcloud.com/${code}`))
+      assert.match(error.message, /DRM/, `${code} reached the label release`)
+    }
+    assert.equal(site.hits.short, 5, 'MetaPage 1, TwoHop 2, ScriptPage 2')
+    const blank = await refusal(source.analyze('https://on.soundcloud.com/BlankPage'))
+    assert.equal(blank.hint, 'removed', 'a page that names no link is a dead end')
+  })
+
+  it('a preset whose playlist will not open: the next preset downloads', T, async () => {
+    const {source, work} = await setup('fallback')
+    const file = await source.download(task(trackUrl('broken-top'), work))
+    assert.equal(file.info.formatId, 'aac_96k/hls')
+  })
+
   it('DataDome on a listing is source:blocked: yt-dlp takes SoundCloud for a while', T, async () => {
     const {source} = await setup('datadome', {hydrationId: HYDRATION_ID, datadome: true})
     const error = await refusal(source.analyze(ARTIST))
@@ -490,6 +569,76 @@ describe('SoundCloud, end to end (local fake)', () => {
     assert.equal(path.extname(done.filepath ?? ''), '.m4a')
   })
 
+  it('audio only is validated before the site: a SoundCloud batch as a video is refused, no request', T, async () => {
+    const site = await startFakeSoundcloud({hydrationId: HYDRATION_ID})
+    cleanups.push(() => site.close())
+    const engine = soundcloudEngine(site, 'audio-only')
+    const scheduler = new BatchScheduler(engine)
+    cleanups.push(async () => {
+      await scheduler.dispose()
+      await engine.dispose()
+    })
+    const out = path.join(root, 'audio-only-out')
+    for (const url of [trackUrl('clear-track'), BIG_SET, ARTIST, 'https://on.soundcloud.com/AbCdEf123']) {
+      assert.throws(
+        () => scheduler.schedule({url, profile: {kind: 'video', container: 'mp4'}, outDir: out}),
+        (error: DownloadError) =>
+          error.code === 'invalid-request' && error.hint === 'format-unavailable' && /audio only/.test(error.message),
+        url,
+      )
+    }
+    // a mix list: its own format may be MP3 or M4A only
+    assert.throws(
+      () =>
+        scheduler.scheduleMix([trackUrl('clear-track')], {
+          profile: m4a,
+          outDir: out,
+          formats: {[trackUrl('clear-track')]: {kind: 'audio', container: 'flac'}},
+        }),
+      (error: DownloadError) => error.code === 'invalid-request' && /MP3 or M4A/.test(error.message),
+    )
+    assert.deepEqual(site.hits, {}, 'nothing asked of SoundCloud')
+    // the check: MP3 stays MP3; FLAC or a video turns the track into M4A
+    for (const [profile, format] of [
+      [{kind: 'audio', container: 'mp3'}, undefined],
+      [{kind: 'audio', container: 'flac'}, m4a],
+      [{kind: 'video', container: 'mp4'}, m4a],
+    ] as const) {
+      const mix = await engine.analyzeMix([trackUrl('clear-track')], {profile})
+      assert.deepEqual(mix.valid[0]?.format, format, `as ${profile.container}`)
+    }
+  })
+
+  it('a SoundCloud track in a mix list of videos is M4A from its first attempt: no audioOnly retry', T, async () => {
+    const site = await startFakeSoundcloud({hydrationId: HYDRATION_ID})
+    cleanups.push(() => site.close())
+    const engine = soundcloudEngine(site, 'mix-first')
+    const scheduler = new BatchScheduler(engine)
+    cleanups.push(async () => {
+      await scheduler.dispose()
+      await engine.dispose()
+    })
+    const logs: string[] = []
+    engine.on('log', entry => logs.push(entry.message))
+    const out = path.join(root, 'mix-first-out')
+    // from a text: the batch checks the link itself
+    const batch = scheduler.scheduleMix(trackUrl('clear-track'), {
+      profile: {kind: 'video', container: 'mp4'},
+      outDir: out,
+    })
+    await scheduler.whenIdle()
+    const done = scheduler.batch(batch.id)!
+    assert.equal(done.status, 'completed', JSON.stringify(done.error))
+    const jobs = engine.jobs().filter(job => job.batchId === batch.id)
+    assert.deepEqual(
+      jobs.map(job => [job.profile.kind, job.status, path.extname(job.filepath ?? '')]),
+      [['audio', 'completed', '.m4a']],
+      'one job, audio from the start',
+    )
+    assert.ok(!logs.some(line => /no picture, downloaded as M4A/.test(line)), 'never the audioOnly → retry path')
+    assert.ok(!logs.some(line => /audio only/.test(line)), 'never refused by the source')
+  })
+
   it('a set asked as MP4, restored before its check: each track comes back as M4A, none fails', T, async () => {
     const site = await startFakeSoundcloud({hydrationId: HYDRATION_ID})
     cleanups.push(() => site.close())
@@ -547,3 +696,27 @@ describe('SoundCloud, end to end (local fake)', () => {
     )
   })
 })
+
+function soundcloudEngine(site: Awaited<ReturnType<typeof startFakeSoundcloud>>, name: string): MediaDownloader {
+  return new MediaDownloader({
+    dataDir: path.join(root, name),
+    binaries: bins,
+    validation: 'none',
+    maxRetries: 1,
+    retryDelayMaxMs: 20,
+    progressIntervalMs: 0,
+    tiktok: false,
+    instagram: false,
+    facebook: false,
+    x: false,
+    vk: false,
+    snapchat: false,
+    threads: false,
+    bluesky: false,
+    twitch: false,
+    soundcloud: {
+      endpoints: {api: site.api, web: site.origin, short: `${site.origin}/short`, assetHost: `${site.origin}/assets`},
+      pacing: fast,
+    },
+  })
+}

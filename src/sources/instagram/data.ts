@@ -511,8 +511,11 @@ export function readLoggedOutPostQuery(json: unknown): MetaPost {
 }
 
 /** oEmbed's answer: the post exists and is public (its id), or undefined when the answer says nothing. */
-export function readOembed(json: unknown): {readonly mediaId?: string | undefined} {
-  return isObject(json) ? {mediaId: text(json['media_id'])} : {}
+/** oEmbed's answer: the post's id, or `gated` when Instagram limits it to some audiences (`gating_type`). O(1). */
+export function readOembed(json: unknown): {readonly mediaId?: string | undefined; readonly gated?: boolean} {
+  if (!isObject(json)) return {}
+  if (text(json['gating_type']) || json['message'] === 'geoblock_required') return {gated: true}
+  return {mediaId: text(json['media_id'])}
 }
 
 /** A query whose answer has no data: its errors, or what was expected. */

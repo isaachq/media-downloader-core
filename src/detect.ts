@@ -2,7 +2,7 @@
 // text holds — pure (no Node built-ins, no URL class), for the apps' renderers
 // (Electron, Hermes on Android) to answer the moment something is pasted.
 
-export {type DetectedLink, detectLink, LINK_SITES, type LinkSite} from './sources/detect.js'
+export {audioOnlyFormats, type DetectedLink, detectLink, LINK_SITES, type LinkSite} from './sources/detect.js'
 export {
   linkKey,
   MIX_MAX_LINKS,

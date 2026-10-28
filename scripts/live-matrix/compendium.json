@@ -240,6 +240,21 @@
       ]
     },
     {
+      "id": "IG-12",
+      "category": "Post limited to some audiences (signed-in accounts only; Isaac's link, ?dlrf=)",
+      "expect": "photo",
+      "session": true,
+      "urls": [],
+      "note": "Isaac's link with its tracking parameter: in compendium.local.json; without a session the clean answer is needs-sign-in (oEmbed: geoblock_required)"
+    },
+    {
+      "id": "IG-13",
+      "category": "Photo post read anonymously, its song only with a session (Isaac's link, ?mdxt=)",
+      "expect": "photo",
+      "urls": [],
+      "note": "Isaac's link with its tracking parameter: in compendium.local.json"
+    },
+    {
       "id": "TT-01",
       "category": "Standard Web Video",
       "expect": "video",
@@ -470,6 +485,34 @@
       "expect": "audio",
       "urls": [],
       "note": "share links carry the sharer's id: in .local/live-matrix/compendium.local.json"
+    },
+    {
+      "id": "SO-06",
+      "category": "SoundCloud track reported failing in beta 23 (Isaac's link)",
+      "expect": "audio",
+      "urls": ["https://soundcloud.com/406ahmad/whore-feat-nine-vicious-6"]
+    },
+    {
+      "id": "SO-07",
+      "category": "SoundCloud short link to SO-06 (on.soundcloud.com, utm_source=clipboard)",
+      "expect": "audio",
+      "urls": [],
+      "note": "Isaac's share link: in .local/live-matrix/compendium.local.json"
+    },
+    {
+      "id": "SO-08",
+      "category": "SoundCloud short link to a track shared from a set (?in=…&utm_source=mobi), a DRM-only label release",
+      "expect": "drm",
+      "urls": [],
+      "note": "Isaac's share link: in .local/live-matrix/compendium.local.json; every transcoding is cbc-/ctr-encrypted-hls (yt-dlp: 'This video is DRM protected')"
+    },
+    {
+      "id": "SO-09",
+      "category": "SoundCloud m. link with ?in=<set> (the same DRM-only label release)",
+      "expect": "drm",
+      "urls": [
+        "https://m.soundcloud.com/cainculto-sc/a-plague-a-pestilence?in=soundcloud-scenes%2Fsets%2Fdreams-emerging-indie"
+      ]
     },
     {
       "id": "BS-01",

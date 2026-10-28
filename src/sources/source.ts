@@ -39,11 +39,13 @@ export interface MediaSource {
       readonly maxEntries?: number
       /** Listing progress of a long list: entries read so far, of how many expected. */
       readonly onProgress?: (progress: ListingProgress) => void
+      /** What the reading is doing now (a source's own turns), for the app's loader. */
+      readonly onStep?: (step: AnalysisStep) => void
       /** Entry ids already had: a source that can, lists only what is newer (an incremental sync). */
       readonly known?: ReadonlySet<string>
       /**
        * Which try of the engine's analysis this is (1-based; see MediaDownloader.analyze):
-       * a source may go another way on a later one (Instagram: the user's session first on the third).
+       * a source may go another way on a later one.
        */
       readonly attempt?: number
     },
@@ -82,6 +84,19 @@ export type LivePlayback = {
 }
 
 export type ListingProgress = {readonly listed: number; readonly expected?: number | undefined}
+
+/**
+ * What a reading is doing now, for a screen that shows a loader: a stable kind the app
+ * puts into words, never a sentence. `reading` opens every analysis; the others are a
+ * source's own turns (Instagram: another door of its five, the check that tells a gone
+ * post from a limited network, the user's session) and the engine's hand-over to yt-dlp.
+ */
+export type AnalysisStep =
+  | {readonly kind: 'reading'}
+  | {readonly kind: 'another-way'; readonly attempt: number; readonly of: number}
+  | {readonly kind: 'checking'}
+  | {readonly kind: 'session'}
+  | {readonly kind: 'fallback'}
 
 /** `details` of the error a native source raises when the site changed under it: the engine retries with yt-dlp. */
 export const SOURCE_FORMAT_CHANGED = 'source:format-changed'

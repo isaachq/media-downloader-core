@@ -65,6 +65,8 @@ export type FakeInstagramConfig = {
   readonly sessionChallenge?: boolean
   /** The session cookie is no longer accepted: a signed-in API request answers 401 login_required. */
   readonly sessionExpired?: boolean
+  /** Page and API requests are never answered (a dead network): the client's timeouts decide. */
+  readonly hang?: boolean
 }
 
 export type FakeInstagram = {
@@ -283,6 +285,7 @@ export async function startFakeInstagram(config: FakeInstagramConfig = {}): Prom
       const language = String(req.headers['accept-language'] ?? '')
       if (language && !languages.includes(language)) languages.push(language)
     }
+    if (config.hang && (isApi || isPage)) return
 
     if (parts[0] === 'accounts') {
       return send(200, '<html><body><form id="loginForm">Log in</form></body></html>', {'Content-Type': 'text/html'})
@@ -606,6 +609,10 @@ export async function startFakeInstagram(config: FakeInstagramConfig = {}): Prom
     storyIds,
     hits,
     languages,
-    close: () => new Promise(resolve => server.close(() => resolve())),
+    close: () =>
+      new Promise(resolve => {
+        server.closeAllConnections()
+        server.close(() => resolve())
+      }),
   }
 }

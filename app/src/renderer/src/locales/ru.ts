@@ -381,6 +381,10 @@ export const ru: Readonly<Record<MessageKey, string>> = {
   'analyze.reading': 'Читаем ссылку… {seconds} с',
   'analyze.hint': 'Длинные плейлисты и профили загружаются не сразу. Список откроется, когда будет готов.',
   'analyze.cancel': 'Отмена',
+  'analyze.step.another-way': 'Пробуем другой способ ({attempt} из {of})…',
+  'analyze.step.checking': 'Проверяем публикацию…',
+  'analyze.step.session': 'Запрашиваем с вашей сессией…',
+  'analyze.step.fallback': 'Читаем через yt-dlp…',
   'update.label': 'Обновления',
   'update.available': 'Доступна версия {version}',
   'update.availableHint':

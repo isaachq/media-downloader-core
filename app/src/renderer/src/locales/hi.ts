@@ -380,6 +380,10 @@ export const hi: Readonly<Record<MessageKey, string>> = {
   'analyze.reading': 'लिंक पढ़ रहे हैं… {seconds} s',
   'analyze.hint': 'लंबी प्लेलिस्ट और प्रोफ़ाइल में थोड़ा समय लगता है. तैयार होते ही सूची खुल जाएगी.',
   'analyze.cancel': 'रद्द करें',
+  'analyze.step.another-way': 'दूसरा तरीका आज़मा रहे हैं ({attempt}/{of})…',
+  'analyze.step.checking': 'पोस्ट जाँच रहे हैं…',
+  'analyze.step.session': 'आपके सेशन से पूछ रहे हैं…',
+  'analyze.step.fallback': 'yt-dlp से पढ़ रहे हैं…',
   'update.label': 'अपडेट',
   'update.available': 'वर्शन {version} उपलब्ध है',
   'update.availableHint':

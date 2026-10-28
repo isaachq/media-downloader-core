@@ -9,9 +9,7 @@
 
 /** Anonymous tries of one public post before the user's session is asked for. */
 export const ANONYMOUS_ATTEMPTS = 5
-/** Tries with the user's session, after the anonymous ones could not read it. */
-export const SESSION_ATTEMPTS = 3
-/** How long to tell the caller to wait once those session tries are spent, in seconds. */
+/** How long to tell the caller to wait when the session's one read got a checkpoint, in seconds. */
 export const SESSION_EXHAUSTED_SECONDS = 5 * 60
 
 /**

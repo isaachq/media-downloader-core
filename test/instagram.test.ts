@@ -638,6 +638,8 @@ async function setup(
     readonly signedIn?: boolean
     readonly browser?: (origin: string) => BrowserAssist
     readonly pacing?: InstagramOptions['pacing']
+    readonly retryPauseMs?: number
+    readonly postBudgetMs?: number
   } = {},
 ) {
   const site = await startFakeInstagram(config)
@@ -645,7 +647,8 @@ async function setup(
   const options: InstagramOptions = {
     origin: site.origin,
     pacing: {spacingMs: 0, jitterMs: 0, backoffMs: 30, maxBackoffMs: 100, ...extra.pacing},
-    retryPauseMs: 0,
+    retryPauseMs: extra.retryPauseMs ?? 0,
+    ...(extra.postBudgetMs !== undefined && {postBudgetMs: extra.postBudgetMs}),
     ...(extra.browser && {browser: extra.browser(site.origin)}),
     cookies: async () => (extra.signedIn ? [{name: sessionName, value: sessionValue, domain: host}] : undefined),
   }
@@ -1327,6 +1330,91 @@ describe('Instagram, one door per try (local fake)', () => {
     )
     assert.deepEqual(retries, [], 'the policy is final for the analysis loop')
     assert.ok(site.hits.refused <= 10, `${site.hits.refused} refused requests: five doors, oEmbed, the visitor read`)
+  })
+})
+
+describe('Instagram, what a post costs (local fake)', () => {
+  it('a door with no data for this post is not followed by a pause: the next door is asked at once', async () => {
+    // the embed has nothing for a carousel of photos; with a 5 s pause the read would take 5 s
+    const {site, engine} = await setup('no-pause', {posts: 1, carousels: [0]}, {retryPauseMs: 5_000})
+    const started = performance.now()
+    const result = await engine.analyze(postUrl(site))
+    assert.equal(result.kind, 'video')
+    assert.ok(performance.now() - started < 2_000, `took ${Math.round(performance.now() - started)} ms`)
+    assert.deepEqual([site.hits.embed, site.hits.webInfo], [1, 1])
+  })
+
+  it('a site that never answers costs one budget, not five timeouts: "try again", and the loop does not retry', async () => {
+    const {site, engine} = await setup('budget', {posts: 1, hang: true}, {postBudgetMs: 700})
+    const started = performance.now()
+    const retries: number[] = []
+    await assert.rejects(
+      engine.analyze(postUrl(site), {onRetry: attempt => retries.push(attempt)}),
+      (error: DownloadError) => {
+        assert.equal(error.hint, 'retry-later', JSON.stringify(error))
+        assert.equal(error.details, COOLING_DOWN)
+        assert.match(error.message, /no answer within 1 s/)
+        return true
+      },
+    )
+    assert.ok(performance.now() - started < 5_000, `took ${Math.round(performance.now() - started)} ms`)
+    assert.deepEqual(retries, [])
+  })
+
+  it('nothing walled, nothing to probe: a post whose pages changed shape does not ask oEmbed', async () => {
+    const site = await startFakeInstagram({posts: 1, noWebInfo: true, noAppApi: true, carousels: [0]})
+    cleanups.push(() => site.close())
+    const source = new InstagramSource({origin: site.origin, pacing: {spacingMs: 0, jitterMs: 0}, retryPauseMs: 0})
+    // the embed has no data, web_info errors, the app API is gone, the page and the query do read it
+    const result = await source.analyze(postUrl(site))
+    assert.equal(result.kind, 'video')
+    assert.equal(site.hits.oembed, 0)
+  })
+
+  it('a limited network skips the visitor read: the five doors, then "try again in N", one request fewer', async () => {
+    const {site, engine} = await setup(
+      'cooling-visitor',
+      {posts: 1, refusals: 100},
+      {pacing: {backoffMs: 2_000, maxBackoffMs: 2_000}},
+    )
+    await assert.rejects(engine.analyze(postUrl(site)), (error: DownloadError) => {
+      assert.equal(error.hint, 'retry-later')
+      assert.equal(error.details, COOLING_DOWN)
+      return true
+    })
+    assert.equal(site.hits.graphql, 0, 'no visitor query while the pacer cools')
+  })
+
+  it('a session read that is refused says when to come back with the pacer’s wait, not three reads and 5 minutes', async () => {
+    const {site, engine} = await setup(
+      'session-refused',
+      {posts: 1, gated: [0], refusals: 0},
+      {signedIn: true, pacing: {backoffMs: 0, maxBackoffMs: 0}},
+    )
+    // the session is accepted and the post reads: the happy path stays one request
+    const result = await engine.analyze(postUrl(site))
+    assert.equal(result.kind, 'video')
+    assert.equal(site.hits.session, 1)
+  })
+
+  it('the loader is told each turn: reading, another way (2–5), checking, the session', async () => {
+    const {site, engine} = await setup('steps', {posts: 1, gated: [0], sessionChallenge: true}, {signedIn: true})
+    const steps: string[] = []
+    await assert.rejects(
+      engine.analyze(postUrl(site), {
+        onStep: step => steps.push(step.kind === 'another-way' ? `another-way ${step.attempt}/${step.of}` : step.kind),
+      }),
+      (error: DownloadError) => error.details === COOLING_DOWN,
+    )
+    assert.deepEqual(steps, [
+      'reading',
+      'another-way 2/5',
+      'another-way 3/5',
+      'another-way 4/5',
+      'another-way 5/5',
+      'checking',
+      'session',
+    ])
   })
 })
 

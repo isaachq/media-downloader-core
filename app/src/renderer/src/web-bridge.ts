@@ -530,6 +530,11 @@ export function createWebBridge(): MdcApi {
       return () => analyzeListeners.delete(listener)
     },
 
+    // the web demo reads nothing: no steps to report
+    onAnalyzeStep(): () => void {
+      return () => {}
+    },
+
     async schedule(input: ScheduleInput): Promise<BatchSnapshot> {
       const batchId = nextId('B') as BatchId
       log('info', `Scheduling download: ${input.url}`, {batchId, format: input.format, quality: input.quality})

@@ -382,6 +382,10 @@ export const vi: Readonly<Record<MessageKey, string>> = {
   'analyze.reading': 'Đang đọc liên kết… {seconds} giây',
   'analyze.hint': 'Danh sách phát và trang cá nhân dài cần một chút thời gian. Danh sách sẽ mở khi sẵn sàng.',
   'analyze.cancel': 'Hủy',
+  'analyze.step.another-way': 'Đang thử cách khác ({attempt}/{of})…',
+  'analyze.step.checking': 'Đang kiểm tra bài viết…',
+  'analyze.step.session': 'Đang hỏi bằng phiên của bạn…',
+  'analyze.step.fallback': 'Đang đọc bằng yt-dlp…',
   'update.label': 'Cập nhật',
   'update.available': 'Đã có phiên bản {version}',
   'update.availableHint':

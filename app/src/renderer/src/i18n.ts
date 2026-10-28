@@ -404,6 +404,10 @@ const en = {
   'analyze.reading': 'Reading the link… {seconds} s',
   'analyze.hint': 'Long playlists and profiles take a moment. The list opens when it’s ready.',
   'analyze.cancel': 'Cancel',
+  'analyze.step.another-way': 'Trying another way ({attempt} of {of})…',
+  'analyze.step.checking': 'Checking the post…',
+  'analyze.step.session': 'Asking with your session…',
+  'analyze.step.fallback': 'Reading with yt-dlp…',
   'update.label': 'Updates',
   'update.available': 'Version {version} is available',
   'update.availableHint':
@@ -1136,6 +1140,10 @@ const es: Record<MessageKey, string> = {
   'analyze.reading': 'Leyendo el enlace… {seconds} s',
   'analyze.hint': 'Las playlists y perfiles largos tardan un poco. La lista se abre cuando esté lista.',
   'analyze.cancel': 'Cancelar',
+  'analyze.step.another-way': 'Probando otra vía ({attempt} de {of})…',
+  'analyze.step.checking': 'Comprobando la publicación…',
+  'analyze.step.session': 'Consultando con tu sesión…',
+  'analyze.step.fallback': 'Leyendo con yt-dlp…',
   'update.label': 'Actualizaciones',
   'update.available': 'La versión {version} está disponible',
   'update.availableHint':

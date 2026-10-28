@@ -457,6 +457,11 @@ export function readEmbedPage(page: {readonly html: string; readonly url: string
     throw new MetaError('format-changed', `Unreadable Instagram embed data: ${String(error)}`)
   }
   if (!isObject(gql)) {
+    // a post without a video is drawn by the server (since October 2026): the page is a bare
+    // shell too, but it is this post's embed with nothing in it, not the login wall
+    if (/"contextJSON":\s*null/.test(page.html)) {
+      throw new MetaError('format-changed', 'Instagram embed without its post data (a post without a video).')
+    }
     if (GONE.test(page.html)) throw new MetaError('removed', 'This Instagram post no longer exists.')
     if (/This Account is Private|private account/i.test(page.html)) {
       throw new MetaError('private', 'This Instagram account is private.')

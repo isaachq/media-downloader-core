@@ -16,6 +16,7 @@ import type {
 import {vi} from 'vitest'
 import {
   type AnalyzeProgress,
+  type AnalyzeStep,
   type AppInfo,
   type AppSettings,
   type EventBundle,
@@ -191,6 +192,16 @@ export class FakeApi implements MdcApi {
 
   pushAnalyzeProgress(progress: AnalyzeProgress): void {
     for (const listener of this.#analyzeListeners) listener(progress)
+  }
+  #stepListeners = new Set<(step: AnalyzeStep) => void>()
+
+  onAnalyzeStep(listener: (step: AnalyzeStep) => void): () => void {
+    this.#stepListeners.add(listener)
+    return () => this.#stepListeners.delete(listener)
+  }
+
+  pushAnalyzeStep(step: AnalyzeStep): void {
+    for (const listener of this.#stepListeners) listener(step)
   }
   /** What `analyzeMix` answers: nothing to download by default. */
   mixPreview: MixPreview = {

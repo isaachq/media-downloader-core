@@ -383,6 +383,10 @@ export const pt: Readonly<Record<MessageKey, string>> = {
   'analyze.reading': 'Lendo o link… {seconds} s',
   'analyze.hint': 'Playlists e perfis longos demoram um pouco. A lista abre quando estiver pronta.',
   'analyze.cancel': 'Cancelar',
+  'analyze.step.another-way': 'Tentando outro caminho ({attempt} de {of})…',
+  'analyze.step.checking': 'Verificando a publicação…',
+  'analyze.step.session': 'Pedindo com a sua sessão…',
+  'analyze.step.fallback': 'Lendo com yt-dlp…',
   'update.label': 'Atualizações',
   'update.available': 'A versão {version} está disponível',
   'update.availableHint':

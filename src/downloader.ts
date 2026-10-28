@@ -54,7 +54,13 @@ import {InstagramSource} from './sources/instagram/source.js'
 import {COOLING_DOWN, withPatience} from './sources/pacer.js'
 import {SnapchatSource} from './sources/snapchat/source.js'
 import {SoundcloudSource} from './sources/soundcloud/source.js'
-import {type ListingProgress, type LivePlayback, type MediaSource, needsFallback} from './sources/source.js'
+import {
+  type AnalysisStep,
+  type ListingProgress,
+  type LivePlayback,
+  type MediaSource,
+  needsFallback,
+} from './sources/source.js'
 import {ThreadsSource} from './sources/threads/source.js'
 import {DEFAULT_SLIDESHOW, slideshowOptions} from './sources/tiktok/slideshow.js'
 import {TikTokSource} from './sources/tiktok/source.js'
@@ -703,6 +709,12 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       attempts?: number
       /** Called before each retry: the try about to start (2-based), of how many, and why. */
       onRetry?: (attempt: number, of: number, error: DownloadError) => void
+      /**
+       * What the reading is doing now, for a loader: `reading` first, then a source's own
+       * turns (Instagram's doors, its check, the session) and `fallback` when yt-dlp takes
+       * the link. O(1) per step; a handful per analysis.
+       */
+      onStep?: (step: AnalysisStep) => void
       /** Tests: the pause before a retry. */
       retryWaitMs?: (attempt: number) => number
     } = {},
@@ -733,6 +745,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       signal?: AbortSignal
       maxEntries?: number
       onProgress?: (progress: ListingProgress) => void
+      onStep?: (step: AnalysisStep) => void
       known?: ReadonlySet<string>
       waitForSite?: boolean
     },
@@ -754,6 +767,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     try {
       // a host where yt-dlp is optional: whether there is one decides who reads the link
       if (this.binaries.ytDlpOptional) await this.#tools()
+      opts.onStep?.({kind: 'reading'})
       const source = this.#sourceFor(url)
       if (source) {
         try {
@@ -763,6 +777,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
               attempt,
               ...(opts.maxEntries !== undefined && {maxEntries: opts.maxEntries}),
               ...(opts.onProgress && {onProgress: opts.onProgress}),
+              ...(opts.onStep && {onStep: opts.onStep}),
               ...(opts.known && {known: opts.known}),
             }),
           )
@@ -771,6 +786,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
           if (this.#ytDlpMissing) throw sourceFailure(error.toJSON())
           sourceError = error
           this.#log('warn', `${error.message} — reading ${url} with yt-dlp instead`)
+          opts.onStep?.({kind: 'fallback'})
         }
       }
       const bins = withYtDlp(await this.#tools())

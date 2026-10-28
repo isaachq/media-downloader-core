@@ -3,7 +3,6 @@ import {describe, it} from 'node:test'
 import {
   ANONYMOUS_ATTEMPTS,
   betweenAttemptsMs,
-  SESSION_ATTEMPTS,
   SESSION_EXHAUSTED_SECONDS,
   variantFor,
 } from '../src/sources/internal/adaptive-retry.js'
@@ -29,7 +28,6 @@ describe('AdaptiveRetry', () => {
     assert.notEqual(second.headers['Accept-Language'], 'en-US,en;q=0.9')
     assert.equal(fifth.attempt, 5)
     assert.equal(fifth.routeOrder[0], 'app API')
-    assert.equal(SESSION_ATTEMPTS, 3)
     assert.equal(SESSION_EXHAUSTED_SECONDS, 300)
   })
 

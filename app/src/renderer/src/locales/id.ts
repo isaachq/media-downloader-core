@@ -382,6 +382,10 @@ export const id: Readonly<Record<MessageKey, string>> = {
   'analyze.reading': 'Membaca tautan… {seconds} dtk',
   'analyze.hint': 'Playlist dan profil yang panjang butuh waktu sebentar. Daftar akan terbuka setelah siap.',
   'analyze.cancel': 'Batal',
+  'analyze.step.another-way': 'Mencoba cara lain ({attempt} dari {of})…',
+  'analyze.step.checking': 'Memeriksa postingan…',
+  'analyze.step.session': 'Meminta dengan sesimu…',
+  'analyze.step.fallback': 'Membaca dengan yt-dlp…',
   'update.label': 'Pembaruan',
   'update.available': 'Versi {version} tersedia',
   'update.availableHint':

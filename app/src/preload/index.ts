@@ -20,6 +20,7 @@ const api: MdcApi = {
   analyze: (url, maxItems) => ipcRenderer.invoke(CHANNEL.analyze, url, maxItems),
   cancelAnalyze: () => ipcRenderer.invoke(CHANNEL.analyzeCancel),
   onAnalyzeProgress: listener => subscribe(CHANNEL.analyzeProgress, listener),
+  onAnalyzeStep: listener => subscribe(CHANNEL.analyzeStep, listener),
   schedule: input => ipcRenderer.invoke(CHANNEL.schedule, input),
   analyzeMix: (text, format, quality) => ipcRenderer.invoke(CHANNEL.mixAnalyze, text, format, quality),
   cancelMix: () => ipcRenderer.invoke(CHANNEL.mixCancel),

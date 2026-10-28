@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+**Library 1.23.0**
+
+- **Batches share the pool in turns.** The scheduler ran one batch at a time, so a single
+  slow video (VK serves a 240p file at 150 KB/s: a 590 MB one takes an hour) held every link
+  added after it, and after a restart the restored queue held them again. Now as many
+  batches as the pool has slots are active at once (`maxActiveBatches` defaults to the
+  engine's concurrency, ⌊CPUs/2⌋; 1 keeps the old order), and the pool serves the active
+  batches in turns: each job waits in its batch's lane, lanes form a ring, one task each per
+  turn, FIFO inside a lane. A video added behind a 500-post backup starts after the backup's
+  current job, not after its other 499. Weight rules are unchanged (no small task overtakes
+  a waiting heavy one; an empty pool admits anything). Found on a Huawei tablet whose test
+  queue carried 150 batches behind one VK video. Cost: O(1) per add, start, remove and
+  prioritize (doubly linked lists, a ring of lanes); memory one node per waiting job and one
+  lane per batch with a job waiting, dropped as they empty.
+
+**Desktop 0.2.0-beta.27**
+
+- Several batches download at once, in turns; a slow one no longer holds the next.
+
 **Library 1.22.2**
 
 - **A post of photos no longer pauses before its second door.** The pause between

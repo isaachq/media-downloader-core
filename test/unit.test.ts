@@ -84,6 +84,40 @@ describe('TaskPool', () => {
     assert.deepEqual(order, ['c', 'a'])
   })
 
+  it('lanes take turns: a task added to a new lane runs after the current lane’s next one, not after all of them', async () => {
+    const pool = new TaskPool(1)
+    const order: string[] = []
+    pool.pause()
+    for (const id of ['a1', 'a2', 'a3', 'a4']) pool.add(id, async () => void order.push(id), 1, 'A')
+    pool.add('b1', async () => void order.push('b1'), 1, 'B')
+    pool.add('b2', async () => void order.push('b2'), 1, 'B')
+    pool.add('c1', async () => void order.push('c1'), 1, 'C')
+    assert.equal(pool.pending, 7)
+    pool.resume()
+    await pool.whenIdle()
+    assert.deepEqual(order, ['a1', 'b1', 'c1', 'a2', 'b2', 'a3', 'a4'])
+  })
+
+  it('a lane that empties leaves the ring; remove and prioritize work inside lanes', async () => {
+    const pool = new TaskPool(1)
+    const order: string[] = []
+    pool.pause()
+    for (const id of ['a1', 'a2', 'a3']) pool.add(id, async () => void order.push(id), 1, 'A')
+    for (const id of ['b1', 'b2']) pool.add(id, async () => void order.push(id), 1, 'B')
+    assert.equal(pool.remove('b1'), true)
+    // b2 goes first in its lane and its lane is served next; a3 goes first in A
+    pool.prioritize('a3')
+    pool.prioritize('b2')
+    pool.resume()
+    await pool.whenIdle()
+    assert.deepEqual(order, ['b2', 'a3', 'a1', 'a2'])
+    // a lane gone and back: the same key is accepted again
+    pool.add('a1', async () => void order.push('a1-again'), 1, 'A')
+    await pool.whenIdle()
+    assert.equal(order.at(-1), 'a1-again')
+    assert.equal(pool.pending, 0)
+  })
+
   it('a throwing task does not break the pool', async () => {
     const pool = new TaskPool(2)
     let ok = false

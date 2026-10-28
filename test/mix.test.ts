@@ -548,7 +548,8 @@ describe('BatchScheduler.scheduleMix: one batch', () => {
   })
 
   it('cancels like any batch, and deletes the metadata its checks kept', async () => {
-    const {engine, scheduler, out, dataDir} = setup('mix-cancel')
+    // one batch at a time: the mix list is still scheduled, never checked, when it is cancelled
+    const {engine, scheduler, out, dataDir} = setup('mix-cancel', {maxActiveBatches: 1})
     const blocker = scheduler.schedule({url: 'https://fake.test/list?n=2&p=slow-', profile: audio, outDir: out})
     const mix = await engine.analyzeMix('https://fake.test/x1\nhttps://fake.test/x2', {profile: audio})
     const batch = scheduler.scheduleMix(mix, {profile: audio, outDir: path.join(out, 'mix')})

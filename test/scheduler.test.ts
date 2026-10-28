@@ -67,8 +67,8 @@ function countPreflight(engine: MediaDownloader): () => number {
 }
 
 describe('BatchScheduler', () => {
-  it('runs batches one at a time: the next waits, then starts by itself', async () => {
-    const {scheduler, statuses, out} = setup('fifo')
+  it('with maxActiveBatches 1, runs batches one at a time: the next waits, then starts by itself', async () => {
+    const {scheduler, statuses, out} = setup('fifo', {maxActiveBatches: 1})
     let maxActive = 0
     scheduler.on('batch', () => {
       const active = scheduler.batches().filter(b => b.status === 'checking' || b.status === 'running').length
@@ -87,6 +87,30 @@ describe('BatchScheduler', () => {
     assert.equal(done.kind, 'playlist')
     assert.deepEqual(done.jobs, {total: 3, queued: 0, running: 0, succeeded: 3, failed: 0, cancelled: 0})
     assert.ok(done.startedAt! <= scheduler.batch(second.id)!.startedAt!)
+  })
+
+  it('by default batches share the pool in turns: a slow one does not hold the next, which finishes first', async () => {
+    // the pool is capped at ⌊CPUs/2⌋ (1 on a 3-core CI runner): two active batches are asked for
+    // outright; with two slots the quick list also finishes first
+    const {engine, scheduler, statuses, out} = setup('lanes', {maxActiveBatches: 2}, {concurrency: 2})
+    let maxActive = 0
+    scheduler.on('batch', () => {
+      const active = scheduler.batches().filter(b => b.status === 'checking' || b.status === 'running').length
+      maxActive = Math.max(maxActive, active)
+    })
+    // one video that takes ~3 s, then a quick list of three
+    const slow = scheduler.schedule({url: 'https://fake.test/slowest-one', profile: audio, outDir: out})
+    const quick = scheduler.schedule({url: 'https://fake.test/list-a', profile: audio, outDir: out})
+    await scheduler.whenIdle()
+    assert.equal(maxActive, 2, 'both batches active at once')
+    assert.deepEqual(statuses.get(quick.id), ['scheduled', 'checking', 'running', 'completed'])
+    const first = scheduler.batch(slow.id)!
+    const second = scheduler.batch(quick.id)!
+    assert.equal(first.status, 'completed')
+    assert.ok(second.startedAt! < first.finishedAt!, 'the quick list started while the slow video still ran')
+    if (engine.concurrency >= 2) {
+      assert.ok(second.finishedAt! < first.finishedAt!, 'the quick list finished while the slow video still ran')
+    }
   })
 
   it('caps a list at maxItems (listed by yt-dlp itself) and rejects invalid caps', async () => {
@@ -203,7 +227,7 @@ describe('BatchScheduler', () => {
   })
 
   it('cancels a scheduled batch before it ever starts', async () => {
-    const {scheduler, statuses, out} = setup('cancel')
+    const {scheduler, statuses, out} = setup('cancel', {maxActiveBatches: 1})
     const first = scheduler.schedule({url: 'https://fake.test/slow-c', profile: audio, outDir: out})
     const second = scheduler.schedule({url: 'https://fake.test/slow-d', profile: audio, outDir: out})
     scheduler.cancel(second.id)

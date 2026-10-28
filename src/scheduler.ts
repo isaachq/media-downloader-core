@@ -141,8 +141,10 @@ type Batch = {
  *
  * Every url submitted becomes a batch. Submitting never blocks and never
  * overloads the machine: batches wait in a FIFO and at most
- * `maxActiveBatches` (default 1) are active, each fanning out into jobs on
- * the engine's ⌊CPUs/2⌋ pool. An active batch:
+ * `maxActiveBatches` (default: the engine's concurrency, ⌊CPUs/2⌋) are
+ * active, each fanning out into jobs on that pool, which serves the active
+ * batches in turns (a lane per batch): a long, slow video never holds the
+ * links added after it. An active batch:
  *
  *   1. checking — the url is resolved, then every item is checked with
  *      chunked extraction (several urls per yt-dlp process, ⌊CPUs/2⌋
@@ -159,7 +161,8 @@ type Batch = {
  */
 export class BatchScheduler extends EventEmitter<SchedulerEvents> {
   readonly #engine: MediaDownloader
-  readonly #maxActive: number
+  /** Undefined: as many as the engine runs jobs at once, read when batches start (the limit may change). */
+  readonly #maxActive: number | undefined
   readonly #preflight: boolean
   readonly #intervalMs: number
   readonly #maxCached: number
@@ -179,7 +182,8 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
   constructor(engine: MediaDownloader, options: SchedulerOptions = {}) {
     super()
     this.#engine = engine
-    this.#maxActive = Math.max(1, Math.floor(options.maxActiveBatches ?? 1))
+    this.#maxActive =
+      options.maxActiveBatches === undefined ? undefined : Math.max(1, Math.floor(options.maxActiveBatches))
     this.#preflight = options.preflight ?? true
     this.#intervalMs = Math.max(0, options.progressIntervalMs ?? 250)
     this.#maxCached = Math.max(0, Math.floor(options.maxCachedMetadata ?? 500))
@@ -578,7 +582,7 @@ export class BatchScheduler extends EventEmitter<SchedulerEvents> {
   #pump(): void {
     if (this.#disposed) return
     for (const batch of this.#batches.values()) {
-      if (this.#active >= this.#maxActive) break
+      if (this.#active >= (this.#maxActive ?? this.#engine.concurrency)) break
       if (batch.status !== 'scheduled') continue
       this.#active++
       void this.#start(batch)

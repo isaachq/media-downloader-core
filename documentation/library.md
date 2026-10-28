@@ -63,15 +63,19 @@ host's own `<site>.cookies` provider wins.
 import {BatchScheduler, MediaDownloader} from 'media-downloader-core'
 
 const engine = new MediaDownloader({dataDir})
-const scheduler = new BatchScheduler(engine)        // maxActiveBatches: 1
+const scheduler = new BatchScheduler(engine)        // maxActiveBatches: the engine's concurrency
 await scheduler.restore()                           // batches pending at last shutdown
 scheduler.on('batch', batch => render(batch))       // status, preflight, counts
 scheduler.schedule({url, profile, outDir})          // never blocks — waits its turn
 ```
 
 Submitting a url never blocks and never overloads the machine. Each url
-becomes a **batch**; batches run one at a time (configurable) and each fans
-out into jobs on the ⌊CPUs/2⌋ pool:
+becomes a **batch**; as many batches as the pool has slots are active at once
+(`maxActiveBatches`; 1 runs them strictly in order), each fanning out into
+jobs on the ⌊CPUs/2⌋ pool, which serves the active batches in turns (a lane
+per batch): a slow single video never holds the links added after it, and a
+video added behind a 500-post backup starts after the backup's current job,
+not after its other 499:
 
 1. **checking** — the url is resolved and every item is checked in parallel
    (bounded by the same pool). The metadata fetched here is handed to the

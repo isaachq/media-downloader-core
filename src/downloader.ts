@@ -1133,7 +1133,8 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
     const job = new Job(newId() as JobId, sanitized, this.#settings.maxRetries + 1, tier, TIER_WEIGHT[tier])
     this.#jobs.set(job.id, job)
     this.#log('info', `queued ${job.request.url} as ${profileKey(job.request.profile)}`, job)
-    this.#pool.add(job.id, () => this.#run(job), job.weight)
+    // its batch's lane: batches take turns, so one added later does not wait for every job before it
+    this.#pool.add(job.id, () => this.#run(job), job.weight, job.request.batchId)
     this.#emit(job, true)
     // the metadata path is session-scoped (cache is wiped on dispose): never persisted
     this.#queue.put(job.id, {...job.request, infoJsonPath: undefined})

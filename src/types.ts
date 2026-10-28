@@ -686,7 +686,11 @@ export type BatchSelection = {
 }
 
 export type SchedulerOptions = {
-  /** Batches processed at the same time. Default 1: one batch saturates the ⌊CPUs/2⌋ pool already. */
+  /**
+   * Batches active at the same time. Default: as many as the engine runs jobs at once (⌊CPUs/2⌋),
+   * sharing that pool in turns, so a slow single video never holds the batches added after it.
+   * 1 runs them strictly one after the other.
+   */
   readonly maxActiveBatches?: number | undefined
   /** Check every item before downloading. Default true. */
   readonly preflight?: boolean | undefined

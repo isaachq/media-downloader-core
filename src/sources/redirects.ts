@@ -17,16 +17,19 @@ export type Followed<T> =
  * there first, and the post it names is still public.
  *
  * `hop` makes one request without following and returns its Location (or
- * undefined: not a redirect). O(hops) requests, O(hops) memory.
+ * undefined: not a redirect). `maxHops` caps the requests below MAX_HOPS for a
+ * site whose share links are known to be short. O(hops) requests, O(hops) memory.
  */
 export async function followShortLink<T>(
   start: string,
   hop: (url: string) => Promise<string | undefined>,
   parse: (url: string) => T | undefined,
+  maxHops = MAX_HOPS,
 ): Promise<Followed<T>> {
   const seen = new Set<string>([start])
   let url = start
-  for (let hops = 1; hops <= MAX_HOPS; hops++) {
+  const cap = Math.min(maxHops, MAX_HOPS)
+  for (let hops = 1; hops <= cap; hops++) {
     const location = await hop(url)
     if (!location) return {ok: false, reason: 'dead-end', resolvedUrl: url, hops}
     const target = new URL(location, url).href
@@ -39,7 +42,7 @@ export async function followShortLink<T>(
     seen.add(target)
     url = target
   }
-  return {ok: false, reason: 'loop', resolvedUrl: url, hops: MAX_HOPS}
+  return {ok: false, reason: 'loop', resolvedUrl: url, hops: cap}
 }
 
 /** The page a login / consent redirect was asked for, when it says (`/login/?next=https%3A…`). */

@@ -7,7 +7,12 @@ import type {DownloadError} from '../src/core/errors.js'
 import {isListingLink} from '../src/core/mix.js'
 import {MediaDownloader} from '../src/downloader.js'
 import {BatchScheduler} from '../src/scheduler.js'
-import {isSoundcloudListing, parseSoundcloudLink} from '../src/sources/soundcloud/links.js'
+import {
+  canonicalUrl,
+  isSoundcloudListing,
+  pageRedirectOf,
+  parseSoundcloudLink,
+} from '../src/sources/soundcloud/links.js'
 import {type SoundcloudOptions, SoundcloudSource} from '../src/sources/soundcloud/source.js'
 import {needsFallback, SOURCE_BLOCKED, SOURCE_FORMAT_CHANGED, type SourceDownload} from '../src/sources/source.js'
 import type {AnalysisResult, JobSnapshot, PlaylistAnalysis, VideoAnalysis} from '../src/types.js'
@@ -87,6 +92,39 @@ describe('SoundCloud links', () => {
     ]) {
       assert.equal(parseSoundcloudLink(url), undefined, url)
     }
+  })
+
+  it('m. with ?in= is the track, resolved on soundcloud.com without the query', () => {
+    const link = parseSoundcloudLink(
+      'https://m.soundcloud.com/cainculto-sc/a-plague-a-pestilence?in=soundcloud-scenes%2Fsets%2Fdreams-emerging-indie',
+    )
+    assert.deepEqual(link, {kind: 'track', user: 'cainculto-sc', slug: 'a-plague-a-pestilence'})
+    assert.equal(
+      canonicalUrl('https://soundcloud.com', link as Exclude<typeof link & {}, {kind: 'short'}>),
+      'https://soundcloud.com/cainculto-sc/a-plague-a-pestilence',
+    )
+    assert.deepEqual(parseSoundcloudLink('https://on.soundcloud.com/24FMrwDqDRCSJtmB9X'), {
+      kind: 'short',
+      url: 'https://on.soundcloud.com/24FMrwDqDRCSJtmB9X',
+    })
+  })
+
+  it('a short link page: its meta refresh (either order) or a script location, http(s) only', () => {
+    const base = 'https://on.soundcloud.com/x'
+    assert.equal(
+      pageRedirectOf('<meta http-equiv="refresh" content="0; url=https://soundcloud.com/a/b?x=1&amp;y=2">', base),
+      'https://soundcloud.com/a/b?x=1&y=2',
+    )
+    assert.equal(
+      pageRedirectOf("<meta content='0;URL=/a/b' http-equiv='refresh'>", base),
+      'https://on.soundcloud.com/a/b',
+    )
+    assert.equal(
+      pageRedirectOf('<script>window.location.href = "https://soundcloud.com/a/b"</script>', base),
+      'https://soundcloud.com/a/b',
+    )
+    assert.equal(pageRedirectOf('<script>location.replace("javascript:alert(1)")</script>', base), undefined)
+    assert.equal(pageRedirectOf('<p>nothing</p>', base), undefined)
   })
 
   it('a set or a profile is a list; a track is one item', () => {
@@ -428,6 +466,47 @@ describe('SoundCloud, end to end (local fake)', () => {
     assert.equal(site.hits.short, 1)
     const gone = await refusal(source.analyze('https://on.soundcloud.com/gone'))
     assert.equal(gone.hint, 'removed')
+  })
+
+  it(
+    'the 4 shapes of a real link today: a track, its short link, a short link from a set, m. with ?in=',
+    T,
+    async () => {
+      const {site, source} = await setup('shapes')
+      // 1. the page itself, 2. its short link (one 302 with the sharer's utm_*)
+      assert.equal(asTrack(await source.analyze(trackUrl('clear-track'))).media.id, String(IDS.clear))
+      assert.equal(asTrack(await source.analyze('https://on.soundcloud.com/AbCdEf456')).media.id, String(IDS.clear))
+      // 3. a short link to a track shared from a set (?in=…&utm_source=mobi) and 4. its m. page with ?in=: the track,
+      // never the set, resolved without the query — here a DRM-only label release, refused cleanly before any mint
+      for (const url of [
+        'https://on.soundcloud.com/FromSet',
+        'https://m.soundcloud.com/artist/label-release?in=soundcloud-scenes%2Fsets%2Fdreams-emerging-indie',
+      ]) {
+        const error = await refusal(source.analyze(url))
+        assert.equal(error.code, 'unavailable', url)
+        assert.equal(error.hint, 'format-unavailable', url)
+        assert.match(error.message, /DRM/, url)
+      }
+      assert.equal(site.hits.mint, undefined, 'nothing minted for DRM')
+    },
+  )
+
+  it('a short link of 2 hops, or a 200 page with a meta refresh or a script location, is followed', T, async () => {
+    const {site, source} = await setup('hops')
+    assert.equal(asTrack(await source.analyze('https://on.soundcloud.com/MetaPage')).media.id, String(IDS.clear))
+    for (const code of ['TwoHop', 'ScriptPage']) {
+      const error = await refusal(source.analyze(`https://on.soundcloud.com/${code}`))
+      assert.match(error.message, /DRM/, `${code} reached the label release`)
+    }
+    assert.equal(site.hits.short, 5, 'MetaPage 1, TwoHop 2, ScriptPage 2')
+    const blank = await refusal(source.analyze('https://on.soundcloud.com/BlankPage'))
+    assert.equal(blank.hint, 'removed', 'a page that names no link is a dead end')
+  })
+
+  it('a preset whose playlist will not open: the next preset downloads', T, async () => {
+    const {source, work} = await setup('fallback')
+    const file = await source.download(task(trackUrl('broken-top'), work))
+    assert.equal(file.info.formatId, 'aac_96k/hls')
   })
 
   it('DataDome on a listing is source:blocked: yt-dlp takes SoundCloud for a while', T, async () => {

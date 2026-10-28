@@ -9,7 +9,9 @@
 // url (`{url}`, 404 `{}` for `abr_*`), clear HLS on a fake-hls origin (fMP4 AAC, or packed MP3), legacy
 // progressive MP3 with Range; DRM (cbc-/ctr-encrypted-hls), Go+ previews, region blocks; a 401 with an
 // empty body for a client id that is not (or no longer) good; DataDome's 403; on.soundcloud.com 302s
-// with the sharer's tracking query. Every request is counted by kind.
+// with the sharer's tracking query (the Location's query as of 2026-10-27: `?in=<set>&utm_source=mobi…`
+// for a track shared from a set), and the shapes a short link could take next: two hops, or a 200 page
+// with a <meta refresh> or a script's location. Every request is counted by kind.
 import * as http from 'node:http'
 import type {Socket} from 'node:net'
 import {type FakeHls, type FakeTrack, startFakeHls} from './fake-hls.js'
@@ -34,6 +36,7 @@ export const IDS = {
   drmPlaylist: 1011,
   previewStream: 1012,
   nothing: 1013,
+  brokenTop: 1014,
 } as const
 
 export const USER = {id: 501, permalink: 'artist', name: 'The Artist'} as const
@@ -118,6 +121,8 @@ const SPECS: readonly Spec[] = [
   },
   {id: IDS.drmPlaylist, slug: 'sneaky-drm', title: 'Sneaky DRM', transcodings: [aac('aac_160k')]},
   {id: IDS.previewStream, slug: 'preview-stream', title: 'Preview Stream', transcodings: [aac('aac_160k')]},
+  // its 160k playlist is gone (a 404 on the CDN): the 96k one plays
+  {id: IDS.brokenTop, slug: 'broken-top', title: 'Broken Top', transcodings: [aac('aac_160k'), aac('aac_96k')]},
   {
     id: IDS.nothing,
     slug: 'odd-formats',
@@ -319,6 +324,40 @@ export async function startFakeSoundcloud(config: FakeSoundcloudConfig = {}): Pr
         res.writeHead(404).end()
         return
       }
+      const code = short[1]
+      if (code === 'TwoHop') {
+        res.writeHead(302, {location: 'https://on.soundcloud.com/FromSet'}).end()
+        return
+      }
+      if (code === 'FromSet') {
+        // a track shared from a set, as on.soundcloud.com answers today
+        res
+          .writeHead(302, {
+            location: `${trackUrl('label-release')}?in=soundcloud-scenes/sets/dreams-emerging-indie&utm_source=mobi&utm_campaign=social_sharing`,
+          })
+          .end()
+        return
+      }
+      if (code === 'MetaPage') {
+        res
+          .writeHead(200, {'content-type': 'text/html'})
+          .end(
+            `<html><head><meta http-equiv="refresh" content="0; url=${trackUrl('clear-track')}?utm_source=clipboard&amp;utm_medium=text"></head></html>`,
+          )
+        return
+      }
+      if (code === 'ScriptPage') {
+        res
+          .writeHead(200, {'content-type': 'text/html'})
+          .end(
+            `<html><body><script>window.location.replace("https://on.soundcloud.com/FromSet")</script></body></html>`,
+          )
+        return
+      }
+      if (code === 'BlankPage') {
+        res.writeHead(200, {'content-type': 'text/html'}).end('<html><body>nothing here</body></html>')
+        return
+      }
       res
         .writeHead(302, {
           location: `${trackUrl('clear-track')}?ref=clipboard&p=i&c=1&si=0123456789abcdef&utm_source=clipboard`,
@@ -443,6 +482,8 @@ export async function startFakeSoundcloud(config: FakeSoundcloudConfig = {}): Pr
       }
       if (protocol === 'progressive') return json(res, 200, {url: `${origin}/cdn/${trackId}.mp3?Policy=p`})
       if (trackId === IDS.previewStream) return json(res, 200, {url: `${hls.origin}/preview/playlist.m3u8`})
+      if (trackId === IDS.brokenTop && preset === 'aac_160k')
+        return json(res, 200, {url: `${hls.origin}/gone/playlist.m3u8`})
       const name = hlsTracks[`t${trackId}`] ? `t${trackId}` : `t${IDS.clear}`
       return json(res, 200, {url: hls.playlistUrl(name)})
     }

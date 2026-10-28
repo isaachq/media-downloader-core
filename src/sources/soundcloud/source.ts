@@ -43,7 +43,7 @@ import {
   type Transcoding,
 } from './data.js'
 import {DEFAULT_ENDPOINTS, IDS_PER_REQUEST, SOUNDCLOUD_ORIGIN, type SoundcloudEndpoints} from './endpoints.js'
-import {canonicalUrl, keyOf, parseSoundcloudLink, type SoundcloudLink} from './links.js'
+import {canonicalUrl, keyOf, pageRedirectOf, parseSoundcloudLink, type SoundcloudLink} from './links.js'
 
 export type SoundcloudOptions = {
   /**
@@ -74,6 +74,8 @@ const LISTING_CACHE_LIMIT = 100
 const REFUSED_ID_MS = 60 * 60_000
 const REFUSED_ID_LIMIT = 16
 const READ_ATTEMPTS = 3
+/** Hops a share link takes at most: one 302 today; a tracker or a page redirect in front makes 2 or 3. */
+const SHORT_HOPS = 3
 /** A download whose links ran out is tried once more with a fresh read of the track. */
 const DOWNLOAD_ATTEMPTS = 2
 /** After a DataDome wall or a WAF page, SoundCloud urls go to yt-dlp (where there is one) for this long. */
@@ -255,7 +257,7 @@ export class SoundcloudSource implements MediaSource {
 
   // ─── links ───────────────────────────────────────────────────────────────
 
-  /** A link, a short one followed (one 302). */
+  /** A link, a short one followed (SHORT_HOPS at most). */
   async #link(url: string, signal?: AbortSignal): Promise<Resolvable> {
     const link = parseSoundcloudLink(url)
     if (!link) {
@@ -272,6 +274,7 @@ export class SoundcloudSource implements MediaSource {
       link.url,
       next => this.#retrying(() => this.#hop(next, signal), signal),
       next => resolved(parseSoundcloudLink(next)),
+      SHORT_HOPS,
     )
     if (followed.ok) return followed.link
     throw new MetaError(
@@ -295,8 +298,10 @@ export class SoundcloudSource implements MediaSource {
 
   /**
    * One short-link hop: its Location, asked on the configured short host. A
-   * link that left SoundCloud is not followed; 404 / 410 is a dead end, 429 /
-   * 5xx a refusal. O(1).
+   * 200 is read (its head only) for a `<meta refresh>` or a script's
+   * `location`, as a browser would follow it. A link that left SoundCloud is
+   * not followed; 404 / 410 is a dead end, 429 / 5xx a refusal. O(1) requests,
+   * O(page) for a 200 (a few KB).
    */
   async #hop(url: string, signal?: AbortSignal): Promise<string | undefined> {
     const link = parseSoundcloudLink(url)
@@ -305,13 +310,17 @@ export class SoundcloudSource implements MediaSource {
     const target = `${this.#endpoints.short.replace(/\/+$/, '')}/${code}`
     return this.#pacer.run(async () => {
       const response = await this.#session.get(target, {redirect: 'manual', signal})
+      if (response.ok) {
+        this.#pacer.succeeded()
+        return pageRedirectOf(await response.text(), target)
+      }
       await response.body?.cancel()
       if (response.status >= 300 && response.status < 400) {
         this.#pacer.succeeded()
         const location = response.headers.get('location')
         return location ? new URL(location, target).href : undefined
       }
-      if (response.status === 404 || response.status === 410 || response.ok) return undefined
+      if (response.status === 404 || response.status === 410) return undefined
       this.#pacer.refused()
       throw new MetaError('refused', `SoundCloud answered HTTP ${response.status} to a short link.`, response.status)
     }, signal)
@@ -833,7 +842,18 @@ export class SoundcloudSource implements MediaSource {
         const bytes = await this.#progressive(first, remint, file, task)
         return {filepath: file, info: {...info, filesize: bytes}, tags}
       }
-      const playlist = await this.#playlistOf(first, remint, task.signal)
+      let playlist: HlsMediaPlaylist
+      try {
+        playlist = await this.#playlistOf(first, remint, task.signal)
+      } catch (error) {
+        // this preset's playlist won't open (gone, refused, not a media playlist): the next preset may
+        if (task.signal.aborted || t === tried[tried.length - 1]) throw error
+        this.#log(
+          'info',
+          `SoundCloud: ${t.preset}/${t.protocol} would not open (${String(error)}) — trying the next format`,
+        )
+        continue
+      }
       const result = await downloadHls({
         session: this.#media,
         site: this.name,

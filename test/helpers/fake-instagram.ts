@@ -63,6 +63,8 @@ export type FakeInstagramConfig = {
   readonly gated?: readonly number[]
   /** The app API answers a signed-in session with a checkpoint (the verification a song request got). */
   readonly sessionChallenge?: boolean
+  /** The session cookie is no longer accepted: a signed-in API request answers 401 login_required. */
+  readonly sessionExpired?: boolean
 }
 
 export type FakeInstagram = {
@@ -92,6 +94,8 @@ export type FakeInstagram = {
     | 'session',
     number
   >
+  /** The distinct Accept-Language values page and API requests carried, in order of first use. */
+  readonly languages: string[]
   close(): Promise<void>
 }
 
@@ -126,6 +130,7 @@ export async function startFakeInstagram(config: FakeInstagramConfig = {}): Prom
     short: 0,
     session: 0,
   }
+  const languages: string[] = []
   let refusalsLeft = config.refusals ?? 0
   let forbiddenLeft = config.forbiddenFirst ?? 0
   let listCalls = 0
@@ -274,6 +279,10 @@ export async function startFakeInstagram(config: FakeInstagramConfig = {}): Prom
     }
     const isPage =
       !isApi && parts[0] !== 'media' && parts[0] !== 'image' && parts[0] !== 'audio' && parts[0] !== 'accounts'
+    if (isApi || isPage) {
+      const language = String(req.headers['accept-language'] ?? '')
+      if (language && !languages.includes(language)) languages.push(language)
+    }
 
     if (parts[0] === 'accounts') {
       return send(200, '<html><body><form id="loginForm">Log in</form></body></html>', {'Content-Type': 'text/html'})
@@ -395,6 +404,7 @@ export async function startFakeInstagram(config: FakeInstagramConfig = {}): Prom
       hits.app++
       if (config.noAppApi) return send(404, 'not found')
       if (config.appApiNeedsSession && !signedIn) return json(403, {message: 'login_required', status: 'fail'})
+      if (config.sessionExpired && signedIn) return json(401, {message: 'login_required', status: 'fail'})
       if (config.sessionChallenge && signedIn) {
         return send(200, '<html><body><a href="/challenge/">checkpoint_required</a></body></html>', {
           'Content-Type': 'text/html',
@@ -595,6 +605,7 @@ export async function startFakeInstagram(config: FakeInstagramConfig = {}): Prom
     codes,
     storyIds,
     hits,
+    languages,
     close: () => new Promise(resolve => server.close(() => resolve())),
   }
 }

@@ -108,7 +108,8 @@ describe('a host without yt-dlp', () => {
   })
 
   it('refusals inside the five anonymous tries still read the post; a removed post is not tried again', async () => {
-    const site = await startFakeInstagram({posts: 2, refusals: 14, noAppApi: true})
+    // each try is one request: three 429s take three of the five tries, the fifth door reads the post
+    const site = await startFakeInstagram({posts: 2, refusals: 3, noAppApi: true})
     cleanups.push(() => site.close())
     const engine = engineFor('retried', {instagram: site.origin})
     const retries: number[] = []
@@ -118,6 +119,7 @@ describe('a host without yt-dlp', () => {
     })
     assert.equal(result.kind, 'video')
     assert.deepEqual(retries, [], 'the five anonymous tries are inside the read; the engine does not start them again')
+    assert.equal(site.hits.refused, 3)
     // gone: answered at once, never retried
     const gone: number[] = []
     await assert.rejects(

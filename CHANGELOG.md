@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased
+
+**Library 1.22.1**
+
+- **Instagram's five anonymous tries are five doors.** In 1.22.0 the first try asked every
+  door in one pass, so the other four tries (another door first, another Accept-Language)
+  never ran: a public post was read one way, five times over on paper. Each try now asks
+  one door, the first of its order not yet asked and not resting, with its own language;
+  every door carries it (the web_info and logged-out queries and the app API did not).
+  A door with nothing to ask with yet (the logged-out query before a post page named it)
+  is not a try. Cost: unchanged, at most 5 anonymous requests per post; up to 4 pauses of
+  300–800 ms between them.
+- **A session Instagram no longer accepts says "sign in again".** A 401 to a read with the
+  user's cookies (expired, or signed out on the site) was tried three times and then
+  reported as "try again in about 5 minutes"; it is now `needs-sign-in` at the first 401,
+  the other two tries not spent. A cool-down the pacer already dated ends the session
+  tries at once with that date, instead of three tries a second apart. Cost: O(1).
+- **The engine's analysis loop no longer starts the five doors again.** A refusal (429 /
+  5xx) or a network error on the visitor read escaped Instagram's own policy as a
+  retryable error, so the engine's 3 analysis tries ran the five doors, oEmbed and the
+  visitor read three times over (up to 21 requests). The post now ends as `retry-later`
+  (`source:cooling-down`, `retryAfterSeconds`: the pacer's own wait, or 60 s), which the
+  loop does not retry; with the user's session that refusal still goes to the session
+  tries. Without cookies a refusal says when to come back, not "sign in". Cost: ≤ 5 + 1 +
+  1 + 3 requests per post, once.
+
 ## App 0.2.0-beta.25 · library 1.22.0
 
 Instagram tries five anonymous ways, then the session. A wait on screen says how many minutes.

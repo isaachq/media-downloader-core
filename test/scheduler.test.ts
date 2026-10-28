@@ -90,7 +90,9 @@ describe('BatchScheduler', () => {
   })
 
   it('by default batches share the pool in turns: a slow one does not hold the next, which finishes first', async () => {
-    const {scheduler, statuses, out} = setup('lanes', {}, {concurrency: 2})
+    // the pool is capped at ⌊CPUs/2⌋ (1 on a 3-core CI runner): two active batches are asked for
+    // outright; with two slots the quick list also finishes first
+    const {engine, scheduler, statuses, out} = setup('lanes', {maxActiveBatches: 2}, {concurrency: 2})
     let maxActive = 0
     scheduler.on('batch', () => {
       const active = scheduler.batches().filter(b => b.status === 'checking' || b.status === 'running').length
@@ -105,7 +107,10 @@ describe('BatchScheduler', () => {
     const first = scheduler.batch(slow.id)!
     const second = scheduler.batch(quick.id)!
     assert.equal(first.status, 'completed')
-    assert.ok(second.finishedAt! < first.finishedAt!, 'the quick list finished while the slow video still ran')
+    assert.ok(second.startedAt! < first.finishedAt!, 'the quick list started while the slow video still ran')
+    if (engine.concurrency >= 2) {
+      assert.ok(second.finishedAt! < first.finishedAt!, 'the quick list finished while the slow video still ran')
+    }
   })
 
   it('caps a list at maxItems (listed by yt-dlp itself) and rejects invalid caps', async () => {

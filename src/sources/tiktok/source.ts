@@ -469,7 +469,13 @@ export class TikTokSource implements MediaSource {
         this.#pacer.succeeded()
         return scope
       } catch (error) {
-        if (error instanceof TikTokError && error.transient) this.#pacer.refused()
+        // a verification page is the browser's to pass when there is one: it cools nothing (a
+        // cancel during that browser read would otherwise leave the next link "rate limited" for
+        // the whole back-off); without a browser it backs off like a refusal, as before
+        const cools =
+          error instanceof TikTokError &&
+          (error.problem === 'refused' || (error.problem === 'challenge' && !this.#browser))
+        if (cools) this.#pacer.refused()
         throw error
       }
     }, signal)

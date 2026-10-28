@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+**Library 1.23.1**
+
+- **TikTok: a verification page cools nothing when the browser is there to pass it.** A
+  profile page that answered with TikTok's check counted as a refusal (30 s of back-off)
+  before the in-app browser passed it, and the back-off was only dropped once the browser
+  had. A reading cancelled during that browser visit left the back-off in place: the next
+  link pasted within 30 s was told "TikTok is rate limiting this network: try again in
+  about 18 s", with no request refused by TikTok at all (seen on the razr 50, on Wi-Fi and
+  on mobile data). With a browser at hand the check is the browser's; without one the
+  back-off stays as before. Cost: O(1).
+
+**Desktop 0.2.0-beta.28**
+
+- A link pasted right after cancelling a TikTok profile reading reads at once.
+
 **Library 1.23.0**
 
 - **Batches share the pool in turns.** The scheduler ran one batch at a time, so a single

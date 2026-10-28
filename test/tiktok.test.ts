@@ -337,6 +337,7 @@ async function setup(
   name: string,
   config: Parameters<typeof startFakeTikTok>[0] = {},
   browser?: (origin: string) => BrowserAssist,
+  pacing: Partial<{backoffMs: number; maxBackoffMs: number}> = {},
 ) {
   const site = await startFakeTikTok(config)
   const engine = new MediaDownloader({
@@ -348,7 +349,7 @@ async function setup(
     progressIntervalMs: 0,
     tiktok: {
       origin: site.origin,
-      pacing: {spacingMs: 0, jitterMs: 0, backoffMs: 30, maxBackoffMs: 100},
+      pacing: {spacingMs: 0, jitterMs: 0, backoffMs: 30, maxBackoffMs: 100, ...pacing},
       ...(browser && {browser: browser(site.origin)}),
     },
   })
@@ -683,6 +684,50 @@ describe('TikTok, end to end (local fake)', () => {
     assert.equal(site.hits.refusedMedia, 0, 'no media request was refused after the browser passed')
     assert.ok(Date.now() - started < 60_000, `finished (${Date.now() - started} ms)`)
     assert.equal(site.hits.challenge, 1, 'only the first plain request met the check')
+  })
+
+  it('a reading cancelled while the browser passes the check leaves no cool-down: the next link reads at once', async () => {
+    let calls = 0
+    let opened: (() => void) | undefined
+    const browser =
+      (origin: string): BrowserAssist =>
+      (url, signal) => {
+        calls++
+        // the first visit is the one the user cancels: it waits for the signal; the second passes
+        if (calls === 1) {
+          return new Promise((_resolve, reject) => {
+            opened?.()
+            signal?.addEventListener(
+              'abort',
+              () => reject(new DOMException('This operation was aborted', 'AbortError')),
+              {once: true},
+            )
+          })
+        }
+        return fetch(url, {headers: {Cookie: 'waf_ok=1'}}).then(async response => ({
+          html: await response.text(),
+          userAgent: 'FakeBrowser/1.0',
+          cookies: [{name: 'waf_ok', value: '1', domain: new URL(origin).hostname}],
+        }))
+      }
+    // a real back-off: a refusal here would hold the next read for 30 s
+    const {site, engine} = await setup('cancel-browser', {posts: 3, jsChallenge: true}, browser, {
+      backoffMs: 30_000,
+      maxBackoffMs: 30_000,
+    })
+    const control = new AbortController()
+    const inBrowser = new Promise<void>(resolve => {
+      opened = resolve
+    })
+    const first = engine.analyze(`${site.origin}/@${site.user}`, {signal: control.signal})
+    await inBrowser
+    control.abort()
+    await assert.rejects(first, (e: DownloadError) => e.code === 'cancelled' || /aborted/.test(e.message))
+    const started = Date.now()
+    const second = await engine.analyze(`${site.origin}/@${site.user}`)
+    assert.equal(second.kind, 'playlist')
+    assert.ok(Date.now() - started < 10_000, `the second read took ${Date.now() - started} ms: no cool-down`)
+    assert.equal(calls, 2, 'the browser passed the check on the second read')
   })
 
   it('a captcha even the browser cannot pass hands TikTok to yt-dlp (no solving)', async () => {

@@ -78,7 +78,7 @@ export type ThemeMode = 'system' | 'light' | 'dark'
  * apps. Every site is read in every run; the link box tags what it found.
  * Pure and browser-safe (regular expressions, no URL class), O(n) in the text.
  */
-export {detectLink, LINK_SITES, type LinkSite, planMix} from 'media-downloader-core/detect'
+export {audioOnlyFormats, detectLink, LINK_SITES, type LinkSite, planMix} from 'media-downloader-core/detect'
 export type Format = VideoContainer | AudioContainer
 export type Quality = 'best' | '2160' | '1440' | '1080' | '720' | '480' | '360'
 

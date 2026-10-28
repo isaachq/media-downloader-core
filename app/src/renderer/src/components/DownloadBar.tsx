@@ -9,6 +9,7 @@ import {App as AntApp, Button, Card, Col, Form, Input, Modal, Row, Select, Space
 import {type DragEvent, useMemo, useRef, useState} from 'react'
 import {
   AUDIO_FORMATS,
+  audioOnlyFormats,
   concurrencyCap,
   detectLink,
   type Format,
@@ -71,11 +72,24 @@ export function DownloadBar() {
   // set when the user stops the reading: its rejection is not an error to show
   const cancelled = useRef(false)
 
-  const audio = isAudioFormat(settings.format)
   // the site of the link in the field (found in shared text too, unwrapped from a
   // tracker): once per change of the text, not per render
   const detected = useMemo(() => detectLink(url, info.siteAliases), [url, info.siteAliases])
   const valid = detected !== undefined
+  // a site that is sound only (SoundCloud): the picker shows its formats, MP3 and M4A, and
+  // the choice lives with this link, not in the settings: the next link starts from the
+  // default again. O(1): the list has two entries.
+  const limited = audioOnlyFormats(detected?.site)
+  const [linkFormat, setLinkFormat] = useState<{readonly url: string; readonly format: Format} | undefined>()
+  const own = linkFormat !== undefined && linkFormat.url === detected?.url ? linkFormat.format : undefined
+  const format: Format = !limited
+    ? settings.format
+    : own !== undefined && (limited as readonly Format[]).includes(own)
+      ? own
+      : (limited as readonly Format[]).includes(settings.format)
+        ? settings.format
+        : 'm4a'
+  const audio = isAudioFormat(format)
 
   const fail = (error: unknown) => {
     const text = errorText(error)
@@ -99,7 +113,7 @@ export function DownloadBar() {
   const schedule = async (target: string, extra: Pick<ScheduleInput, 'selection'> = {}) => {
     const batch = await api().schedule({
       url: target,
-      format: settings.format,
+      format,
       quality: settings.quality,
       outDir: settings.downloadDir,
       slideshow,
@@ -109,6 +123,8 @@ export function DownloadBar() {
     void message.success(t('download.scheduled', {title: extra.selection?.title ?? batch.url}))
     setUrl('')
     setTouched(false)
+    // the link is in: the picker waits for the next one with the default format
+    setLinkFormat(undefined)
   }
 
   // a single video starts right away; a list opens the preview to pick from
@@ -196,10 +212,14 @@ export function DownloadBar() {
     if (folder) await updateSettings({downloadDir: folder})
   }
 
-  const formatOptions = [
-    {label: t('download.video'), options: VIDEO_FORMATS.map(f => ({value: f, label: t(`format.${f}` as MessageKey)}))},
-    {label: t('download.audio'), options: AUDIO_FORMATS.map(f => ({value: f, label: t(`format.${f}` as MessageKey)}))},
-  ]
+  const option = (f: Format) => ({value: f, label: t(`format.${f}` as MessageKey)})
+  // a sound-only site: its two audio formats and nothing else (the video group is not shown)
+  const formatOptions = limited
+    ? [{label: t('download.audio'), options: limited.map(option)}]
+    : [
+        {label: t('download.video'), options: VIDEO_FORMATS.map(option)},
+        {label: t('download.audio'), options: AUDIO_FORMATS.map(option)},
+      ]
   const qualityOptions = QUALITIES.map(q => ({value: q, label: q === 'best' ? t('quality.best') : `${q}p`}))
   const cap = concurrencyCap(info, settings)
   const longAtOnce = Math.max(1, Math.floor(cap / 1.5))
@@ -318,9 +338,13 @@ export function DownloadBar() {
               <Select
                 aria-label={t('download.format')}
                 disabled={busy}
-                value={settings.format}
+                value={format}
                 options={formatOptions}
-                onChange={(value: Format) => void updateSettings({format: value})}
+                data-testid="format-select"
+                onChange={(value: Format) => {
+                  if (limited && detected) setLinkFormat({url: detected.url, format: value})
+                  else void updateSettings({format: value})
+                }}
               />
             </Form.Item>
           </Col>

@@ -8,7 +8,7 @@
 - [x] 2 core(soundcloud): audio-only is validated before the site · done · verified: npm run check, perf stress 35.6 vs 35.9 jobs/s
 - [x] 3 fix(instagram): the session is the last resort · done · verified: npm run check, live:matrix --platform instagram --native (24 pass, 3 need a session, 0 fail)
 - [x] 4 release: library 1.21.3 · done · verified: npm run test:full (check, heavy, build, pack:check, app typecheck, app vitest 225/225, e2e 20/21: the beta 23 e2e "a SoundCloud track with MP4 chosen" now meets the library's refusal by design; commit 5 restores it with the picker)
-- [ ] 5 app: soundcloud format selector
+- [x] 5 app: soundcloud format selector · done · verified: app typecheck, vitest formats.test.tsx (3 new, 35/35) and batches.test.tsx 20/20
 - [ ] 6 app: reveal waits for the batch
 - [ ] 7 app: beta 24 e2e
 - [ ] 8 release: app 0.2.0-beta.24
@@ -40,6 +40,15 @@
   `needs-sign-in` instead of "this network is limited", and no longer steps the whole site
   aside for 10 minutes. Cost: at most 1 request with the session per post, after the
   anonymous ones; 0 when a public post reads anonymously.
+
+**Desktop app**
+
+- **SoundCloud's picker shows MP3 and M4A only.** With a SoundCloud link in the field the
+  Format select lists its two audio formats (the video profiles are hidden, not disabled)
+  and the quality is audio's; the choice belongs to that link, so once the link is added
+  the picker is back to the default format, waiting for the next one. In a mix list a
+  SoundCloud link takes only MP3 or M4A as a format of its own. Cost: O(1) per render (a
+  two-entry list).
 
 ## App 0.2.0-beta.23 · library 1.21.2
 

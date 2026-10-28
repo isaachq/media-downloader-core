@@ -326,6 +326,7 @@ export const fr: Readonly<Record<MessageKey, string>> = {
   'hint.unsupported-url': 'Site ou lien non pris en charge',
   'hint.format-unavailable': 'Le format choisi n’est pas proposé',
   'hint.retry-later': 'Le site limite les requêtes. Réessaie plus tard',
+  'hint.retry-later.wait': 'Le site limite les requêtes. Réessaie dans {minutes} min.',
   'settings.title': 'Réglages',
   'settings.downloads': 'Téléchargements',
   'settings.folder': 'Dossier de téléchargement',

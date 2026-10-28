@@ -324,6 +324,7 @@ export const it: Readonly<Record<MessageKey, string>> = {
   'hint.unsupported-url': 'Sito o link non supportato',
   'hint.format-unavailable': 'Il formato scelto non è disponibile',
   'hint.retry-later': 'Il sito sta limitando le richieste. Riprova più tardi',
+  'hint.retry-later.wait': 'Il sito sta limitando le richieste. Riprova tra {minutes} min.',
   'settings.title': 'Impostazioni',
   'settings.downloads': 'Download',
   'settings.folder': 'Cartella dei download',

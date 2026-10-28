@@ -324,6 +324,7 @@ export const ar: Readonly<Record<MessageKey, string>> = {
   'hint.unsupported-url': 'الموقع أو الرابط غير مدعوم',
   'hint.format-unavailable': 'الصيغة المختارة غير متاحة',
   'hint.retry-later': 'الموقع يقيّد الطلبات. حاول مرة أخرى لاحقًا',
+  'hint.retry-later.wait': 'الموقع يقيّد الطلبات. حاول مرة أخرى بعد {minutes} min.',
   'settings.title': 'الإعدادات',
   'settings.downloads': 'التنزيلات',
   'settings.folder': 'مجلد التنزيلات',

@@ -442,6 +442,22 @@ describe('downloads (one row per thread)', () => {
     expect(api.retryJob).toHaveBeenCalledWith(failed.id)
   })
 
+  it('says to try again in 5 minutes when the site asks for that wait', async () => {
+    const failed = job({
+      status: 'failed',
+      outcome: 'failed',
+      error: {
+        code: 'network',
+        hint: 'retry-later',
+        message: 'Instagram is limiting requests. Try again in about 5 minutes.',
+        params: {retryAfterSeconds: 300},
+      },
+    })
+    const {user} = await mount(new FakeApi({state: {batches: [], jobs: [failed]}}))
+    await user.click(screen.getByRole('tab', {name: /^Downloads/}))
+    expect(await screen.findByText('The site is limiting requests. Try again in 5 min.')).toBeInTheDocument()
+  })
+
   it('pauses and resumes the queue', async () => {
     const {api, user} = await mount()
     await user.click(screen.getByRole('tab', {name: /^Downloads/}))

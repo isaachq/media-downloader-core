@@ -4,8 +4,8 @@ import type {BatchId, JobId, JobSnapshot} from 'media-downloader-core'
 import {useMemo, useState} from 'react'
 import type {FailedRetry} from '../../../shared/contract'
 import {api} from '../api'
-import {errorText} from '../format'
-import {type MessageKey, useT} from '../i18n'
+import {errorText, failureText} from '../format'
+import {useT} from '../i18n'
 import {failedJobs, useStore} from '../store'
 
 /** Why a job failed, in a few words (its hint, else its error code). */
@@ -20,7 +20,7 @@ function CauseTag({job}: {readonly job: JobSnapshot}) {
       </Tooltip>
     )
   }
-  const text = job.error?.hint ? t(`hint.${job.error.hint}` as MessageKey) : job.error?.message
+  const text = job.error?.hint ? failureText(t, job.error) : job.error?.message
   return (
     <Typography.Text type="danger" className="one-line" title={job.error?.message ?? ''}>
       {text ?? t('failed.unknown')}

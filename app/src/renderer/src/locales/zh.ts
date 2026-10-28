@@ -322,6 +322,7 @@ export const zh: Readonly<Record<MessageKey, string>> = {
   'hint.unsupported-url': '不支持该网站或链接',
   'hint.format-unavailable': '未提供所选格式',
   'hint.retry-later': '网站正在限制请求。请稍后再试',
+  'hint.retry-later.wait': '网站正在限制请求。请在 {minutes} min 后再试.',
   'settings.title': '设置',
   'settings.downloads': '下载',
   'settings.folder': '下载文件夹',

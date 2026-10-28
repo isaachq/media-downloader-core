@@ -326,6 +326,7 @@ export const de: Readonly<Record<MessageKey, string>> = {
   'hint.unsupported-url': 'Website oder Link nicht unterstützt',
   'hint.format-unavailable': 'Das gewählte Format wird nicht angeboten',
   'hint.retry-later': 'Die Website begrenzt die Anfragen. Versuch es später erneut',
+  'hint.retry-later.wait': 'Die Website begrenzt die Anfragen. Versuch es in {minutes} min erneut.',
   'settings.title': 'Einstellungen',
   'settings.downloads': 'Downloads',
   'settings.folder': 'Download-Ordner',

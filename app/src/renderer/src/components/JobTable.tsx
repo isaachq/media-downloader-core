@@ -11,7 +11,7 @@ import type {JobSnapshot} from 'media-downloader-core'
 import {useMemo, useState} from 'react'
 import {api} from '../api'
 import {useApp} from '../context'
-import {clock, rate} from '../format'
+import {clock, failureText, rate} from '../format'
 import {type MessageKey, useT} from '../i18n'
 import {useRevealLater} from '../reveal'
 import {useStore, WORKING} from '../store'
@@ -149,7 +149,7 @@ export function JobTable({
               </Typography.Text>
             ) : job.error && job.status !== 'cancelled' ? (
               <Typography.Text type="danger" className="one-line" title={job.error.message}>
-                {job.error.hint ? t(`hint.${job.error.hint}` as MessageKey) : job.error.message}
+                {failureText(t, job.error)}
               </Typography.Text>
             ) : null}
           </Space>

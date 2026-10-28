@@ -29,7 +29,6 @@ import {choicesOf, shapeOf, summaryOf, titleOf} from '../src/sources/meta/post.j
 import {findAllWithKey, findWithKey, jsonScripts} from '../src/sources/meta/relay.js'
 import {linkKey} from '../src/sources/mix-plan.js'
 import {COOLING_DOWN} from '../src/sources/pacer.js'
-import {SOURCE_BLOCKED} from '../src/sources/source.js'
 import {type FakeInstagram, SESSION_COOKIE, startFakeInstagram} from './helpers/fake-instagram.js'
 import {type FakeBinaries, writeFakes} from './helpers/fakes.js'
 
@@ -788,7 +787,7 @@ describe('Instagram, end to end (local fake)', () => {
     assert.equal(site.hits.graphql + site.hits.app, 0, 'the embed said it is gone: nothing else asked')
   })
 
-  it('when every route gets the login wall, the error says the network is limited — not "sign in"', async () => {
+  it('when every anonymous route gets the login wall and there is no session, the error asks for one', async () => {
     const site = await startFakeInstagram({loginWall: true})
     cleanups.push(() => site.close())
     const logs: string[] = []
@@ -799,20 +798,36 @@ describe('Instagram, end to end (local fake)', () => {
       log: (_, message) => logs.push(message),
     })
     await assert.rejects(source.analyze(postUrl(site)), (e: DownloadError) => {
-      assert.equal(e.hint, 'retry-later')
-      assert.equal(e.details, SOURCE_BLOCKED, 'yt-dlp may still get through, with cookies')
-      assert.match(e.message, /limiting this network/)
+      assert.equal(e.hint, 'needs-sign-in')
+      assert.match(e.message, /signed-in session/)
       return true
     })
     assert.equal(
       site.hits.login,
-      3,
-      'the embed, the post page and the signed route’s page were sent to the login page (the APIs answered 401)',
+      2,
+      'the embed and the post page were sent to the login page; the signed query’s login answer is not followed by another page',
     )
+    assert.equal(site.hits.session, 0, 'no cookies: the session is not invented')
     assert.ok(
-      logs.some(l => /every route got the wall/.test(l)),
+      logs.some(l => /not readable anonymously/.test(l)),
       logs.join('\n'),
     )
+  })
+
+  it('a login wall with the real 30 s cool-down asks for a session, not a network wait', async () => {
+    const {site, engine} = await setup(
+      'wall-patience',
+      {loginWall: true},
+      {pacing: {backoffMs: 30_000, maxBackoffMs: 30_000}},
+    )
+    const started = Date.now()
+    await assert.rejects(engine.analyze(postUrl(site)), (error: DownloadError) => {
+      assert.equal(error.hint, 'needs-sign-in', error.message)
+      assert.doesNotMatch(error.message, /rate limiting/)
+      return true
+    })
+    assert.ok(Date.now() - started < 5_000, 'the paste does not wait out the cool-down')
+    assert.equal(site.hits.session, 0)
   })
 
   it('backs up a whole profile: listed by cursor in pages of 12, videos as MP4, photos and carousels as folders', async () => {
@@ -1000,20 +1015,23 @@ describe('Instagram, end to end (local fake)', () => {
     assert.equal(total(), asked, 'no request at all while it cools down')
   })
 
-  it('a login wall is not solved: Instagram goes to yt-dlp for a while, without knocking again', async () => {
-    const {site, engine, scheduler, out} = await setup('wall', {loginWall: true, posts: 2})
+  it('a login wall is not solved: without a session the batch asks for one and does not keep knocking', async () => {
+    const {site, scheduler, out} = await setup('wall', {loginWall: true, posts: 2})
     const batch = scheduler.schedule({url: postUrl(site), profile: mp4, outDir: out})
     await scheduler.whenIdle()
-    assert.equal(scheduler.batch(batch.id)?.status, 'completed', JSON.stringify(scheduler.batch(batch.id)?.error))
+    const failed = scheduler.batch(batch.id)
+    assert.equal(failed?.status, 'failed', JSON.stringify(failed?.error))
+    assert.equal(failed?.error?.hint, 'needs-sign-in')
+    const afterFirst = site.hits.login
+    assert.equal(
+      afterFirst,
+      2,
+      'the embed and the post page: one login redirect each; the signed query is not followed by a page',
+    )
     const second = scheduler.schedule({url: postUrl(site, 1), profile: mp4, outDir: out})
     await scheduler.whenIdle()
-    assert.equal(scheduler.batch(second.id)?.status, 'completed')
-    assert.equal(
-      site.hits.login,
-      3,
-      'the embed and the post page, then the signed page: one login redirect each, then hands off',
-    )
-    assert.ok(engine.jobs().every(job => job.attempts.length === 1))
+    assert.equal(scheduler.batch(second.id)?.status, 'failed')
+    assert.ok(site.hits.login - afterFirst <= 1, 'the cooled doors are not asked again')
   })
 
   it('with the user’s session, a login-walled profile and its stories are read natively; images stay images', async () => {
@@ -1159,6 +1177,21 @@ describe('Instagram, end to end (local fake)', () => {
     assert.equal(signed.site.hits.session, 1, 'one request with the session, the last one')
   })
 
+  it('a session that only gets a checkpoint is not tried again: come back in 5 minutes', async () => {
+    const {site, engine} = await setup(
+      'session-later',
+      {posts: 1, gated: [0], sessionChallenge: true},
+      {signedIn: true},
+    )
+    await assert.rejects(engine.analyze(postUrl(site)), (error: DownloadError) => {
+      assert.equal(error.hint, 'retry-later', JSON.stringify(error))
+      assert.equal(error.details, COOLING_DOWN)
+      assert.equal(error.params?.['retryAfterSeconds'], 300)
+      return true
+    })
+    assert.equal(site.hits.session, 1, 'a checkpoint does not start the other two session tries')
+  })
+
   it('a checkpoint goes through a real browser once; its session then serves the API over HTTP', async () => {
     const browserCalls: string[] = []
     const browser = (): BrowserAssist => async url => {
@@ -1244,12 +1277,13 @@ describe('Instagram, end to end (local fake)', () => {
 })
 
 describe('Instagram that answers 403', () => {
-  it('is a wall, not a rate limit: yt-dlp reads the link at once instead of waiting out cool-downs', async () => {
+  it('a 403 is a wall, not a rate limit: it asks for a session at once instead of waiting out cool-downs', async () => {
     const {site, engine} = await setup('forbidden', {forbidden: true})
     const started = Date.now()
-    const result = await engine.analyze(postUrl(site))
-    // the fake yt-dlp answers for any link: the engine fell back to it, without the source's back-off
-    assert.equal(result.kind, 'video')
+    await assert.rejects(engine.analyze(postUrl(site)), (error: DownloadError) => {
+      assert.equal(error.hint, 'needs-sign-in')
+      return true
+    })
     assert.ok(Date.now() - started < 5000, `took ${Date.now() - started} ms`)
     assert.ok(site.hits.refused >= 1)
   })

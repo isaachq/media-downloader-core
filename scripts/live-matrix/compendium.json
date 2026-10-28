@@ -240,6 +240,21 @@
       ]
     },
     {
+      "id": "IG-12",
+      "category": "Post limited to some audiences (signed-in accounts only; Isaac's link, ?dlrf=)",
+      "expect": "photo",
+      "session": true,
+      "urls": [],
+      "note": "Isaac's link with its tracking parameter: in compendium.local.json; without a session the clean answer is needs-sign-in (oEmbed: geoblock_required)"
+    },
+    {
+      "id": "IG-13",
+      "category": "Photo post read anonymously, its song only with a session (Isaac's link, ?mdxt=)",
+      "expect": "photo",
+      "urls": [],
+      "note": "Isaac's link with its tracking parameter: in compendium.local.json"
+    },
+    {
       "id": "TT-01",
       "category": "Standard Web Video",
       "expect": "video",

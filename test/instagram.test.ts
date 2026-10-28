@@ -27,6 +27,7 @@ import {MetaError} from '../src/sources/meta/errors.js'
 import {walkCursor} from '../src/sources/meta/listing.js'
 import {choicesOf, shapeOf, summaryOf, titleOf} from '../src/sources/meta/post.js'
 import {findAllWithKey, findWithKey, jsonScripts} from '../src/sources/meta/relay.js'
+import {linkKey} from '../src/sources/mix-plan.js'
 import {COOLING_DOWN} from '../src/sources/pacer.js'
 import {SOURCE_BLOCKED} from '../src/sources/source.js'
 import {type FakeInstagram, SESSION_COOKIE, startFakeInstagram} from './helpers/fake-instagram.js'
@@ -1073,6 +1074,77 @@ describe('Instagram, end to end (local fake)', () => {
       warnings.some(w => /listing query did not answer/.test(w)),
       warnings.join('\n'),
     )
+  })
+
+  it('a photo post signed in whose song request gets a challenge: downloaded without its song, no verification', async () => {
+    const browserCalls: string[] = []
+    const browser = (): BrowserAssist => async url => {
+      browserCalls.push(url)
+      return {html: '<html><a href="/challenge/">checkpoint_required</a></html>', cookies: [], userAgent: 'x'}
+    }
+    const logs: string[] = []
+    const {site, engine, scheduler, out} = await setup(
+      'song-challenge',
+      {photos: [0], music: [0], posts: 2, sessionChallenge: true},
+      {signedIn: true, browser},
+    )
+    engine.on('log', entry => logs.push(entry.message))
+    const result = await engine.analyze(postUrl(site))
+    assert.equal(result.kind === 'video' && result.media.slideshow?.audio, false, 'no song')
+    assert.equal(result.kind === 'video' && result.media.slideshow?.songNeedsSession, undefined, 'not "sign in"')
+    const batch = scheduler.schedule({url: postUrl(site), profile: mp4, outDir: out, slideshow: images})
+    await scheduler.whenIdle()
+    assert.equal(scheduler.batch(batch.id)?.status, 'completed', JSON.stringify(scheduler.batch(batch.id)?.error))
+    assert.deepEqual(browserCalls, [], 'never a browser (a verification) for a song')
+    assert.ok(
+      logs.some(line => /delivered without its song/.test(line)),
+      'the log says so',
+    )
+    assert.ok(!logs.some(line => /using yt-dlp for/.test(line)), 'Instagram keeps its source')
+    // the next link still reads natively
+    const next = await engine.analyze(postUrl(site, 1))
+    assert.equal(next.kind, 'video')
+  })
+
+  it('a public post with a session never uses it: anonymous first; tracking (?dlrf=, ?mdxt=) left out', async () => {
+    const {site, engine} = await setup('public-signed', {posts: 2, photos: [1]}, {signedIn: true})
+    for (const [i, query] of [
+      [0, '?dlrf=OGt5dDhkd3FpbGNp'],
+      [1, '?mdxt=Mm1semc1eXpxeXJp'],
+    ] as const) {
+      const result = await engine.analyze(`${postUrl(site, i)}${query}`)
+      assert.equal(result.kind, 'video')
+      if (result.kind !== 'video') return
+      assert.equal(result.media.url, postUrl(site, i).replace(site.origin, 'https://www.instagram.com'), 'clean url')
+    }
+    assert.equal(
+      linkKey('https://www.instagram.com/p/De4r2zfkrD0/?dlrf=OGt5dDhkd3FpbGNp', 'instagram'),
+      linkKey('https://www.instagram.com/p/De4r2zfkrD0/', 'instagram'),
+    )
+    // only the photo's song may ask with the session (one request); the posts themselves never
+    assert.ok(site.hits.session <= 1, `requests with the session: ${site.hits.session}`)
+  })
+
+  it('a post Instagram limits to some audiences: anonymous → web client → the session last; without one, "sign in"', async () => {
+    const anonymous = await setup('gated-anon', {posts: 2, gated: [0]})
+    const error = await anonymous.engine.analyze(postUrl(anonymous.site)).catch(e => e as DownloadError)
+    assert.equal((error as DownloadError).code, 'unavailable', JSON.stringify(error))
+    assert.equal((error as DownloadError).hint, 'needs-sign-in', 'not "this network is limited"')
+    assert.match((error as DownloadError).message, /signed-in accounts only/)
+    assert.equal(anonymous.site.hits.oembed > 0, true, 'oEmbed told gated from gone')
+    // the gated post is the post, not this network: the next link still reads natively, at once
+    const next = await anonymous.engine.analyze(postUrl(anonymous.site, 1))
+    assert.equal(next.kind === 'video' && next.media.extractor, 'Instagram', 'Instagram kept its source')
+
+    const signed = await setup('gated-signed', {posts: 1, gated: [0]}, {signedIn: true})
+    const logs: string[] = []
+    signed.engine.on('log', entry => logs.push(entry.message))
+    const result = await signed.engine.analyze(postUrl(signed.site))
+    assert.equal(result.kind, 'video')
+    const order = logs.findIndex(line => /not readable anonymously/.test(line))
+    const last = logs.findIndex(line => /reading it with the session/.test(line))
+    assert.ok(order !== -1 && last > order, `anonymous, then the session: ${logs.join(' | ')}`)
+    assert.equal(signed.site.hits.session, 1, 'one request with the session, the last one')
   })
 
   it('a checkpoint goes through a real browser once; its session then serves the API over HTTP', async () => {

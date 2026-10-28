@@ -56,6 +56,13 @@ export type FakeInstagramConfig = {
   readonly unlisted?: number
   /** The 2nd listing page repeats the 1st (cursor stall). */
   readonly repeatPage?: boolean
+  /**
+   * Posts (by index) Instagram limits to some audiences: logged out, every route is a wall and oEmbed
+   * answers 400 `geoblock_required` (as for `p/De4r2zfkrD0`, 2026-10-27); signed in, they read as any post.
+   */
+  readonly gated?: readonly number[]
+  /** The app API answers a signed-in session with a checkpoint (the verification a song request got). */
+  readonly sessionChallenge?: boolean
 }
 
 export type FakeInstagram = {
@@ -80,7 +87,9 @@ export type FakeInstagram = {
     | 'refusedMedia'
     | 'login'
     | 'refused'
-    | 'short',
+    | 'short'
+    /** Requests that carried the signed-in session. */
+    | 'session',
     number
   >
   close(): Promise<void>
@@ -115,6 +124,7 @@ export async function startFakeInstagram(config: FakeInstagramConfig = {}): Prom
     login: 0,
     refused: 0,
     short: 0,
+    session: 0,
   }
   let refusalsLeft = config.refusals ?? 0
   let forbiddenLeft = config.forbiddenFirst ?? 0
@@ -253,6 +263,7 @@ export async function startFakeInstagram(config: FakeInstagramConfig = {}): Prom
     const parts = url.pathname.split('/').filter(Boolean)
     const cookie = req.headers.cookie ?? ''
     const signedIn = cookie.includes(SESSION_COOKIE)
+    if (signedIn) hits.session++
     const isApi = parts[0] === 'api' || parts[0] === 'graphql'
     const formOf = (then: (form: URLSearchParams) => void) => {
       let body = ''
@@ -312,6 +323,15 @@ export async function startFakeInstagram(config: FakeInstagramConfig = {}): Prom
       const code = /\/p\/([^/]+)/.exec(url.searchParams.get('url') ?? '')?.[1] ?? ''
       const index = codes.indexOf(code)
       if (index === -1) return send(404, 'not found')
+      if (config.gated?.includes(index)) {
+        return json(400, {
+          message: 'geoblock_required',
+          gating_type: 'unappealable',
+          title: "This content isn't available to everyone",
+          description: "It can't be seen by certain audiences.",
+          status: 'fail',
+        })
+      }
       return json(200, {media_id: `${ids[index]}_${USER_ID}`, author_name: user})
     }
 
@@ -335,6 +355,15 @@ export async function startFakeInstagram(config: FakeInstagramConfig = {}): Prom
         'Content-Type': 'text/html',
       })
     }
+    // a gated post, logged out: every route that names it is the login wall
+    const gatedIndex = config.gated?.find(
+      i => url.pathname.includes(codes[i]!) || url.pathname.includes(codeToPk(codes[i]!)),
+    )
+    if (gatedIndex !== undefined && !signedIn && (isApi || isPage)) {
+      if (isApi) return json(401, {message: 'login_required', status: 'fail'})
+      hits.login++
+      return send(302, '', {Location: `/accounts/login/?next=${encodeURIComponent(url.pathname)}`})
+    }
     if (config.loginWall && !signedIn) {
       if (isApi) return json(401, {message: 'login_required', status: 'fail'})
       if (isPage) {
@@ -353,6 +382,7 @@ export async function startFakeInstagram(config: FakeInstagramConfig = {}): Prom
           return json(200, {errors: [{message: 'Unknown query'}], data: null})
         const variables = JSON.parse(form.get('variables') ?? '{}') as Record<string, unknown>
         const index = codes.findIndex(code => codeToPk(code) === String(variables['media_id']))
+        if (config.gated?.includes(index) && !signedIn) return json(200, {data: {xig_polaris_media: null}})
         if (index === -1) return json(200, {data: {xig_polaris_media: null}})
         return json(200, {data: {xig_polaris_media: {if_not_gated_logged_out: v1(index, signedIn)}}})
       })
@@ -364,6 +394,11 @@ export async function startFakeInstagram(config: FakeInstagramConfig = {}): Prom
       hits.app++
       if (config.noAppApi) return send(404, 'not found')
       if (config.appApiNeedsSession && !signedIn) return json(403, {message: 'login_required', status: 'fail'})
+      if (config.sessionChallenge && signedIn) {
+        return send(200, '<html><body><a href="/challenge/">checkpoint_required</a></body></html>', {
+          'Content-Type': 'text/html',
+        })
+      }
       // the web client with a session asks it too (its own user agent)
       if (!signedIn && !String(req.headers['user-agent']).startsWith('Instagram '))
         return json(400, {message: 'useragent mismatch', status: 'fail'})
@@ -443,11 +478,14 @@ export async function startFakeInstagram(config: FakeInstagramConfig = {}): Prom
           hits.webInfo++
           if (config.noWebInfo) return json(200, {errors: [{message: 'Query not found'}], data: null})
           const index = codes.indexOf(String(variables['shortcode']))
+          if (config.gated?.includes(index) && !signedIn)
+            return json(200, {errors: [{message: 'execution error', severity: 'CRITICAL'}], data: null})
           if (index === -1) return json(200, {data: {xdt_api__v1__media__shortcode__web_info: {items: []}}})
           return json(200, {data: {xdt_api__v1__media__shortcode__web_info: {items: [v1(index, signedIn)]}}})
         }
         if (docId === '8845758582119845') {
           const index = codes.indexOf(String(variables['shortcode']))
+          if (config.gated?.includes(index) && !signedIn) return json(401, {message: 'login_required', status: 'fail'})
           if (index === -1) return json(200, {data: {xdt_shortcode_media: null}, status: 'ok'})
           return json(200, {data: {xdt_shortcode_media: node(index)}, status: 'ok'})
         }

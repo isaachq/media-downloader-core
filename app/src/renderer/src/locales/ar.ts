@@ -381,6 +381,10 @@ export const ar: Readonly<Record<MessageKey, string>> = {
   'analyze.reading': 'جارٍ قراءة الرابط… {seconds} ث',
   'analyze.hint': 'قوائم التشغيل والملفات الشخصية الطويلة تستغرق بعض الوقت. تُفتح القائمة عندما تجهز.',
   'analyze.cancel': 'إلغاء',
+  'analyze.step.another-way': 'جارٍ تجربة طريقة أخرى ({attempt} من {of})…',
+  'analyze.step.checking': 'جارٍ التحقق من المنشور…',
+  'analyze.step.session': 'جارٍ الطلب بجلستك…',
+  'analyze.step.fallback': 'جارٍ القراءة عبر yt-dlp…',
   'update.label': 'التحديثات',
   'update.available': 'الإصدار {version} متاح',
   'update.availableHint':

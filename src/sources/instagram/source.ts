@@ -14,7 +14,6 @@ import {
 import {
   ANONYMOUS_ATTEMPTS,
   betweenAttemptsMs,
-  SESSION_ATTEMPTS,
   SESSION_EXHAUSTED_SECONDS,
   variantFor,
 } from '../internal/adaptive-retry.js'
@@ -26,7 +25,7 @@ import {choicesOf, type MetaPost, shapeOf, summaryOf, videosOf} from '../meta/po
 import type {Pacer, PacerOptions} from '../pacer.js'
 import {COOLING_DOWN} from '../pacer.js'
 import {followShortLink, resolved, unresolvedMessage} from '../redirects.js'
-import type {ListingProgress, MediaSource, SourceDownload, SourceFile} from '../source.js'
+import type {AnalysisStep, ListingProgress, MediaSource, SourceDownload, SourceFile} from '../source.js'
 import {
   codeToPk,
   type InstagramAccount,
@@ -89,6 +88,8 @@ export type InstagramOptions = {
   readonly log?: ((level: 'info' | 'warn', message: string) => void) | undefined
   /** Tests: the pause between Instagram's own tries. Default 300–800 ms. */
   readonly retryPauseMs?: number | undefined
+  /** Tests: how long one post may take in all before "try again" (default POST_BUDGET_MS). */
+  readonly postBudgetMs?: number | undefined
 }
 
 export const INSTAGRAM_PROFILE_DEFAULT_ITEMS = 500
@@ -103,6 +104,11 @@ const STORIES_FRESH_MS = 5 * 60_000
 export const PROFILE_CHUNK = 500
 /** One try per anonymous route, not much patience: the web client's query follows. */
 const ANONYMOUS_TIMEOUT_MS = 15_000
+/**
+ * How long one post may take in all, every door and the session included: each door has
+ * its own 15 s, so a dead network would otherwise cost up to 78 s before "try again".
+ */
+const POST_BUDGET_MS = 30_000
 /** The least a caller is told to wait once every try of a post is spent and none was final. */
 const SPENT_SECONDS = 60
 /** What the user reads when every route to a public post got Instagram's wall. */
@@ -161,6 +167,8 @@ export class InstagramSource implements MediaSource {
   readonly #health = new RouteHealth()
   /** Pause between a post's own tries. Tests set 0. */
   readonly #retryPauseMs: number | undefined
+  /** How long one post may take in all. Tests set it short. */
+  readonly #postBudgetMs: number
   /** The query ids and token Instagram's own post page names now. */
   readonly #book = new QueryBook()
   /** The `web_info` query ids, a host's own first. */
@@ -185,6 +193,7 @@ export class InstagramSource implements MediaSource {
     this.#queries = {...DEFAULT_QUERIES, ...options.queries}
     this.#log = options.log ?? (() => {})
     this.#retryPauseMs = options.retryPauseMs
+    this.#postBudgetMs = Math.max(1, options.postBudgetMs ?? POST_BUDGET_MS)
     // its own transport: the embed is walled unless asked for as a page load, which Node's fetch can't say
     this.#anonymous = new HttpSession({fetch: options.fetch ?? navigationFetch, timeoutMs: ANONYMOUS_TIMEOUT_MS})
     this.#apiOrigin = (options.apiOrigin ?? options.origin ?? API_ORIGIN).replace(/\/$/, '')
@@ -210,6 +219,7 @@ export class InstagramSource implements MediaSource {
       signal?: AbortSignal
       maxEntries?: number
       onProgress?: (progress: ListingProgress) => void
+      onStep?: (step: AnalysisStep) => void
       known?: ReadonlySet<string>
       attempt?: number
     } = {},
@@ -218,7 +228,7 @@ export class InstagramSource implements MediaSource {
       const link = await this.#resolve(url, opts.signal)
       switch (link.kind) {
         case 'post':
-          return this.#videoAnalysis(await this.#readPost(link.code, opts.signal, false, opts.attempt))
+          return this.#videoAnalysis(await this.#readPost(link.code, opts.signal, false, opts.attempt, opts.onStep))
         case 'profile':
           return await this.#profile(link.user, opts.maxEntries, opts.signal, opts.onProgress, opts.known)
         case 'stories': {
@@ -346,12 +356,19 @@ export class InstagramSource implements MediaSource {
   /**
    * One post by shortcode. Five anonymous tries first, one door each (a
    * different door and Accept-Language per try; the first success is the
-   * post). Then one visitor read, then the user's session up to three times.
-   * Stories, highlights and profile listings do not come through here.
+   * post). Then one visitor read, then the user's session once. Stories,
+   * highlights and profile listings do not come through here.
    *
-   * Time Complexity: O(1) requests, capped at 5 anonymous + 1 oEmbed + 1 visitor + 3 session.
+   * Time Complexity: O(1) requests, capped at 5 anonymous + 1 oEmbed + 1 visitor + 1 session,
+   * inside one time budget (POST_BUDGET_MS).
    */
-  async #readPost(code: string, signal?: AbortSignal, fresh = false, attempt = 1): Promise<MetaPost> {
+  async #readPost(
+    code: string,
+    signal?: AbortSignal,
+    fresh = false,
+    attempt = 1,
+    onStep?: (step: AnalysisStep) => void,
+  ): Promise<MetaPost> {
     const id = this.#byCode.get(code)
     const cached = id ? this.#posts.get(id) : undefined
     if (!fresh && cached && this.#isFresh(cached) && shapeOf(cached.post) !== 'empty') {
@@ -364,23 +381,48 @@ export class InstagramSource implements MediaSource {
     const key = canonicalKey(code)
     const pending = this.#reading.get(key)
     if (pending && !fresh) return pending
-    const read = this.#readPostOnce(code, signal, attempt).finally(() => this.#reading.delete(key))
+    const read = this.#readPostOnce(code, signal, attempt, onStep).finally(() => this.#reading.delete(key))
     this.#reading.set(key, read)
     return read
   }
 
   /**
-   * Anonymous variants first, then one visitor read, then the session.
+   * Anonymous variants first, then one visitor read, then the session, all
+   * inside one time budget: a post that has no answer in POST_BUDGET_MS ends
+   * as "try again in a minute" (a dead network is not five 15-second waits).
    * `attempt` from the engine's own loop is not a sixth strategy: this read
-   * finishes the five-plus-three policy itself and returns an error that
-   * loop does not retry. A public post never starts on the user's cookies.
+   * finishes the policy itself and returns an error that loop does not retry.
+   * A public post never starts on the user's cookies. O(1): one timer, one
+   * listener on the caller's signal, both removed.
    */
-  async #readPostOnce(code: string, signal: AbortSignal | undefined, _attempt: number): Promise<MetaPost> {
-    const found = await this.#anonymousAttempts(code, signal)
-    const post = found.post ?? (await this.#afterAnonymous(code, signal, found.walled))
-    const withSong = await this.#withSong(post, signal)
-    this.#remember(withSong)
-    return withSong
+  async #readPostOnce(
+    code: string,
+    signal: AbortSignal | undefined,
+    _attempt: number,
+    onStep?: (step: AnalysisStep) => void,
+  ): Promise<MetaPost> {
+    const budget = new AbortController()
+    const timer = setTimeout(() => budget.abort(), this.#postBudgetMs)
+    const forward = () => budget.abort()
+    if (signal?.aborted) budget.abort()
+    else signal?.addEventListener('abort', forward, {once: true})
+    try {
+      const found = await this.#anonymousAttempts(code, budget.signal, onStep)
+      const post = found.post ?? (await this.#afterAnonymous(code, budget.signal, found.walled, onStep))
+      const withSong = await this.#withSong(post, budget.signal)
+      this.#remember(withSong)
+      return withSong
+    } catch (error) {
+      if (budget.signal.aborted && !signal?.aborted) {
+        const seconds = Math.round(this.#postBudgetMs / 1000)
+        this.#log('warn', `Instagram: ${code}: no answer within ${seconds} s`)
+        throw this.#spent(new Error(`no answer within ${seconds} s`))
+      }
+      throw error
+    } finally {
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', forward)
+    }
   }
 
   /**
@@ -391,7 +433,8 @@ export class InstagramSource implements MediaSource {
    */
   async #anonymousAttempts(
     code: string,
-    signal?: AbortSignal,
+    signal: AbortSignal | undefined,
+    onStep?: (step: AnalysisStep) => void,
   ): Promise<{readonly post?: MetaPost; readonly walled: boolean}> {
     const url = postUrl(this.#client.origin, code)
     const base = this.#health.order(ROUTES, route => route)
@@ -399,12 +442,15 @@ export class InstagramSource implements MediaSource {
     let walled = false
     for (let attempt = 1; attempt <= ANONYMOUS_ATTEMPTS; attempt++) {
       const variant = variantFor(url, attempt, base)
+      if (attempt > 1) onStep?.({kind: 'another-way', attempt, of: ANONYMOUS_ATTEMPTS})
       const anonymous = await this.#readAnonymously(code, signal, variant.routeOrder, variant.headers, tried, 1)
       walled ||= anonymous.walled
       if (anonymous.post) return {post: anonymous.post, walled}
       if (signal?.aborted || anonymous.asked === 0 || attempt === ANONYMOUS_ATTEMPTS) break
       if (!this.#anotherDoor(tried)) break
-      await this.#pause(signal)
+      // a door that refused (a wall, a 429) earns the next one a breath; a door with no data
+      // for this post (the embed of a photo) does not: the next is asked at once
+      if (anonymous.refused) await this.#pause(signal)
     }
     return {walled}
   }
@@ -416,20 +462,30 @@ export class InstagramSource implements MediaSource {
   }
 
   /**
-   * The anonymous variants did not read it. oEmbed separates gone from gated.
-   * A gated post skips the visitor query. Otherwise one visitor read, then
-   * the session phase. O(1) requests.
+   * The anonymous variants did not read it. When something was walled, oEmbed
+   * (a few KB) separates gone from gated; when nothing was (the pages changed
+   * shape), it has nothing to add. A gated post skips the visitor query; so
+   * does a network the pacer is cooling (the read would be refused again).
+   * Otherwise one visitor read, then the session. O(1) requests.
    */
-  async #afterAnonymous(code: string, signal: AbortSignal | undefined, walled: boolean): Promise<MetaPost> {
+  async #afterAnonymous(
+    code: string,
+    signal: AbortSignal | undefined,
+    walled: boolean,
+    onStep?: (step: AnalysisStep) => void,
+  ): Promise<MetaPost> {
     this.#log(
       'info',
       `Instagram: ${code} not readable anonymously — asking the web client, then the session if it is needed`,
     )
-    const probe = await this.#probe(code, signal)
+    onStep?.({kind: 'checking'})
+    const probe = walled ? await this.#probe(code, signal) : undefined
     if (probe === 'gone') throw new MetaError('removed', 'This Instagram post no longer exists, or is private.')
     /** The visitor read was refused, not walled: what a caller without a session is told. */
     let spent: DownloadError | undefined
-    if (probe !== 'gated') {
+    if (probe !== 'gated' && this.#client.pacer.coolingDownMs > 0) {
+      spent = this.#spent(new MetaError('refused', 'Instagram is limiting this network right now.'))
+    } else if (probe !== 'gated') {
       try {
         return await this.#readSigned(code, signal)
       } catch (error) {
@@ -452,7 +508,7 @@ export class InstagramSource implements MediaSource {
         }
       }
     }
-    return this.#sessionAttempts(code, signal, probe === 'gated', spent)
+    return this.#withUserSession(code, signal, probe === 'gated', spent, onStep)
   }
 
   /**
@@ -477,50 +533,51 @@ export class InstagramSource implements MediaSource {
 
   /**
    * The user's session, only after the anonymous tries. No cookies: say so,
-   * and do not invent failed requests. With cookies: three single reads.
-   * A challenge stops the three (it will not change on the next one); a 401
-   * is the session itself, expired or signed out: "sign in again" at once,
-   * not a wait; a cool-down the pacer already dated is that date. When the
-   * three are spent, the caller is told to come back in five minutes, and
-   * the engine's own retry loop does not start the five again.
+   * and do not invent failed requests. With cookies: one read. A checkpoint
+   * will not change in a minute: come back in five. A 401 is the session
+   * itself, expired or signed out: "sign in again" at once. A cool-down the
+   * pacer already dated is that date; any other failure is "try again in
+   * about N" with the pacer's own wait (or a minute), never three reads a
+   * second apart. None of these starts the engine's retry loop again.
    */
-  async #sessionAttempts(
+  async #withUserSession(
     code: string,
     signal: AbortSignal | undefined,
     gated: boolean,
     spent?: DownloadError,
+    onStep?: (step: AnalysisStep) => void,
   ): Promise<MetaPost> {
     await this.#client.loadCookies()
     if (!this.#client.signedIn) {
       if (spent) throw spent
       throw new MetaError('login-required', gated ? GATED_MESSAGE : SESSION_NEEDED)
     }
-    for (let attempt = 1; attempt <= SESSION_ATTEMPTS; attempt++) {
-      try {
-        this.#log('info', `Instagram: ${code}: reading it with the session (try ${attempt} of ${SESSION_ATTEMPTS})`)
-        return await this.#readWithSession(code, signal)
-      } catch (error) {
-        if (signal?.aborted || isFinal(error)) throw error
-        if (error instanceof DownloadError && error.details === COOLING_DOWN) throw error
-        if (error instanceof MetaError && error.problem === 'login-required') {
-          throw new MetaError('login-required', SESSION_EXPIRED)
-        }
-        if (error instanceof MetaError && error.problem === 'challenge') break
-        this.#log(
-          'info',
-          `Instagram: ${code}: the session did not read it (${error instanceof Error ? error.message : String(error)})`,
-        )
-        if (attempt < SESSION_ATTEMPTS) await this.#pause(signal)
+    onStep?.({kind: 'session'})
+    try {
+      this.#log('info', `Instagram: ${code}: reading it with the session`)
+      return await this.#readWithSession(code, signal)
+    } catch (error) {
+      if (signal?.aborted || isFinal(error)) throw error
+      if (error instanceof DownloadError && error.details === COOLING_DOWN) throw error
+      if (error instanceof MetaError && error.problem === 'login-required') {
+        throw new MetaError('login-required', SESSION_EXPIRED)
       }
+      if (error instanceof MetaError && error.problem === 'challenge') {
+        this.#log('warn', `Instagram: ${code}: the session got a checkpoint`)
+        throw new DownloadError(
+          'network',
+          'Instagram still did not return this post with the signed-in session. Try again in about 5 minutes.',
+          COOLING_DOWN,
+          {retryAfterSeconds: SESSION_EXHAUSTED_SECONDS},
+          'retry-later',
+        )
+      }
+      this.#log(
+        'info',
+        `Instagram: ${code}: the session did not read it (${error instanceof Error ? error.message : String(error)})`,
+      )
+      throw this.#spent(error)
     }
-    this.#log('warn', `Instagram: ${code}: the session did not read it after ${SESSION_ATTEMPTS} tries`)
-    throw new DownloadError(
-      'network',
-      'Instagram still did not return this post with the signed-in session. Try again in about 5 minutes.',
-      COOLING_DOWN,
-      {retryAfterSeconds: SESSION_EXHAUSTED_SECONDS},
-      'retry-later',
-    )
   }
 
   /** The pause between two tries of the same post. Tests set it to 0. */
@@ -649,9 +706,12 @@ export class InstagramSource implements MediaSource {
     readonly walled: boolean
     readonly failures: readonly string[]
     readonly asked: number
+    /** A door asked in this try refused (a wall, a 429): worth a breath before the next. */
+    readonly refused: boolean
   }> {
     let walled = false
     let asked = 0
+    let refused = false
     const failures: string[] = []
     for (const name of routeOrder) {
       if (!isAnonymousRoute(name)) continue
@@ -677,23 +737,25 @@ export class InstagramSource implements MediaSource {
         if (!usable(post)) throw new MetaError('format-changed', 'the post came without its media links')
         this.#health.succeeded(route)
         this.#log('info', `Instagram: ${code} read anonymously (${route})`)
-        return {post, walled, failures, asked}
+        return {post, walled, failures, asked, refused}
       } catch (error) {
         // a cool-down longer than the caller waits ("try again in N") is the answer for every route
         if (signal?.aborted || error instanceof DownloadError) throw error
         if (error instanceof MetaError && (error.problem === 'removed' || error.problem === 'private')) throw error
         if (error instanceof NetworkLimit) {
           walled = true
+          refused = true
           tried.delete(route)
         } else if (error instanceof MetaError && WALL_PROBLEMS.has(error.problem)) {
           walled = true
+          refused = true
           this.#health.refused(route)
         } else this.#health.failed(route)
         failures.push(`${route}: ${error instanceof Error ? error.message : String(error)}`)
       }
       if (asked >= doors) break
     }
-    return {walled, failures, asked}
+    return {walled, failures, asked, refused}
   }
 
   /** One anonymous route; undefined when it has nothing to ask with yet. */

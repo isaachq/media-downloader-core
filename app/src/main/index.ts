@@ -672,6 +672,8 @@ function registerIpc(): void {
       .analyze(url, {
         maxEntries: cap,
         signal: current.signal,
+        // what the engine is doing now: the loader says it (a handful per reading)
+        onStep: step => send(CHANNEL.analyzeStep, step),
         onProgress: progress => {
           // ~8 updates a second are plenty for a progress bar
           const now = Date.now()

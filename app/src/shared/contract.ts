@@ -241,6 +241,13 @@ export type ScheduleInput = {
 }
 
 export type AnalyzeProgress = {readonly listed: number; readonly expected?: number | undefined}
+/** What a reading is doing now (the engine's `AnalysisStep`): a kind the loader puts into words. */
+export type AnalyzeStep =
+  | {readonly kind: 'reading'}
+  | {readonly kind: 'another-way'; readonly attempt: number; readonly of: number}
+  | {readonly kind: 'checking'}
+  | {readonly kind: 'session'}
+  | {readonly kind: 'fallback'}
 
 /** One link of a mix list as its preview shows it (what its check found stays in the main process). */
 export type MixPreviewItem = {
@@ -469,6 +476,8 @@ export type MdcApi = {
   cancelAnalyze(): Promise<void>
   /** Progress of a long listing (TikTok profiles): posts read so far, of how many. */
   onAnalyzeProgress(listener: (progress: AnalyzeProgress) => void): () => void
+  /** Each turn of the reading in flight (another way, the session, yt-dlp), for the loader. */
+  onAnalyzeStep(listener: (step: AnalyzeStep) => void): () => void
   schedule(input: ScheduleInput): Promise<BatchSnapshot>
   /**
    * Check links of any sites pasted together (a mix list): in the format given,
@@ -582,6 +591,7 @@ export const CHANNEL = {
   analyze: 'mdc:analyze',
   analyzeCancel: 'mdc:analyze:cancel',
   analyzeProgress: 'mdc:analyze:progress',
+  analyzeStep: 'mdc:analyze:step',
   schedule: 'mdc:schedule',
   mixAnalyze: 'mdc:mix:analyze',
   mixCancel: 'mdc:mix:cancel',

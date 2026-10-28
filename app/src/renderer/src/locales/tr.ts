@@ -383,6 +383,10 @@ export const tr: Readonly<Record<MessageKey, string>> = {
   'analyze.reading': 'Bağlantı okunuyor… {seconds} sn',
   'analyze.hint': 'Uzun oynatma listeleri ve profiller biraz sürer. Liste hazır olunca açılır.',
   'analyze.cancel': 'İptal',
+  'analyze.step.another-way': 'Başka bir yol deneniyor ({attempt}/{of})…',
+  'analyze.step.checking': 'Gönderi kontrol ediliyor…',
+  'analyze.step.session': 'Oturumunla isteniyor…',
+  'analyze.step.fallback': 'yt-dlp ile okunuyor…',
   'update.label': 'Güncellemeler',
   'update.available': 'Yeni sürüm hazır: {version}',
   'update.availableHint':

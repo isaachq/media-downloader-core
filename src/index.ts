@@ -181,6 +181,7 @@ export type {SoundcloudEndpoints} from './sources/soundcloud/endpoints.js'
 export {isSoundcloudListing, parseSoundcloudLink, type SoundcloudLink} from './sources/soundcloud/links.js'
 export {SOUNDCLOUD_LIST_DEFAULT_ITEMS, type SoundcloudOptions, SoundcloudSource} from './sources/soundcloud/source.js'
 export type {
+  AnalysisStep,
   ListingProgress,
   LivePlayback,
   MediaSource,

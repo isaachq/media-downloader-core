@@ -179,6 +179,13 @@ describe('preview before downloading a list', () => {
     await user.click(screen.getByRole('button', {name: /download/i}))
     const loader = await screen.findByTestId('analyze-loader')
     expect(loader).toHaveTextContent('Reading the link…')
+    // the engine says what it is doing: the loader puts it into words under the clock
+    act(() => api.pushAnalyzeStep({kind: 'reading'}))
+    expect(within(loader).getByTestId('analyze-step')).toHaveTextContent('Long playlists and profiles take a moment')
+    act(() => api.pushAnalyzeStep({kind: 'another-way', attempt: 2, of: 5}))
+    expect(within(loader).getByTestId('analyze-step')).toHaveTextContent('Trying another way (2 of 5)…')
+    act(() => api.pushAnalyzeStep({kind: 'session'}))
+    expect(within(loader).getByTestId('analyze-step')).toHaveTextContent('Asking with your session…')
     act(() => api.pushAnalyzeProgress({listed: 150, expected: 500}))
     expect(loader).toHaveTextContent('Reading the list… 150 of 500 items')
     expect(within(loader).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '30')

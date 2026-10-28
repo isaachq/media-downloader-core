@@ -2,6 +2,43 @@
 
 ## Unreleased
 
+**Library 1.22.2**
+
+- **A post of photos no longer pauses before its second door.** The pause between
+  Instagram's anonymous tries (300–800 ms) was taken after any failed door, so every
+  public photo post waited it out after the embed (which has no data for a post without a
+  video). The pause now follows a door that refused (a wall, a 429) and nothing else: the
+  next door is asked at once. Cost: 0.3–0.8 s saved per photo post; 2.5–6.5 minutes over a
+  profile of 500.
+- **A photo's empty embed is not a login wall.** The embed of a post without a video is a
+  bare page with `"contextJSON":null`, which read as Instagram's login wall: the embed door
+  then rested for minutes after every photo post, for the video posts that followed. It is
+  "no data for this post" now, and the door keeps its standing. Cost: one regexp test.
+- **One time budget per post.** Every door had its own 15 s, so a network that never
+  answers cost up to 78 s before "try again". A post now has 30 s in all (`postBudgetMs`),
+  anonymous doors, oEmbed, the visitor read and the session included, and ends as
+  `retry-later` (`source:cooling-down`, 60 s) which the analysis loop does not retry.
+  Cost: one timer and one listener per post, both removed.
+- **Fewer requests on a network that is limited.** oEmbed is asked only when a door was
+  walled (a page that merely changed shape has nothing for it to tell), and the visitor
+  read is skipped while the pacer cools (it would be refused again). Cost: 1 to 4
+  requests fewer per post that fails.
+- **The session is one read.** A refused or failed session read used to be tried three
+  times a second apart and then reported as "try again in about 5 minutes"; it now reports
+  the pacer's own wait (or 60 s) after one read. A checkpoint still says 5 minutes, and an
+  expired session still says "sign in again". Cost: 2 requests fewer per refused session.
+- **What a reading is doing now (`onStep`).** `analyze(url, {onStep})` reports a stable
+  step for the apps' loaders: `reading` first, Instagram's `another-way` (door n of 5),
+  `checking` (oEmbed and the visitor read), `session`, and the engine's `fallback` when
+  yt-dlp takes the link. `AnalysisStep` is exported. Cost: O(1) per step, a handful per
+  analysis, nothing kept.
+
+**Desktop 0.2.0-beta.26**
+
+- **The reading loader says what it is doing.** Under "Reading the link… N s", the step the
+  engine reports: trying another way (n of 5), checking the post, asking with your session,
+  reading with yt-dlp; in 14 languages. Cost: O(1) per step.
+
 **Library 1.22.1**
 
 - **Instagram's five anonymous tries are five doors.** In 1.22.0 the first try asked every

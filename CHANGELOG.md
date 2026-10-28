@@ -10,7 +10,7 @@
 - [x] 4 release: library 1.21.3 · done · verified: npm run test:full (check, heavy, build, pack:check, app typecheck, app vitest 225/225, e2e 20/21: the beta 23 e2e "a SoundCloud track with MP4 chosen" now meets the library's refusal by design; commit 5 restores it with the picker)
 - [x] 5 app: soundcloud format selector · done · verified: app typecheck, vitest formats.test.tsx (3 new, 35/35) and batches.test.tsx 20/20
 - [x] 6 app: reveal waits for the batch · done · verified: app typecheck, biome, vitest beta24.test.tsx 4/4 and locales.test.ts 14 languages
-- [ ] 7 app: beta 24 e2e
+- [x] 7 app: beta 24 e2e · done · verified: playwright --grep "beta 24" 1/1 (24.6 s), full e2e and vitest below
 - [ ] 8 release: app 0.2.0-beta.24
 - [ ] 9 Android beta 24 (phone repo)
 

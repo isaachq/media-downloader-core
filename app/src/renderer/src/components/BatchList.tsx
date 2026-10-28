@@ -26,7 +26,7 @@ import type {BatchId, BatchSnapshot, JobId, PreflightItem} from 'media-downloade
 import {memo, useCallback, useEffect, useMemo, useState} from 'react'
 import {api} from '../api'
 import {useApp} from '../context'
-import {bytes, clock, finishesAt, timeLeft} from '../format'
+import {bytes, clock, failureText, finishesAt, timeLeft} from '../format'
 import {type MessageKey, useT} from '../i18n'
 import {useRevealLater} from '../reveal'
 import {BATCH_FINISHED, useAppStore, useStore, useStoreValue} from '../store'
@@ -140,9 +140,7 @@ function BatchItems({batchId}: {readonly batchId: BatchId}) {
               ) : null}
               {item.jobId ? <ItemCancel jobId={item.jobId} /> : null}
               {item.error && item.error.hint !== 'damaged-source' ? (
-                <Typography.Text type="danger">
-                  {item.error.hint ? t(`hint.${item.error.hint}` as MessageKey) : item.error.message}
-                </Typography.Text>
+                <Typography.Text type="danger">{failureText(t, item.error)}</Typography.Text>
               ) : null}
             </Space>
           ),

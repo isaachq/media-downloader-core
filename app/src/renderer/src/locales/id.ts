@@ -325,6 +325,7 @@ export const id: Readonly<Record<MessageKey, string>> = {
   'hint.unsupported-url': 'Situs atau tautan tidak didukung',
   'hint.format-unavailable': 'Format yang dipilih tidak tersedia',
   'hint.retry-later': 'Situs sedang membatasi permintaan. Coba lagi nanti',
+  'hint.retry-later.wait': 'Situs sedang membatasi permintaan. Coba lagi dalam {minutes} min.',
   'settings.title': 'Pengaturan',
   'settings.downloads': 'Unduhan',
   'settings.folder': 'Folder unduhan',

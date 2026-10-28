@@ -326,6 +326,7 @@ export const tr: Readonly<Record<MessageKey, string>> = {
   'hint.unsupported-url': 'Site veya bağlantı desteklenmiyor',
   'hint.format-unavailable': 'Seçilen biçim sunulmuyor',
   'hint.retry-later': 'Site istekleri sınırlıyor. Daha sonra tekrar dene',
+  'hint.retry-later.wait': 'Site istekleri sınırlıyor. {minutes} min sonra tekrar dene.',
   'settings.title': 'Ayarlar',
   'settings.downloads': 'İndirmeler',
   'settings.folder': 'İndirme klasörü',

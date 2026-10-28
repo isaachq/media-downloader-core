@@ -263,8 +263,11 @@ export class MetaClient {
       readonly visitor?: boolean | undefined
       /** A verification answer doesn't step the site aside (the browser may still try): the caller decides. */
       readonly keepSource?: boolean | undefined
+      /** One request. The caller is already counting tries (Instagram's session phase). */
+      readonly once?: boolean | undefined
     } = {},
   ): Promise<T> {
+    if (opts.once) return this.#jsonOnce(url, read, opts)
     if (opts.visitor) {
       const visitor = this.#visitor()
       return this.#quietly(() => this.#jsonOnce(url, read, {...opts, session: visitor}), opts.signal)

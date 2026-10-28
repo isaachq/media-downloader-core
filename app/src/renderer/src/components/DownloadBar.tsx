@@ -93,8 +93,10 @@ export function DownloadBar() {
 
   const fail = (error: unknown) => {
     const text = errorText(error)
+    const minutes = /try again in about (\d+) minutes/i.exec(text)
     // YouTube's bot check: one line here; the banner above says when it goes on, and how to go on now
     if (/not a (?:ro)?bot/i.test(text)) void message.error(t('hint.bot-check'))
+    else if (minutes) void message.error(t('hint.retry-later.wait', {minutes: Number(minutes[1])}))
     // a site that keeps this for signed-in accounts: say how to sign in (the browser's session)
     // (Twitch, Threads, Bluesky and VK say "signed-in account / session" or "watched signed in")
     else if (

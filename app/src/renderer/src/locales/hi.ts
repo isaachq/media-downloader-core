@@ -323,6 +323,7 @@ export const hi: Readonly<Record<MessageKey, string>> = {
   'hint.unsupported-url': 'साइट या लिंक सपोर्ट नहीं है',
   'hint.format-unavailable': 'चुना गया फ़ॉर्मेट उपलब्ध नहीं है',
   'hint.retry-later': 'साइट ने रिक्वेस्ट सीमित कर दी हैं. बाद में फिर से कोशिश करें',
+  'hint.retry-later.wait': 'साइट ने रिक्वेस्ट सीमित कर दी हैं. {minutes} min बाद फिर से कोशिश करें.',
   'settings.title': 'सेटिंग्स',
   'settings.downloads': 'डाउनलोड',
   'settings.folder': 'डाउनलोड फ़ोल्डर',

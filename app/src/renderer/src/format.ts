@@ -1,4 +1,6 @@
 // Locale-aware formatting for the UI (the engine's helpers live in Node).
+import type {MessageKey} from './i18n'
+
 const UNITS = ['byte', 'kilobyte', 'megabyte', 'gigabyte', 'terabyte'] as const
 
 // Intl formatters are costly to build and called on every render: one per (locale, unit, digits)
@@ -74,6 +76,25 @@ export function timeLeft(seconds: number): string {
 /** Wall-clock time `seconds` from now, e.g. "14:32". */
 export function finishesAt(seconds: number, locale: string, now = Date.now()): string {
   return new Date(now + seconds * 1000).toLocaleTimeString(locale, {hour: '2-digit', minute: '2-digit'})
+}
+
+/** What a failed job says in the user's language. A cool-down with a wait uses that wait. */
+export function failureText(
+  t: (key: MessageKey, params?: Readonly<Record<string, string | number>>) => string,
+  error: {
+    readonly hint?: string | undefined
+    readonly message: string
+    readonly params?: Readonly<Record<string, string | number>> | undefined
+  },
+): string {
+  if (error.hint === 'retry-later') {
+    const seconds = error.params?.['retryAfterSeconds']
+    if (typeof seconds === 'number' && seconds >= 60) {
+      return t('hint.retry-later.wait', {minutes: Math.round(seconds / 60)})
+    }
+  }
+  if (error.hint) return t(`hint.${error.hint}` as MessageKey)
+  return error.message
 }
 
 /** An error from the main process as words for the user: without Electron's "Error invoking remote method …:" wrapper. */

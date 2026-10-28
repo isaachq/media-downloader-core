@@ -45,7 +45,7 @@ function engineFor(name: string, sites: {readonly tiktok?: string; readonly inst
     retryDelayMaxMs: 20,
     progressIntervalMs: 0,
     tiktok: sites.tiktok ? {origin: sites.tiktok, pacing} : false,
-    instagram: sites.instagram ? {origin: sites.instagram, pacing} : false,
+    instagram: sites.instagram ? {origin: sites.instagram, pacing, retryPauseMs: 0} : false,
     facebook: false,
   })
   cleanups.push(() => engine.dispose())
@@ -92,25 +92,22 @@ describe('a host without yt-dlp', () => {
     )
   })
 
-  it('Instagram walled from every route: "this network", and its links stay native (nobody to step aside for)', async () => {
+  it('Instagram walled from every route asks for a session, and its links stay native', async () => {
     const site = await startFakeInstagram({loginWall: true, posts: 2})
     cleanups.push(() => site.close())
     const engine = engineFor('walled', {instagram: site.origin})
     for (const code of site.codes) {
       await assert.rejects(engine.analyze(`${site.origin}/p/${code}/`, {attempts: 1}), (e: DownloadError) => {
-        assert.equal(e.hint, 'retry-later')
-        assert.match(e.message, /limiting this network/)
+        assert.equal(e.hint, 'needs-sign-in')
+        assert.match(e.message, /signed-in session/)
         return true
       })
     }
-    assert.equal(
-      site.hits.login,
-      4,
-      'the second post was read natively too: the routes that refused rest, the signed page is asked (3 + 1)',
-    )
+    assert.equal(site.hits.login, 2, 'both posts: the embed and the post page once; cooled doors are not asked again')
+    assert.equal(site.hits.session, 0, 'no cookies: the session is not invented')
   })
 
-  it('an analysis that fails in a way that may pass is tried again, another way; a final answer is not', async () => {
+  it('refusals inside the five anonymous tries still read the post; a removed post is not tried again', async () => {
     const site = await startFakeInstagram({posts: 2, refusals: 14, noAppApi: true})
     cleanups.push(() => site.close())
     const engine = engineFor('retried', {instagram: site.origin})
@@ -120,7 +117,7 @@ describe('a host without yt-dlp', () => {
       onRetry: attempt => retries.push(attempt),
     })
     assert.equal(result.kind, 'video')
-    assert.ok(retries.length >= 1 && retries.length <= 2, `retried ${retries.length} time(s)`)
+    assert.deepEqual(retries, [], 'the five anonymous tries are inside the read; the engine does not start them again')
     // gone: answered at once, never retried
     const gone: number[] = []
     await assert.rejects(
@@ -130,27 +127,30 @@ describe('a host without yt-dlp', () => {
     assert.deepEqual(gone, [])
   })
 
-  it('a thorough batch check reads again what failed in a way that may pass; a fast one answers at once', async () => {
+  it('a 403 on every anonymous door asks for a session; a thorough check does not start those doors again', async () => {
     const fastSite = await startFakeInstagram({posts: 1, forbiddenFirst: 6})
     cleanups.push(() => fastSite.close())
     const fast = {site: fastSite, engine: engineFor('preflight-fast', {instagram: fastSite.origin})}
-    const once = await fast.engine.preflight([{url: `${fast.site.origin}/p/${fast.site.codes[0]}/`}])
-    assert.equal(once.get(`${fast.site.origin}/p/${fast.site.codes[0]}/`)?.ok, false, 'fast: one check, its answer')
+    const fastUrl = `${fast.site.origin}/p/${fast.site.codes[0]}/`
+    const once = await fast.engine.preflight([{url: fastUrl}])
+    const fastAnswer = once.get(fastUrl)
+    assert.equal(fastAnswer?.ok, false, 'fast: one check, its answer')
+    if (fastAnswer?.ok === false) assert.equal(fastAnswer.error.hint, 'needs-sign-in')
     const thoroughSite = await startFakeInstagram({posts: 1, forbiddenFirst: 6})
     cleanups.push(() => thoroughSite.close())
     const thorough = {site: thoroughSite, engine: engineFor('preflight-thorough', {instagram: thoroughSite.origin})}
     const answers: boolean[] = []
-    const checked = await thorough.engine.preflight([{url: `${thorough.site.origin}/p/${thorough.site.codes[0]}/`}], {
+    const thoroughUrl = `${thorough.site.origin}/p/${thorough.site.codes[0]}/`
+    const checked = await thorough.engine.preflight([{url: thoroughUrl}], {
       attempts: 3,
       retryWaitMs: () => 5,
       onResult: (_, result) => answers.push(result.ok),
     })
-    assert.equal(
-      checked.get(`${thorough.site.origin}/p/${thorough.site.codes[0]}/`)?.ok,
-      true,
-      'thorough: checked again, read',
-    )
-    assert.deepEqual(answers, [true], 'only the last answer is reported')
+    const thoroughAnswer = checked.get(thoroughUrl)
+    assert.equal(thoroughAnswer?.ok, false, 'thorough: the five doors already ran; they are not started again')
+    if (thoroughAnswer?.ok === false) assert.equal(thoroughAnswer.error.hint, 'needs-sign-in')
+    assert.deepEqual(answers, [false], 'one answer, not three')
+    assert.equal(thorough.site.hits.refused, fast.site.hits.refused, 'the thorough check did not ask the doors again')
   })
 
   it('a link straight to a media file downloads natively as "Web"; a page or a gone file says so', async () => {

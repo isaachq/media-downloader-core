@@ -414,7 +414,23 @@ function siteSources() {
         pacing: {spacingMs: 0, jitterMs: 0},
       }),
     },
-    instagram: {browser: metaBrowser('instagram-reader', ['instagram.com']), ...metaOrigin('MDC_INSTAGRAM_ORIGIN')},
+    instagram: {
+      browser: metaBrowser('instagram-reader', ['instagram.com']),
+      ...metaOrigin('MDC_INSTAGRAM_ORIGIN'),
+      // e2e points Instagram at a local fake: no pause between the five tries
+      ...(process.env['MDC_INSTAGRAM_ORIGIN'] && {retryPauseMs: 0}),
+      // and, when the test says so, a session cookie for that fake's own host
+      ...(process.env['MDC_INSTAGRAM_ORIGIN'] &&
+        process.env['MDC_INSTAGRAM_SESSION'] === '1' && {
+          cookies: async () => [
+            {
+              name: 'sessionid',
+              value: 'fake-session',
+              domain: new URL(process.env['MDC_INSTAGRAM_ORIGIN'] ?? 'http://127.0.0.1').hostname,
+            },
+          ],
+        }),
+    },
     facebook: {browser: metaBrowser('facebook-reader', ['facebook.com']), ...metaOrigin('MDC_FACEBOOK_ORIGIN')},
     // e2e runs read twitch.tv links from a local fake GraphQL + usher, Threads from a local fake site
     ...(process.env['MDC_TWITCH_ORIGIN'] && {
@@ -469,7 +485,7 @@ function fakeSites() {
 /** Test hook: a local fake of a Meta site, without pacing delays. */
 function metaOrigin(variable: string) {
   const origin = process.env[variable]
-  return origin ? {origin, pacing: {spacingMs: 0, jitterMs: 0}} : {}
+  return origin ? {origin, pacing: {spacingMs: 0, jitterMs: 0, backoffMs: 0, maxBackoffMs: 0}} : {}
 }
 
 function createEngine(current: AppSettings): void {

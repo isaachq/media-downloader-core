@@ -325,6 +325,7 @@ export const vi: Readonly<Record<MessageKey, string>> = {
   'hint.unsupported-url': 'Trang web hoặc liên kết không được hỗ trợ',
   'hint.format-unavailable': 'Không có định dạng đã chọn',
   'hint.retry-later': 'Trang web đang giới hạn tần suất yêu cầu. Hãy thử lại sau',
+  'hint.retry-later.wait': 'Trang web đang giới hạn tần suất yêu cầu. Hãy thử lại sau {minutes} min.',
   'settings.title': 'Cài đặt',
   'settings.downloads': 'Tải xuống',
   'settings.folder': 'Thư mục tải xuống',

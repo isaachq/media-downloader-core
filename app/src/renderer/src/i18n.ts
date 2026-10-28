@@ -344,6 +344,7 @@ const en = {
   'hint.unsupported-url': 'Site or link not supported',
   'hint.format-unavailable': 'The chosen format is not offered',
   'hint.retry-later': 'The site is limiting requests. Try again later.',
+  'hint.retry-later.wait': 'The site is limiting requests. Try again in {minutes} min.',
 
   'settings.title': 'Settings',
   'settings.downloads': 'Downloads',
@@ -1075,6 +1076,7 @@ const es: Record<MessageKey, string> = {
   'hint.unsupported-url': 'Sitio o enlace no compatible',
   'hint.format-unavailable': 'El formato elegido no está disponible',
   'hint.retry-later': 'El sitio está limitando las solicitudes. Intenta más tarde.',
+  'hint.retry-later.wait': 'El sitio está limitando las solicitudes. Intenta en {minutes} min.',
 
   'settings.title': 'Configuración',
   'settings.downloads': 'Descargas',

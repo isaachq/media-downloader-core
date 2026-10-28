@@ -1,3 +1,4 @@
+import {setTimeout as sleep} from 'node:timers/promises'
 import type {ExtractResult} from '../../core/analyze.js'
 import {DownloadError} from '../../core/errors.js'
 import {genericChoices} from '../../core/formats.js'
@@ -10,12 +11,20 @@ import {
   IFRAME_NAVIGATION_HEADERS,
   navigationFetch,
 } from '../http.js'
+import {
+  ANONYMOUS_ATTEMPTS,
+  betweenAttemptsMs,
+  SESSION_ATTEMPTS,
+  SESSION_EXHAUSTED_SECONDS,
+  variantFor,
+} from '../internal/adaptive-retry.js'
 import {MetaClient, type PageRead, type SessionProvider} from '../meta/client.js'
 import {downloadPost} from '../meta/download.js'
 import {MetaError, type MetaProblem, toDownloadError} from '../meta/errors.js'
 import {type CursorPage, walkCursor} from '../meta/listing.js'
 import {choicesOf, type MetaPost, shapeOf, summaryOf, videosOf} from '../meta/post.js'
 import type {Pacer, PacerOptions} from '../pacer.js'
+import {COOLING_DOWN} from '../pacer.js'
 import {followShortLink, resolved, unresolvedMessage} from '../redirects.js'
 import type {ListingProgress, MediaSource, SourceDownload, SourceFile} from '../source.js'
 import {
@@ -78,6 +87,8 @@ export type InstagramOptions = {
   readonly queries?: Partial<InstagramQueries> | undefined
   /** Where the source reports what it did (the engine's log). */
   readonly log?: ((level: 'info' | 'warn', message: string) => void) | undefined
+  /** Tests: the pause between Instagram's own tries. Default 300–800 ms. */
+  readonly retryPauseMs?: number | undefined
 }
 
 export const INSTAGRAM_PROFILE_DEFAULT_ITEMS = 500
@@ -95,8 +106,8 @@ const ANONYMOUS_TIMEOUT_MS = 15_000
 /** What the user reads when every route to a public post got Instagram's wall. */
 export const GATED_MESSAGE =
   'Instagram shows this post to signed-in accounts only (it is limited to some audiences): sign in to Instagram to download it.'
-const WALLED_MESSAGE =
-  'Instagram is limiting this network right now: every way of reading the post got its login page. Wait a few minutes or try another network; a signed-in session also gets through.'
+const SESSION_NEEDED =
+  'Instagram did not return this post without a signed-in session. Sign in to Instagram and try again.'
 
 /** A read post, good until its media links expire (the CDN's `oe`, less a margin) or POST_FRESH_MS without one. */
 type Cached = {readonly post: MetaPost; readonly at: number; readonly until: number}
@@ -108,6 +119,11 @@ const SHARE_LIMIT = 2000
 /** The anonymous routes, cheapest first: the default order among routes that have done as well. */
 const ROUTES = ['embed', 'web info', 'post page', 'logged-out query', 'app API'] as const
 type Route = (typeof ROUTES)[number]
+
+function isAnonymousRoute(name: string): name is Route {
+  for (const route of ROUTES) if (route === name) return true
+  return false
+}
 type KeptListing = {posts: MetaPost[]; cursor: string | undefined; complete: boolean; at: number}
 
 /**
@@ -139,6 +155,8 @@ export class InstagramSource implements MediaSource {
   readonly #apiOrigin: string
   /** How each anonymous route (and query id) has been answering on this network. */
   readonly #health = new RouteHealth()
+  /** Pause between a post's own tries. Tests set 0. */
+  readonly #retryPauseMs: number | undefined
   /** The query ids and token Instagram's own post page names now. */
   readonly #book = new QueryBook()
   /** The `web_info` query ids, a host's own first. */
@@ -162,6 +180,7 @@ export class InstagramSource implements MediaSource {
     this.#maxProfileItems = Math.max(1, options.maxProfileItems ?? INSTAGRAM_PROFILE_DEFAULT_ITEMS)
     this.#queries = {...DEFAULT_QUERIES, ...options.queries}
     this.#log = options.log ?? (() => {})
+    this.#retryPauseMs = options.retryPauseMs
     // its own transport: the embed is walled unless asked for as a page load, which Node's fetch can't say
     this.#anonymous = new HttpSession({fetch: options.fetch ?? navigationFetch, timeoutMs: ANONYMOUS_TIMEOUT_MS})
     this.#apiOrigin = (options.apiOrigin ?? options.origin ?? API_ORIGIN).replace(/\/$/, '')
@@ -321,16 +340,12 @@ export class InstagramSource implements MediaSource {
   // ─── posts ───────────────────────────────────────────────────────────────
 
   /**
-   * One post by shortcode. The anonymous routes first, best first on this
-   * network (RouteHealth), one request each; then the routes that want a
-   * session or a browser. A photo post read without a session has no song
-   * (no logged-out answer carries it): with the user's session, its song is
-   * asked for once more; without, the post says so (`songNeedsSession`).
-   * Reads of the same post at once share one request (by its numeric id).
-   * When every route was walled, the post's oEmbed (a few KB) tells "this
-   * network is being limited" from "the post is gone".
+   * One post by shortcode. Five anonymous variants first (a different door
+   * order and Accept-Language each try; the first success is the post). Then
+   * one visitor read, then the user's session up to three times. Stories,
+   * highlights and profile listings do not come through here.
    *
-   * Time Complexity: O(R) requests for R <= 5 routes, + 1 for the song.
+   * Time Complexity: O(1) requests, capped at 5 anonymous + 1 visitor + 3 session.
    */
   async #readPost(code: string, signal?: AbortSignal, fresh = false, attempt = 1): Promise<MetaPost> {
     const id = this.#byCode.get(code)
@@ -351,43 +366,123 @@ export class InstagramSource implements MediaSource {
   }
 
   /**
-   * Fixed order: the anonymous routes, then the web client (as a visitor),
-   * and the user's session only when everything before asked for a sign-in
-   * (a login wall, 401, a gated post) — the session is the last resort, never
-   * the first try, so a public post never depends on it.
+   * Anonymous variants first, then one visitor read, then the session.
+   * `attempt` from the engine's own loop is not a sixth strategy: this read
+   * finishes the five-plus-three policy itself and returns an error that
+   * loop does not retry. A public post never starts on the user's cookies.
    */
-  async #readPostOnce(code: string, signal: AbortSignal | undefined, attempt: number): Promise<MetaPost> {
-    const anonymous = await this.#readAnonymously(code, signal, attempt)
-    let post = anonymous.post
-    if (!post) {
-      this.#log(
-        'info',
-        `Instagram: ${code} not readable anonymously (${anonymous.failures.join('; ')}) — asking the web client's query`,
-      )
+  async #readPostOnce(code: string, signal: AbortSignal | undefined, _attempt: number): Promise<MetaPost> {
+    const found = await this.#anonymousAttempts(code, signal)
+    const post = found.post ?? (await this.#afterAnonymous(code, signal, found.walled))
+    const withSong = await this.#withSong(post, signal)
+    this.#remember(withSong)
+    return withSong
+  }
+
+  /**
+   * Up to five anonymous tries. Each try is one variant (door order and
+   * Accept-Language). A door that already refused stays cooled, so a wall
+   * is not asked five times. The first post ends the phase. O(1) requests.
+   */
+  async #anonymousAttempts(
+    code: string,
+    signal?: AbortSignal,
+  ): Promise<{readonly post?: MetaPost; readonly walled: boolean}> {
+    const url = postUrl(this.#client.origin, code)
+    const base = this.#health.order(ROUTES, route => route)
+    const tried = new Set<string>()
+    let walled = false
+    for (let attempt = 1; attempt <= ANONYMOUS_ATTEMPTS; attempt++) {
+      const variant = variantFor(url, attempt, base)
+      const anonymous = await this.#readAnonymously(code, signal, variant.routeOrder, variant.headers, tried)
+      walled ||= anonymous.walled
+      if (anonymous.post) return {post: anonymous.post, walled}
+      if (signal?.aborted || anonymous.asked === 0 || attempt === ANONYMOUS_ATTEMPTS) break
+      if (!this.#anotherDoor(tried)) break
+      await this.#pause(signal)
+    }
+    return {walled}
+  }
+
+  /** A door not yet asked in this phase and not resting. O(1), five doors. */
+  #anotherDoor(tried: ReadonlySet<string>): boolean {
+    for (const route of ROUTES) if (!tried.has(route) && this.#health.coolingDownMs(route) === 0) return true
+    return false
+  }
+
+  /**
+   * The anonymous variants did not read it. oEmbed separates gone from gated.
+   * A gated post skips the visitor query. Otherwise one visitor read, then
+   * the session phase. O(1) requests.
+   */
+  async #afterAnonymous(code: string, signal: AbortSignal | undefined, walled: boolean): Promise<MetaPost> {
+    this.#log(
+      'info',
+      `Instagram: ${code} not readable anonymously — asking the web client, then the session if it is needed`,
+    )
+    const probe = await this.#probe(code, signal)
+    if (probe === 'gone') throw new MetaError('removed', 'This Instagram post no longer exists, or is private.')
+    if (probe !== 'gated') {
       try {
-        post = await this.#readSigned(code, signal)
+        return await this.#readSigned(code, signal)
       } catch (error) {
-        // a page without its data, after walls on the anonymous routes, is the wall in another shape
-        const signIn = error instanceof MetaError && WALL_PROBLEMS.has(error.problem)
-        const wall = signIn || (error instanceof MetaError && error.problem === 'format-changed')
-        if (signal?.aborted || !wall || !(anonymous.walled || signIn)) throw error
-        // gone, gated to some audiences, or this network limited? oEmbed answers in a few KB
-        const probe = await this.#probe(code, signal)
-        if (probe === 'gone') throw new MetaError('removed', 'This Instagram post no longer exists, or is private.')
-        // everything without a session asked for one: now, and only now, the user's session
-        const signed = await this.#lastResort(code, signal)
-        if (signed) return signed
-        if (probe === 'gated') throw new MetaError('login-required', GATED_MESSAGE)
-        // a gated post is the post, not this network: only a wall everywhere hands the site to yt-dlp
-        if (error instanceof MetaError && error.problem === 'challenge') this.#client.stepAside(error.message)
-        if (!anonymous.walled) throw error
-        this.#log('warn', `Instagram: ${code}: every route got the wall (then ${(error as Error).message})`)
-        throw new MetaError('walled', WALLED_MESSAGE)
+        if (signal?.aborted || isFinal(error)) throw error
+        // the visitor read would wait out a cool-down longer than this paste: the session phase
+        // decides (sign in, or the five minutes), instead of reporting the cool-down itself
+        if (error instanceof DownloadError && error.details === COOLING_DOWN) {
+          if (!walled) throw error
+        } else if (!(error instanceof MetaError)) throw error
+        else {
+          const signIn = WALL_PROBLEMS.has(error.problem)
+          // a changed page, and nothing was walled, is the page: yt-dlp can take the link
+          if (!signIn && !(error.problem === 'format-changed' && walled)) throw error
+        }
       }
     }
-    post = await this.#withSong(post, signal)
-    this.#remember(post)
-    return post
+    return this.#sessionAttempts(code, signal, probe === 'gated')
+  }
+
+  /**
+   * The user's session, only after the anonymous tries. No cookies: say so,
+   * and do not invent failed requests. With cookies: three single reads.
+   * A challenge stops the three (it will not change on the next one). When
+   * the three are spent, the caller is told to come back in five minutes,
+   * and the engine's own retry loop does not start the five again.
+   */
+  async #sessionAttempts(code: string, signal: AbortSignal | undefined, gated: boolean): Promise<MetaPost> {
+    await this.#client.loadCookies()
+    if (!this.#client.signedIn) {
+      throw new MetaError('login-required', gated ? GATED_MESSAGE : SESSION_NEEDED)
+    }
+    for (let attempt = 1; attempt <= SESSION_ATTEMPTS; attempt++) {
+      try {
+        this.#log('info', `Instagram: ${code}: reading it with the session (try ${attempt} of ${SESSION_ATTEMPTS})`)
+        return await this.#readWithSession(code, signal)
+      } catch (error) {
+        if (signal?.aborted || isFinal(error)) throw error
+        if (error instanceof MetaError && error.problem === 'challenge') break
+        this.#log(
+          'info',
+          `Instagram: ${code}: the session did not read it (${error instanceof Error ? error.message : String(error)})`,
+        )
+        if (attempt < SESSION_ATTEMPTS) await this.#pause(signal)
+      }
+    }
+    this.#log('warn', `Instagram: ${code}: the session did not read it after ${SESSION_ATTEMPTS} tries`)
+    throw new DownloadError(
+      'network',
+      'Instagram still did not return this post with the signed-in session. Try again in about 5 minutes.',
+      COOLING_DOWN,
+      {retryAfterSeconds: SESSION_EXHAUSTED_SECONDS},
+      'retry-later',
+    )
+  }
+
+  /** The pause between two tries of the same post. Tests set it to 0. */
+  async #pause(signal?: AbortSignal): Promise<void> {
+    const ms = this.#retryPauseMs ?? betweenAttemptsMs()
+    if (ms <= 0) return
+    await sleep(ms, undefined, signal ? {signal} : undefined)
   }
 
   /**
@@ -415,29 +510,10 @@ export class InstagramSource implements MediaSource {
   }
 
   /**
-   * The user's session, after everything without it asked for one: undefined
-   * when there is none, or it did not read the post either (a challenge
-   * included: it is reported, never shown, and the site is not stepped aside).
-   */
-  async #lastResort(code: string, signal?: AbortSignal): Promise<MetaPost | undefined> {
-    await this.#client.loadCookies()
-    if (!this.#client.signedIn) return undefined
-    try {
-      this.#log('info', `Instagram: ${code}: every way without a session asked for one — reading it with the session`)
-      const post = await this.#readWithSession(code, signal)
-      this.#remember(post)
-      return post
-    } catch (error) {
-      if (signal?.aborted || isFinal(error)) throw error
-      this.#log('info', `Instagram: ${code}: the session did not read it either (${String(error)})`)
-      return undefined
-    }
-  }
-
-  /**
    * The app API as the signed-in web client asks it: the whole v1 item, song
-   * included. Quiet: a verification answer here is the caller's (no browser,
-   * the site keeps its source for the other links).
+   * included. One request (`once`): the session phase counts its own three
+   * tries. Quiet: a verification answer is the caller's (no browser, the
+   * site keeps its source for the other links).
    */
   #readWithSession(code: string, signal?: AbortSignal): Promise<MetaPost> {
     const page = postUrl(this.#client.origin, code)
@@ -445,6 +521,7 @@ export class InstagramSource implements MediaSource {
       signal,
       headers: this.#apiHeaders(page),
       quiet: true,
+      once: true,
     })
   }
 
@@ -498,68 +575,93 @@ export class InstagramSource implements MediaSource {
     } catch (error) {
       if (!(error instanceof MetaError) || (error.problem !== 'format-changed' && error.problem !== 'login-required'))
         throw error
+      // a login answer is the session phase's to handle: reading the login page here cools the
+      // whole network for 30 s, and a paste gives up at 15 s — "try later" instead of "sign in"
+      if (error.problem === 'login-required') throw error
       this.#log('info', `Instagram: the post query did not answer for ${code} (${error.message}) — reading its page`)
       return await this.#client.page(page, readPostPage, {signal, visitor, keepSource: true})
     }
   }
 
   /**
-   * The anonymous routes, best first (RouteHealth: what answered lately, the
-   * cheapest first among equals), one request each. A route that says the
-   * post is gone or private ends the search — the others would say the same.
-   * A route that refuses (login page, 401 / 403 / 429) sits out a while on its
-   * own: the network is not cooled down for it. No post: what each route
-   * said, and whether any was walled.
+   * The anonymous routes in this try's order. A route that says the post is
+   * gone or private ends the search. A route that refuses sits out for the
+   * rest of the phase: the next try does not wake it. A route in cool-down
+   * is skipped on every try, not only the first.
    *
-   * Time Complexity: O(R log R) to order + O(R) requests, R <= 5.
+   * Time Complexity: O(R) requests, R <= 5.
    */
   async #readAnonymously(
     code: string,
-    signal?: AbortSignal,
-    attempt = 1,
-  ): Promise<{readonly post?: MetaPost; readonly walled: boolean; readonly failures: readonly string[]}> {
+    signal: AbortSignal | undefined,
+    routeOrder: readonly string[],
+    headers: Readonly<Record<string, string>>,
+    tried: Set<string>,
+  ): Promise<{
+    readonly post?: MetaPost
+    readonly walled: boolean
+    readonly failures: readonly string[]
+    readonly asked: number
+  }> {
     let walled = false
+    let asked = 0
     const failures: string[] = []
-    for (const route of this.#health.order(ROUTES, route => route)) {
+    for (const name of routeOrder) {
+      if (!isAnonymousRoute(name)) continue
+      const route = name
       if (signal?.aborted) break
       const cooling = this.#health.coolingDownMs(route)
-      // a first try skips the routes resting after a refusal; a retry asks them too, after the rest
-      if (cooling > 0 && attempt === 1) {
-        failures.push(`${route}: resting ${Math.ceil(cooling / 1000)} s after a refusal`)
-        walled = true
+      if (tried.has(route) || cooling > 0) {
+        if (cooling > 0) {
+          failures.push(`${route}: resting ${Math.ceil(cooling / 1000)} s after a refusal`)
+          walled = true
+        }
         continue
       }
+      tried.add(route)
+      asked++
       try {
-        const post = await this.#readRoute(route, code, signal)
-        if (!post) continue // nothing to ask it with yet (the logged-out query before any page named it)
+        const post = await this.#readRoute(route, code, signal, headers)
+        if (!post) {
+          tried.delete(route)
+          asked--
+          continue // nothing to ask it with yet (the logged-out query before any page named it)
+        }
         if (!usable(post)) throw new MetaError('format-changed', 'the post came without its media links')
         this.#health.succeeded(route)
         this.#log('info', `Instagram: ${code} read anonymously (${route})`)
-        return {post, walled, failures}
+        return {post, walled, failures, asked}
       } catch (error) {
         // a cool-down longer than the caller waits ("try again in N") is the answer for every route
         if (signal?.aborted || error instanceof DownloadError) throw error
         if (error instanceof MetaError && (error.problem === 'removed' || error.problem === 'private')) throw error
-        if (error instanceof NetworkLimit) walled = true
-        else if (error instanceof MetaError && WALL_PROBLEMS.has(error.problem)) {
+        if (error instanceof NetworkLimit) {
+          walled = true
+          tried.delete(route)
+        } else if (error instanceof MetaError && WALL_PROBLEMS.has(error.problem)) {
           walled = true
           this.#health.refused(route)
         } else this.#health.failed(route)
         failures.push(`${route}: ${error instanceof Error ? error.message : String(error)}`)
       }
     }
-    return {walled, failures}
+    return {walled, failures, asked}
   }
 
   /** One anonymous route; undefined when it has nothing to ask with yet. */
-  async #readRoute(route: Route, code: string, signal?: AbortSignal): Promise<MetaPost | undefined> {
+  async #readRoute(
+    route: Route,
+    code: string,
+    signal: AbortSignal | undefined,
+    headers: Readonly<Record<string, string>>,
+  ): Promise<MetaPost | undefined> {
     const origin = this.#client.origin
     switch (route) {
       case 'embed':
         return readEmbedPage(
           await this.#anonymousGet(
             `${origin}${EMBED_PATH(code)}`,
-            {...IFRAME_NAVIGATION_HEADERS, Referer: `${origin}/`},
+            {...IFRAME_NAVIGATION_HEADERS, Referer: `${origin}/`, ...headers},
             signal,
           ),
         )
@@ -571,7 +673,7 @@ export class InstagramSource implements MediaSource {
         // query ids its own client preloads now, for the logged-out query below
         const page = await this.#anonymousGet(
           postUrl(origin, code),
-          {...DOCUMENT_NAVIGATION_HEADERS, 'Accept-Language': 'en-US,en;q=0.9'},
+          {...DOCUMENT_NAVIGATION_HEADERS, ...headers},
           signal,
         )
         this.#book.learn(page.html)

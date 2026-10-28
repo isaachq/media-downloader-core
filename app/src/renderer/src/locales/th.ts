@@ -321,6 +321,7 @@ export const th: Readonly<Record<MessageKey, string>> = {
   'hint.unsupported-url': 'ไม่รองรับเว็บไซต์หรือลิงก์นี้',
   'hint.format-unavailable': 'ไม่มีรูปแบบที่เลือก',
   'hint.retry-later': 'เว็บไซต์กำลังจำกัดคำขอ ลองใหม่ภายหลัง',
+  'hint.retry-later.wait': 'เว็บไซต์กำลังจำกัดคำขอ ลองใหม่ใน {minutes} min.',
   'settings.title': 'การตั้งค่า',
   'settings.downloads': 'การดาวน์โหลด',
   'settings.folder': 'โฟลเดอร์ดาวน์โหลด',

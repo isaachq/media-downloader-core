@@ -695,8 +695,9 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
        * Tries in all (default ANALYZE_ATTEMPTS; 1: no retry). A failure that may pass
        * (a network error, a refusal, a page that came without its data) is tried again
        * after a short pause, each try another way: the sources rank their routes by what
-       * just answered and rest the ones that refused, and Instagram goes in with the
-       * user's session first on the third. A final answer (gone, private, needs a
+       * just answered and rest the ones that refused. An Instagram post does not use
+       * this counter: it tries five anonymous variants, then three with the user's
+       * session, and its own error is final. A final answer (gone, private, needs a
        * session, unsupported) or a cool-down longer than the caller waits is not retried.
        */
       attempts?: number

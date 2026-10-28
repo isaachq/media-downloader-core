@@ -1,8 +1,30 @@
 # Changelog
 
-## Unreleased
+## App 0.2.0-beta.25 · library 1.22.0
 
-**Library 1.21.4**
+Instagram tries five anonymous ways, then the session. A wait on screen says how many minutes.
+
+**Library 1.22.0**
+
+- **Instagram tries five anonymous ways, then the session.** A public post gets five
+  tries, each a different door order and Accept-Language. The first one that reads
+  it stops, and the download starts. A door that already refused is not asked
+  again in that phase. Stories, highlights and a profile listing still ask for a
+  session before any anonymous request. After the five, no cookies means
+  `needs-sign-in`. A login page is not a 30-second network wait: pasting the link
+  asks for a session instead of giving up at 15 seconds. With cookies, three reads
+  with the session; a checkpoint stops those three. If they do not read the post,
+  the error is `retry-later` in 5 minutes (`source:cooling-down`), and the analysis
+  loop does not start the five again. Other sites stay on 3 analysis tries.
+  Cost: O(1) per try; at most 5 anonymous reads and 3 session reads per post; no stored score.
+
+**Desktop**
+
+- A failed download that carries a wait (`retryAfterSeconds`) says how many minutes,
+  in the downloads list, the batch list, the failed-jobs window, and the message
+  shown when a link is pasted. Sign-in stays the existing sign-in sentence.
+
+## Library 1.21.4
 
 - **A photo post's song is sound, whatever the CDN calls it.** Instagram serves a post's
   song as `video/mp4`, so "images + audio" saved it as `sound.mp4` beside the pictures; a

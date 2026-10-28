@@ -324,6 +324,7 @@ export const ru: Readonly<Record<MessageKey, string>> = {
   'hint.unsupported-url': 'Сайт или ссылка не поддерживаются',
   'hint.format-unavailable': 'Выбранный формат недоступен',
   'hint.retry-later': 'Сайт ограничивает запросы. Повторите позже',
+  'hint.retry-later.wait': 'Сайт ограничивает запросы. Повторите через {minutes} min.',
   'settings.title': 'Настройки',
   'settings.downloads': 'Загрузки',
   'settings.folder': 'Папка загрузок',

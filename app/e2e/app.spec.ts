@@ -1071,3 +1071,32 @@ test('beta 24: SoundCloud limits the picker and resets it, takes MP3 in a mix li
     await instagram.close()
   }
 })
+
+test('beta 25: a walled Instagram post asks for a session; a checkpoint says 5 minutes', {tag: '@full'}, async () => {
+  const walled = await startFakeInstagram({loginWall: true, posts: 1})
+  try {
+    const first = await launch('beta25-wall', {}, {MDC_INSTAGRAM_ORIGIN: walled.origin})
+    await download(first.page, `https://www.instagram.com/p/${walled.codes[0]}/`)
+    await expect(first.page.locator('.ant-message-notice')).toContainText(/Sign-in required/, {timeout: 60_000})
+    await close(first.app)
+  } finally {
+    await walled.close()
+  }
+
+  const later = await startFakeInstagram({posts: 1, gated: [0], sessionChallenge: true})
+  try {
+    const second = await launch(
+      'beta25-later',
+      {},
+      {
+        MDC_INSTAGRAM_ORIGIN: later.origin,
+        MDC_INSTAGRAM_SESSION: '1',
+      },
+    )
+    await download(second.page, `https://www.instagram.com/p/${later.codes[0]}/`)
+    await expect(second.page.locator('.ant-message-notice')).toContainText('Try again in 5 min.', {timeout: 60_000})
+    await close(second.app)
+  } finally {
+    await later.close()
+  }
+})

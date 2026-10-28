@@ -100,6 +100,7 @@ export const zh: Readonly<Record<MessageKey, string>> = {
   'finished.unverified': '未检查',
   'finished.checksum': '校验和',
   'finished.gone': '该文件已不在下载时的位置。',
+  'finished.revealLater': '批次完成后可用。',
   'finished.live': '下载完成时自动更新',
   'batch.openFolder': '打开文件夹',
   'slides.title': 'TikTok 图集：{count}',

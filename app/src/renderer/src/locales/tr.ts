@@ -104,6 +104,7 @@ export const tr: Readonly<Record<MessageKey, string>> = {
   'finished.unverified': 'Kontrol edilmedi',
   'finished.checksum': 'Sağlama toplamı',
   'finished.gone': 'Bu dosya artık indirildiği yerde değil.',
+  'finished.revealLater': 'Grup bitince kullanılabilir.',
   'finished.live': 'İndirmeler bittikçe güncellenir',
   'batch.openFolder': 'Klasörü aç',
   'slides.title': 'TikTok slayt gösterileri: {count}',

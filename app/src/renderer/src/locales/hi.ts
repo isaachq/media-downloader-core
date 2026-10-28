@@ -101,6 +101,7 @@ export const hi: Readonly<Record<MessageKey, string>> = {
   'finished.unverified': 'जाँचा नहीं गया',
   'finished.checksum': 'चेकसम',
   'finished.gone': 'वह फ़ाइल अब उस जगह नहीं है जहाँ वह डाउनलोड हुई थी.',
+  'finished.revealLater': 'बैच पूरा होने पर उपलब्ध होगा.',
   'finished.live': 'डाउनलोड पूरे होते ही अपडेट होता है',
   'batch.openFolder': 'फ़ोल्डर खोलें',
   'slides.title': 'TikTok स्लाइडशो: {count}',

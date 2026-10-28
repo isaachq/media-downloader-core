@@ -9,7 +9,7 @@
 - [x] 3 fix(instagram): the session is the last resort · done · verified: npm run check, live:matrix --platform instagram --native (24 pass, 3 need a session, 0 fail)
 - [x] 4 release: library 1.21.3 · done · verified: npm run test:full (check, heavy, build, pack:check, app typecheck, app vitest 225/225, e2e 20/21: the beta 23 e2e "a SoundCloud track with MP4 chosen" now meets the library's refusal by design; commit 5 restores it with the picker)
 - [x] 5 app: soundcloud format selector · done · verified: app typecheck, vitest formats.test.tsx (3 new, 35/35) and batches.test.tsx 20/20
-- [ ] 6 app: reveal waits for the batch
+- [x] 6 app: reveal waits for the batch · done · verified: app typecheck, biome, vitest beta24.test.tsx 4/4 and locales.test.ts 14 languages
 - [ ] 7 app: beta 24 e2e
 - [ ] 8 release: app 0.2.0-beta.24
 - [ ] 9 Android beta 24 (phone repo)
@@ -49,6 +49,12 @@
   the picker is back to the default format, waiting for the next one. In a mix list a
   SoundCloud link takes only MP3 or M4A as a format of its own. Cost: O(1) per render (a
   two-entry list).
+- **"Show in folder" waits for the batch.** In Finished, in Downloads and on a batch's card,
+  the folder button of a file whose batch is still running stays where it is; a tap says
+  "Available when the batch finishes" (14 languages) and opens nothing, and the folder opens
+  once, by itself, when the batch ends. A file of a finished batch opens at once, as before.
+  The tap is kept by the store, so a tab that unmounts keeps it. Cost: O(1) per tap and per
+  batch update.
 
 ## App 0.2.0-beta.23 · library 1.21.2
 

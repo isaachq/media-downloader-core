@@ -173,9 +173,32 @@ export class AppStore {
     this.#notify()
   }
 
+  /** Opens kept for batches still running ("show in folder" waits for the batch): one per batch, the last tap wins. */
+  readonly #revealLater = new Map<BatchId, () => void>()
+
+  /**
+   * Keep `open` until the batch ends, when it runs once: true. False when the batch is over,
+   * or none this session knows: nothing kept, open now. Lives here, not in a component, so
+   * a tab that unmounts (Finished, Downloads) keeps its tap. O(1).
+   */
+  revealWhenDone(batchId: string | undefined, open: () => void): boolean {
+    const batch = batchId ? this.batches.get(batchId as BatchId) : undefined
+    if (!batch || BATCH_FINISHED.has(batch.status)) return false
+    this.#revealLater.set(batch.id, open)
+    return true
+  }
+
   apply(bundle: EventBundle): void {
     if (bundle.youtubePausedUntil !== undefined) this.youtubePausedUntil = bundle.youtubePausedUntil ?? undefined
-    for (const batch of bundle.batches) this.batches.set(batch.id, batch)
+    for (const batch of bundle.batches) {
+      this.batches.set(batch.id, batch)
+      // a batch that just ended: what waited for it opens, once
+      const open = this.#revealLater.get(batch.id)
+      if (open && BATCH_FINISHED.has(batch.status)) {
+        this.#revealLater.delete(batch.id)
+        open()
+      }
+    }
     for (const job of bundle.jobs) this.#setJob(job)
     for (const {batchId, item} of bundle.items) {
       for (const listener of this.#itemListeners.get(batchId) ?? []) listener(item)

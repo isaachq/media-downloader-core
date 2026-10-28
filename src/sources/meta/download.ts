@@ -84,9 +84,11 @@ export async function downloadPost({client, post, task, site, referer}: PostDown
     const music = post.music
     const wantsSound = audioOnly || mode !== 'images'
     task.onInfo({...info, duration: audioOnly ? (music?.duration ?? null) : mode === 'video' ? seconds : null})
+    // the song is named by what it is (sound), never by the MIME the CDN sends: Instagram serves
+    // it as video/mp4, and a `sound.mp4` in a folder of pictures reads as a carousel's clip
     const sound =
       wantsSound && music
-        ? await fetchOneOf(client, [music.url], folder, 'sound', '.m4a', task, site, referer)
+        ? await fetchOneOf(client, [music.url], folder, 'sound', '.m4a', task, site, referer, 'sound')
         : undefined
     if (audioOnly) {
       // the song alone: the engine converts it to the profile's container
@@ -280,6 +282,8 @@ async function fetchOneOf(
   task: SourceDownload,
   site: string,
   referer: string,
+  /** 'sound': the file is audio whatever the CDN's MIME (an audio extension, never a video one). */
+  kind: 'media' | 'sound' = 'media',
 ): Promise<string> {
   let last: unknown
   for (const url of urls) {
@@ -291,7 +295,11 @@ async function fetchOneOf(
         signal: task.signal,
         onProgress: () => {},
       })
-      const file = path.join(folder, `${name}${extensionOf(fetched.contentType, fallbackExt)}`)
+      const ext =
+        kind === 'sound'
+          ? soundExtensionOf(fetched.contentType, fallbackExt)
+          : extensionOf(fetched.contentType, fallbackExt)
+      const file = path.join(folder, `${name}${ext}`)
       await fs.rename(partial, file)
       return file
     } catch (error) {
@@ -319,6 +327,23 @@ export function extensionOf(contentType: string | undefined, fallback: string): 
     'audio/mp4': '.m4a',
     'audio/x-m4a': '.m4a',
     'audio/aac': '.aac',
+  }
+  return (contentType && known[contentType]) || fallback
+}
+
+/**
+ * The extension of a soundtrack by the CDN's MIME: AAC in an MP4 family container is
+ * `.m4a` even when served as `video/mp4` (Instagram's songs, 2026-10-28), MP3 as itself;
+ * anything else takes `fallback`. A song never gets a video extension: in a folder of
+ * pictures a `.mp4` reads as a carousel's clip and is converted (and checked) as video. O(1).
+ */
+export function soundExtensionOf(contentType: string | undefined, fallback: string): string {
+  const known: Readonly<Record<string, string>> = {
+    'video/mp4': '.m4a',
+    'audio/mp4': '.m4a',
+    'audio/x-m4a': '.m4a',
+    'audio/aac': '.aac',
+    'audio/mpeg': '.mp3',
   }
   return (contentType && known[contentType]) || fallback
 }

@@ -288,12 +288,13 @@ export async function startFakeInstagram(config: FakeInstagramConfig = {}): Prom
         hits.refusedMedia++
         return send(403, 'forbidden')
       }
+      // a song comes as video/mp4 (AAC in an MP4 container), as Instagram's CDN serves it (2026-10-28)
       if (parts[0] === 'audio') {
         if (config.media?.sound) {
-          const real = serveReal(config.media.sound, 'audio/mp4', req.headers.range)
+          const real = serveReal(config.media.sound, 'video/mp4', req.headers.range)
           return send(real.status, real.body, real.headers)
         }
-        return send(200, Buffer.from(`M4A ${parts[1]}`), {'Content-Type': 'audio/mp4'})
+        return send(200, Buffer.from(`M4A ${parts[1]}`), {'Content-Type': 'video/mp4'})
       }
       if (parts[0] === 'image') {
         if (config.media?.image) {

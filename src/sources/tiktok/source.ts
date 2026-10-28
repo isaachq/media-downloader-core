@@ -7,6 +7,7 @@ import type {AnalysisResult, FailureHint, MediaSummary, PlaylistAnalysis, VideoA
 import type {BrowserAssist} from '../browser.js'
 import {type Fetch, HttpSession} from '../http.js'
 import {fetchMedia} from '../media-fetch.js'
+import {soundExtensionOf} from '../meta/download.js'
 import {Pacer, type PacerOptions} from '../pacer.js'
 import {followShortLink, resolved, unresolvedMessage} from '../redirects.js'
 import {HostSession, type SessionProvider} from '../session.js'
@@ -356,7 +357,8 @@ export class TikTokSource implements MediaSource {
       signal: task.signal,
       onProgress: () => {},
     })
-    const file = path.join(folder, `sound${extensionOf(fetched.contentType, '.mp3')}`)
+    // a song is named as sound whatever the CDN's MIME (a `.mp4` beside pictures reads as a clip)
+    const file = path.join(folder, `sound${soundExtensionOf(fetched.contentType, '.mp3')}`)
     await fs.rename(partial, file)
     return {file, bytes: fetched.bytes}
   }

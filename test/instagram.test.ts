@@ -927,6 +927,18 @@ describe('Instagram, end to end (local fake)', () => {
     const folder = engine.job(kept.id)!
     assert.equal(folder.status, 'completed', JSON.stringify(folder.error))
     assert.deepEqual((await fs.readdir(folder.filepath!)).sort(), ['01.jpg', '02.jpg', '03.jpg', 'sound.m4a'])
+    // the same with WEBM chosen: the song (served as video/mp4) is still sound, never a clip to convert
+    const webmKept = engine.add({
+      url: postUrl(site, 1),
+      profile: {kind: 'video', container: 'webm'},
+      outDir: path.join(out, 'kept-webm'),
+      slideshow: {mode: 'images-audio', secondsPerImage: 3},
+      photoPost: true,
+    })
+    await engine.whenIdle()
+    const webmFolder = engine.job(webmKept.id)!
+    assert.equal(webmFolder.status, 'completed', JSON.stringify(webmFolder.error))
+    assert.deepEqual((await fs.readdir(webmFolder.filepath!)).sort(), ['01.jpg', '02.jpg', '03.jpg', 'sound.m4a'])
     // the song alone, for an audio format
     const song = engine.add({url: postUrl(site), profile: audio, outDir: path.join(out, 'song')})
     await engine.whenIdle()

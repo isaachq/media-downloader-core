@@ -103,11 +103,15 @@ const STORIES_FRESH_MS = 5 * 60_000
 export const PROFILE_CHUNK = 500
 /** One try per anonymous route, not much patience: the web client's query follows. */
 const ANONYMOUS_TIMEOUT_MS = 15_000
+/** The least a caller is told to wait once every try of a post is spent and none was final. */
+const SPENT_SECONDS = 60
 /** What the user reads when every route to a public post got Instagram's wall. */
 export const GATED_MESSAGE =
   'Instagram shows this post to signed-in accounts only (it is limited to some audiences): sign in to Instagram to download it.'
 const SESSION_NEEDED =
   'Instagram did not return this post without a signed-in session. Sign in to Instagram and try again.'
+const SESSION_EXPIRED =
+  'Instagram no longer accepts the signed-in session (it expired or was signed out). Sign in to Instagram again.'
 
 /** A read post, good until its media links expire (the CDN's `oe`, less a margin) or POST_FRESH_MS without one. */
 type Cached = {readonly post: MetaPost; readonly at: number; readonly until: number}
@@ -340,12 +344,12 @@ export class InstagramSource implements MediaSource {
   // ─── posts ───────────────────────────────────────────────────────────────
 
   /**
-   * One post by shortcode. Five anonymous variants first (a different door
-   * order and Accept-Language each try; the first success is the post). Then
-   * one visitor read, then the user's session up to three times. Stories,
-   * highlights and profile listings do not come through here.
+   * One post by shortcode. Five anonymous tries first, one door each (a
+   * different door and Accept-Language per try; the first success is the
+   * post). Then one visitor read, then the user's session up to three times.
+   * Stories, highlights and profile listings do not come through here.
    *
-   * Time Complexity: O(1) requests, capped at 5 anonymous + 1 visitor + 3 session.
+   * Time Complexity: O(1) requests, capped at 5 anonymous + 1 oEmbed + 1 visitor + 3 session.
    */
   async #readPost(code: string, signal?: AbortSignal, fresh = false, attempt = 1): Promise<MetaPost> {
     const id = this.#byCode.get(code)
@@ -380,9 +384,10 @@ export class InstagramSource implements MediaSource {
   }
 
   /**
-   * Up to five anonymous tries. Each try is one variant (door order and
-   * Accept-Language). A door that already refused stays cooled, so a wall
-   * is not asked five times. The first post ends the phase. O(1) requests.
+   * Up to five anonymous tries, one door each: the first door of this try's
+   * order not yet asked and not resting, with this try's Accept-Language. A
+   * door that already refused stays cooled, so a wall is not asked five times.
+   * The first post ends the phase. O(1) requests: at most one per try.
    */
   async #anonymousAttempts(
     code: string,
@@ -394,7 +399,7 @@ export class InstagramSource implements MediaSource {
     let walled = false
     for (let attempt = 1; attempt <= ANONYMOUS_ATTEMPTS; attempt++) {
       const variant = variantFor(url, attempt, base)
-      const anonymous = await this.#readAnonymously(code, signal, variant.routeOrder, variant.headers, tried)
+      const anonymous = await this.#readAnonymously(code, signal, variant.routeOrder, variant.headers, tried, 1)
       walled ||= anonymous.walled
       if (anonymous.post) return {post: anonymous.post, walled}
       if (signal?.aborted || anonymous.asked === 0 || attempt === ANONYMOUS_ATTEMPTS) break
@@ -422,6 +427,8 @@ export class InstagramSource implements MediaSource {
     )
     const probe = await this.#probe(code, signal)
     if (probe === 'gone') throw new MetaError('removed', 'This Instagram post no longer exists, or is private.')
+    /** The visitor read was refused, not walled: what a caller without a session is told. */
+    let spent: DownloadError | undefined
     if (probe !== 'gated') {
       try {
         return await this.#readSigned(code, signal)
@@ -431,27 +438,61 @@ export class InstagramSource implements MediaSource {
         // decides (sign in, or the five minutes), instead of reporting the cool-down itself
         if (error instanceof DownloadError && error.details === COOLING_DOWN) {
           if (!walled) throw error
-        } else if (!(error instanceof MetaError)) throw error
-        else {
-          const signIn = WALL_PROBLEMS.has(error.problem)
+        } else if (error instanceof MetaError && error.problem === 'format-changed') {
           // a changed page, and nothing was walled, is the page: yt-dlp can take the link
-          if (!signIn && !(error.problem === 'format-changed' && walled)) throw error
+          if (!walled) throw error
+        } else if (!(error instanceof MetaError && WALL_PROBLEMS.has(error.problem))) {
+          // a network error: this policy's tries are spent, so it says when to come back
+          // itself (the engine's loop would start the five doors again, three times over)
+          throw this.#spent(error)
+        } else if (error.problem === 'refused') {
+          // a refusal (429 / 5xx) is not a sign-in matter: the session may still get through, but
+          // without one the answer is when to come back, not "sign in"
+          spent = this.#spent(error)
         }
       }
     }
-    return this.#sessionAttempts(code, signal, probe === 'gated')
+    return this.#sessionAttempts(code, signal, probe === 'gated', spent)
+  }
+
+  /**
+   * The error that ends this post's read when its last try failed for a
+   * reason that may pass later: "try again in about N", dated by the pacer's
+   * own cool-down when it has one, a minute otherwise. `COOLING_DOWN` keeps
+   * the engine's analysis loop from starting the five doors again. O(1).
+   */
+  #spent(error: unknown): DownloadError {
+    const cooling = Math.ceil(this.#client.pacer.coolingDownMs / 1000)
+    const seconds = Math.max(SPENT_SECONDS, cooling)
+    const when = seconds < 90 ? `${seconds} s` : `${Math.ceil(seconds / 60)} min`
+    const why = error instanceof Error ? error.message : String(error)
+    return new DownloadError(
+      'network',
+      `Instagram did not return this post (${why}). Try again in about ${when}.`,
+      COOLING_DOWN,
+      {retryAfterSeconds: seconds},
+      'retry-later',
+    )
   }
 
   /**
    * The user's session, only after the anonymous tries. No cookies: say so,
    * and do not invent failed requests. With cookies: three single reads.
-   * A challenge stops the three (it will not change on the next one). When
-   * the three are spent, the caller is told to come back in five minutes,
-   * and the engine's own retry loop does not start the five again.
+   * A challenge stops the three (it will not change on the next one); a 401
+   * is the session itself, expired or signed out: "sign in again" at once,
+   * not a wait; a cool-down the pacer already dated is that date. When the
+   * three are spent, the caller is told to come back in five minutes, and
+   * the engine's own retry loop does not start the five again.
    */
-  async #sessionAttempts(code: string, signal: AbortSignal | undefined, gated: boolean): Promise<MetaPost> {
+  async #sessionAttempts(
+    code: string,
+    signal: AbortSignal | undefined,
+    gated: boolean,
+    spent?: DownloadError,
+  ): Promise<MetaPost> {
     await this.#client.loadCookies()
     if (!this.#client.signedIn) {
+      if (spent) throw spent
       throw new MetaError('login-required', gated ? GATED_MESSAGE : SESSION_NEEDED)
     }
     for (let attempt = 1; attempt <= SESSION_ATTEMPTS; attempt++) {
@@ -460,6 +501,10 @@ export class InstagramSource implements MediaSource {
         return await this.#readWithSession(code, signal)
       } catch (error) {
         if (signal?.aborted || isFinal(error)) throw error
+        if (error instanceof DownloadError && error.details === COOLING_DOWN) throw error
+        if (error instanceof MetaError && error.problem === 'login-required') {
+          throw new MetaError('login-required', SESSION_EXPIRED)
+        }
         if (error instanceof MetaError && error.problem === 'challenge') break
         this.#log(
           'info',
@@ -584,12 +629,13 @@ export class InstagramSource implements MediaSource {
   }
 
   /**
-   * The anonymous routes in this try's order. A route that says the post is
-   * gone or private ends the search. A route that refuses sits out for the
-   * rest of the phase: the next try does not wake it. A route in cool-down
-   * is skipped on every try, not only the first.
+   * The anonymous routes in this try's order, at most `doors` of them asked
+   * (a route with nothing to ask with yet does not count). A route that says
+   * the post is gone or private ends the search. A route that refuses sits
+   * out for the rest of the phase: the next try does not wake it. A route in
+   * cool-down is skipped on every try, not only the first.
    *
-   * Time Complexity: O(R) requests, R <= 5.
+   * Time Complexity: O(R) requests, R <= min(doors, 5).
    */
   async #readAnonymously(
     code: string,
@@ -597,6 +643,7 @@ export class InstagramSource implements MediaSource {
     routeOrder: readonly string[],
     headers: Readonly<Record<string, string>>,
     tried: Set<string>,
+    doors: number = ROUTES.length,
   ): Promise<{
     readonly post?: MetaPost
     readonly walled: boolean
@@ -644,6 +691,7 @@ export class InstagramSource implements MediaSource {
         } else this.#health.failed(route)
         failures.push(`${route}: ${error instanceof Error ? error.message : String(error)}`)
       }
+      if (asked >= doors) break
     }
     return {walled, failures, asked}
   }
@@ -666,7 +714,7 @@ export class InstagramSource implements MediaSource {
           ),
         )
       case 'web info':
-        return this.#readWebInfo(code, signal)
+        return this.#readWebInfo(code, signal, headers)
       case 'post page': {
         // the embed has no data for a photo or a carousel of photos (contextJSON: null);
         // the post page a logged-out visitor gets carries the whole item — and names the
@@ -693,7 +741,7 @@ export class InstagramSource implements MediaSource {
           await this.#anonymousJson(
             `${origin}${API_GRAPHQL}`,
             body.toString(),
-            {'X-FB-LSD': lsd},
+            {'X-FB-LSD': lsd, ...headers},
             postUrl(origin, code),
             signal,
           ),
@@ -710,6 +758,7 @@ export class InstagramSource implements MediaSource {
             'X-IG-Device-Locale': 'en_US',
             'X-IG-Mapped-Locale': 'en_US',
             'X-FB-HTTP-Engine': 'Liger',
+            ...headers,
           },
           signal,
         )
@@ -723,7 +772,11 @@ export class InstagramSource implements MediaSource {
    * built-in ones), the next when one stops answering. Each id keeps its own
    * health, so a stale id is skipped from then on. O(D) requests, D <= 3.
    */
-  async #readWebInfo(code: string, signal?: AbortSignal): Promise<MetaPost> {
+  async #readWebInfo(
+    code: string,
+    signal?: AbortSignal,
+    headers: Readonly<Record<string, string>> = {},
+  ): Promise<MetaPost> {
     const page = postUrl(this.#client.origin, code)
     let last: unknown = new MetaError('format-changed', 'No web_info query id to ask.')
     for (const id of this.#health.order(this.#webInfoIds, id => `web info ${id}`)) {
@@ -738,7 +791,7 @@ export class InstagramSource implements MediaSource {
       })
       try {
         const post = readWebInfoQuery(
-          await this.#anonymousJson(`${this.#client.origin}${GRAPHQL}`, body.toString(), {}, page, signal),
+          await this.#anonymousJson(`${this.#client.origin}${GRAPHQL}`, body.toString(), headers, page, signal),
         )
         this.#health.succeeded(`web info ${id}`)
         return post

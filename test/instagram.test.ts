@@ -645,6 +645,7 @@ async function setup(
   const options: InstagramOptions = {
     origin: site.origin,
     pacing: {spacingMs: 0, jitterMs: 0, backoffMs: 30, maxBackoffMs: 100, ...extra.pacing},
+    retryPauseMs: 0,
     ...(extra.browser && {browser: extra.browser(site.origin)}),
     cookies: async () => (extra.signedIn ? [{name: sessionName, value: sessionValue, domain: host}] : undefined),
   }
@@ -1273,6 +1274,59 @@ describe('Instagram, end to end (local fake)', () => {
     const [file] = await fs.readdir(out)
     const stat = await fs.stat(path.join(out, file!))
     assert.equal(Math.floor(stat.mtimeMs / 1000), 1_790_000_000)
+  })
+})
+
+describe('Instagram, one door per try (local fake)', () => {
+  it('five anonymous tries are five doors, each with its own Accept-Language; then the session is asked for', async () => {
+    const site = await startFakeInstagram({loginWall: true})
+    cleanups.push(() => site.close())
+    const source = new InstagramSource({
+      origin: site.origin,
+      pacing: {spacingMs: 0, jitterMs: 0, backoffMs: 0},
+      retryPauseMs: 0,
+    })
+    await assert.rejects(source.analyze(postUrl(site)), (e: DownloadError) => {
+      assert.equal(e.hint, 'needs-sign-in')
+      return true
+    })
+    assert.equal(site.hits.session, 0)
+    // four doors have something to ask with here: the logged-out query needs a post page that was not served
+    const languages = new Set(site.languages)
+    assert.ok(languages.size >= 4, `the tries carried ${languages.size} language(s): ${[...languages].join(' | ')}`)
+    assert.equal(site.hits.login, 2, 'the embed and the post page, once each: no door is asked twice')
+  })
+
+  it('a session the site no longer accepts (401) says "sign in again" at once, not "wait 5 minutes"', async () => {
+    const {site, engine} = await setup(
+      'session-expired',
+      {posts: 1, gated: [0], sessionExpired: true},
+      {signedIn: true},
+    )
+    await assert.rejects(engine.analyze(postUrl(site)), (error: DownloadError) => {
+      assert.equal(error.hint, 'needs-sign-in', JSON.stringify(error))
+      assert.match(error.message, /again/)
+      assert.notEqual(error.details, COOLING_DOWN)
+      return true
+    })
+    assert.equal(site.hits.session, 1, 'one 401 is the answer: the other two session tries are not spent')
+  })
+
+  it('when every try is refused, the post says when to come back and the engine does not start the five again', async () => {
+    const {site, engine} = await setup('spent', {refusals: 100}, {pacing: {backoffMs: 0, maxBackoffMs: 0}})
+    const retries: number[] = []
+    await assert.rejects(
+      engine.analyze(postUrl(site), {onRetry: attempt => retries.push(attempt)}),
+      (error: DownloadError) => {
+        assert.equal(error.hint, 'retry-later', JSON.stringify(error))
+        assert.equal(error.details, COOLING_DOWN)
+        assert.equal(error.params?.['retryAfterSeconds'], 60)
+        assert.match(error.message, /Try again in about 60 s/)
+        return true
+      },
+    )
+    assert.deepEqual(retries, [], 'the policy is final for the analysis loop')
+    assert.ok(site.hits.refused <= 10, `${site.hits.refused} refused requests: five doors, oEmbed, the visitor read`)
   })
 })
 

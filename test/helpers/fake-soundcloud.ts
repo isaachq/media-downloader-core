@@ -143,6 +143,8 @@ export type FakeSoundcloudConfig = {
   readonly wafHome?: boolean
   /** Listings answer DataDome's 403. */
   readonly datadome?: boolean
+  /** Segment delay in ms by track slug (a slow CDN for that track). */
+  readonly segmentDelayMs?: Readonly<Record<string, number>>
 }
 
 export type FakeSoundcloud = {
@@ -182,6 +184,7 @@ export async function startFakeSoundcloud(config: FakeSoundcloudConfig = {}): Pr
       // the long mix's segment links run out after 4 requests: re-signed through a new mint
       ...(spec.id === IDS.expiring && {signed: {validFor: 4}}),
       ...(spec.id === IDS.drmPlaylist && {drm: true}),
+      ...(config.segmentDelayMs?.[spec.slug] !== undefined && {delayMs: config.segmentDelayMs[spec.slug]}),
     }
   }
   const hls = await startFakeHls({tracks: hlsTracks})

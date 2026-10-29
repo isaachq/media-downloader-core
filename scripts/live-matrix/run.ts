@@ -289,8 +289,17 @@ for (const scenario of scenarios) {
       analyzeMs = performance.now() - t0
       const wrong = check(scenario.expect, analysis)
       if (wrong) {
-        rows.push({scenario: scenario.id, url, outcome: 'fail', analyzeMs, got: describe(analysis), reason: wrong})
-        console.log(`  ✗ ${Math.round(analyzeMs)} ms  ${url}\n      ${wrong} — ${describe(analysis)}`)
+        // a photo post whose song the site serves only to a signed-in session: without cookies
+        // the engine says so (songNeedsSession, as documented since 1.21). That is "needs a
+        // session", like a login wall, not a wrong shape.
+        const show = analysis.kind === 'video' ? analysis.media.slideshow : undefined
+        const songNeedsSession =
+          scenario.expect === 'photo_with_audio' && show?.songNeedsSession === true && !signedIn['instagram']
+        const outcome: Outcome = songNeedsSession ? 'auth' : 'fail'
+        rows.push({scenario: scenario.id, url, outcome, analyzeMs, got: describe(analysis), reason: wrong})
+        console.log(
+          `  ${outcome === 'auth' ? '○' : '✗'} ${Math.round(analyzeMs)} ms  ${url}\n      ${wrong} — ${describe(analysis)}`,
+        )
         continue
       }
       let probe: Row['probe']

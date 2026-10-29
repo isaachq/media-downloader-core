@@ -47,6 +47,8 @@ export type FakeTrack = {
   readonly drm?: boolean
   /** Program date-time on the first segment and a date range (for parser tests over HTTP). */
   readonly dated?: boolean
+  /** Each segment answers this many ms late (a slow CDN). */
+  readonly delayMs?: number
 }
 
 export type FakeVariant = {
@@ -398,6 +400,11 @@ export async function startFakeHls(config: {
       res.writeHead(200, {'content-type': type, 'content-length': body.length})
       res.write(body.subarray(0, Math.floor(body.length / 2)))
       return // never ends: the client's stall watchdog has to give up on it
+    }
+    if (t.delayMs) {
+      const timer = setTimeout(() => sendMedia(req, res, body, type), t.delayMs)
+      res.on('close', () => clearTimeout(timer))
+      return
     }
     sendMedia(req, res, body, type)
   })

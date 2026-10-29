@@ -61,6 +61,18 @@ the tests. The Windows update workflow (two installers, three updates) runs by h
 Actions tab before an `app-v*` tag whenever the update code changed; Publish library only
 checks the tag, builds and publishes.
 
+**The scenario gate: find it in the library, not in an integration.** The apps and
+integrations built on the library exercise combinations the happy-path suites do not: no
+yt-dlp × a rejected session × a rate limit × a cancel × a restart × two batches × every
+output format. Each library bug that an integration found after a release (a session
+rejected and never retried as a visitor, a rate-limited profile that hung 14 minutes, a
+cancel that left a cool-down behind, a reopened batch that re-checked 840 items, one slow
+batch holding the queue, a song served as `video/mp4` that broke WEBM) now has a row in
+`test/scenarios.test.ts`, the site's suite, or a heavy suite, written to fail on the old
+code. A bug found downstream whose fix is in the library adds its row first, then the fix.
+No `lib-v*` tag goes out before `test:fast`, `test:heavy` and
+`live:matrix -- --native --download` are green.
+
 **Live URL matrix (local only, never in CI).** The suites above run against local fakes.
 Before a release, `npm run live:matrix` reads real public links on Facebook, Instagram and
 TikTok (`scripts/live-matrix/compendium.json`, one or more per scenario: watch links, reels,

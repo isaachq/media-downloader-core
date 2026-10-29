@@ -3,6 +3,7 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import {after, before, describe, it} from 'node:test'
+import {clampConcurrency} from '../src/core/pool.js'
 import {MediaDownloader} from '../src/downloader.js'
 import {BatchScheduler} from '../src/scheduler.js'
 import {HYDRATION_ID, startFakeSoundcloud, trackUrl} from './helpers/fake-soundcloud.js'
@@ -14,6 +15,8 @@ import {type FakeBinaries, writeFakes} from './helpers/fakes.js'
 
 const m4a = {kind: 'audio', container: 'm4a'} as const
 const fast = {spacingMs: 0, jitterMs: 0, backoffMs: 20, maxBackoffMs: 50} as const
+// the pool is capped at ⌊CPUs/2⌋ (1 on a 3-core CI runner): with one slot the slow song holds it, as it should
+const oneSlot = clampConcurrency(2) < 2 && 'one job slot on this machine: nothing can finish first'
 
 let root: string
 let bins: FakeBinaries
@@ -53,7 +56,7 @@ function soundcloudEngine(site: Awaited<ReturnType<typeof startFakeSoundcloud>>,
 }
 
 describe('HLS batches share the pool', () => {
-  it('a slow HLS batch does not hold a quick one scheduled after it', {timeout: 5_000}, async () => {
+  it('a slow HLS batch does not hold a quick one scheduled after it', {timeout: 5_000, skip: oneSlot}, async () => {
     // every segment of the slow song answers 250 ms late (a slow CDN)
     const site = await startFakeSoundcloud({hydrationId: HYDRATION_ID, segmentDelayMs: {'low-only': 250}})
     const engine = soundcloudEngine(site, 'slow-and-quick')

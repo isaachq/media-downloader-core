@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+**Library 1.23.2**
+
+- **The scenario gate.** The combinations downstream apps and integrations exercise, and
+  that found the last ten library bugs after a release, are now library tests that fail on
+  the old code: a Threads session rejected with 400 is read again as a visitor and rested
+  for the window (the next read sends no cookie, once per site, never per link); a private
+  Threads account asked meanwhile says sign in; a SoundCloud client id refused on first
+  contact is replaced by the bundle's once, one 401 in all; a reading cancelled while a site
+  cools down rejects at once and the next reading of the same link waits one window, not
+  two (TikTok, Instagram, Facebook); a batch reopened after a crash downloads only what was
+  left and checks nothing again over the network; a song served as `video/mp4` stays sound
+  through every output format with the real ffmpeg; a slow HLS batch no longer holds a quick
+  one behind it. `CONTRIBUTING.md` says how a bug found downstream adds its row before its
+  fix. The live matrix counts a photo post whose song needs a session as "needs a session"
+  when it runs without Instagram cookies, as the engine documents, not as a wrong shape.
+  Cost: tests only, each under 2 s with fakes; one heavy suite with the real ffmpeg.
+- **Instagram's app client identifies as a generic handset.** The app-API door's user agent
+  named a specific model; it now names a reference device, with the same app version and
+  build. Verified live natively: 23 of 23 public links pass, 3 need a session. Cost: none.
+
+**Desktop 0.2.0-beta.29**
+
+- Carries library 1.23.2.
+- The interface-language test runs again: the unit run only took `.test.tsx` files in the
+  window code, so the check that every one of the fourteen languages has every key, the
+  English placeholders and no long dash was never run. It now is, and it found the Hindi
+  and Russian sign-in help with a long dash, now a comma as in English. The unit run uses
+  four workers: one jsdom fork per CPU starved them until they died mid-run.
+
 **Library 1.23.1**
 
 - **TikTok: a verification page cools nothing when the browser is there to pass it.** A
@@ -9,8 +38,8 @@
   before the in-app browser passed it, and the back-off was only dropped once the browser
   had. A reading cancelled during that browser visit left the back-off in place: the next
   link pasted within 30 s was told "TikTok is rate limiting this network: try again in
-  about 18 s", with no request refused by TikTok at all (seen on the razr 50, on Wi-Fi and
-  on mobile data). With a browser at hand the check is the browser's; without one the
+  about 18 s", with no request refused by TikTok at all (seen in a downstream integration, on Wi-Fi
+  and on mobile data). With a browser at hand the check is the browser's; without one the
   back-off stays as before. Cost: O(1).
 
 **Desktop 0.2.0-beta.28**
@@ -27,7 +56,7 @@
   batches in turns: each job waits in its batch's lane, lanes form a ring, one task each per
   turn, FIFO inside a lane. A video added behind a 500-post backup starts after the backup's
   current job, not after its other 499. Weight rules are unchanged (no small task overtakes
-  a waiting heavy one; an empty pool admits anything). Found on a Huawei tablet whose test
+  a waiting heavy one; an empty pool admits anything). Found in a downstream integration whose test
   queue carried 150 batches behind one VK video. Cost: O(1) per add, start, remove and
   prioritize (doubly linked lists, a ring of lanes); memory one node per waiting job and one
   lane per batch with a job waiting, dropped as they empty.
@@ -127,7 +156,7 @@ Instagram tries five anonymous ways, then the session. A wait on screen says how
   song as `video/mp4`, so "images + audio" saved it as `sound.mp4` beside the pictures; a
   `.mp4` in a folder of pictures reads as a carousel's clip, and with WebM (or MKV) chosen the
   bundle's convert step tried to make a video of it and failed ("Could not convert to WEBM";
-  found on the razr 50 with a signed-in session). The song is now named by its audio
+  found in a downstream integration with a signed-in session). The song is now named by its audio
   (`sound.m4a` for AAC in an MP4 container, `.mp3` for MP3), on Instagram, Facebook, Threads
   and TikTok, and a bundle's convert step leaves a file with no picture as it is. Cost: O(1)
   per song; one ffprobe the bundle's clips already paid.
@@ -206,7 +235,7 @@ folders take what the phone saves; "on the air since" reads right in Spanish and
   `clip.partial.mp4` and renamed to `clip.mp4`, no longer as `clip.mp4.partial`.
   Android's shared folders (Movies, Music…) accept only files whose extension is a media
   type of theirs, so the phone app refused every download into one (EPERM) and named it
-  "unavailable". Found on the Motorola razr 50: with the copy named this way, 500 posts of
+  "unavailable". Found in a downstream integration: with the copy named this way, 500 posts of
   a profile landed in Movies and a SoundCloud track in Music. A folder (a photo post kept
   as images) still gets `.partial` at the end. Cost: O(1) per file.
 - **A folder per link in a mix list**: `MixRequest.outDirs` (by `MixItem.url`, absolute
@@ -806,7 +835,7 @@ in about 2 min" — instead of hanging for up to ten minutes.
 
 - **An analysis someone is waiting for fails fast on a rate limit.** When a site answers
   429 (or another refusal), every request to it backs off together: 30 s, then doubling,
-  up to 10 min. An `analyze()` slept through that cool-down — on a razr 50, an Instagram
+  up to 10 min. An `analyze()` slept through that cool-down — in a downstream integration, an Instagram
   profile took 14 minutes to fail. It now waits at most `ANALYZE_PATIENCE_MS` (15 s,
   more than the normal spacing between requests) and otherwise fails at once with
   "<Site> is rate limiting this network: try again in about N" (code `network`, hint
@@ -858,8 +887,8 @@ every hop, and every failure can be copied as a report.
   hash lookup per host suffix. Nothing is sent anywhere: hosts keep and show them.
 - **A TikTok post pasted after a listing is not "gone" for nothing.** The cookie a
   profile listing leaves makes TikTok answer some posts "doesn't exist" (10204); 1.14.6
-  read such a post again with a fresh jar only when the session had listed it. On a
-  razr 50, after a long session, public posts pasted by hand failed that way on every
+  read such a post again with a fresh jar only when the session had listed it. In a
+  downstream integration, after a long session, public posts pasted by hand failed that way on every
   read until the app restarted. Any post now gets that second read once a listing ran
   since the jar was last reset; with a clean jar "doesn't exist" is still believed at once.
 - **A failed request says why.** Node's fetch reports only "fetch failed" and keeps
@@ -934,7 +963,7 @@ Beta 14.6: the false "doesn't exist" after a TikTok profile listing is fixed at 
 **Library**
 
 - **TikTok: the listing cookie is dropped when it makes a post "not exist".**
-  Testing 1.14.5 on the phone showed the 10204 answers are not a passing
+  Testing 1.14.5 in a downstream integration showed the 10204 answers are not a passing
   throttle: the same posts kept getting them across retries and back-offs,
   and all of them downloaded at once with a clean cookie jar. A profile
   listing leaves a cookie that makes TikTok call some of its own posts gone
@@ -959,7 +988,7 @@ batch brought back after the app closed starts downloading at once.
 
 - **TikTok: a listed post is not dropped on TikTok's first "doesn't exist".**
   Right after a profile listing, TikTok answers some video pages with status
-  10204 for posts it serves again minutes later (measured on a phone: 56 of
+  10204 for posts it serves again minutes later (measured in a downstream integration: 56 of
   the first 164 posts of an 840-video profile, all downloadable later). The
   reader took that as deleted and never retried. Now a post this session has
   seen (in a listing or an earlier page) is read up to two more times: each

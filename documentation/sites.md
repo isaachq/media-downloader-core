@@ -275,7 +275,7 @@ resolve of tracks, a private `s-` track, sets, users and their tabs, a 404,
 Go+ preview and `policy: BLOCK` from this region (none seen; the fake serves
 the shapes yt-dlp and cobalt describe), DataDome's 403 (not reproduced; the
 fake serves yt-dlp #15660's), the hydration id ever going stale while the
-bundle's works, `encrypted-hls` (AES-128) live, the razr 50. `soundcloud:
+bundle's works, `encrypted-hls` (AES-128) live, downstream integrations. `soundcloud:
 false` hands SoundCloud urls to yt-dlp's SoundCloud extractor.
 
 ## Bluesky (built-in extractor)
@@ -318,8 +318,8 @@ none; getPosts with a handle is a 500. Bluesky gives no video length: the
 file says it. **Not verified**: a `!no-unauthenticated` account (none
 found: the fake serves the label as the AppView documents it), a `did:web`
 account and a third-party PDS (the fake serves both), a PDS that answers
-429, a video still processing or a deleted blob, Tenor GIF link cards, the
-razr 50. `bluesky: false` hands Bluesky urls to yt-dlp's Bluesky extractor
+429, a video still processing or a deleted blob, Tenor GIF link cards,
+downstream integrations. `bluesky: false` hands Bluesky urls to yt-dlp's Bluesky extractor
 (posts only).
 
 ## Twitch (built-in extractor for clips, VODs and live channels)
@@ -398,8 +398,8 @@ alone: they are damaged at the source, and left out of the download check.
 the fake serves what yt-dlp and streamlink read for one), an HEVC or AV1
 VOD (none found, so what usher does with `supported_codecs` for one is not
 known), a CDN token running out mid-download on the real CDN (VOD segments
-are unsigned today), a 429 from gql.twitch.tv or usher (none seen), the
-razr 50. `twitch: false` hands every Twitch url to yt-dlp.
+are unsigned today), a 429 from gql.twitch.tv or usher (none seen),
+downstream integrations. `twitch: false` hands every Twitch url to yt-dlp.
 
 **Signed in: what was verified, and what wasn't.** Checked live (anonymous):
 an invalid `Authorization: OAuth` token makes Twitch answer 401 for the
@@ -437,7 +437,7 @@ stitched-ad date ranges and `Amazon|…` titles as streamlink reads them), a
 token or playlist refused mid-recording (none in 3 to 4 minutes; the fake
 covers it), a broadcast ending or going offline while recorded, an HEVC or
 AV1 live variant, a recording near the 12 h cap, a subscriber-only or
-geo-blocked stream, the razr 50 (app work: a foreground service).
+geo-blocked stream, downstream integrations (app work: a foreground service).
 
 ## TikTok sync (Sync Up)
 

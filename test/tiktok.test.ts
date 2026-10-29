@@ -429,7 +429,7 @@ describe('TikTok, end to end (local fake)', () => {
   })
 
   it('a post pasted after a listing, that the dirty jar makes "not exist", is read again with fresh cookies', async () => {
-    // seen on a razr 50 (2026-10-20): after a long session, three public posts the session had never
+    // seen downstream (2026-10-20): after a long session, three public posts the session had never
     // listed answered 10204 on every read; a fresh start read them at once
     const {site, engine} = await setup('gone-dirty-pasted', {posts: 4, videoDetail: 'gone-dirty'})
     const listing = await engine.analyze(`${site.origin}/@${site.user}`, {maxEntries: 2})

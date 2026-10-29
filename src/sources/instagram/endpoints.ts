@@ -53,7 +53,7 @@ export const API_ORIGIN = 'https://i.instagram.com'
 export const MEDIA_INFO = (pk: string): string => `/api/v1/media/${pk}/info/`
 /** The Android app, as cobalt and gallery-dl present themselves to its API. */
 export const APP_USER_AGENT =
-  'Instagram 275.0.0.27.98 Android (33/13; 420dpi; 1080x2400; motorola; razr 50; razr50; qcom; en_US; 458229237)'
+  'Instagram 275.0.0.27.98 Android (33/13; 420dpi; 1080x2400; Google/google; Pixel 7; panther; panther; en_US; 458229237)'
 
 /** `?username=<user>` → the account, its counts and its first posts. */
 export const PROFILE_INFO = '/api/v1/users/web_profile_info/'

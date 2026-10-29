@@ -271,6 +271,29 @@ describe('SoundCloud, end to end (local fake)', () => {
     assert.ok((site.hits.denied ?? 0) <= 2, 'at most one retry per request')
   })
 
+  it(
+    'the first client id is refused (401) but the bundle’s works: re-extracted once, the bad id never picked again, one 401 in all',
+    T,
+    async () => {
+      // from cold: the hydration id the home page names is already dead, the bundle's is good
+      const {site, source} = await setup('cold-rotate', {hydrationId: HYDRATION_ID, valid: [BUNDLE_ID]})
+      asTrack(await source.analyze(trackUrl('clear-track')))
+      assert.equal(site.hits.denied, 1, 'the hydration id was tried once')
+      assert.equal(site.hits.home, 2, 'the page was read again once; its hydration id is passed over')
+      assert.equal(site.hits.script, 1, 'the last bundle gave the id; the others were never asked')
+      assert.deepEqual(site.clientIds, [HYDRATION_ID, BUNDLE_ID], 'the bad id, then the good one')
+      // the next requests use the good id straight away: no page, no 401
+      asTrack(await source.analyze(trackUrl('low-only')))
+      asTrack(await source.analyze(trackUrl('old-upload')))
+      assert.equal(site.hits.denied, 1, 'the refused id is never picked again')
+      assert.equal(site.hits.home, 2, 'the id is kept for the session')
+      assert.ok(
+        site.clientIds.slice(2).every(id => id === BUNDLE_ID),
+        'only the bundle id from then on',
+      )
+    },
+  )
+
   it('a client id option skips the page; a bot check on the page is source:blocked', T, async () => {
     const own = await setup('option', {hydrationId: HYDRATION_ID}, {clientId: OPTION_ID})
     asTrack(await own.source.analyze(trackUrl('clear-track')))

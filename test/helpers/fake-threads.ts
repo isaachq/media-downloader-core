@@ -44,6 +44,12 @@ export type FakeThreads = {
 export type FakeThreadsConfig = {
   /** The first N page reads are refused (429). */
   readonly refusals?: number
+  /**
+   * The site refuses the signed-in session: any page or query request carrying
+   * the sessionid cookie answers 400 (counted in `hits.refused`); a request
+   * without it is answered as usual. Media never asks for the cookie.
+   */
+  readonly sessionRefused?: boolean
 }
 
 const SESSION = 'sessionid'
@@ -422,6 +428,13 @@ export async function startFakeThreads(config: FakeThreadsConfig = {}): Promise<
         ...(range && {'Content-Range': `bytes ${start}-${full.length - 1}/${full.length}`}),
       })
       res.end(full.subarray(start))
+      return
+    }
+
+    // a session the site stopped accepting: 400 to anything that carries its cookie
+    if (config.sessionRefused && signedIn) {
+      hits.refused++
+      send(res, 400, 'bad request')
       return
     }
 

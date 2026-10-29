@@ -18,6 +18,7 @@ import {dirname, join} from 'node:path'
 import {fileURLToPath} from 'node:url'
 
 const HEAVY = new Set([
+  'audio-as-video-real.test.ts',
   'characterization.test.ts',
   'conformance-26.test.ts',
   'hls-real.test.ts',

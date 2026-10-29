@@ -401,3 +401,63 @@ describe('Threads, end to end (local fake)', () => {
     )
   })
 })
+
+describe('Threads that refuses the signed-in session', () => {
+  it('session rejected (400 with cookies): read again as a visitor and downloaded; the session rested for the window, the next read sends no cookie', {
+    timeout: 5_000,
+  }, async () => {
+    const warnings: string[] = []
+    const {site} = await setup('session-refused', {sessionRefused: true})
+    const signed = new ThreadsSource({
+      origin: site.origin,
+      pacing: fast,
+      cookies: session,
+      log: (level, message) => {
+        if (level === 'warn') warnings.push(message)
+      },
+    })
+    // the first read: once with the session (400), then the same page as a visitor
+    const post = asVideo(await signed.analyze(`${POST}${site.codes.video}`))
+    assert.equal(post.media.id, '3591039013441414531')
+    assert.equal(site.hits.refused, 1, 'the session was tried once')
+    assert.equal(site.signedInRequests, 1, 'one request carried the cookie')
+    assert.equal(site.hits.page, 1, 'then the same page as a visitor (the fake counts the pages it served)')
+    assert.ok(
+      warnings.some(message => /not accepted .* reading as a visitor/.test(message)),
+      `the user is told the session rests: ${JSON.stringify(warnings)}`,
+    )
+    // the session rests for the window: another post goes as a visitor at once, no second try with the cookie
+    asVideo(await signed.analyze(`${POST}${site.codes.photo}`))
+    assert.equal(site.hits.refused, 1, 'once per site per window, never per link')
+    assert.equal(site.signedInRequests, 1, 'the next read sent no cookie')
+    assert.equal(site.hits.page, 2, 'one page for the second post')
+    // the listing query goes as a visitor too
+    const list = asList(await signed.analyze('https://www.threads.com/@zuck', {maxEntries: 12}))
+    assert.equal(list.entries.length, 12)
+    assert.equal(site.hits.refused, 1, 'no cookie on the query either')
+    assert.equal(site.signedInRequests, 1)
+  })
+
+  it('session rested: a private account asked meanwhile says sign in (needs-sign-in with a hint), not a silent anonymous failure', {
+    timeout: 5_000,
+  }, async () => {
+    const {site} = await setup('session-rested-private', {sessionRefused: true})
+    const signed = new ThreadsSource({origin: site.origin, pacing: fast, cookies: session})
+    asVideo(await signed.analyze(`${POST}${site.codes.video}`))
+    assert.equal(site.hits.refused, 1, 'the session rests')
+    // the profile page is read as a visitor (served, marked private); nothing is listed anonymously
+    await assert.rejects(signed.analyze('https://www.threads.com/@hiddenone'), (e: DownloadError) => {
+      assert.equal(e.code, 'unavailable')
+      assert.equal(e.hint, 'needs-sign-in')
+      assert.match(e.message, /private Threads account.*signed-in session/)
+      return true
+    })
+    // the private account's post: the visitor is sent home, which says only "sign in"
+    await assert.rejects(
+      signed.analyze(`https://www.threads.com/@hiddenone/post/${site.codes.hidden}`),
+      (e: DownloadError) => e.hint === 'needs-sign-in',
+    )
+    assert.equal(site.hits.refused, 1, 'the rested session was not tried again for the private account')
+    assert.equal(site.signedInRequests, 1, 'no cookie went out while the session rests')
+  })
+})

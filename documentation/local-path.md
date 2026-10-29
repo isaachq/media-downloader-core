@@ -21,7 +21,7 @@ The file comes from the site's own CDN. Nothing of ours carries it.
 
 A title such as `Facebook 1557…` is not a failed read: a post with no text is named by its id. When the post has text, as NASA's reel does, the real title comes through.
 
-The same three public links were then checked on a Motorola razr 50 with the Android app, which runs the same engine without yt-dlp: see the phone's README for the run. A home network's IP, and a phone's, is the kind these sites treat best. A datacenter's is the kind they refuse first.
+The same three public links were then checked in a downstream integration that runs the same engine without yt-dlp. A home network's IP, and a phone's, is the kind these sites treat best. A datacenter's is the kind they refuse first.
 
 ## Why a web backend is not the next step
 

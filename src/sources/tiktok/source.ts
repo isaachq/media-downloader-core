@@ -90,7 +90,7 @@ function botShell(scope: unknown): boolean {
 /** The embedded post, or undefined when this page is a shell. Private and removed still throw. */
 /**
  * "Doesn't exist" (10204) or "private" (10216): final for a link nobody listed,
- * doubted for a post a listing just showed (razr 50: a listed post read as
+ * doubted for a post a listing just showed (seen downstream: a listed post read as
  * private that PC and two earlier runs read fine).
  */
 function isGoneAnswer(error: unknown): boolean {
@@ -523,11 +523,11 @@ export class TikTokSource implements MediaSource {
       embedded = takePost(scope)
     } catch (error) {
       // A profile listing leaves a cookie that makes TikTok answer some of its posts' pages
-      // with status 10204 ("doesn't exist"): on a razr 50, 56 of the first 164 posts of an
+      // with status 10204 ("doesn't exist"): in a downstream integration, 56 of the first 164 posts of an
       // 840-video profile; all 18 that failed that way again downloaded at once with a clean
       // jar. A post is read once more with the listing cookie dropped (one reset shared by the
       // downloads in flight, like the shell page below) when this session has seen it — or has
-      // listed anything since the jar was last reset: on a razr 50, after a long session, three
+      // listed anything since the jar was last reset: in a downstream integration, after a long session, three
       // public posts pasted by hand answered 10204 on every read, and a fresh start read them at
       // once. With a clean jar, "doesn't exist" is believed at once.
       if (!(isGoneAnswer(error) && (known || this.#listedSinceReset))) throw error

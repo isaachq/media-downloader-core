@@ -333,6 +333,9 @@ export class MetaClient {
         }
         if (signal?.aborted || !(error instanceof MetaError) || !error.transient || attempt >= READ_ATTEMPTS)
           throw error
+        // the site's own answer, before the pacer's wait replaces it with "try again in N s":
+        // a refusal on one device and not another is told apart from the trace. O(1) per refusal.
+        this.#log('warn', `${this.site}: ${error.message} (read ${attempt} of ${READ_ATTEMPTS})`)
       }
     }
   }

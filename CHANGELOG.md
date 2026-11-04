@@ -6,7 +6,7 @@
 
 - [x] core(http): destination cohort · done · verified: npm run check (pass 737 / fail 0, skipped 2)
 - [x] core: a set's count replaces a duration · done · verified: npm run check (pass 737 / fail 0, skipped 2)
-- [x] core(adaptive-retry): attempts 1-4 keep the source routes, profiles only on 5-7, host session only on try 8 · verified: adaptive-retry 9 pass, instagram 62 pass, biome check on the touched files
+- [x] core(adaptive-retry): attempts 1-4 keep the source routes, profiles only on 5-7, host session only on try 8 · verified: npm run test:full (exit 0, desktop e2e 23 passed)
 - [ ] lib-v1.23.3 · not tagged
 
 **Library 1.23.3**

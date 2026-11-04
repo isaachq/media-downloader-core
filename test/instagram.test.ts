@@ -783,6 +783,30 @@ describe('Instagram, end to end (local fake)', () => {
     })
   })
 
+  it('session: none, profile info 429 for every visitor → needs a session in one request; posts are not held back', async () => {
+    const {site, engine} = await setup(
+      'profile-429-anonymous',
+      {posts: 3, profileInfoRefusesVisitors: true},
+      {
+        pacing: {backoffMs: 30_000, maxBackoffMs: 60_000},
+      },
+    )
+    await assert.rejects(engine.analyze(`${site.origin}/fakeuser/`), (e: DownloadError) => {
+      assert.equal(e.hint, 'needs-sign-in', e.message)
+      return true
+    })
+    assert.equal(
+      site.hits.profile,
+      1,
+      'one request: the endpoint no longer serves visitors, asking again changes nothing',
+    )
+    // the refusal is the profile endpoint's, not the network's: a post right after reads at once
+    const started = Date.now()
+    const post = await engine.analyze(`${site.origin}/p/${site.codes[0]}/`)
+    assert.equal(post.kind, 'video')
+    assert.ok(Date.now() - started < 5_000, `the post waited ${Date.now() - started} ms`)
+  })
+
   it('every route walled: oEmbed tells a gone post from a limited network', async () => {
     const {site, engine} = await setup('walled-probe', {posts: 1, loginWall: true})
     await assert.rejects(engine.analyze(`${site.origin}/p/C0DE999999/`), (e: DownloadError) => {

@@ -35,6 +35,8 @@ export type FakeInstagramConfig = {
   readonly noWebInfo?: boolean
   /** web_profile_info answers 404 without a session, for any username (as instagram.com does since 2026-11). */
   readonly profileInfoNeedsSession?: boolean
+  /** web_profile_info answers 429 without a session, for any username (instagram.com over IPv4 since 2026-11). */
+  readonly profileInfoRefusesVisitors?: boolean
   /** The app's media info API answers 403 login_required without a session (as instagram.com does since 2026). */
   readonly appApiNeedsSession?: boolean
   /** Post pages name the logged-out query in expectedPreloaders (with an LSD token); its answer is the item. */
@@ -425,6 +427,8 @@ export async function startFakeInstagram(config: FakeInstagramConfig = {}): Prom
     if (parts[0] === 'api' && parts[3] === 'web_profile_info') {
       hits.profile++
       if (config.profileInfoNeedsSession && !signedIn) return json(404, {message: 'Not Found', status: 'fail'})
+      if (config.profileInfoRefusesVisitors && !signedIn)
+        return json(429, {message: 'Please wait a few minutes before you try again.', status: 'fail'})
       if (url.searchParams.get('username') !== user) return json(404, {message: 'Not Found', status: 'fail'})
       const total = count + (config.unlisted ?? 0)
       const first = ids.slice(0, 12).map((_, i) => ({node: node(i)}))

@@ -265,6 +265,12 @@ export class MetaClient {
       readonly keepSource?: boolean | undefined
       /** One request. The caller is already counting tries (Instagram's session phase). */
       readonly once?: boolean | undefined
+      /**
+       * false: a refusal (429, 5xx) does not cool the site's pacer. For a read the site no
+       * longer serves to visitors, whose 429 says nothing about the network: it must not
+       * hold back every other read of the site.
+       */
+      readonly cools?: boolean | undefined
     } = {},
   ): Promise<T> {
     if (opts.once) return this.#jsonOnce(url, read, opts)
@@ -274,8 +280,11 @@ export class MetaClient {
     }
     if (opts.quiet) return this.#quietly(() => this.#jsonOnce(url, read, opts), opts.signal)
     const aside = !opts.keepSource
+    // a read that does not cool the pacer is not tried again on a refusal either: the next try
+    // would get the same answer at once. A checkpoint still goes through the browser below.
+    const first = () => this.#jsonOnce(url, read, opts)
     try {
-      return await this.retrying(() => this.#jsonOnce(url, read, opts), opts.signal, aside)
+      return await (opts.cools === false ? first() : this.retrying(first, opts.signal, aside))
     } catch (error) {
       if (this.#refusedSession(error)) {
         const visitor = this.#visitor()
@@ -482,10 +491,15 @@ export class MetaClient {
       readonly body?: string | undefined
       /** The session to read with (the client's own unless a visitor's). */
       readonly session?: HttpSession | undefined
+      /** false: a refusal does not cool the pacer (see `json`). */
+      readonly cools?: boolean | undefined
     },
   ): Promise<T> {
     const session = opts.session ?? this.session
     const signedIn = session === this.session && this.signedIn
+    const cool = () => {
+      if (opts.cools !== false) this.pacer.refused()
+    }
     return this.pacer.run(async () => {
       const response = await session.request(url, {
         method: opts.method ?? 'GET',
@@ -503,7 +517,7 @@ export class MetaClient {
       if (response.status === 403) throw forbidden(this.site)
       if (unexpected(response.status)) throw rejected(this.site, response.status, signedIn)
       if (!response.ok || !body) {
-        this.pacer.refused()
+        cool()
         throw new MetaError('refused', `${this.site} answered HTTP ${response.status}${body ? '' : ' with no data'}.`)
       }
       let json: unknown
@@ -520,7 +534,7 @@ export class MetaClient {
         this.pacer.succeeded()
         return result
       } catch (error) {
-        if (error instanceof MetaError && error.transient) this.pacer.refused()
+        if (error instanceof MetaError && error.transient) cool()
         throw error
       }
     }, opts.signal)

@@ -33,6 +33,8 @@ export type FakeInstagramConfig = {
   readonly noAppApi?: boolean
   /** The web_info query ids answer errors, as if Instagram rotated them. */
   readonly noWebInfo?: boolean
+  /** web_profile_info answers 404 without a session, for any username (as instagram.com does since 2026-11). */
+  readonly profileInfoNeedsSession?: boolean
   /** The app's media info API answers 403 login_required without a session (as instagram.com does since 2026). */
   readonly appApiNeedsSession?: boolean
   /** Post pages name the logged-out query in expectedPreloaders (with an LSD token); its answer is the item. */
@@ -422,6 +424,7 @@ export async function startFakeInstagram(config: FakeInstagramConfig = {}): Prom
     }
     if (parts[0] === 'api' && parts[3] === 'web_profile_info') {
       hits.profile++
+      if (config.profileInfoNeedsSession && !signedIn) return json(404, {message: 'Not Found', status: 'fail'})
       if (url.searchParams.get('username') !== user) return json(404, {message: 'Not Found', status: 'fail'})
       const total = count + (config.unlisted ?? 0)
       const first = ids.slice(0, 12).map((_, i) => ({node: node(i)}))

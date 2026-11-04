@@ -23,6 +23,7 @@ import {
   readProfile,
   readSnapPage,
   readSpotlight,
+  readSpotlightLd,
   type SnapItem,
   type SnapPage,
 } from './data.js'
@@ -306,7 +307,17 @@ export class SnapchatSource implements MediaSource {
         await response.body?.cancel()
         throw new MetaError('format-changed', `Snapchat: the page answered HTTP ${response.status}.`)
       }
-      const props = readNextData(await response.text(), this.#endpoints.nextDataMarker)
+      const html = await response.text()
+      // a spotlight's page is an App Router page now: its VideoObject, read only when the page
+      // has no __NEXT_DATA__ (one indexOf more over the page, O(size))
+      if (link.kind === 'spotlight' && html.indexOf(this.#endpoints.nextDataMarker) < 0) {
+        const page = readSpotlightLd(html, link.id, link.user)
+        if (page) {
+          this.#pacer.succeeded()
+          return page
+        }
+      }
+      const props = readNextData(html, this.#endpoints.nextDataMarker)
       this.#pacer.succeeded()
       switch (link.kind) {
         case 'profile':

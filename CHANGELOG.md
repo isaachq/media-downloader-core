@@ -20,6 +20,24 @@
   "socket hang up") retries at once, and only on the first retry: its pool has dropped
   it and a fresh socket answers. `jobRetryWait` and `staleSocket` say which is which.
   Cost: O(1) per retry.
+- **Snapchat spotlights read again.** Snapchat now builds a spotlight's page with Next's
+  App Router: no `__NEXT_DATA__`, so every spotlight was "the page has no __NEXT_DATA__
+  any more" (4 of 4 in the live matrix). The page's schema.org `VideoObject` carries the
+  same MP4 (`contentUrl`), its duration, date, size, thumbnail and creator; a spotlight
+  page without `__NEXT_DATA__` is read from it, and only the `VideoObject` that names this
+  spotlight is taken (a recommendation is not). Verified live: 3 of 3 spotlights in about
+  1 s each. Profiles, stories and highlights keep `__NEXT_DATA__` and are unchanged.
+  Cost: O(size of the page), the same single read; at most 16 schema.org blocks parsed.
+- **Instagram: a profile without a session says "sign in", not "removed".** Instagram's
+  `web_profile_info` now answers 404 to every visitor, for an account that exists and for
+  one that does not, and the profile page is the same empty shell for both: `@nasa` was
+  reported as removed. Without a session that 404 is `needs-sign-in`; signed in, a 404 is
+  still an account that is not there. Cost: none, the same one request.
+- **A page that answered without its data is read twice, not eight times.** 1.23.3 gave
+  every analysis 8 tries, so a site whose page format changed cost about 33 s of pauses
+  per link before its answer. A `format-changed` answer now gets one more read
+  (`FORMAT_CHANGED_ATTEMPTS` = 2), in `analyze` and in a thorough `preflight`.
+  Cost: at most 2 page reads and one pause of about 1.2 s per such link.
 - **`media-downloader-core/mark`, pure.** `resultMark` and `countSetItems` now live in a
   module with no Node built-ins, published as a subpath like `./detect`, so a renderer
   imports the engine's rule instead of a copy (the Android app had one).

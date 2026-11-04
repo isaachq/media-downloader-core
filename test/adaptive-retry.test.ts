@@ -1,43 +1,75 @@
 import {strict as assert} from 'node:assert'
 import {describe, it} from 'node:test'
 import {
-  ANONYMOUS_ATTEMPTS,
   betweenAttemptsMs,
-  SESSION_EXHAUSTED_SECONDS,
-  variantFor,
+  note,
+  outcomeBucketCount,
+  profileFor,
+  profileMemorySize,
+  sessionOnThisAttempt,
 } from '../src/sources/internal/adaptive-retry.js'
 
-const ROUTES = ['embed', 'web info', 'post page', 'logged-out query', 'app API']
 const URL = 'https://www.instagram.com/p/C0DE/'
 
-describe('AdaptiveRetry', () => {
-  it('the same url and attempt always return the same variant', {timeout: 5_000}, () => {
-    const first = variantFor(URL, 1, ROUTES)
-    assert.deepEqual(variantFor(URL, 1, ROUTES), first)
+describe('AdaptiveRetry', {concurrency: 1}, () => {
+  it('the same url, attempt and clock return the same profile', {timeout: 5_000}, () => {
+    const now = 1_700_000_000_000
+    const first = profileFor(URL, 1, now)
+    assert.deepEqual(profileFor(URL, 1, now), first)
     assert.equal(first.attempt, 1)
-    assert.equal(first.headers['Accept-Language'], 'en-US,en;q=0.9')
-    assert.deepEqual(first.routeOrder, ROUTES)
+    assert.equal(first.routeBias, 0)
+    assert.equal(first.locale, 'en-US')
+    assert.equal(first.acceptLanguage, 'en-US,en;q=0.9')
+    assert.ok(first.presentation.length > 0)
   })
 
-  it('a different attempt is a different door order and language', {timeout: 5_000}, () => {
-    const second = variantFor(URL, 2, ROUTES)
-    const fifth = variantFor(URL, ANONYMOUS_ATTEMPTS, ROUTES)
-    assert.notEqual(variantFor(URL, 1, ROUTES).id, second.id)
-    assert.equal(second.routeOrder[0], 'web info')
-    assert.equal(second.routeOrder[4], 'embed')
-    assert.notEqual(second.headers['Accept-Language'], 'en-US,en;q=0.9')
-    assert.equal(fifth.attempt, 5)
-    assert.equal(fifth.routeOrder[0], 'app API')
-    assert.equal(SESSION_EXHAUSTED_SECONDS, 300)
+  it('a different attempt is a different profile', {timeout: 5_000}, () => {
+    const now = 1_700_000_000_000
+    const first = profileFor(URL, 1, now)
+    const second = profileFor(URL, 2, now)
+    assert.notEqual(first.id, second.id)
+    assert.equal(second.routeBias, 1)
+    assert.notEqual(second.acceptLanguage, first.acceptLanguage)
+    assert.equal(second.locale, 'en-GB')
   })
 
-  it('a thousand calls do not change the variant of the first url', {timeout: 5_000}, () => {
-    const first = variantFor(URL, 1, ROUTES)
-    for (let i = 0; i < 1_000; i++) variantFor(`${URL}?n=${i}`, (i % ANONYMOUS_ATTEMPTS) + 1, ROUTES)
-    assert.deepEqual(variantFor(URL, 1, ROUTES), first)
+  it('the host session is only on the fifth try', {timeout: 5_000}, () => {
+    assert.equal(sessionOnThisAttempt(4), false)
+    assert.equal(sessionOnThisAttempt(5), true)
+    assert.equal(sessionOnThisAttempt(1), false)
   })
 
-  it('the pause between tries stays inside 300 and 800 ms', {timeout: 5_000}, () => {
+  it('does not read the clock when the test passes now', {timeout: 5_000}, () => {
+    const real = Date.now
+    Date.now = () => {
+      throw new Error('clock')
+    }
+    try {
+      const profile = profileFor(URL, 3, 1_700_000_000_000)
+      assert.equal(profile.attempt, 3)
+      assert.equal(profile.routeBias, 2)
+    } finally {
+      Date.now = real
+    }
+  })
+
+  it('300 profiles in a row stay inside the cap', {timeout: 5_000}, () => {
+    const now = 1_800_000_000_000
+    for (let i = 0; i < 300; i++) profileFor(`${URL}?n=${i}`, (i % 5) + 1, now + i)
+    assert.ok(profileMemorySize() <= 300, `remembered ${profileMemorySize()}`)
+  })
+
+  it('repeated notes do not add buckets without a limit', {timeout: 5_000}, () => {
+    const now = 1_700_000_000_000
+    const outcomes = ['ok', 'wall', 'rate', 'timeout'] as const
+    for (let i = 0; i < 1_000; i++) {
+      const profile = profileFor(`${URL}?note=${i % 20}`, (i % 5) + 1, now)
+      note(profile, outcomes[i % outcomes.length] ?? 'ok', now + i)
+    }
+    assert.ok(outcomeBucketCount() <= 6, `buckets ${outcomeBucketCount()}`)
+  })
+
+  it('the pause between refused doors stays inside 300 and 800 ms', {timeout: 5_000}, () => {
     assert.equal(
       betweenAttemptsMs(() => 0),
       300,

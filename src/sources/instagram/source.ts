@@ -14,8 +14,10 @@ import {
 import {
   ANONYMOUS_ATTEMPTS,
   betweenAttemptsMs,
+  note,
+  profileFor,
   SESSION_EXHAUSTED_SECONDS,
-  variantFor,
+  sessionOnThisAttempt,
 } from '../internal/adaptive-retry.js'
 import {MetaClient, type PageRead, type SessionProvider} from '../meta/client.js'
 import {downloadPost} from '../meta/download.js'
@@ -408,7 +410,14 @@ export class InstagramSource implements MediaSource {
     else signal?.addEventListener('abort', forward, {once: true})
     try {
       const found = await this.#anonymousAttempts(code, budget.signal, onStep)
-      const post = found.post ?? (await this.#afterAnonymous(code, budget.signal, found.walled, onStep))
+      // Doors 1–4 never load the host session. It is asked only once the fifth
+      // try is the one in hand, and only because the doors did not read the post.
+      const post =
+        found.post ??
+        (sessionOnThisAttempt(ANONYMOUS_ATTEMPTS)
+          ? await this.#afterAnonymous(code, budget.signal, found.walled, onStep)
+          : undefined)
+      if (!post) throw new MetaError('login-required', SESSION_NEEDED)
       const withSong = await this.#withSong(post, budget.signal)
       this.#remember(withSong)
       return withSong
@@ -441,11 +450,22 @@ export class InstagramSource implements MediaSource {
     const tried = new Set<string>()
     let walled = false
     for (let attempt = 1; attempt <= ANONYMOUS_ATTEMPTS; attempt++) {
-      const variant = variantFor(url, attempt, base)
+      const profile = profileFor(url, attempt)
       if (attempt > 1) onStep?.({kind: 'another-way', attempt, of: ANONYMOUS_ATTEMPTS})
-      const anonymous = await this.#readAnonymously(code, signal, variant.routeOrder, variant.headers, tried, 1)
+      const anonymous = await this.#readAnonymously(
+        code,
+        signal,
+        rotateRoutes(base, profile.routeBias),
+        {'Accept-Language': profile.acceptLanguage, 'User-Agent': profile.presentation},
+        tried,
+        1,
+      )
       walled ||= anonymous.walled
-      if (anonymous.post) return {post: anonymous.post, walled}
+      if (anonymous.post) {
+        note(profile, 'ok')
+        return {post: anonymous.post, walled}
+      }
+      note(profile, anonymous.refused ? 'rate' : anonymous.walled ? 'wall' : 'timeout')
       if (signal?.aborted || anonymous.asked === 0 || attempt === ANONYMOUS_ATTEMPTS) break
       if (!this.#anotherDoor(tried)) break
       // a door that refused (a wall, a 429) earns the next one a breath; a door with no data
@@ -810,6 +830,8 @@ export class InstagramSource implements MediaSource {
         )
       }
       case 'app API': {
+        // This door names the app. The profile's presentation stays on the other doors.
+        const {'User-Agent': _profilePresentation, ...doorHeaders} = headers
         const answer = await this.#anonymousGet(
           `${this.#apiOrigin}${MEDIA_INFO(codeToPk(code))}`,
           {
@@ -820,7 +842,7 @@ export class InstagramSource implements MediaSource {
             'X-IG-Device-Locale': 'en_US',
             'X-IG-Mapped-Locale': 'en_US',
             'X-FB-HTTP-Engine': 'Liger',
-            ...headers,
+            ...doorHeaders,
           },
           signal,
         )
@@ -1224,6 +1246,20 @@ class NetworkLimit extends MetaError {}
 /** What ends a search for good: no other route or try would say otherwise. */
 const isFinal = (error: unknown): boolean =>
   error instanceof MetaError && (error.problem === 'removed' || error.problem === 'private')
+
+/** Left rotate by `bias` places. A handful of doors: O(1). */
+function rotateRoutes(routes: readonly string[], bias: number): readonly string[] {
+  const count = routes.length
+  if (count === 0) return []
+  const shift = ((bias % count) + count) % count
+  if (shift === 0) return routes.slice()
+  const order = new Array<string>(count)
+  for (let i = 0; i < count; i++) {
+    const route = routes[(i + shift) % count]
+    if (route !== undefined) order[i] = route
+  }
+  return order
+}
 
 /** One key per post whatever link named it (a long private code included): its numeric id. O(L). */
 function canonicalKey(code: string): string {

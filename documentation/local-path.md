@@ -65,7 +65,7 @@ The host supplies that browser. On the desktop it is a hidden window while the a
 
 A browser left running with nobody in front of it is not a strategy. Android kills it, and a verification loaded on its own ends at the same wall. The load goes with the program in use: one URL, a few seconds. If it passes, what goes on in the background is the file. If the captcha shows, the queue stops and tells the user.
 
-The analysis a person waits for retries a transient failure up to 3 times (`ANALYZE_ATTEMPTS`) on every site but an Instagram post. An Instagram post tries five anonymous doors, one per try (a pause only after a door that refused), and then, if it must, one read with the session; a checkpoint says to try again in about 5 minutes, a refusal says when to come back, and the whole post has 30 s in all. It never retries an invalid, private, removed or cancelled link, nor a "needs sign-in" when there is no session.
+The analysis a person waits for retries a transient failure up to 8 times (`ANALYZE_ATTEMPTS`) on every site but an Instagram post. The pauses are short (about 1.2 s, then 2 s, 3.5 s, 5 s, 6 s and 7 s, never past 8 s). An Instagram post keeps attempts 1 to 4 on the source's own doors and language, with no profile and no cookies. Attempts 5, 6 and 7 are the only ones with a fictional educational experimental profile, one door each (a pause only after a door that refused). Attempt 8 is the only read with the host session. A checkpoint says to try again in about 5 minutes, a refusal says when to come back, and the whole post has 30 s in all. It never retries an invalid, private, removed or cancelled link, nor a "needs sign-in" when there is no session.
 
 ## Stories and profiles: the user's session, once
 
@@ -90,7 +90,7 @@ Read after the measurement, on the code of 1.20.1, so as not to propose a versio
 | Circuit breaker | `BLOCKED_MS` = 10 min | When the browser also sees the wall, the site goes to yt-dlp for that long. Without yt-dlp, the extractor's own error |
 | The user's session | `cookies` option (`SessionProvider`) | Instagram, TikTok and Facebook take it. Asked again when old; forgotten when it stops working |
 | Optional yt-dlp | `ytDlp: 'optional'` | A host without the binary (a phone) keeps the native extractors and gets a clear reason where they would hand over |
-| Analysis retry | `ANALYZE_ATTEMPTS` = 3; an Instagram post is 5 anonymous doors (one per try) + 1 with the session inside a 30 s budget, and its own answer is final | Transient failures only; a checkpoint waits 5 minutes; an expired session signs in again; `onStep` tells the loader each turn |
+| Analysis retry | `ANALYZE_ATTEMPTS` = 8, pauses about 1.2 s, 2 s, 3.5 s, 5 s, 6 s and 7 s (never past 8 s); an Instagram post keeps attempts 1–4 on its own doors, uses a profile only on attempts 5–7, and asks for the host session only on attempt 8, inside a 30 s budget. That answer is final | Transient failures only; a checkpoint waits 5 minutes; an expired session signs in again; `onStep` tells the loader each turn |
 | Queue, resume, archive | the job engine | The large file never passes through a server. An interrupted job resumes. Every file is verified |
 
 What the blueprint wanted to buy with proxies, reading a public post and downloading the MP4, the engine already does. **The engine stays at 1.20.1.** A new version would only make sense if a measurement showed a public network no longer answering through any of the routes that exist. That did not happen in this reading.

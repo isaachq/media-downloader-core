@@ -1397,7 +1397,7 @@ describe('Instagram, what a post costs (local fake)', () => {
     assert.equal(site.hits.session, 1)
   })
 
-  it('the loader is told each turn: reading, another way (2–5), checking, the session', async () => {
+  it('the loader is told each turn: reading, another way (2–5 of 7), checking, the session', async () => {
     const {site, engine} = await setup('steps', {posts: 1, gated: [0], sessionChallenge: true}, {signedIn: true})
     const steps: string[] = []
     await assert.rejects(
@@ -1408,10 +1408,10 @@ describe('Instagram, what a post costs (local fake)', () => {
     )
     assert.deepEqual(steps, [
       'reading',
-      'another-way 2/5',
-      'another-way 3/5',
-      'another-way 4/5',
-      'another-way 5/5',
+      'another-way 2/7',
+      'another-way 3/7',
+      'another-way 4/7',
+      'another-way 5/7',
       'checking',
       'session',
     ])

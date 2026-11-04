@@ -50,7 +50,9 @@ import {ffprobe, ProbeError, summarizeProbe, validateBundle, validateFile} from 
 import {BlueskySource} from './sources/bluesky/source.js'
 import {DirectFileSource} from './sources/direct/source.js'
 import {FacebookSource} from './sources/facebook/source.js'
+import {transportFault} from './sources/http.js'
 import {InstagramSource} from './sources/instagram/source.js'
+import {ANALYZE_ATTEMPTS} from './sources/internal/adaptive-retry.js'
 import {COOLING_DOWN, withPatience} from './sources/pacer.js'
 import {SnapchatSource} from './sources/snapchat/source.js'
 import {SoundcloudSource} from './sources/soundcloud/source.js'
@@ -203,11 +205,20 @@ export type ArchiveCheck = {
 export const ANALYZE_PATIENCE_MS = 15_000
 
 /** Tries an analysis someone is waiting for gets before its error is the answer (see analyze). */
-export const ANALYZE_ATTEMPTS = 3
-/** The pause before the 2nd and the 3rd try: [min, max] ms, a random point in between. */
+export {ANALYZE_ATTEMPTS}
+
+/**
+ * The pause before tries 2 through 8: a short range with jitter, never past 8 s.
+ * A file download does not use this clock.
+ */
 const ANALYZE_RETRY_WAITS_MS: ReadonlyArray<readonly [number, number]> = [
-  [2_000, 5_000],
-  [8_000, 15_000],
+  [1_000, 1_400],
+  [1_600, 2_400],
+  [2_800, 4_200],
+  [4_000, 6_000],
+  [5_000, 7_000],
+  [6_000, 8_000],
+  [6_000, 8_000],
 ]
 
 export class MediaDownloader extends EventEmitter<DownloaderEvents> implements AsyncDisposable {
@@ -700,11 +711,13 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       /**
        * Tries in all (default ANALYZE_ATTEMPTS; 1: no retry). A failure that may pass
        * (a network error, a refusal, a page that came without its data) is tried again
-       * after a short pause, each try another way: the sources rank their routes by what
-       * just answered and rest the ones that refused. An Instagram post does not use
-       * this counter: it tries five anonymous variants, then three with the user's
-       * session, and its own error is final. A final answer (gone, private, needs a
-       * session, unsupported) or a cool-down longer than the caller waits is not retried.
+       * after a short pause (about 1.2 s, then 2 s, 3.5 s and 5 s, never past 8 s),
+       * each try another way: the sources rank their routes by what just answered
+       * and rest the ones that refused. An Instagram post does not use this counter:
+       * it tries five anonymous doors, each with its own experimental profile, then
+       * the host session, and its own error is final. A final answer (gone, private,
+       * needs a session, unsupported) or a cool-down longer than the caller waits
+       * is not retried.
        */
       attempts?: number
       /** Called before each retry: the try about to start (2-based), of how many, and why. */
@@ -726,7 +739,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       } catch (error) {
         if (attempt >= attempts || opts.signal?.aborted || !(error instanceof DownloadError) || !retriesAnalysis(error))
           throw error
-        const wait = opts.retryWaitMs?.(attempt + 1) ?? jittered(ANALYZE_RETRY_WAITS_MS[attempt - 1] ?? [8_000, 15_000])
+        const wait = opts.retryWaitMs?.(attempt + 1) ?? jittered(ANALYZE_RETRY_WAITS_MS[attempt - 1] ?? [6_000, 8_000])
         this.#log(
           'info',
           `analysis of ${url}: try ${attempt}/${attempts} failed (${error.message}) — trying again in ${(wait / 1000).toFixed(1)} s`,
@@ -863,9 +876,9 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       /**
        * Checks per item (default 1). Above 1 ("thorough", BatchRequest.retries), an
        * item a native source could not read in a way that may pass is checked again
-       * after a pause — 2–5 s, then 8–15 s — with the source's routes re-ranked by
-       * then; only the last check's answer is final. O(F) extra checks per round for
-       * F such failures.
+       * after a short pause (about 1.2 s, then 2 s, 3.5 s and 5 s, never past 8 s),
+       * with the source's routes re-ranked by then; only the last check's answer is
+       * final. O(F) extra checks per round for F such failures.
        */
       readonly attempts?: number | undefined
       /** Tests: the pause before a round of re-checks. */
@@ -924,7 +937,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
           },
         })
         if (again.length === 0 || analysis.signal.aborted) return
-        const wait = opts.retryWaitMs?.(attempt + 1) ?? jittered(ANALYZE_RETRY_WAITS_MS[attempt - 1] ?? [8_000, 15_000])
+        const wait = opts.retryWaitMs?.(attempt + 1) ?? jittered(ANALYZE_RETRY_WAITS_MS[attempt - 1] ?? [6_000, 8_000])
         this.#log(
           'info',
           `preflight: ${again.length} item(s) checked again in ${(wait / 1000).toFixed(1)} s (try ${attempt + 1}/${attempts})`,
@@ -1706,7 +1719,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
             )
             throw failure
           }
-          const wait = retryDelay(counted, this.#settings.retryDelayMaxMs)
+          const wait = transportFault(error) ? 0 : retryDelay(counted, this.#settings.retryDelayMaxMs)
           job.endAttempt(jobError, wait)
           this.#log(
             'warn',

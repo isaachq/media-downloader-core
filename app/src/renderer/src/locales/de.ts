@@ -420,6 +420,7 @@ export const de: Readonly<Record<MessageKey, string>> = {
   'boot.retry': 'Erneut versuchen',
   'preview.title': 'Auswählen, was du herunterlädst',
   'preview.items': 'Elemente: {count} · {duration}',
+  'set.count': '{count} Elemente',
   'preview.mix':
     'YouTube-Mix: wird automatisch aus diesem Video erstellt und ist praktisch endlos. Die ersten {count} werden angezeigt.',
   'preview.capped': 'Lange Liste. Die ersten {count} werden angezeigt.',

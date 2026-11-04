@@ -440,6 +440,7 @@ const en = {
   'boot.retry': 'Retry',
   'preview.title': 'Choose what to download',
   'preview.items': '{count} items · {duration}',
+  'set.count': '{count} items',
   'preview.mix':
     'This is a YouTube Mix: it’s built on the fly from this video and almost never ends. Showing the first {count}.',
   'preview.capped': 'Long list. Showing the first {count}.',
@@ -1177,6 +1178,7 @@ const es: Record<MessageKey, string> = {
   'boot.retry': 'Reintentar',
   'preview.title': 'Elige qué descargar',
   'preview.items': '{count} elementos · {duration}',
+  'set.count': '{count} elementos',
   'preview.mix':
     'Es un Mix de YouTube: se arma al momento a partir de este video y casi no tiene fin. Mostrando los primeros {count}.',
   'preview.capped': 'Lista larga. Mostrando los primeros {count}.',

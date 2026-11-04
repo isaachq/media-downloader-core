@@ -1,7 +1,15 @@
 import assert from 'node:assert/strict'
 import * as http from 'node:http'
 import {after, describe, it} from 'node:test'
-import {HttpSession, navigationFetch, releaseTransport, transportCensus, transportFault} from '../src/sources/http.js'
+import {jobRetryWait} from '../src/downloader.js'
+import {
+  HttpSession,
+  navigationFetch,
+  releaseTransport,
+  staleSocket,
+  transportCensus,
+  transportFault,
+} from '../src/sources/http.js'
 
 after(() => {
   releaseTransport()
@@ -38,6 +46,28 @@ describe('transport cohort', () => {
     abort.name = 'AbortError'
     assert.equal(transportFault(abort), false)
     assert.equal(transportFault(Object.assign(new Error('no'), {code: 'ECONNREFUSED'})), true)
+  })
+
+  it('a dead socket retries once at once; a network that is down waits the back-off', () => {
+    const reset = Object.assign(new TypeError('fetch failed'), {
+      cause: Object.assign(new Error('read ECONNRESET'), {code: 'ECONNRESET'}),
+    })
+    const hangUp = new Error('socket hang up')
+    const down = ['ECONNREFUSED', 'ENETUNREACH', 'EHOSTUNREACH', 'EAI_AGAIN', 'ETIMEDOUT'].map(code =>
+      Object.assign(new TypeError('fetch failed'), {cause: Object.assign(new Error(code), {code})}),
+    )
+    assert.equal(staleSocket(reset), true)
+    assert.equal(staleSocket(hangUp), true)
+    for (const error of down) {
+      assert.equal(transportFault(error), true)
+      assert.equal(staleSocket(error), false)
+      assert.equal(jobRetryWait(error, 1, 15_000) >= 1_600, true)
+    }
+    assert.equal(jobRetryWait(reset, 1, 15_000), 0)
+    assert.equal(jobRetryWait(hangUp, 1, 15_000), 0)
+    // the second dead socket in a row is not a stale one any more: it waits
+    assert.equal(jobRetryWait(reset, 2, 15_000) >= 3_200, true)
+    assert.equal(jobRetryWait(new Error('HTTP 500'), 1, 15_000) >= 1_600, true)
   })
 
   it('a success is one request and does not retire the origin', {timeout: 5_000}, async () => {
@@ -115,6 +145,61 @@ describe('transport cohort', () => {
       const response = await navigationFetch(`http://127.0.0.1:${site.port}/z`)
       assert.equal(await response.text(), 'up')
       assert.equal(hits - spent, 1)
+    } finally {
+      site.close()
+    }
+  })
+
+  it('retiring an origin does not cut a request already on its way', {timeout: 5_000}, async () => {
+    releaseTransport()
+    const site = await listen((req, res) => {
+      if (req.url === '/reset') {
+        req.socket.destroy()
+        return
+      }
+      setTimeout(() => res.end('slow ok'), 300)
+    })
+    try {
+      const slow = navigationFetch(`http://127.0.0.1:${site.port}/slow`)
+      await new Promise(resolve => setTimeout(resolve, 50))
+      await assert.rejects(navigationFetch(`http://127.0.0.1:${site.port}/reset`))
+      await assert.rejects(navigationFetch(`http://127.0.0.1:${site.port}/reset`))
+      assert.equal(transportCensus().generation, 1)
+      const response = await slow
+      assert.equal(await response.text(), 'slow ok')
+      // the slow answer came on the old pool: it neither retires the new one nor counts against it
+      assert.equal(transportCensus().generation, 1)
+    } finally {
+      site.close()
+    }
+  })
+
+  it('a failure on a pool already retired does not count against its successor', {timeout: 5_000}, async () => {
+    releaseTransport()
+    let cut = false
+    const site = await listen((req, res) => {
+      if (req.url === '/reset') {
+        req.socket.destroy()
+        return
+      }
+      // the three slow ones are cut together once the pool was retired under them
+      setTimeout(() => (cut ? req.socket.destroy() : res.end('ok')), 300)
+    })
+    try {
+      const slow = [1, 2, 3].map(i =>
+        navigationFetch(`http://127.0.0.1:${site.port}/slow${i}`).then(
+          () => 'ok',
+          () => 'cut',
+        ),
+      )
+      await new Promise(resolve => setTimeout(resolve, 50))
+      cut = true
+      await assert.rejects(navigationFetch(`http://127.0.0.1:${site.port}/reset`))
+      await assert.rejects(navigationFetch(`http://127.0.0.1:${site.port}/reset`))
+      assert.equal(transportCensus().generation, 1)
+      assert.deepEqual(await Promise.all(slow), ['cut', 'cut', 'cut'])
+      // three cuts on the old pool: the new pool was never used, so it is not replaced again
+      assert.equal(transportCensus().generation, 1)
     } finally {
       site.close()
     }

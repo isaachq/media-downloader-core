@@ -417,6 +417,7 @@ export const ar: Readonly<Record<MessageKey, string>> = {
   'boot.retry': 'إعادة المحاولة',
   'preview.title': 'اختر ما تريد تنزيله',
   'preview.items': 'العناصر: {count} · {duration}',
+  'set.count': '{count} عناصر',
   'preview.mix': 'مزيج YouTube: يُنشأ فوريًا من هذا الفيديو ولا ينتهي تقريبًا. المعروض: أول {count} فقط.',
   'preview.capped': 'قائمة طويلة. المعروض: أول {count} فقط.',
   'preview.partial': 'المعروض: {count} من {total}.',

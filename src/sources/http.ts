@@ -5,6 +5,7 @@
  */
 import * as http from 'node:http'
 import * as https from 'node:https'
+import type {Socket} from 'node:net'
 import {Readable} from 'node:stream'
 import * as zlib from 'node:zlib'
 
@@ -81,7 +82,8 @@ function cohortOf(url: URL): Cohort {
   if (cohorts.size >= ORIGIN_LIMIT) {
     const oldest = cohorts.keys().next().value
     if (oldest !== undefined) {
-      cohorts.get(oldest)?.agent.destroy()
+      const evicted = cohorts.get(oldest)
+      if (evicted) retire(evicted.agent)
       cohorts.delete(oldest)
     }
   }
@@ -102,17 +104,43 @@ function dropIdle(agent: http.Agent): void {
   }
 }
 
-function noteOk(url: URL): void {
-  const known = cohorts.get(originKey(url))
-  if (known) known.failures = 0
+/**
+ * A pool out of service, without cutting what it carries: idle sockets close now, a busy one
+ * closes once its answer is read (or goes to a request already queued on this pool). Destroying
+ * the agent instead cut every healthy request in flight to that origin, and each cut counted as
+ * another fault against the new pool. O(idle sockets), at most MAX_FREE per origin.
+ */
+function retire(agent: http.Agent): void {
+  agent.on('free', (socket: Socket) => {
+    // the agent's own listener ran first: a socket it parked as idle is closed, one it handed
+    // to a queued request is left to that request
+    if (isIdle(agent, socket)) socket.destroy()
+  })
+  dropIdle(agent)
 }
 
-function noteFault(url: URL): void {
-  const cohort = cohortOf(url)
+function isIdle(agent: http.Agent, socket: Socket): boolean {
+  for (const sockets of Object.values(agent.freeSockets)) if (sockets?.includes(socket)) return true
+  return false
+}
+
+/** A success clears the streak, but only on the pool the origin uses now. O(1). */
+function noteOk(url: URL, agent: http.Agent): void {
+  const known = cohorts.get(originKey(url))
+  if (known && known.agent === agent) known.failures = 0
+}
+
+/**
+ * A dead socket on the pool the origin uses now: its idle sockets go, and the second in a row
+ * replaces the pool. A failure on a pool already retired is history, not a new streak. O(1).
+ */
+function noteFault(url: URL, agent: http.Agent): void {
+  const cohort = cohorts.get(originKey(url))
+  if (!cohort || cohort.agent !== agent) return
   dropIdle(cohort.agent)
   cohort.failures += 1
   if (cohort.failures < RETIRE_AT) return
-  cohort.agent.destroy()
+  retire(cohort.agent)
   cohort.agent = makeAgent(cohort.secure)
   cohort.generation += 1
   cohort.failures = 0
@@ -125,6 +153,24 @@ export function transportFault(error: unknown): boolean {
   if (error.message === 'socket hang up') return true
   const cause = (error as Error & {cause?: unknown}).cause
   return cause !== undefined && cause !== error && transportFault(cause)
+}
+
+/** A keep-alive socket the peer closed under a request: what a fresh socket fixes at once. */
+const STALE_SOCKET_CODE: ReadonlySet<string> = new Set(['ECONNRESET', 'EPIPE', 'ENETRESET'])
+
+/**
+ * A request lost to a dead socket, not to a network that is down: ECONNRESET, EPIPE,
+ * ENETRESET or Node's "socket hang up", here or in the cause chain. ECONNREFUSED,
+ * ETIMEDOUT, EAI_AGAIN and the unreachable codes are transport faults too, but a retry
+ * at once meets the same dead network (a phone moving from Wi-Fi to mobile data). O(depth).
+ */
+export function staleSocket(error: unknown): boolean {
+  if (!(error instanceof Error) || error.name === 'AbortError' || error.name === 'TimeoutError') return false
+  const code = (error as Error & {code?: unknown}).code
+  if (typeof code === 'string' && STALE_SOCKET_CODE.has(code)) return true
+  if (error.message === 'socket hang up') return true
+  const cause = (error as Error & {cause?: unknown}).cause
+  return cause !== undefined && cause !== error && staleSocket(cause)
 }
 
 export function transportCensus(): {readonly origins: number; readonly generation: number} {
@@ -222,19 +268,19 @@ function exchange(
   signal: AbortSignal | undefined,
   replayed: boolean,
 ): Promise<http.IncomingMessage> {
-  const cohort = cohortOf(target)
+  const agent = cohortOf(target).agent
   return new Promise((resolve, reject) => {
     let settled = false
     const request = (target.protocol === 'https:' ? https : http).request(
       target,
-      {method, headers, agent: cohort.agent, ...(signal && {signal})},
+      {method, headers, agent, ...(signal && {signal})},
       message => {
         if (settled) {
           message.resume()
           return
         }
         settled = true
-        noteOk(target)
+        noteOk(target, agent)
         resolve(message)
       },
     )
@@ -246,7 +292,7 @@ function exchange(
         return
       }
       const fault = transportFault(error)
-      if (fault) noteFault(target)
+      if (fault) noteFault(target, agent)
       if (!replayed && request.reusedSocket && fault) {
         resolve(exchange(target, method, headers, body, signal, true))
         return

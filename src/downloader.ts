@@ -50,7 +50,7 @@ import {ffprobe, ProbeError, summarizeProbe, validateBundle, validateFile} from 
 import {BlueskySource} from './sources/bluesky/source.js'
 import {DirectFileSource} from './sources/direct/source.js'
 import {FacebookSource} from './sources/facebook/source.js'
-import {transportFault} from './sources/http.js'
+import {staleSocket} from './sources/http.js'
 import {InstagramSource} from './sources/instagram/source.js'
 import {ANALYZE_ATTEMPTS} from './sources/internal/adaptive-retry.js'
 import {COOLING_DOWN, withPatience} from './sources/pacer.js'
@@ -1719,7 +1719,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
             )
             throw failure
           }
-          const wait = transportFault(error) ? 0 : retryDelay(counted, this.#settings.retryDelayMaxMs)
+          const wait = jobRetryWait(error, counted, this.#settings.retryDelayMaxMs)
           job.endAttempt(jobError, wait)
           this.#log(
             'warn',
@@ -2280,6 +2280,16 @@ function issueCodes(value: unknown): ValidationIssueCode[] {
 export function relaxProfile(profile: FormatProfile): FormatProfile | undefined {
   if (profile.kind === 'video' && profile.maxHeight !== undefined) return {kind: 'video', container: profile.container}
   return undefined
+}
+
+/**
+ * Wait before a job's retry n. A dead keep-alive socket gets the first retry at once (the pool
+ * has dropped it, a fresh socket answers); any other failure, a network that is down included,
+ * waits the back-off: four tries at once against no network were four failures in milliseconds.
+ * O(1).
+ */
+export function jobRetryWait(error: unknown, attempt: number, max: number): number {
+  return attempt === 1 && staleSocket(error) ? 0 : retryDelay(attempt, max)
 }
 
 /**

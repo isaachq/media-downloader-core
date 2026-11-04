@@ -418,6 +418,7 @@ export const it: Readonly<Record<MessageKey, string>> = {
   'boot.retry': 'Riprova',
   'preview.title': 'Scegli cosa scaricare',
   'preview.items': 'Elementi: {count} · {duration}',
+  'set.count': '{count} elementi',
   'preview.mix':
     'Mix di YouTube: creato al momento a partire da questo video e praticamente infinito. Mostro i primi {count}.',
   'preview.capped': 'Lista lunga. Mostro i primi {count}.',

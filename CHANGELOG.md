@@ -2,6 +2,38 @@
 
 ## Unreleased
 
+**Library 1.23.4**
+
+- **Replacing an origin's pool no longer cuts the requests it carries.** The second dead
+  socket in a row destroyed the whole agent, so every healthy request in flight to that
+  origin (a page, a slow listing) died with "socket hang up", and each of those deaths
+  counted as another fault against the new pool, which was then replaced in turn. The
+  retired pool now closes its idle sockets at once and each busy one when its answer is
+  read; a failure on a pool already retired is history and does not count against its
+  successor. The 64-origin table forgets its oldest origin the same way.
+  Cost: O(1) per request (one map lookup and one comparison); a retire is O(idle
+  sockets), at most 2 per origin.
+- **A network that is down waits the back-off again.** 1.23.3 retried every transport
+  failure of a download at once, so a phone moving from Wi-Fi to mobile data
+  (`ECONNREFUSED`, `ENETUNREACH`, `EAI_AGAIN`, `ETIMEDOUT`) spent its four tries in
+  milliseconds against no network. Only a dead keep-alive socket (`ECONNRESET`, `EPIPE`,
+  "socket hang up") retries at once, and only on the first retry: its pool has dropped
+  it and a fresh socket answers. `jobRetryWait` and `staleSocket` say which is which.
+  Cost: O(1) per retry.
+- **`media-downloader-core/mark`, pure.** `resultMark` and `countSetItems` now live in a
+  module with no Node built-ins, published as a subpath like `./detect`, so a renderer
+  imports the engine's rule instead of a copy (the Android app had one).
+  `finishedState({filepath, sizeBytes})` checks a finished row in one stat (and one
+  readdir only for a folder) and returns the file state with the set's count; the apps
+  paid a stat for the state and another for the count.
+  Cost: O(1) stats per finished row shown, never per download.
+
+**Desktop 0.2.0-beta.31**
+
+- Carries library 1.23.4.
+- The finished list shows a carousel or a slideshow as its count ("6 items"), not one
+  clip's duration; a single file keeps its duration. One stat per row shown.
+
 **Library 1.23.3**
 
 - **An analysis is tried up to 8 times.** Attempts 1 to 4 keep each source's own routes and language: no profile, no cookies. Attempts 5, 6 and 7 are the only ones that build a fictional educational experimental profile, and each of those three is a different profile. Attempt 8 is the only one that asks for the host session. The pauses are about 1.2 s, then 2 s, 3.5 s, 5 s, 6 s and 7 s, and they never pass 8 s. A file download keeps its own clock. An Instagram post still asks one door per try inside its 30 s budget, and that error is still final for the analysis loop. Stories, highlights and profile listings still ask for a session first.

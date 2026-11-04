@@ -112,7 +112,14 @@ export {
   maxConcurrency,
   TaskPool,
 } from './core/pool.js'
-export {countSetItems, finishedItemCount, type ResultMark, resultMark} from './core/result-mark.js'
+export {
+  countSetItems,
+  type FinishedFile,
+  finishedItemCount,
+  finishedState,
+  type ResultMark,
+  resultMark,
+} from './core/result-mark.js'
 export {searchTrace} from './core/trace-log.js'
 export {ffprobe, summarizeProbe, validateFile} from './core/validate.js'
 export {

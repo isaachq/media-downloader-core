@@ -417,6 +417,7 @@ export const ru: Readonly<Record<MessageKey, string>> = {
   'boot.retry': 'Повторить',
   'preview.title': 'Выберите, что скачать',
   'preview.items': 'Элементов: {count} · {duration}',
+  'set.count': '{count} элементов',
   'preview.mix': 'YouTube Mix: собирается на ходу из этого видео и практически бесконечен. Показаны первые {count}.',
   'preview.capped': 'Длинный список. Показаны первые {count}.',
   'preview.partial': 'Показано {count} из {total}.',

@@ -207,6 +207,29 @@ describe('Snapchat, end to end (local fake)', () => {
     assert.deepEqual(site.pages, [`/spotlight/${site.ids.spotlight}`, `/@nasa/spotlight/${site.ids.spotlight}`])
   })
 
+  it('site: a spotlight page built with the App Router (no __NEXT_DATA__) → its VideoObject, downloaded', {
+    timeout: 5_000,
+  }, async () => {
+    const {site, engine, scheduler, out} = await setup('spotlight-app-router', {appRouterSpotlight: true})
+    const url = `https://www.snapchat.com/spotlight/${site.ids.spotlight}`
+    const analysis = asVideo(await engine.analyze(url))
+    assert.equal(analysis.media.id, site.ids.spotlight)
+    assert.equal(analysis.media.uploader, 'nasa', 'its own VideoObject, not the recommendation before it')
+    assert.equal(analysis.media.duration, 87.33)
+    assert.equal(analysis.media.publishedAt, 1_775_835_089)
+    assert.equal(analysis.media.title, 'nasa spotlight 2026-04-10', 'a generic name is no title')
+    assert.equal(analysis.media.url, `https://www.snapchat.com/@nasa/spotlight/${site.ids.spotlight}`)
+    const batch = scheduler.schedule({url, profile: mp4, outDir: out})
+    await scheduler.whenIdle()
+    const done = scheduler.batch(batch.id)!
+    assert.equal(done.status, 'completed', JSON.stringify(done.error))
+    const files = await fs.readdir(out)
+    assert.equal(files.length, 1)
+    assert.match(files[0]!, /^nasa-spotlight-2026-04-10-W7-EDlXWTBiXAEEniNoMPwAAYeG9xcGd0.*\.mp4$/)
+    assert.equal(site.hits.media, 1)
+    assert.deepEqual(site.pages, [`/spotlight/${site.ids.spotlight}`, `/@nasa/spotlight/${site.ids.spotlight}`])
+  })
+
   it('a profile: its live story, its highlights’ snaps and its spotlights, placeholders skipped', {
     timeout: 5_000,
   }, async () => {
@@ -397,6 +420,45 @@ describe('Snapchat, end to end (local fake)', () => {
     // the engine falls back: the (fake) yt-dlp answers instead
     const fallback = await engine.analyze('https://www.snapchat.com/@movedthings')
     assert.equal(fallback.kind === 'video' ? fallback.media.extractor : fallback.extractor, 'Fake')
+  })
+
+  it('runtime: native, a page whose data moved → read twice at most, not once per analysis try', {
+    timeout: 5_000,
+  }, async () => {
+    const site = await startFakeSnapchat()
+    const engine = new MediaDownloader({
+      dataDir: path.join(root, 'changed-native'),
+      binaries: {ffmpeg: bins.ffmpeg, ffprobe: bins.ffprobe},
+      ytDlp: 'optional',
+      validation: 'none',
+      progressIntervalMs: 0,
+      tiktok: false,
+      instagram: false,
+      facebook: false,
+      x: false,
+      vk: false,
+      snapchat: {endpoints: {origin: site.origin}, fetch: site.fetch, pacing: fast},
+    })
+    cleanups.push(async () => {
+      await engine.dispose()
+      await site.close()
+    })
+    const waits: number[] = []
+    await assert.rejects(
+      engine.analyze('https://www.snapchat.com/@movedthings', {
+        retryWaitMs: attempt => {
+          waits.push(attempt)
+          return 0
+        },
+      }),
+      (e: DownloadError) => {
+        assert.equal(e.details, SOURCE_FORMAT_CHANGED)
+        return true
+      },
+    )
+    // the same 200 page without its data, eight times, was ~33 s of pauses for one answer
+    assert.equal(site.pages.filter(p => p === '/@movedthings').length, 2)
+    assert.deepEqual(waits, [2])
   })
 
   it('bytes that are no media (a 200 from the CDN) fail cleanly and leave no file', {timeout: 5_000}, async () => {

@@ -79,6 +79,7 @@ export type ThemeMode = 'system' | 'light' | 'dark'
  * Pure and browser-safe (regular expressions, no URL class), O(n) in the text.
  */
 export {audioOnlyFormats, detectLink, LINK_SITES, type LinkSite, planMix} from 'media-downloader-core/detect'
+export {type ResultMark, resultMark} from 'media-downloader-core/mark'
 export type Format = VideoContainer | AudioContainer
 export type Quality = 'best' | '2160' | '1440' | '1080' | '720' | '480' | '360'
 
@@ -355,6 +356,8 @@ export type FinishedEntry = {
   readonly filepath: string
   readonly sizeBytes: number
   readonly duration?: number | undefined
+  /** Media files in a finished folder (a carousel, a slideshow). Absent for one file. */
+  readonly items?: number | undefined
   readonly extractor: string
   readonly url: string
   /** The site of its link (detected once per record by the main process). */

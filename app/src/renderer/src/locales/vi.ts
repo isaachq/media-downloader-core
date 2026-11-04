@@ -418,6 +418,7 @@ export const vi: Readonly<Record<MessageKey, string>> = {
   'boot.retry': 'Thử lại',
   'preview.title': 'Chọn nội dung để tải xuống',
   'preview.items': '{count} mục · {duration}',
+  'set.count': '{count} mục',
   'preview.mix':
     'YouTube Mix: được tạo tức thì từ video này và gần như không có điểm dừng. Đang hiện {count} mục đầu tiên.',
   'preview.capped': 'Danh sách dài. Đang hiện {count} mục đầu tiên.',

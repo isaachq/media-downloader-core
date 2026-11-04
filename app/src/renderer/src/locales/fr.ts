@@ -420,6 +420,7 @@ export const fr: Readonly<Record<MessageKey, string>> = {
   'boot.retry': 'Réessayer',
   'preview.title': 'Choisis quoi télécharger',
   'preview.items': 'Éléments : {count} · {duration}',
+  'set.count': '{count} éléments',
   'preview.mix':
     'Mix YouTube : généré à la volée à partir de cette vidéo et pratiquement sans fin. Affichage des {count} premiers.',
   'preview.capped': 'Longue liste. Affichage des {count} premiers.',

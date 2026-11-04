@@ -419,6 +419,7 @@ export const tr: Readonly<Record<MessageKey, string>> = {
   'boot.retry': 'Tekrar dene',
   'preview.title': 'İndirilecekleri seç',
   'preview.items': '{count} öğe · {duration}',
+  'set.count': '{count} öğe',
   'preview.mix': 'YouTube Mix: bu videodan anında oluşturulur ve neredeyse sonsuzdur. İlk {count} tanesi gösteriliyor.',
   'preview.capped': 'Uzun liste. İlk {count} tanesi gösteriliyor.',
   'preview.partial': '{count} / {total} gösteriliyor.',

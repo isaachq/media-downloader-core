@@ -418,6 +418,7 @@ export const id: Readonly<Record<MessageKey, string>> = {
   'boot.retry': 'Coba lagi',
   'preview.title': 'Pilih yang akan diunduh',
   'preview.items': '{count} item · {duration}',
+  'set.count': '{count} item',
   'preview.mix': 'YouTube Mix: dibuat langsung dari video ini dan praktis tanpa akhir. Menampilkan {count} pertama.',
   'preview.capped': 'Daftar panjang. Menampilkan {count} pertama.',
   'preview.partial': 'Menampilkan {count} dari {total}.',

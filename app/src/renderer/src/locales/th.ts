@@ -413,6 +413,7 @@ export const th: Readonly<Record<MessageKey, string>> = {
   'boot.retry': 'ลองอีกครั้ง',
   'preview.title': 'เลือกสิ่งที่จะดาวน์โหลด',
   'preview.items': '{count} รายการ · {duration}',
+  'set.count': '{count} รายการ',
   'preview.mix': 'YouTube Mix: สร้างขึ้นทันทีจากวิดีโอนี้และแทบไม่มีที่สิ้นสุด แสดง {count} รายการแรก',
   'preview.capped': 'รายการยาว แสดง {count} รายการแรก',
   'preview.partial': 'แสดง {count} จาก {total}',

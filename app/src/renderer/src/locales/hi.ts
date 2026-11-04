@@ -416,6 +416,7 @@ export const hi: Readonly<Record<MessageKey, string>> = {
   'boot.retry': 'फिर से कोशिश करें',
   'preview.title': 'चुनें कि क्या डाउनलोड करना है',
   'preview.items': 'आइटम: {count} · {duration}',
+  'set.count': '{count} आइटम',
   'preview.mix': 'YouTube Mix: इस वीडियो से उसी समय बनता है और लगभग कभी खत्म नहीं होता. पहले {count} दिखाए जा रहे हैं.',
   'preview.capped': 'लंबी सूची. पहले {count} दिखाए जा रहे हैं.',
   'preview.partial': '{total} में से {count} दिखाए जा रहे हैं.',

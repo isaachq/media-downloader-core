@@ -36,6 +36,7 @@ import {
   type FinishedPage,
   type FinishedSort,
   type FinishedTarget,
+  resultMark,
   SIZE_RANGES,
   type SizeRange,
 } from '../../../shared/contract'
@@ -503,7 +504,11 @@ export function FinishedList({
             key: 'length',
             width: 80,
             align: 'right',
-            render: (_, entry) => clock(entry.duration),
+            // a set shows its count: a carousel's recorded duration is one clip's
+            render: (_, entry) => {
+              const mark = resultMark({count: entry.items, duration: entry.duration})
+              return mark?.kind === 'count' ? t('set.count', {count: mark.count}) : clock(entry.duration)
+            },
           },
           {
             title: t('finished.col.size'),

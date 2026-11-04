@@ -414,6 +414,7 @@ export const zh: Readonly<Record<MessageKey, string>> = {
   'boot.retry': '重试',
   'preview.title': '选择要下载的内容',
   'preview.items': '{count} 项 · {duration}',
+  'set.count': '{count} 项',
   'preview.mix': 'YouTube 合辑：根据这个视频即时生成，几乎没有尽头。显示前 {count} 个。',
   'preview.capped': '列表较长。显示前 {count} 个。',
   'preview.partial': '显示 {count}/{total} 个。',

@@ -156,6 +156,18 @@ as for any batch. Its files go straight into `outDir`, named as single downloads
   downloads). `scheduleMix(text, …)` also works: the batch checks the links itself
   and shows the ones it can't download as unavailable.
 
+## Finished results: a set's count or a duration
+
+- `resultMark({count, duration})` decides what one result shows: more than one item
+  is that count; a single item keeps its duration (a carousel's recorded duration is
+  one clip's). It is pure and also in `media-downloader-core/mark` (no Node
+  built-ins), so a renderer (Electron, Hermes) imports the engine's rule instead of
+  keeping a copy.
+- `finishedState({filepath, sizeBytes})` checks one finished record against the disk
+  for a page of a finished list: `{file: 'ok' | 'missing' | 'changed', items?}`. One
+  stat per row, and one readdir only when the path is a folder, whose media files
+  are `items`. `finishedItemCount(path)` is the count alone.
+
 ## Format profiles
 
 The core supports **26 base format profiles** across MP4, WebM, MKV, and audio containers:

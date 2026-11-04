@@ -3,7 +3,8 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import {after, describe, it} from 'node:test'
-import {countSetItems, finishedItemCount, resultMark} from '../src/core/result-mark.js'
+import {countSetItems, finishedItemCount, finishedState, resultMark} from '../src/core/result-mark.js'
+import * as pure from '../src/mark.js'
 
 describe('result: a set replaces a duration', () => {
   it('a set of 6 with a duration → the count; one video → its duration', () => {
@@ -37,5 +38,24 @@ describe('result: a set replaces a duration', () => {
     assert.equal(await finishedItemCount(dir), 6)
     assert.equal(await finishedItemCount(lone), undefined)
     assert.equal(await finishedItemCount(path.join(dir, 'missing')), undefined)
+  })
+
+  it('one stat per row: a folder is ok with its count, a file is ok or changed, nothing is missing', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdc-state-'))
+    dirs.push(dir)
+    for (const name of ['1.jpg', '2.jpg', '3.mp4', 'meta.json']) await fs.writeFile(path.join(dir, name), 'abc')
+    const file = path.join(dir, '3.mp4')
+    assert.deepEqual(await finishedState({filepath: dir, sizeBytes: 9}), {file: 'ok', items: 3})
+    assert.deepEqual(await finishedState({filepath: file, sizeBytes: 3}), {file: 'ok'})
+    assert.deepEqual(await finishedState({filepath: file, sizeBytes: 4}), {file: 'changed'})
+    assert.deepEqual(await finishedState({filepath: file}), {file: 'ok'})
+    assert.deepEqual(await finishedState({filepath: path.join(dir, 'gone.mp4'), sizeBytes: 3}), {file: 'missing'})
+  })
+
+  it('the renderer entry is pure: no import at all, the same rule as the engine', async () => {
+    const source = await fs.readFile(new URL('../src/mark.ts', import.meta.url), 'utf8')
+    assert.equal(/^\s*(import|export .* from)\s/m.test(source), false)
+    assert.equal(pure.resultMark, resultMark)
+    assert.equal(pure.countSetItems, countSetItems)
   })
 })

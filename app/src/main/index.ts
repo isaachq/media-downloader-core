@@ -10,6 +10,7 @@ import {
   type BinaryPaths,
   type Diagnosis,
   type FormatProfile,
+  finishedState,
   folderFormat,
   isTikTokProfile,
   isYouTubeMix,
@@ -866,16 +867,18 @@ function registerIpc(): void {
       total: matches.entries.length,
       bytes: matches.bytes,
     }
-    // only the page shown is checked on disk: ≤ 500 stats, in parallel (a disk filter checked them all already)
+    // only the page shown is checked on disk: one stat per row (a readdir more for a folder), ≤ 500
+    // rows in parallel (a disk filter checked them all already)
     const entries = await Promise.all(
       page.entries.map(async (entry): Promise<FinishedEntry> => {
-        const file = await fileState(entry)
+        const {file, items} = await finishedState(entry)
         return {
           key: entry.key,
           title: entry.title ?? path.basename(entry.filepath),
           filepath: entry.filepath,
           sizeBytes: entry.sizeBytes,
           duration: entry.duration,
+          ...(items !== undefined && {items}),
           extractor: entry.extractor,
           url: entry.url,
           site: siteOf(entry),

@@ -37,6 +37,8 @@ export type FakeSnapchatConfig = {
   /** The first N page reads are refused (429). */
   readonly refusals?: number
   readonly mediaBytes?: number
+  /** Spotlight pages as the site serves them since 2026-11: App Router, schema.org blocks, no __NEXT_DATA__. */
+  readonly appRouterSpotlight?: boolean
 }
 
 const IDS = {
@@ -248,6 +250,35 @@ export async function startFakeSnapchat(config: FakeSnapchatConfig = {}): Promis
     variant: 'spotlight_snap',
   })
 
+  /** A spotlight page built with Next's App Router: flight chunks and schema.org blocks only. */
+  const appRouterSpotlightPage = () => {
+    const video = (id: string, user: string, name: string, key: string) => ({
+      '@context': 'https://schema.org',
+      '@type': 'VideoObject',
+      url: `https://www.snapchat.com/@${user}/spotlight/${id}`,
+      name,
+      thumbnailUrl: media(key, '256.IRZXSOY', 46),
+      uploadDate: '2026-04-10T15:31:29.195Z',
+      creator: {'@type': 'Person', name: user === 'nasa' ? 'NASA' : 'Someone', alternateName: user},
+      width: 540,
+      height: 960,
+      contentUrl: media(key, '27.IRZXSOY', 46),
+      embedUrl: `https://www.snapchat.com/spotlight/${id}/embed`,
+      duration: 'PT1M27.33S',
+      encodingFormat: 'video/mp4',
+    })
+    const ld = (value: unknown) => `<script type="application/ld+json">${JSON.stringify(value)}</script>`
+    return (
+      '<!DOCTYPE html><html lang="en"><head><meta charSet="utf-8"/><title>Snapchat</title>' +
+      ld({'@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: []}) +
+      '<script type="application/ld+json">{not json</script>' +
+      ld(video(IDS.otherSpotlight, 'someoneelse', 'Not this one', 'otherCreatorKey0000001')) +
+      ld(video(IDS.spotlight, 'nasa', 'Spotlight Snap', '1z1p5kZtkBheBrRMCmyGi')) +
+      '</head><body><script>(self.__next_f=self.__next_f||[]).push([0])</script>' +
+      '<script>self.__next_f.push([1,"0:{}"])</script></body></html>'
+    )
+  }
+
   const page = (pageName: string, pageProps: unknown) =>
     '<!DOCTYPE html><html lang="en"><head><meta charSet="utf-8"/><title>Snapchat</title>' +
     '<link rel="preload" as="video" href="x"/></head><body><div id="__next"></div>' +
@@ -284,7 +315,12 @@ export async function startFakeSnapchat(config: FakeSnapchatConfig = {}): Promis
       case `/spotlight/${IDS.spotlight}`:
         return [301, `/@nasa/spotlight/${IDS.spotlight}`]
       case `/@nasa/spotlight/${IDS.spotlight}`:
-        return [200, page('/@[username]/spotlight/[snapID]', spotlightPage())]
+        return [
+          200,
+          config.appRouterSpotlight
+            ? appRouterSpotlightPage()
+            : page('/@[username]/spotlight/[snapID]', spotlightPage()),
+        ]
       case '/add/djkhaled305':
         return [308, '/@djkhaled305']
       // a private account (the web shows nothing: userProfile is its `userInfo` case)

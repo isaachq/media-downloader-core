@@ -23,6 +23,12 @@ import {snapchatUrl} from './links.js'
  *  - a spotlight (`/@u/spotlight/<id>`): `videoMetadata` (the one asked for)
  *    and `spotlightFeed.spotlightStories[]`: the one asked for and ~24
  *    recommendations of other creators, selected by id, never listed;
+ *    Since 2026-11 (verified live 2026-11-04) a spotlight's page is built with
+ *    Next's App Router: no `__NEXT_DATA__`, its data in `self.__next_f`
+ *    chunks and in schema.org blocks (`application/ld+json`), one of them a
+ *    `VideoObject` with `contentUrl` (the same MP4), `duration` (ISO 8601),
+ *    `uploadDate` (ISO), `width` / `height`, `thumbnailUrl` and
+ *    `creator.alternateName` (the username); `readSpotlightLd` reads that;
  *  - a snap: `snapMediaType` 0 a picture (JPEG), 1 a video (progressive MP4),
  *    `snapUrls.mediaUrl` (unsigned, stable, no Referer needed),
  *    `timestampInSec.value` (unix seconds, a string).
@@ -111,6 +117,75 @@ export function readNextData(html: string, marker: string): Json {
   const pageProps = isObject(props) ? props['pageProps'] : undefined
   if (!isObject(pageProps)) throw changed('the page data has no pageProps.')
   return pageProps
+}
+
+const LD_JSON = 'application/ld+json'
+/** At most this many schema.org blocks are read from one page (a spotlight's has three). */
+const LD_BLOCKS = 16
+
+/** ISO 8601 duration ("PT1M27S", "PT87.33S", "PT1H2M") in seconds. O(1): a fixed pattern over a short string. */
+const ISO_DURATION = /^P(?:(\d+(?:\.\d+)?)D)?(?:T(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?)?$/
+function isoSeconds(value: unknown): number | undefined {
+  const match = typeof value === 'string' ? ISO_DURATION.exec(value) : null
+  if (!match) return undefined
+  const [, d, h, m, sec] = match
+  const total = Number(d ?? 0) * 86_400 + Number(h ?? 0) * 3_600 + Number(m ?? 0) * 60 + Number(sec ?? 0)
+  return total > 0 ? total : undefined
+}
+
+/**
+ * A spotlight's page built with Next's App Router (no `__NEXT_DATA__`): its
+ * schema.org `VideoObject`, when it names this spotlight (its `url` or
+ * `embedUrl` holds the id: a recommendation is not taken). The blocks are
+ * found with indexOf, each parsed once, at most LD_BLOCKS: O(size of the
+ * page). Undefined when the page has no such block.
+ */
+export function readSpotlightLd(html: string, id: string, linkUser: string | undefined): SnapSingle | undefined {
+  let from = 0
+  for (let block = 0; block < LD_BLOCKS; block++) {
+    const at = html.indexOf(LD_JSON, from)
+    if (at < 0) return undefined
+    const start = html.indexOf('>', at) + 1
+    const end = start > 0 ? html.indexOf('</script>', start) : -1
+    if (end < 0) return undefined
+    from = end
+    let data: unknown
+    try {
+      data = JSON.parse(html.slice(start, end))
+    } catch {
+      continue
+    }
+    if (!isObject(data) || data['@type'] !== 'VideoObject') continue
+    const named = text(data['url']) ?? ''
+    if (!named.includes(id) && !(text(data['embedUrl']) ?? '').includes(id)) continue
+    const mediaUrl = text(data['contentUrl'])
+    if (!mediaUrl) continue
+    const creator = isObject(data['creator']) ? data['creator'] : undefined
+    const user = text(creator?.['alternateName']) ?? linkUser ?? 'snapchat'
+    const uploaded = Date.parse(text(data['uploadDate']) ?? '')
+    const publishedAt = Number.isFinite(uploaded) && uploaded > 0 ? Math.floor(uploaded / 1000) : undefined
+    const format = text(data['encodingFormat']) ?? ''
+    return {
+      kind: 'single',
+      items: [
+        {
+          id,
+          url: snapchatUrl({kind: 'spotlight', id, user}),
+          kind: format.startsWith('image/') ? 'image' : 'video',
+          mediaUrl,
+          user,
+          userName: text(creator?.['name']),
+          title: spotlightTitle(data, user, publishedAt),
+          thumbnail: text(data['thumbnailUrl']),
+          publishedAt,
+          duration: isoSeconds(data['duration']),
+          width: numeric(data['width']),
+          height: numeric(data['height']),
+        },
+      ],
+    }
+  }
+  return undefined
 }
 
 const day = (seconds: number | undefined): string | undefined =>

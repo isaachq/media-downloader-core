@@ -119,6 +119,8 @@ export const GATED_MESSAGE =
   'Instagram shows this post to signed-in accounts only (it is limited to some audiences): sign in to Instagram to download it.'
 const SESSION_NEEDED =
   'Instagram did not return this post without a signed-in session. Sign in to Instagram and try again.'
+const PROFILE_NEEDS_SESSION =
+  'Instagram no longer shows profiles without a signed-in session. Sign in to Instagram and try again.'
 const SESSION_EXPIRED =
   'Instagram no longer accepts the signed-in session (it expired or was signed out). Sign in to Instagram again.'
 
@@ -1000,11 +1002,22 @@ export class InstagramSource implements MediaSource {
     if (known) return known
     await this.#client.loadCookies()
     const query = new URLSearchParams({username: user})
-    const account = await this.#client.json(`${this.#client.origin}${PROFILE_INFO}?${query}`, readProfileInfo, {
-      signal,
-      headers: this.#apiHeaders(profileUrl(this.#client.origin, user)),
-      recoverAt: profileUrl(this.#client.origin, user),
-    })
+    // Since 2026-11 (verified live 2026-11-04) web_profile_info answers 404 to every visitor, for
+    // an account that exists and for one that does not, and the profile page is the same empty
+    // shell for both: without a session a 404 says "sign in", never "removed". Signed in, a 404
+    // is an account that is not there. O(1): the same one request.
+    const account = await this.#client
+      .json(`${this.#client.origin}${PROFILE_INFO}?${query}`, readProfileInfo, {
+        signal,
+        headers: this.#apiHeaders(profileUrl(this.#client.origin, user)),
+        recoverAt: profileUrl(this.#client.origin, user),
+      })
+      .catch((error: unknown) => {
+        if (error instanceof MetaError && error.problem === 'removed' && !this.#client.signedIn) {
+          throw new MetaError('login-required', PROFILE_NEEDS_SESSION)
+        }
+        throw error
+      })
     this.#accounts.set(key, account)
     this.#accounts.set(account.user.toLowerCase(), account)
     return account

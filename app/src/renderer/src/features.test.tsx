@@ -194,6 +194,23 @@ describe('finished tab', () => {
     ...patch,
   })
 
+  it('a finished carousel shows its count, not one clip’s duration', async () => {
+    const api = new FakeApi()
+    api.finishedEntries = [
+      entry(3, {title: 'A carousel', filepath: '/Users/me/Downloads/A carousel', items: 6, duration: 24}),
+      entry(4, {title: 'One clip'}),
+    ]
+    const {user} = await mount(api)
+    await user.click(screen.getByRole('tab', {name: /^Finished/}))
+    const list = await screen.findByTestId('finished-list')
+    const rows = within(list).getAllByRole('row')
+    const set = rows.find(row => row.textContent?.includes('A carousel'))!
+    expect(within(set).getByText('6 items')).toBeInTheDocument()
+    expect(set.textContent).not.toContain('0:24')
+    const clip = rows.find(row => row.textContent?.includes('One clip'))!
+    expect(within(clip).getByText('4:00')).toBeInTheDocument()
+  })
+
   it('lists finished files of every session; plays, shows and searches them', async () => {
     const api = new FakeApi()
     api.finishedEntries = [entry(2), entry(1, {file: 'missing'})]

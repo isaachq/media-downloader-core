@@ -50,7 +50,7 @@ import {ffprobe, ProbeError, summarizeProbe, validateBundle, validateFile} from 
 import {BlueskySource} from './sources/bluesky/source.js'
 import {DirectFileSource} from './sources/direct/source.js'
 import {FacebookSource} from './sources/facebook/source.js'
-import {transportFault} from './sources/http.js'
+import {staleSocket} from './sources/http.js'
 import {InstagramSource} from './sources/instagram/source.js'
 import {ANALYZE_ATTEMPTS} from './sources/internal/adaptive-retry.js'
 import {COOLING_DOWN, withPatience} from './sources/pacer.js'
@@ -62,6 +62,7 @@ import {
   type LivePlayback,
   type MediaSource,
   needsFallback,
+  SOURCE_FORMAT_CHANGED,
 } from './sources/source.js'
 import {ThreadsSource} from './sources/threads/source.js'
 import {DEFAULT_SLIDESHOW, slideshowOptions} from './sources/tiktok/slideshow.js'
@@ -737,7 +738,12 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
       try {
         return await this.#analyzeOnce(url, opts, attempt)
       } catch (error) {
-        if (attempt >= attempts || opts.signal?.aborted || !(error instanceof DownloadError) || !retriesAnalysis(error))
+        if (
+          attempt >= attempts ||
+          opts.signal?.aborted ||
+          !(error instanceof DownloadError) ||
+          !retriesAnalysis(error, attempt)
+        )
           throw error
         const wait = opts.retryWaitMs?.(attempt + 1) ?? jittered(ANALYZE_RETRY_WAITS_MS[attempt - 1] ?? [6_000, 8_000])
         this.#log(
@@ -928,7 +934,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
               result = {ok: false, error: sourceFailure(result.error).toJSON()}
             }
             // thorough: a failure that may pass is checked again; only the last answer is final
-            if (!result.ok && attempt < attempts && retriesAnalysis(result.error)) {
+            if (!result.ok && attempt < attempts && retriesAnalysis(result.error, attempt)) {
               again.push(byUrl.get(url)!)
               return
             }
@@ -1719,7 +1725,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
             )
             throw failure
           }
-          const wait = transportFault(error) ? 0 : retryDelay(counted, this.#settings.retryDelayMaxMs)
+          const wait = jobRetryWait(error, counted, this.#settings.retryDelayMaxMs)
           job.endAttempt(jobError, wait)
           this.#log(
             'warn',
@@ -2283,6 +2289,16 @@ export function relaxProfile(profile: FormatProfile): FormatProfile | undefined 
 }
 
 /**
+ * Wait before a job's retry n. A dead keep-alive socket gets the first retry at once (the pool
+ * has dropped it, a fresh socket answers); any other failure, a network that is down included,
+ * waits the back-off: four tries at once against no network were four failures in milliseconds.
+ * O(1).
+ */
+export function jobRetryWait(error: unknown, attempt: number, max: number): number {
+  return attempt === 1 && staleSocket(error) ? 0 : retryDelay(attempt, max)
+}
+
+/**
  * Wait before retry n: 2 s, 4 s, 8 s… capped at `max` (15 s by default), with
  * up to 20% jitter downwards so jobs failing together (e.g. a 429) don't
  * retry in lockstep — the cap is never exceeded.
@@ -2335,8 +2351,17 @@ const FINAL_HINTS: ReadonlySet<string> = new Set([
  * that can (network, refusal, a page without its data), not a final answer,
  * and not a cool-down longer than the caller would wait (it says when to come back).
  */
-function retriesAnalysis(error: Pick<JobError, 'code' | 'hint' | 'details'>): boolean {
+/**
+ * Tries a page that answered without its data gets: one more read covers a page served once
+ * without it; past that it is the site's format, and six more reads were ~30 s of pauses for
+ * the same answer (a Snapchat spotlight after the site moved to the App Router, 2026-11).
+ */
+export const FORMAT_CHANGED_ATTEMPTS = 2
+
+/** Whether try `attempt` of an analysis that failed with `error` earns another. O(1). */
+function retriesAnalysis(error: Pick<JobError, 'code' | 'hint' | 'details'>, attempt: number): boolean {
   if (error.details === COOLING_DOWN) return false
+  if (error.details === SOURCE_FORMAT_CHANGED && attempt >= FORMAT_CHANGED_ATTEMPTS) return false
   if (error.hint && FINAL_HINTS.has(error.hint)) return false
   // a native source's failure where there is no yt-dlp to hand it to: 'unavailable', to try later
   return isRetryable(error.code) || error.hint === 'retry-later'

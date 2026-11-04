@@ -766,6 +766,23 @@ describe('Instagram, end to end (local fake)', () => {
     assert.equal(site.hits.short, 1, 'the share link is asked once')
   })
 
+  it('session: none, profile info 404 for everyone → needs a session, not "removed"; signed in it lists', async () => {
+    const anonymous = await setup('profile-404-anonymous', {posts: 3, profileInfoNeedsSession: true})
+    await assert.rejects(anonymous.engine.analyze(`${anonymous.site.origin}/fakeuser/`), (e: DownloadError) => {
+      assert.equal(e.hint, 'needs-sign-in', e.message)
+      return true
+    })
+    assert.equal(anonymous.site.hits.profile, 1, 'one profile request: a sign-in answer is not tried again')
+    const signed = await setup('profile-404-signed', {posts: 3, profileInfoNeedsSession: true}, {signedIn: true})
+    const list = await signed.engine.analyze(`${signed.site.origin}/fakeuser/`)
+    assert.equal(list.kind, 'playlist')
+    // signed in, a 404 is still an account that is not there
+    await assert.rejects(signed.engine.analyze(`${signed.site.origin}/nosuchuser/`), (e: DownloadError) => {
+      assert.equal(e.hint, 'removed', e.message)
+      return true
+    })
+  })
+
   it('every route walled: oEmbed tells a gone post from a limited network', async () => {
     const {site, engine} = await setup('walled-probe', {posts: 1, loginWall: true})
     await assert.rejects(engine.analyze(`${site.origin}/p/C0DE999999/`), (e: DownloadError) => {

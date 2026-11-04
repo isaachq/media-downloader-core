@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Policy · Media Download Core for Android</title>
+<meta name="description" content="Privacy Policy and Data Safety for Media Download Core for Android.">
+<style>
+body { font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; max-width: 820px; margin: 2rem auto; padding: 0 1.2rem; color: #12212e; background: #f8fafc; }
+h1 { font-size: 1.8rem; margin-bottom: 0.3rem; }
+h2 { margin-top: 1.8rem; font-size: 1.3rem; }
+table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: 0.95rem; }
+th, td { border: 1px solid #dbe7ef; padding: 0.5rem 0.7rem; text-align: left; vertical-align: top; }
+th { background: #f1f5f9; }
+a { color: #0b7fac; }
+.meta { color: #55697a; font-size: 0.95rem; margin-bottom: 1.5rem; }
+</style>
+</head>
+<body>
+<h1>Privacy Policy &amp; Data Safety</h1>
+<p class="meta"><strong>Media Download Core for Android</strong><br>
+Last Updated: October 30, 2026<br>
+Package: <code>io.github.isaachq.mediadownloadcore</code><br>
+Maintainer: isaachq (<a href="mailto:isaac.hernandez.qz@gmail.com">isaac.hernandez.qz@gmail.com</a>)<br>
+<a href="privacy-es.html">Leer en Español</a></p>
+
+<h2>1. Overview &amp; Commitment to Privacy</h2>
+<p>Media Download Core for Android is built with a <strong>strict privacy-first architecture</strong>:</p>
+<ul>
+<li><strong>No Personal Data:</strong> No name, email, contacts, location, advertising ID, or anything you download is collected.</li>
+<li><strong>Anonymous Usage Statistics, Your Choice:</strong> Since version 0.2.0-beta.45 the app can send anonymous usage statistics (Firebase Analytics) so the maintainer learns which features are used and what fails. It is on by default and you can turn it off at any time in <strong>Settings &gt; Privacy</strong>; off stops it immediately.</li>
+<li><strong>Zero Ads, Zero Selling:</strong> There are no ads and no advertising trackers. We never sell user data or use it for advertising.</li>
+</ul>
+
+<h2>2. Google Play Data Safety Disclosure</h2>
+<table>
+<tr><th>Category</th><th>Status</th><th>Details</th></tr>
+<tr><td>Data Collection</td><td>App activity and diagnostics, anonymous and optional</td><td>Only while "Share anonymous usage statistics" is on: which sites, formats and screens are used, and download results with their error code. Never links, titles, account names or files.</td></tr>
+<tr><td>Data Sharing</td><td>No data shared</td><td>The statistics are processed by Google (Firebase) as a service provider for the maintainer only. They are not sold or used for advertising.</td></tr>
+<tr><td>Session Cookies</td><td>100% Local Only</td><td>When you sign in to a site via the embedded browser, the session cookies are stored exclusively inside the app's private, encrypted sandbox on your device.</td></tr>
+<tr><td>Network Requests</td><td>Direct Connections</td><td>Media downloads stream directly between your device and the public source server. No intermediary proxy or tracking relay is used.</td></tr>
+<tr><td>Data Deletion</td><td>Full User Control</td><td>You can clear your session cookies, download history, and finished records at any time in the app. Uninstalling the app permanently purges all local application data.</td></tr>
+</table>
+
+<h2>3. Anonymous Usage Statistics (Firebase Analytics)</h2>
+<p><strong>Why:</strong> the app is developed by one person, and their own phone is not the real world. Knowing which features are used, which sites and formats fail and with which error, is how the app improves. There is no monetization behind it.</p>
+<p><strong>What is sent</strong> (only while the setting is on):</p>
+<ul>
+<li>Events: a download started, finished, failed, was cancelled or skipped; a batch or mix list was scheduled; a link was read; a live recording started or ended; a sign-in or sign-out; a screen was opened; a feature such as share or retry was used.</li>
+<li>With each event, only short codes and numbers: the site (for example <code>tiktok</code>), the format (for example <code>mp4_1080</code>), the engine's error code and step, attempts, file size in MB and duration.</li>
+<li>Device type (phone or tablet) and settings in use: app language, theme, default format, background, Wi-Fi only, gallery, retry mode, integrity check.</li>
+<li>What Firebase adds by itself: an app instance ID (random, reset when you clear the app's data or reinstall), app version, Android version, device model, country, and how long the app and each screen are in use.</li>
+</ul>
+<p><strong>What is never sent:</strong> links (URLs), titles, user, channel or account names, file names or folders, error messages, cookies or sessions, the advertising ID or the Android ID.</p>
+<p><strong>Your control:</strong> <strong>Settings &gt; Privacy &gt; Share anonymous usage statistics</strong>. Turning it off stops collection immediately and stays off across restarts. Clearing the app's data or reinstalling resets the random instance ID.</p>
+<p><strong>Processor and retention:</strong> Google LLC (Firebase Analytics) processes the data for the maintainer under the <a href="https://firebase.google.com/terms/data-processing-terms">Firebase terms</a>. Ad personalization signals are disabled. Data is kept for the retention period configured in Firebase and then deleted. The data is not linked to your identity.</p>
+
+<h2>4. Device Permissions &amp; Use Cases</h2>
+<ul>
+<li><code>POST_NOTIFICATIONS</code> (Android 13+): Used solely to display the download progress bar and completion status while downloads run in the background.</li>
+<li>Foreground Service (<code>dataSync</code> - Android 14+): Used exclusively while active, user-initiated downloads are in progress to prevent Android from prematurely killing the background Node.js download worker.</li>
+<li>Storage Access Framework (SAF): When you choose a custom destination folder, Android's native directory picker is used. The app does not request or use broad <code>MANAGE_EXTERNAL_STORAGE</code> permissions.</li>
+</ul>
+
+<h2>5. Intellectual Property &amp; Non-Affiliation Disclaimers</h2>
+<p>Media Download Core is an independent open-source project and is <strong>not</strong> endorsed, affiliated, associated, or authorized by TikTok, ByteDance, Instagram, Facebook, or Meta Platforms.</p>
+<p>Media Download Core is intended for personal archiving, offline viewing, and educational backup of media that you own or have explicit legal authorization from the creator to download. Users must comply with applicable copyright laws and the Terms of Service of content providers.</p>
+
+<h2>6. Contact</h2>
+<p>Email: <a href="mailto:isaac.hernandez.qz@gmail.com">isaac.hernandez.qz@gmail.com</a></p>
+<p><a href="https://github.com/isaachq/media-downloader-core">Core repository</a></p>
+</body>
+</html>

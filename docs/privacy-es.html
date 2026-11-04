@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Política de Privacidad · Media Download Core para Android</title>
+<meta name="description" content="Política de Privacidad y Seguridad de Datos de Media Download Core para Android.">
+<style>
+body { font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; max-width: 820px; margin: 2rem auto; padding: 0 1.2rem; color: #12212e; background: #f8fafc; }
+h1 { font-size: 1.8rem; margin-bottom: 0.3rem; }
+h2 { margin-top: 1.8rem; font-size: 1.3rem; }
+table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: 0.95rem; }
+th, td { border: 1px solid #dbe7ef; padding: 0.5rem 0.7rem; text-align: left; vertical-align: top; }
+th { background: #f1f5f9; }
+a { color: #0b7fac; }
+.meta { color: #55697a; font-size: 0.95rem; margin-bottom: 1.5rem; }
+</style>
+</head>
+<body>
+<h1>Política de Privacidad y Seguridad de Datos</h1>
+<p class="meta"><strong>Media Download Core para Android</strong><br>
+Última actualización: 30 de octubre de 2026<br>
+Paquete: <code>io.github.isaachq.mediadownloadcore</code><br>
+Mantenedor: isaachq (<a href="mailto:isaac.hernandez.qz@gmail.com">isaac.hernandez.qz@gmail.com</a>)<br>
+<a href="privacy.html">Read in English</a></p>
+
+<h2>1. Resumen y compromiso con la privacidad</h2>
+<p>Media Download Core para Android está construida con una <strong>arquitectura estrictamente privacy-first</strong>:</p>
+<ul>
+<li><strong>Sin datos personales:</strong> No se recopila nombre, correo, contactos, ubicación, ID de publicidad ni nada de lo que descargas.</li>
+<li><strong>Estadísticas de uso anónimas, a tu elección:</strong> Desde la versión 0.2.0-beta.45 la app puede enviar estadísticas de uso anónimas (Firebase Analytics) para que el mantenedor sepa qué funciones se usan y qué falla. Está activada por defecto y puedes apagarla en cualquier momento en <strong>Ajustes &gt; Privacidad</strong>.</li>
+<li><strong>Cero anuncios, cero venta de datos:</strong> No hay anuncios ni rastreadores publicitarios. Nunca vendemos datos de usuarios ni los usamos para publicidad.</li>
+</ul>
+
+<h2>2. Declaración de Seguridad de los Datos de Google Play</h2>
+<table>
+<tr><th>Categoría</th><th>Estado</th><th>Detalles</th></tr>
+<tr><td>Recopilación de datos</td><td>Actividad de la app y diagnósticos, anónimos y opcionales</td><td>Solo mientras "Compartir estadísticas de uso anónimas" está activado: qué sitios, formatos y pantallas se usan, y resultados de descarga con su código de error. Nunca enlaces, títulos, nombres de cuenta ni archivos.</td></tr>
+<tr><td>Uso compartido de datos</td><td>No se comparten datos</td><td>Las estadísticas las procesa Google (Firebase) como proveedor de servicio únicamente para el mantenedor. No se venden ni se usan para publicidad.</td></tr>
+<tr><td>Cookies de sesión</td><td>100% locales</td><td>Cuando inicias sesión en un sitio mediante el navegador integrado, las cookies se guardan exclusivamente en el sandbox privado y cifrado de la app en tu dispositivo.</td></tr>
+<tr><td>Solicitudes de red</td><td>Conexiones directas</td><td>Las descargas de media van directamente entre tu dispositivo y el servidor de origen. No hay proxy intermedio ni relay de rastreo.</td></tr>
+<tr><td>Eliminación de datos</td><td>Control total del usuario</td><td>Puedes borrar cookies de sesión, historial de descargas y registros finalizados en cualquier momento dentro de la app. Desinstalar la app elimina permanentemente todos los datos locales.</td></tr>
+</table>
+
+<h2>3. Estadísticas de uso anónimas (Firebase Analytics)</h2>
+<p><strong>Por qué:</strong> la app la desarrolla una sola persona y su propio teléfono no es el mundo real. Saber qué funciones se usan, qué sitios y formatos fallan y con qué error, es cómo mejora la app. No hay monetización detrás.</p>
+<p><strong>Qué se envía</strong> (solo mientras la opción está activada):</p>
+<ul>
+<li>Eventos: una descarga empezó, terminó, falló, se canceló o se omitió; se programó un lote o lista mixta; se leyó un enlace; empezó o terminó una grabación en vivo; inicio o cierre de sesión; se abrió una pantalla; se usó una función como compartir o reintentar.</li>
+<li>Con cada evento, solo códigos cortos y números: el sitio (por ejemplo <code>tiktok</code>), el formato (por ejemplo <code>mp4_1080</code>), el código y paso de error del motor, intentos, tamaño del archivo en MB y duración.</li>
+<li>Tipo de dispositivo (teléfono o tablet) y ajustes en uso: idioma de la app, tema, formato por defecto, segundo plano, solo Wi-Fi, galería, modo de reintento, verificación de integridad.</li>
+<li>Lo que Firebase agrega por sí mismo: un ID de instancia de la app (aleatorio, se reinicia al borrar datos o reinstalar), versión de la app, versión de Android, modelo del dispositivo, país, y cuánto tiempo está en uso la app y cada pantalla.</li>
+</ul>
+<p><strong>Qué nunca se envía:</strong> enlaces (URLs), títulos, nombres de usuario, canal o cuenta, nombres de archivo o carpetas, mensajes de error, cookies o sesiones, el ID de publicidad o el Android ID.</p>
+<p><strong>Tu control:</strong> <strong>Ajustes &gt; Privacidad &gt; Compartir estadísticas de uso anónimas</strong>. Apagarla detiene la recopilación de inmediato y se mantiene apagada entre reinicios. Borrar los datos de la app o reinstalar reinicia el ID aleatorio de instancia.</p>
+<p><strong>Procesador y retención:</strong> Google LLC (Firebase Analytics) procesa los datos para el mantenedor bajo los <a href="https://firebase.google.com/terms/data-processing-terms">términos de Firebase</a>. Las señales de personalización de anuncios están desactivadas. Los datos se conservan durante el periodo de retención configurado en Firebase y luego se eliminan. Los datos no están vinculados a tu identidad.</p>
+
+<h2>4. Permisos del dispositivo y casos de uso</h2>
+<ul>
+<li><code>POST_NOTIFICATIONS</code> (Android 13+): Se usa únicamente para mostrar la barra de progreso de descarga y el estado de finalización mientras las descargas corren en segundo plano.</li>
+<li>Servicio en primer plano (<code>dataSync</code> - Android 14+): Se usa exclusivamente mientras hay descargas activas iniciadas por el usuario, para evitar que Android mate prematuramente el worker de Node.js en segundo plano.</li>
+<li>Storage Access Framework (SAF): Cuando eliges una carpeta de destino personalizada se usa el selector nativo de Android. La app no solicita ni usa el permiso amplio <code>MANAGE_EXTERNAL_STORAGE</code>.</li>
+</ul>
+
+<h2>5. Propiedad intelectual y avisos de no afiliación</h2>
+<p>Media Download Core es un proyecto de código abierto independiente y <strong>no</strong> está respaldado, afiliado, asociado ni autorizado por TikTok, ByteDance, Instagram, Facebook ni Meta Platforms.</p>
+<p>Media Download Core está pensada para archivado personal, visualización sin conexión y copias de seguridad educativas de media que posees o para la cual tienes autorización legal explícita del creador. Los usuarios deben cumplir las leyes de derechos de autor aplicables y los Términos de Servicio de los proveedores de contenido.</p>
+
+<h2>6. Contacto</h2>
+<p>Correo: <a href="mailto:isaac.hernandez.qz@gmail.com">isaac.hernandez.qz@gmail.com</a></p>
+<p><a href="https://github.com/isaachq/media-downloader-core">Repositorio del core</a></p>
+</body>
+</html>

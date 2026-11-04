@@ -52,6 +52,7 @@ import {DirectFileSource} from './sources/direct/source.js'
 import {FacebookSource} from './sources/facebook/source.js'
 import {transportFault} from './sources/http.js'
 import {InstagramSource} from './sources/instagram/source.js'
+import {ANALYZE_ATTEMPTS} from './sources/internal/adaptive-retry.js'
 import {COOLING_DOWN, withPatience} from './sources/pacer.js'
 import {SnapchatSource} from './sources/snapchat/source.js'
 import {SoundcloudSource} from './sources/soundcloud/source.js'
@@ -204,9 +205,10 @@ export type ArchiveCheck = {
 export const ANALYZE_PATIENCE_MS = 15_000
 
 /** Tries an analysis someone is waiting for gets before its error is the answer (see analyze). */
-export const ANALYZE_ATTEMPTS = 5
+export {ANALYZE_ATTEMPTS}
+
 /**
- * The pause before tries 2, 3, 4 and 5: a short range with jitter, never past 8 s.
+ * The pause before tries 2 through 8: a short range with jitter, never past 8 s.
  * A file download does not use this clock.
  */
 const ANALYZE_RETRY_WAITS_MS: ReadonlyArray<readonly [number, number]> = [
@@ -214,6 +216,9 @@ const ANALYZE_RETRY_WAITS_MS: ReadonlyArray<readonly [number, number]> = [
   [1_600, 2_400],
   [2_800, 4_200],
   [4_000, 6_000],
+  [5_000, 7_000],
+  [6_000, 8_000],
+  [6_000, 8_000],
 ]
 
 export class MediaDownloader extends EventEmitter<DownloaderEvents> implements AsyncDisposable {

@@ -1,22 +1,49 @@
 /**
- * One experimental profile per analysis try, and nothing else.
+ * One analysis, bounded by 8. `n` is one analysis.
  *
- * `n` is the tries of one analysis. It is bounded by 5. `profileFor` runs
- * once per try: O(1) time (one pass over a fixed family list and the url's
- * characters) and O(1) memory. `note` is O(1). The permanent memory is six
- * outcome buckets plus at most 300 recent ids. Nothing here is kept on disk.
+ * `profileFor` and `presentationFor` are O(1). Permanent memory is O(1):
+ * six outcome buckets plus at most 300 profiles. Nothing is kept on disk.
+ *
+ * Attempts 1 to 4 stay as they are on main: `variantFor`, the fixed
+ * languages, and `rotate` of the source's own routes. They do not call
+ * `profileFor` and they do not ask for the host session.
+ * Attempts 5, 6 and 7 are the three added tries. Only those call
+ * `profileFor`. Each one is a different fictional educational experimental
+ * profile. Attempt 8 is the only try that asks for the host session
+ * (`sessionOnThisAttempt`).
+ *
  * The same url, the same attempt and the same time bucket return the same
- * profile. A post's five tries step through the families in order, so a try
- * does not repeat the previous try's language. The host session is only for
- * attempt 5 (`sessionOnThisAttempt`).
+ * profile. The same seed and the same family return the same presentation.
+ * Another seed, or another salt, returns another presentation. An id already
+ * remembered for a different key is derived again, up to three times.
  */
 
-/** Anonymous doors of one public post before the host session is asked for. */
-export const ANONYMOUS_ATTEMPTS = 5
-/** How long to tell the caller to wait once the session try is spent, in seconds. */
+/** Tries an analysis gets: 4 variant, 3 profiles, then the host session. */
+export const ANALYZE_ATTEMPTS = 8
+/** Attempts 1 to 4. `variantFor` only. */
+export const VARIANT_ATTEMPTS = 4
+/** First attempt that calls `profileFor`. */
+export const PROFILE_ATTEMPT_FIRST = 5
+/** Last attempt that calls `profileFor`. */
+export const PROFILE_ATTEMPT_LAST = 7
+/** The variant tries. Kept so existing callers still name them. */
+export const ANONYMOUS_ATTEMPTS = VARIANT_ATTEMPTS
+/** How long to tell the caller to wait when the session's one read got a checkpoint, in seconds. */
 export const SESSION_EXHAUSTED_SECONDS = 5 * 60
 
-/** The pause between two doors of the same post, after one refused: 300 to 800 ms. */
+/**
+ * Five fixed languages, one per anonymous try. Attempt 1 keeps the language
+ * the post page already sent.
+ */
+const ACCEPT_LANGUAGE = [
+  'en-US,en;q=0.9',
+  'en-GB,en;q=0.9',
+  'es-MX,es;q=0.9,en;q=0.8',
+  'pt-BR,pt;q=0.9,en;q=0.8',
+  'fr-FR,fr;q=0.9,en;q=0.8',
+] as const
+
+/** The pause between two tries of the same post: 300 to 800 ms. Tests pass `random`. */
 const PAUSE_MIN_MS = 300
 const PAUSE_SPAN_MS = 500
 
@@ -29,46 +56,38 @@ const HALF_LIFE_MS = 45 * 60 * 1000
 const PRIOR = 0.5
 const ALPHA = 0.3
 
-/** A fixed family: one locale, the language it sends, and a matching presentation. */
-const FAMILIES = [
-  {
-    locale: 'en-US',
-    acceptLanguage: 'en-US,en;q=0.9',
-    presentation:
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-  },
-  {
-    locale: 'en-GB',
-    acceptLanguage: 'en-GB,en;q=0.9',
-    presentation:
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
-  },
-  {
-    locale: 'es-MX',
-    acceptLanguage: 'es-MX,es;q=0.9,en;q=0.8',
-    presentation: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0',
-  },
-  {
-    locale: 'pt-BR',
-    acceptLanguage: 'pt-BR,pt;q=0.9,en;q=0.8',
-    presentation:
-      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-  },
-  {
-    locale: 'fr-FR',
-    acceptLanguage: 'fr-FR,fr;q=0.9,en;q=0.8',
-    presentation:
-      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Safari/605.1.15',
-  },
-  {
-    locale: 'de-DE',
-    acceptLanguage: 'de-DE,de;q=0.9,en;q=0.8',
-    presentation:
-      'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-  },
-] as const
+export interface RetryVariant {
+  readonly id: string
+  readonly attempt: number
+  /** Secondary headers only. The source keeps each route's own required headers. */
+  readonly headers: Readonly<Record<string, string>>
+  /** `routes`, rotated left by `attempt - 1`. Attempt 1 is `routes` as given. */
+  readonly routeOrder: readonly string[]
+}
 
-/** One experimental profile for a single analysis try. Not exported from the package. */
+/**
+ * The variant for this url and this attempt (1-based). `routes` is the
+ * source's own list, cheapest first; it is not stored. O(1): the list is a
+ * handful of doors and the url is one link.
+ */
+export function variantFor(url: string, attempt: number, routes: readonly string[]): RetryVariant {
+  const index = Math.max(0, attempt - 1)
+  return {
+    id: fnv1a32(`${url}\n${attempt}`).toString(36),
+    attempt,
+    headers: {'Accept-Language': ACCEPT_LANGUAGE[index % ACCEPT_LANGUAGE.length] ?? 'en-US,en;q=0.9'},
+    routeOrder: rotate(routes, index),
+  }
+}
+
+/** Milliseconds to wait before the next try. `random` in [0, 1). O(1). */
+export function betweenAttemptsMs(random: () => number = Math.random): number {
+  const roll = random()
+  const unit = roll < 0 ? 0 : roll > 1 ? 1 : roll
+  return PAUSE_MIN_MS + Math.floor(unit * (PAUSE_SPAN_MS + 1))
+}
+
+/** One fictional educational experimental profile for a single analysis try. Not exported from the package. */
 export interface ExperimentalProfile {
   readonly id: string
   readonly attempt: number
@@ -83,22 +102,52 @@ type Bucket = {score: number; at: number}
 
 /** Six buckets, one per family. Not one entry per url. */
 const outcomes = new Map<number, Bucket>()
-/** Recent ids, oldest first. Capped at RECENT_LIMIT. */
+/** Recent profiles, oldest first. Capped at RECENT_LIMIT. */
 const byKey = new Map<string, ExperimentalProfile>()
 const keyById = new Map<string, string>()
 
-/** The host session is only on the fifth try. O(1). */
+/** True only on attempt 8, the try that asks for the host session. O(1). */
 export function sessionOnThisAttempt(attempt: number): boolean {
-  return attempt >= ANONYMOUS_ATTEMPTS
+  return attempt === ANALYZE_ATTEMPTS
+}
+
+export type AttemptUse =
+  | {readonly kind: 'variant'; readonly attempt: number; readonly variant: RetryVariant}
+  | {readonly kind: 'profile'; readonly attempt: number; readonly profile: ExperimentalProfile}
+  | {readonly kind: 'session'; readonly attempt: number}
+
+/**
+ * What this attempt is allowed to do. Attempts 1 to 4 call `variantFor` and
+ * nothing else. Attempts 5, 6 and 7 call `profileFor`. Attempt 8 asks for the
+ * host session and does not build a profile. O(1).
+ */
+export function describeAttempt(
+  url: string,
+  attempt: number,
+  routes: readonly string[] = [],
+  now?: number,
+): AttemptUse {
+  const attemptNo = Math.floor(attempt)
+  if (attemptNo >= 1 && attemptNo <= VARIANT_ATTEMPTS) {
+    return {kind: 'variant', attempt: attemptNo, variant: variantFor(url, attemptNo, routes)}
+  }
+  if (attemptNo >= PROFILE_ATTEMPT_FIRST && attemptNo <= PROFILE_ATTEMPT_LAST) {
+    return {kind: 'profile', attempt: attemptNo, profile: profileFor(url, attemptNo, now)}
+  }
+  if (attemptNo === ANALYZE_ATTEMPTS) return {kind: 'session', attempt: attemptNo}
+  throw new Error(`attempt ${attempt} is outside 1..${ANALYZE_ATTEMPTS}`)
 }
 
 /**
- * The profile for this url and this attempt (1-based). `now` is the clock;
- * when the caller passes it, this does not read `Date.now`. O(1).
+ * The profile for attempts 5, 6 and 7 only. `now` is the clock; when the
+ * caller passes it, this does not read `Date.now`. O(1).
  */
 export function profileFor(url: string, attempt: number, now?: number): ExperimentalProfile {
+  const attemptNo = Math.floor(attempt)
+  if (attemptNo < PROFILE_ATTEMPT_FIRST || attemptNo > PROFILE_ATTEMPT_LAST) {
+    throw new Error('a fictional educational experimental profile is only for attempts 5, 6 and 7')
+  }
   const clock = now ?? Date.now()
-  const attemptNo = attempt >= 1 ? Math.floor(attempt) : 1
   const key = `${canonical(url)}\n${attemptNo}\n${Math.floor(clock / BUCKET_MS)}`
   const cached = byKey.get(key)
   if (cached) {
@@ -134,30 +183,86 @@ export function outcomeBucketCount(): number {
   return outcomes.size
 }
 
-/** Milliseconds to wait before the next door, after one refused. `random` in [0, 1). O(1). */
-export function betweenAttemptsMs(random: () => number = Math.random): number {
-  const roll = random()
-  const unit = roll < 0 ? 0 : roll > 1 ? 1 : roll
-  return PAUSE_MIN_MS + Math.floor(unit * (PAUSE_SPAN_MS + 1))
-}
-
 function compose(key: string, attempt: number, salt: number): ExperimentalProfile {
-  const rng = mulberry32(fnv1a32(`${key}\n${salt}`))
+  const seed = fnv1a32(key + salt)
+  const rng = mulberry32(seed)
   const roll = Math.floor(rng() * 0x1000000)
   const index = familyIndex(attempt, salt)
-  const family = FAMILIES[index] ?? FAMILIES[0]
   const routeBias = salt === 0 ? (attempt - 1) % ANONYMOUS_ATTEMPTS : Math.floor(rng() * ANONYMOUS_ATTEMPTS)
   return {
     id: fnv1a32(`${key}\n${index}\n${routeBias}\n${roll}`).toString(36),
     attempt,
-    presentation: family.presentation,
-    locale: family.locale,
-    acceptLanguage: family.acceptLanguage,
+    presentation: presentationFor(seed, index),
+    locale: localeFor(index),
+    acceptLanguage: acceptLanguageFor(index),
     routeBias,
   }
 }
 
-/** Attempt 1 is family 0, attempt 2 is the next, and a url only shifts the whole run. */
+/**
+ * Pieces for one fictional educational experimental profile.
+ * No entry is a finished presentation.
+ */
+const platforms = [
+  'Windows NT 10.0; Win64; x64',
+  'Windows NT 6.1; Win64; x64',
+  'Macintosh; Intel Mac OS X 10_15_7',
+  'Macintosh; Intel Mac OS X 11_6',
+  'X11; Linux x86_64',
+  'X11; Ubuntu; Linux x86_64',
+] as const
+const engines = ['AppleWebKit', 'Gecko', 'Blink'] as const
+const versionNumbers = [120, 121, 122, 128, 130, 131] as const
+const locales = [
+  {language: 'en', region: 'US'},
+  {language: 'en', region: 'GB'},
+  {language: 'es', region: 'MX'},
+  {language: 'pt', region: 'BR'},
+  {language: 'fr', region: 'FR'},
+  {language: 'de', region: 'DE'},
+] as const
+const languages = {en: 'en', es: 'es', pt: 'pt', fr: 'fr', de: 'de'} as const
+
+type FamilyParts = {readonly locale: string; readonly language: string}
+
+/** Locale and language for this family index, joined from the language dictionary. O(1). */
+function familyParts(index: number): FamilyParts {
+  const slot = familySlot(index)
+  const locale = locales[slot] ?? locales[0]
+  const language = languages[locale.language]
+  return {locale: `${language}-${locale.region}`, language}
+}
+
+/**
+ * Builds the presentation of one fictional educational experimental profile.
+ * The seed picks the platform, the engine and the version. The same seed and
+ * the same family return the same string. Another seed returns another. O(1).
+ */
+function presentationFor(seed: number, family: number): string {
+  const n = seed >>> 0
+  const platform = platforms[(n + family) % platforms.length] ?? platforms[0]
+  const engine = engines[((n >>> 4) + family) % engines.length] ?? engines[0]
+  const major = versionNumbers[n % versionNumbers.length] ?? versionNumbers[0]
+  const minor = versionNumbers[(n >>> 8) % versionNumbers.length] ?? versionNumbers[0]
+  return `${platform} ${engine}/${major}.${minor}.${n}`
+}
+
+function localeFor(family: number): string {
+  return familyParts(family).locale
+}
+
+/** The language header of the same family `localeFor` uses. */
+function acceptLanguageFor(family: number): string {
+  const {locale, language} = familyParts(family)
+  if (language === languages.en) return `${locale},${language};q=0.9`
+  return `${locale},${language};q=0.9,${languages.en};q=0.8`
+}
+
+function familySlot(family: number): number {
+  return ((family % FAMILY_COUNT) + FAMILY_COUNT) % FAMILY_COUNT
+}
+
+/** Attempt 1 is family 0, attempt 2 is the next, and a salt shifts the whole run. */
 function familyIndex(attempt: number, salt: number): number {
   return (attempt - 1 + salt) % FAMILY_COUNT
 }
@@ -196,6 +301,20 @@ function canonical(url: string): string {
   } catch {
     return bare
   }
+}
+
+/** Left rotate by `by` places. `routes` has a fixed handful of entries: O(1). */
+function rotate(routes: readonly string[], by: number): readonly string[] {
+  const count = routes.length
+  if (count === 0) return []
+  const shift = by % count
+  if (shift === 0) return routes.slice()
+  const order = new Array<string>(count)
+  for (let i = 0; i < count; i++) {
+    const route = routes[(i + shift) % count]
+    if (route !== undefined) order[i] = route
+  }
+  return order
 }
 
 /** FNV-1a, 32 bits. One pass over the string: O(length), and a url's length is bounded. */

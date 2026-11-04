@@ -6,13 +6,13 @@
 
 - [x] core(http): destination cohort · done · verified: npm run check (pass 737 / fail 0, skipped 2)
 - [x] core: a set's count replaces a duration · done · verified: npm run check (pass 737 / fail 0, skipped 2)
-- [x] core(adaptive-retry): experimental profiles for analysis, five analysis tries, host session only on try 5 · verified: node scripts/run-tests.mjs fast (pass 740 / fail 0, skipped 2, 75.2 s)
+- [x] core(adaptive-retry): attempts 1-4 keep the source routes, profiles only on 5-7, host session only on try 8 · verified: adaptive-retry 9 pass, instagram 62 pass, biome check on the touched files
 - [ ] lib-v1.23.3 · not tagged
 
 **Library 1.23.3**
 
-- **An analysis is tried up to 5 times, and each Instagram door carries an experimental profile.** The pauses are about 1.2 s, then 2 s, 3.5 s and 5 s, and they never pass 8 s. A file download keeps its own clock. An Instagram post still tries five anonymous doors, one per try, inside its 30 s budget; the host session is still only after those doors, and that error is still final for the analysis loop. Stories, highlights and profile listings still ask for a session first.
-  Cost: O(1) per analysis attempt; 5 attempts constant; host session only on attempt 5.
+- **An analysis is tried up to 8 times.** Attempts 1 to 4 keep each source's own routes and language: no profile, no cookies. Attempts 5, 6 and 7 are the only ones that build a fictional educational experimental profile, and each of those three is a different profile. Attempt 8 is the only one that asks for the host session. The pauses are about 1.2 s, then 2 s, 3.5 s, 5 s, 6 s and 7 s, and they never pass 8 s. A file download keeps its own clock. An Instagram post still asks one door per try inside its 30 s budget, and that error is still final for the analysis loop. Stories, highlights and profile listings still ask for a session first.
+  Cost: O(1) per analysis attempt; 8 attempts constant; a profile only on attempts 5, 6 and 7; host session only on attempt 8.
 - **A destination cohort under every request.** Each origin keeps one keep-alive pool (at most 8 sockets, 2 idle). A dead socket (`ECONNRESET` and the same class) drops that origin's idle sockets; the second such failure in a row replaces the pool. A socket the peer already closed is read once more, at once, and only then. A success is one request and clears the streak. A 401, a 403 or a 429 does not replace the pool. The table holds 64 origins and forgets the oldest. The job's own retries still stop at `maxRetries + 1` (4 by default); a failure of this class does not wait out the back-off. Instagram's five doors, the single app user agent, and the five attempt strategies are unchanged.
   Cost: O(1) per request (one map lookup). The extra read is at most one, and only after a reused socket died. Memory is one pool per origin, 64 origins at most.
 - **A set of items is a count, not one clip's duration.** `resultMark` decides what a result shows: more than one item is that count (`countSetItems` / `finishedItemCount` for a finished folder), and a single item keeps its duration. A carousel's stored duration is one clip, so it no longer stands in for the set.

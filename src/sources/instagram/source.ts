@@ -12,10 +12,11 @@ import {
   navigationFetch,
 } from '../http.js'
 import {
-  ANONYMOUS_ATTEMPTS,
+  ANALYZE_ATTEMPTS,
   betweenAttemptsMs,
+  describeAttempt,
   note,
-  profileFor,
+  PROFILE_ATTEMPT_LAST,
   SESSION_EXHAUSTED_SECONDS,
   sessionOnThisAttempt,
 } from '../internal/adaptive-retry.js'
@@ -389,10 +390,11 @@ export class InstagramSource implements MediaSource {
   }
 
   /**
-   * Anonymous variants first, then one visitor read, then the session, all
-   * inside one time budget: a post that has no answer in POST_BUDGET_MS ends
-   * as "try again in a minute" (a dead network is not five 15-second waits).
-   * `attempt` from the engine's own loop is not a sixth strategy: this read
+   * Attempts 1 to 4 keep the source routes, attempts 5 to 7 build a profile,
+   * then one visitor read, then the host session on attempt 8, all inside
+   * one time budget: a post that has no answer in POST_BUDGET_MS ends as
+   * "try again in a minute" (a dead network is not eight 15-second waits).
+   * `attempt` from the engine's own loop is not another strategy: this read
    * finishes the policy itself and returns an error that loop does not retry.
    * A public post never starts on the user's cookies. O(1): one timer, one
    * listener on the caller's signal, both removed.
@@ -410,11 +412,11 @@ export class InstagramSource implements MediaSource {
     else signal?.addEventListener('abort', forward, {once: true})
     try {
       const found = await this.#anonymousAttempts(code, budget.signal, onStep)
-      // Doors 1–4 never load the host session. It is asked only once the fifth
-      // try is the one in hand, and only because the doors did not read the post.
+      // Attempts 1–7 never load the host session. It is asked only on attempt 8,
+      // and only because those tries did not read the post.
       const post =
         found.post ??
-        (sessionOnThisAttempt(ANONYMOUS_ATTEMPTS)
+        (sessionOnThisAttempt(ANALYZE_ATTEMPTS)
           ? await this.#afterAnonymous(code, budget.signal, found.walled, onStep)
           : undefined)
       if (!post) throw new MetaError('login-required', SESSION_NEEDED)
@@ -435,10 +437,12 @@ export class InstagramSource implements MediaSource {
   }
 
   /**
-   * Up to five anonymous tries, one door each: the first door of this try's
-   * order not yet asked and not resting, with this try's Accept-Language. A
-   * door that already refused stays cooled, so a wall is not asked five times.
-   * The first post ends the phase. O(1) requests: at most one per try.
+   * Attempts 1 to 4 keep the source's own route order and language. Attempts
+   * 5, 6 and 7 are the only ones that build a fictional educational
+   * experimental profile. One door each: the first of this try's order not
+   * yet asked and not resting. A door that already refused stays cooled.
+   * The first post ends the phase. The host session is not asked here. O(1)
+   * requests: at most one per try.
    */
   async #anonymousAttempts(
     code: string,
@@ -449,24 +453,23 @@ export class InstagramSource implements MediaSource {
     const base = this.#health.order(ROUTES, route => route)
     const tried = new Set<string>()
     let walled = false
-    for (let attempt = 1; attempt <= ANONYMOUS_ATTEMPTS; attempt++) {
-      const profile = profileFor(url, attempt)
-      if (attempt > 1) onStep?.({kind: 'another-way', attempt, of: ANONYMOUS_ATTEMPTS})
-      const anonymous = await this.#readAnonymously(
-        code,
-        signal,
-        rotateRoutes(base, profile.routeBias),
-        {'Accept-Language': profile.acceptLanguage, 'User-Agent': profile.presentation},
-        tried,
-        1,
-      )
+    for (let attempt = 1; attempt <= PROFILE_ATTEMPT_LAST; attempt++) {
+      if (attempt > 1 && !this.#anotherDoor(tried)) break
+      const step = describeAttempt(url, attempt, base)
+      if (step.kind === 'session') break
+      if (attempt > 1) onStep?.({kind: 'another-way', attempt, of: PROFILE_ATTEMPT_LAST})
+      const routeOrder = step.kind === 'variant' ? step.variant.routeOrder : rotateRoutes(base, step.profile.routeBias)
+      const headers =
+        step.kind === 'variant'
+          ? step.variant.headers
+          : {'Accept-Language': step.profile.acceptLanguage, 'User-Agent': step.profile.presentation}
+      const anonymous = await this.#readAnonymously(code, signal, routeOrder, headers, tried, 1)
       walled ||= anonymous.walled
-      if (anonymous.post) {
-        note(profile, 'ok')
-        return {post: anonymous.post, walled}
+      if (step.kind === 'profile') {
+        note(step.profile, anonymous.post ? 'ok' : anonymous.refused ? 'rate' : anonymous.walled ? 'wall' : 'timeout')
       }
-      note(profile, anonymous.refused ? 'rate' : anonymous.walled ? 'wall' : 'timeout')
-      if (signal?.aborted || anonymous.asked === 0 || attempt === ANONYMOUS_ATTEMPTS) break
+      if (anonymous.post) return {post: anonymous.post, walled}
+      if (signal?.aborted || anonymous.asked === 0 || attempt === PROFILE_ATTEMPT_LAST) break
       if (!this.#anotherDoor(tried)) break
       // a door that refused (a wall, a 429) earns the next one a breath; a door with no data
       // for this post (the embed of a photo) does not: the next is asked at once

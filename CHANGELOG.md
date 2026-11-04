@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+**Library 1.23.5**
+
+- **An Instagram profile without a session no longer holds back every Instagram link.**
+  `web_profile_info` no longer serves visitors: 404 over IPv6 and 429 over IPv4 (a home
+  line and a mobile carrier alike, verified on a phone on Wi-Fi and on LTE, 2026-11-04).
+  1.23.4 read that 429 as "this network is limited": three reads, then the pacer cooled the
+  whole site for 30 s, then 60 s, so a reel pasted right after a profile waited too. Without
+  a session the profile read is now one request, its 404 or 429 says "sign in", and it cools
+  nothing: the reel reads at once. A checkpoint still goes through the in-app browser.
+  Signed in, nothing changes. `MetaClient.json(..., {cools: false})` is the new option.
+  Cost: one request per anonymous profile instead of three, and no site-wide wait.
+- **A refusal leaves the site's own answer in the trace.** When Instagram or Facebook
+  refused a read (a 429, a 5xx), the retry met the pacer's wait and the trace kept only
+  "rate limiting this network: try again in N s"; the site's status was lost. Each
+  refusal is now logged first (`Instagram: Instagram answered HTTP 429 with no data.
+  (read 1 of 3)`). Found on 2026-11-04, when Instagram answered 429 over the home IPv4
+  and 404 over IPv6, so the phone and the computer disagreed on the same link.
+  Cost: one log line per refusal, never per successful request.
+
+**Desktop 0.2.0-beta.32**
+
+- Carries library 1.23.5.
+
 **Library 1.23.4**
 
 - **Replacing an origin's pool no longer cuts the requests it carries.** The second dead

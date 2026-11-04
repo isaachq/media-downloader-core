@@ -1002,18 +1002,23 @@ export class InstagramSource implements MediaSource {
     if (known) return known
     await this.#client.loadCookies()
     const query = new URLSearchParams({username: user})
-    // Since 2026-11 (verified live 2026-11-04) web_profile_info answers 404 to every visitor, for
-    // an account that exists and for one that does not, and the profile page is the same empty
-    // shell for both: without a session a 404 says "sign in", never "removed". Signed in, a 404
-    // is an account that is not there. O(1): the same one request.
+    // Since 2026-11 (verified live 2026-11-04) web_profile_info no longer serves visitors: 404
+    // over IPv6 and 429 over IPv4 (a home line and a mobile carrier alike), for an account that
+    // exists and for one that does not, and the profile page is the same empty shell for both.
+    // Without a session that answer says "sign in" (never "removed", never "this network is
+    // limited"), after one request, and it cools nothing: posts and reels read on at once.
+    // Signed in, the read is as before: a 404 is an account that is not there. O(1) requests.
+    const anonymous = !this.#client.signedIn
     const account = await this.#client
       .json(`${this.#client.origin}${PROFILE_INFO}?${query}`, readProfileInfo, {
         signal,
         headers: this.#apiHeaders(profileUrl(this.#client.origin, user)),
         recoverAt: profileUrl(this.#client.origin, user),
+        ...(anonymous && {cools: false}),
       })
       .catch((error: unknown) => {
-        if (error instanceof MetaError && error.problem === 'removed' && !this.#client.signedIn) {
+        const closed = error instanceof MetaError && (error.problem === 'removed' || error.problem === 'refused')
+        if (anonymous && closed) {
           throw new MetaError('login-required', PROFILE_NEEDS_SESSION)
         }
         throw error

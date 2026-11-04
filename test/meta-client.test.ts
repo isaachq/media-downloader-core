@@ -49,3 +49,28 @@ describe('MetaClient.redirectOf: one hop of a share link', () => {
     assert.equal(await client.redirectOf(`${ORIGIN}/share/r/abc/`), `${ORIGIN}${wall}`)
   })
 })
+
+describe('MetaClient: a refusal leaves the site’s own answer in the trace', () => {
+  it('site: a 429 → its HTTP status is logged before the retry, and the retry answers', async () => {
+    let calls = 0
+    const fetch = async () => {
+      calls++
+      return calls === 1
+        ? new Response('{}', {status: 429, headers: {'content-type': 'application/json'}})
+        : new Response('{"ok":true}', {status: 200, headers: {'content-type': 'application/json'}})
+    }
+    const logs: string[] = []
+    const client = new MetaClient({
+      site: 'Instagram',
+      origin: 'https://www.instagram.test',
+      sessionCookie: 'sessionid',
+      fetch,
+      pacing: {spacingMs: 0, jitterMs: 0, backoffMs: 1, maxBackoffMs: 1},
+      log: (_, message) => logs.push(message),
+    })
+    const read = await client.json('https://www.instagram.test/api/v1/x', json => json)
+    assert.deepEqual(read, {ok: true})
+    assert.equal(calls, 2)
+    assert.equal(logs.filter(line => /HTTP 429/.test(line) && /read 1 of 3/.test(line)).length, 1, logs.join('\n'))
+  })
+})

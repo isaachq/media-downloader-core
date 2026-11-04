@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+**Library 1.23.5** (not released yet)
+
+- **A refusal leaves the site's own answer in the trace.** When Instagram or Facebook
+  refused a read (a 429, a 5xx), the retry met the pacer's wait and the trace kept only
+  "rate limiting this network: try again in N s"; the site's status was lost. Each
+  refusal is now logged first (`Instagram: Instagram answered HTTP 429 with no data.
+  (read 1 of 3)`). Found on 2026-11-04, when Instagram answered 429 over the home IPv4
+  and 404 over IPv6, so the phone and the computer disagreed on the same link.
+  Cost: one log line per refusal, never per successful request.
+
 **Library 1.23.4**
 
 - **Replacing an origin's pool no longer cuts the requests it carries.** The second dead

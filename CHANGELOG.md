@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Status
+
+- [x] core(http): destination cohort · done · verified: npm run check (pass 737 / fail 0, skipped 2)
+- [x] core: a set's count replaces a duration · done · verified: npm run check (pass 737 / fail 0, skipped 2)
+- [ ] lib-v1.23.3 · not tagged
+
+**Library 1.23.3**
+
+- **A destination cohort under every request.** Each origin keeps one keep-alive pool (at most 8 sockets, 2 idle). A dead socket (`ECONNRESET` and the same class) drops that origin's idle sockets; the second such failure in a row replaces the pool. A socket the peer already closed is read once more, at once, and only then. A success is one request and clears the streak. A 401, a 403 or a 429 does not replace the pool. The table holds 64 origins and forgets the oldest. The job's own retries still stop at `maxRetries + 1` (4 by default); a failure of this class does not wait out the back-off. Instagram's five doors, the single app user agent, and the five attempt strategies are unchanged.
+  Cost: O(1) per request (one map lookup). The extra read is at most one, and only after a reused socket died. Memory is one pool per origin, 64 origins at most.
+- **A set of items is a count, not one clip's duration.** `resultMark` decides what a result shows: more than one item is that count (`countSetItems` / `finishedItemCount` for a finished folder), and a single item keeps its duration. A carousel's stored duration is one clip, so it no longer stands in for the set.
+  Cost: O(1) for the decision. Counting a finished folder is one stat and one readdir of that folder, once per row, not per download.
+
 **Library 1.23.2**
 
 - **The scenario gate.** The combinations downstream apps and integrations exercise, and

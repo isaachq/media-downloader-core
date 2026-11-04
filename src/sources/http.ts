@@ -37,6 +37,106 @@ export const DOCUMENT_NAVIGATION_HEADERS: Readonly<Record<string, string>> = {
 }
 
 const MAX_REDIRECTS = 10
+const ORIGIN_LIMIT = 64
+const RETIRE_AT = 2
+const MAX_SOCKETS = 8
+const MAX_FREE = 2
+
+const TRANSPORT_CODE: ReadonlySet<string> = new Set([
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'EPIPE',
+  'ETIMEDOUT',
+  'EAI_AGAIN',
+  'ENETUNREACH',
+  'ENETRESET',
+  'EHOSTUNREACH',
+])
+
+type Cohort = {agent: http.Agent; failures: number; generation: number; secure: boolean}
+
+const cohorts = new Map<string, Cohort>()
+
+function agentOptions(): http.AgentOptions {
+  return {keepAlive: true, maxSockets: MAX_SOCKETS, maxFreeSockets: MAX_FREE, scheduling: 'lifo'}
+}
+
+function makeAgent(secure: boolean): http.Agent {
+  return secure ? new https.Agent(agentOptions()) : new http.Agent(agentOptions())
+}
+
+function originKey(url: URL): string {
+  const port = url.port || (url.protocol === 'https:' ? '443' : '80')
+  return `${url.protocol}//${url.hostname}:${port}`
+}
+
+function cohortOf(url: URL): Cohort {
+  const key = originKey(url)
+  const known = cohorts.get(key)
+  if (known) {
+    cohorts.delete(key)
+    cohorts.set(key, known)
+    return known
+  }
+  if (cohorts.size >= ORIGIN_LIMIT) {
+    const oldest = cohorts.keys().next().value
+    if (oldest !== undefined) {
+      cohorts.get(oldest)?.agent.destroy()
+      cohorts.delete(oldest)
+    }
+  }
+  const created: Cohort = {
+    agent: makeAgent(url.protocol === 'https:'),
+    failures: 0,
+    generation: 0,
+    secure: url.protocol === 'https:',
+  }
+  cohorts.set(key, created)
+  return created
+}
+
+function dropIdle(agent: http.Agent): void {
+  for (const sockets of Object.values(agent.freeSockets)) {
+    if (!sockets) continue
+    for (const socket of sockets) socket.destroy()
+  }
+}
+
+function noteOk(url: URL): void {
+  const known = cohorts.get(originKey(url))
+  if (known) known.failures = 0
+}
+
+function noteFault(url: URL): void {
+  const cohort = cohortOf(url)
+  dropIdle(cohort.agent)
+  cohort.failures += 1
+  if (cohort.failures < RETIRE_AT) return
+  cohort.agent.destroy()
+  cohort.agent = makeAgent(cohort.secure)
+  cohort.generation += 1
+  cohort.failures = 0
+}
+
+export function transportFault(error: unknown): boolean {
+  if (!(error instanceof Error) || error.name === 'AbortError' || error.name === 'TimeoutError') return false
+  const code = (error as Error & {code?: unknown}).code
+  if (typeof code === 'string' && TRANSPORT_CODE.has(code)) return true
+  if (error.message === 'socket hang up') return true
+  const cause = (error as Error & {cause?: unknown}).cause
+  return cause !== undefined && cause !== error && transportFault(cause)
+}
+
+export function transportCensus(): {readonly origins: number; readonly generation: number} {
+  let generation = 0
+  for (const cohort of cohorts.values()) generation += cohort.generation
+  return {origins: cohorts.size, generation}
+}
+
+export function releaseTransport(): void {
+  for (const cohort of cohorts.values()) cohort.agent.destroy()
+  cohorts.clear()
+}
 
 /**
  * A failed request with its reason in the message: Node's fetch says only
@@ -73,15 +173,7 @@ export const navigationFetch: Fetch = async (input, init = {}) => {
   for (let hop = 0; ; hop++) {
     signal?.throwIfAborted()
     const target = url
-    const response = await new Promise<http.IncomingMessage>((resolve, reject) => {
-      const request = (target.protocol === 'https:' ? https : http).request(
-        target,
-        {method, headers, ...(signal && {signal})},
-        resolve,
-      )
-      request.on('error', error => reject(signal?.aborted ? signal.reason : error))
-      request.end(method === 'POST' && typeof init.body === 'string' ? init.body : undefined)
-    })
+    const response = await exchange(target, method, headers, init.body, signal, false)
     const status = response.statusCode ?? 0
     const location = response.headers.location
     if (status >= 300 && status < 400 && location && (init.redirect ?? 'follow') === 'follow') {
@@ -122,6 +214,49 @@ export const navigationFetch: Fetch = async (input, init = {}) => {
   }
 }
 
+function exchange(
+  target: URL,
+  method: string,
+  headers: Record<string, string>,
+  body: RequestInit['body'],
+  signal: AbortSignal | undefined,
+  replayed: boolean,
+): Promise<http.IncomingMessage> {
+  const cohort = cohortOf(target)
+  return new Promise((resolve, reject) => {
+    let settled = false
+    const request = (target.protocol === 'https:' ? https : http).request(
+      target,
+      {method, headers, agent: cohort.agent, ...(signal && {signal})},
+      message => {
+        if (settled) {
+          message.resume()
+          return
+        }
+        settled = true
+        noteOk(target)
+        resolve(message)
+      },
+    )
+    request.on('error', error => {
+      if (settled) return
+      settled = true
+      if (signal?.aborted) {
+        reject(signal.reason)
+        return
+      }
+      const fault = transportFault(error)
+      if (fault) noteFault(target)
+      if (!replayed && request.reusedSocket && fault) {
+        resolve(exchange(target, method, headers, body, signal, true))
+        return
+      }
+      reject(error)
+    })
+    request.end(method === 'POST' && typeof body === 'string' ? body : undefined)
+  })
+}
+
 export type SessionOptions = {
   readonly userAgent?: string | undefined
   readonly acceptLanguage?: string | undefined
@@ -143,7 +278,7 @@ export class HttpSession {
     this.#userAgent = options.userAgent ?? BROWSER_USER_AGENT
     this.#acceptLanguage = options.acceptLanguage ?? 'en-US,en;q=0.9'
     this.#timeoutMs = options.timeoutMs ?? 20_000
-    this.#fetch = options.fetch ?? ((input, init) => fetch(input, init))
+    this.#fetch = options.fetch ?? navigationFetch
   }
 
   async get(

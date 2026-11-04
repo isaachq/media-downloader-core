@@ -50,6 +50,7 @@ import {ffprobe, ProbeError, summarizeProbe, validateBundle, validateFile} from 
 import {BlueskySource} from './sources/bluesky/source.js'
 import {DirectFileSource} from './sources/direct/source.js'
 import {FacebookSource} from './sources/facebook/source.js'
+import {transportFault} from './sources/http.js'
 import {InstagramSource} from './sources/instagram/source.js'
 import {COOLING_DOWN, withPatience} from './sources/pacer.js'
 import {SnapchatSource} from './sources/snapchat/source.js'
@@ -1706,7 +1707,7 @@ export class MediaDownloader extends EventEmitter<DownloaderEvents> implements A
             )
             throw failure
           }
-          const wait = retryDelay(counted, this.#settings.retryDelayMaxMs)
+          const wait = transportFault(error) ? 0 : retryDelay(counted, this.#settings.retryDelayMaxMs)
           job.endAttempt(jobError, wait)
           this.#log(
             'warn',

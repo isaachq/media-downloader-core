@@ -1791,8 +1791,7 @@ helped you.
 `cookies-unreadable`; `setCookiesFromBrowser()` (live) and
 `youtubePausedUntil`; `isYouTubeUrl()`. `Pacer.resume()` now wakes the
 callers already waiting out a cool-down (before, they slept it through —
-TikTok's verification-page recovery benefits too). Each release starts its
-winget manifests by itself.
+TikTok's verification-page recovery benefits too).
 
 ## Library 1.6.1
 
@@ -1880,8 +1879,7 @@ snapshots, `archive.list({batchId})` and `archive.groups()`,
 `verifyArchive(…, {keys | batchId})` in parallel, `SourceFile.bundle` (a
 folder of finished files), `slideshowOptions()`. Ready for npm (a
 `lib-v*` tag publishes it with provenance; the package is 282 kB without
-source maps). winget manifests are generated and schema-checked for every
-release.
+source maps).
 
 ## App 0.2.0-beta.6 · library 1.5.0
 
